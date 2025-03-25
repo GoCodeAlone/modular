@@ -1,0 +1,3 @@
+appName: Example Application
+webserver:
+  port: "80"
