@@ -1,6 +1,7 @@
 package main
 
 import (
+	"example/api"
 	"example/router"
 	"example/webserver"
 	"github.com/GoCodeAlone/modular"
@@ -24,14 +25,13 @@ func main() {
 
 	app.RegisterModule(webserver.NewWebServer())
 	app.RegisterModule(router.NewRouter())
+	app.RegisterModule(api.NewAPIModule())
 
-	err := app.Init()
-	if err != nil {
-		app.Logger().Error("Failed to initialize application:", "error", err)
-		return
+	// Run application with lifecycle management
+	if err := app.Run(); err != nil {
+		app.Logger().Error("Application error", "error", err)
+		os.Exit(1)
 	}
-	app.Logger().Info("Initialized application")
-	app.Logger().Info("App Config:", "cfg", (app.ConfigProvider().GetConfig()).(*myCfg))
 }
 
 type myCfg struct {

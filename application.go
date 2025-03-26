@@ -1,8 +1,14 @@
 package modular
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"reflect"
+	"slices"
+	"syscall"
+	"time"
 )
 
 type AppRegistry interface {
@@ -16,6 +22,8 @@ type Application struct {
 	svcRegistry    ServiceRegistry
 	moduleRegistry ModuleRegistry
 	logger         Logger
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
 // NewApplication creates a new application instance
@@ -136,6 +144,88 @@ func (app *Application) Init() error {
 	return nil
 }
 
+// Start starts the application
+func (app *Application) Start() error {
+	// Create cancellable context for the application
+	ctx, cancel := context.WithCancel(context.Background())
+	app.ctx = ctx
+	app.cancel = cancel
+
+	// Start modules in dependency order
+	modules, err := app.resolveDependencies()
+	if err != nil {
+		return err
+	}
+
+	for _, name := range modules {
+		module := app.moduleRegistry[name]
+		app.logger.Info("Starting module", "module", name)
+		if err := module.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start module %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// Stop stops the application
+func (app *Application) Stop() error {
+	// Get modules in reverse dependency order
+	modules, err := app.resolveDependencies()
+	if err != nil {
+		return err
+	}
+
+	// Reverse the slice
+	slices.Reverse(modules)
+
+	// Create timeout context for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Stop modules in reverse order
+	var lastErr error
+	for _, name := range modules {
+		module := app.moduleRegistry[name]
+		app.logger.Info("Stopping module", "module", name)
+		if err := module.Stop(ctx); err != nil {
+			app.logger.Error("Error stopping module", "module", name, "error", err)
+			lastErr = err
+		}
+	}
+
+	// Cancel the main application context
+	if app.cancel != nil {
+		app.cancel()
+	}
+
+	return lastErr
+}
+
+// Run starts the application and blocks until termination
+func (app *Application) Run() error {
+	// Initialize
+	if err := app.Init(); err != nil {
+		return err
+	}
+
+	// Start all modules
+	if err := app.Start(); err != nil {
+		return err
+	}
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Wait for termination signal
+	sig := <-sigChan
+	app.logger.Info("Received signal, shutting down", "signal", sig)
+
+	// Stop all modules
+	return app.Stop()
+}
+
 // injectServices injects required services into a module
 func (app *Application) injectServices(module Module) (Module, error) {
 	requiredServices := make(map[string]any)
@@ -150,22 +240,23 @@ func (app *Application) injectServices(module Module) (Module, error) {
 			return nil, fmt.Errorf("required service '%s' not found for module '%s'",
 				dep.Name, module.Name())
 		}
+	}
 
-		// If module supports constructor injection, use it
-		if withConstructor, ok := module.(ModuleWithConstructor); ok {
-			constructor := withConstructor.Constructor()
-			newModule, err := constructor(app, requiredServices)
-			if err != nil {
-				return nil, fmt.Errorf("failed to construct module '%s': %w", module.Name(), err)
-			}
-
-			// Replace in registry with constructed instance
-			app.moduleRegistry[module.Name()] = newModule
-			module = newModule
+	// If module supports constructor injection, use it
+	if withConstructor, ok := module.(ModuleWithConstructor); ok {
+		constructor := withConstructor.Constructor()
+		newModule, err := constructor(app, requiredServices)
+		if err != nil {
+			return nil, fmt.Errorf("failed to construct module '%s': %w", module.Name(), err)
 		}
 
-		// TODO: potentially add support for field injection or other DI methods
+		// Replace in registry with constructed instance
+		app.moduleRegistry[module.Name()] = newModule
+		module = newModule
 	}
+
+	// TODO: potentially add support for field injection or other DI methods
+
 	return module, nil
 }
 
