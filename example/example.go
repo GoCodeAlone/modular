@@ -4,14 +4,15 @@ import (
 	"example/router"
 	"example/webserver"
 	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
 	"log/slog"
 	"os"
 )
 
 func main() {
 	modular.ConfigFeeders = []modular.Feeder{
-		modular.YamlFeeder{Path: "config.yaml"},
-		modular.EnvFeeder{},
+		feeders.NewYamlFeeder("config.yaml"),
+		feeders.NewEnvFeeder(),
 	}
 	app := modular.NewApplication(
 		modular.NewStdConfigProvider(&myCfg{}),

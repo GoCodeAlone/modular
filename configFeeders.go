@@ -1,18 +1,18 @@
 package modular
 
 import (
+	"github.com/GoCodeAlone/modular/feeders"
 	"github.com/golobby/config/v3"
-	"github.com/golobby/config/v3/pkg/feeder"
 )
 
 var ConfigFeeders = []Feeder{
-	EnvFeeder{},
+	feeders.EnvFeeder{},
 }
 
 // Feeder aliases
 type Feeder = config.Feeder
-type EnvFeeder = feeder.Env
-type DotEnvFeeder = feeder.DotEnv
-type YamlFeeder = feeder.Yaml
-type JsonFeeder = feeder.Json
-type TomlFeeder = feeder.Toml
+
+type ComplexFeeder interface {
+	Feeder
+	FeedKey(string, interface{}) error
+}

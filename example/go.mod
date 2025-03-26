@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/golobby/cast v1.3.3 // indirect
 	github.com/golobby/config/v3 v3.4.2 // indirect
 	github.com/golobby/dotenv v1.3.2 // indirect
