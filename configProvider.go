@@ -57,10 +57,20 @@ func (c *Config) Feed() error {
 			}
 		}
 
-		// TODO: need a setup struct for module configs
+		if setupable, ok := target.(ConfigSetup); ok {
+			if err := setupable.Setup(); err != nil {
+				return fmt.Errorf("config: setup error for %s: %v", key, err)
+			}
+		}
 	}
 
 	return nil
+}
+
+// ConfigSetup is an interface that configs can implement
+// to perform additional setup after being populated by feeders
+type ConfigSetup interface {
+	Setup() error
 }
 
 func loadAppConfig(app *Application) error {
@@ -88,7 +98,7 @@ func loadAppConfig(app *Application) error {
 	}
 
 	// Update main app config
-	updateConfig(app, &app.cfgProvider, tempMainCfg, mainCfgInfo)
+	updateConfig(app, &app.cfgProvider, mainCfgInfo)
 
 	// Update all section configs
 	for sectionKey, info := range sectionInfos {
@@ -125,7 +135,7 @@ func createTempConfig(cfg any) (interface{}, configInfo) {
 	}
 }
 
-func updateConfig(app *Application, provider *ConfigProvider, tempCfg interface{}, info configInfo) {
+func updateConfig(app *Application, provider *ConfigProvider, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {
