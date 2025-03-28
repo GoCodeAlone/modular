@@ -82,8 +82,8 @@ func (m *Module) Dependencies() []string {
 	return []string{"router"}
 }
 
-func (m *Module) ProvidesServices() []modular.Service {
-	return []modular.Service{
+func (m *Module) ProvidesServices() []modular.ServiceProvider {
+	return []modular.ServiceProvider{
 		{Name: "webserver", Description: "HTTP server", Instance: m.server},
 	}
 }

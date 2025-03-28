@@ -39,7 +39,7 @@ func (m *Module) Dependencies() []string {
 	return []string{"router"}
 }
 
-func (m *Module) ProvidesServices() []modular.Service {
+func (m *Module) ProvidesServices() []modular.ServiceProvider {
 	return nil
 }
 

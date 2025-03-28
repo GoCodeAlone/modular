@@ -6,6 +6,12 @@ import (
 	"reflect"
 )
 
+// LoadAppConfigFunc is the function type for loading application configuration
+type LoadAppConfigFunc func(*Application) error
+
+// AppConfigLoader is the default implementation that can be replaced in tests
+var AppConfigLoader LoadAppConfigFunc = loadAppConfig
+
 type ConfigProvider interface {
 	GetConfig() any
 }
@@ -74,35 +80,83 @@ type ConfigSetup interface {
 }
 
 func loadAppConfig(app *Application) error {
+	// Guard against nil application
+	if app == nil {
+		return fmt.Errorf("application is nil")
+	}
+
+	// Skip if no ConfigFeeders are defined
+	if len(ConfigFeeders) == 0 {
+		app.logger.Info("No config feeders defined, skipping config loading")
+		return nil
+	}
+
 	// Build the configuration
 	cfgBuilder := NewConfig()
 	for _, feeder := range ConfigFeeders {
 		cfgBuilder.AddFeeder(feeder)
 	}
 
-	// Handle main app config
-	tempMainCfg, mainCfgInfo := createTempConfig(app.cfgProvider.GetConfig())
-	cfgBuilder.AddStruct(tempMainCfg)
+	// Handle main app config if provided
+	if app.cfgProvider != nil {
+		mainCfg := app.cfgProvider.GetConfig()
+		if mainCfg == nil {
+			app.logger.Warn("Main config is nil, skipping main config loading")
+		} else {
+			tempMainCfg, mainCfgInfo, err := createTempConfig(mainCfg)
+			if err != nil {
+				return fmt.Errorf("failed to create temp config: %w", err)
+			}
+
+			cfgBuilder.AddStruct(tempMainCfg)
+
+			// Feed the config
+			if err := cfgBuilder.Feed(); err != nil {
+				return err
+			}
+
+			// Update main app config
+			updateConfig(app, &app.cfgProvider, mainCfgInfo)
+		}
+	}
+
+	// Process registered sections
+	sectionInfos := make(map[string]configInfo)
+	hasValidSections := false
 
 	// Create temporary structs for all registered sections
-	sectionInfos := make(map[string]configInfo)
 	for sectionKey, provider := range app.cfgSections {
-		tempSectionCfg, sectionInfo := createTempConfig(provider.GetConfig())
+		if provider == nil {
+			app.logger.Warn("Skipping nil config provider", "section", sectionKey)
+			continue
+		}
+
+		sectionCfg := provider.GetConfig()
+		if sectionCfg == nil {
+			app.logger.Warn("Skipping section with nil config", "section", sectionKey)
+			continue
+		}
+
+		tempSectionCfg, sectionInfo, err := createTempConfig(sectionCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create temp config for section %s: %w", sectionKey, err)
+		}
+
 		sectionInfos[sectionKey] = sectionInfo
 		cfgBuilder.AddStructKey(sectionKey, tempSectionCfg)
+		hasValidSections = true
 	}
 
-	// Feed the config
-	if err := cfgBuilder.Feed(); err != nil {
-		return err
-	}
+	// Feed the config for sections if any exist
+	if hasValidSections {
+		if err := cfgBuilder.Feed(); err != nil {
+			return err
+		}
 
-	// Update main app config
-	updateConfig(app, &app.cfgProvider, mainCfgInfo)
-
-	// Update all section configs
-	for sectionKey, info := range sectionInfos {
-		updateSectionConfig(app, sectionKey, info)
+		// Update all section configs
+		for sectionKey, info := range sectionInfos {
+			updateSectionConfig(app, sectionKey, info)
+		}
 	}
 
 	return nil
@@ -115,12 +169,21 @@ type configInfo struct {
 	isPtr       bool
 }
 
-func createTempConfig(cfg any) (interface{}, configInfo) {
+// createTempConfig creates a temporary config for feeding values
+// Returns error if cfg is nil
+func createTempConfig(cfg any) (interface{}, configInfo, error) {
+	if cfg == nil {
+		return nil, configInfo{}, fmt.Errorf("cannot create temp config: config is nil")
+	}
+
 	cfgValue := reflect.ValueOf(cfg)
 	isPtr := cfgValue.Kind() == reflect.Ptr
 
 	var targetType reflect.Type
 	if isPtr {
+		if cfgValue.IsNil() {
+			return nil, configInfo{}, fmt.Errorf("cannot create temp config: config pointer is nil")
+		}
 		targetType = cfgValue.Elem().Type()
 	} else {
 		targetType = cfgValue.Type()
@@ -132,7 +195,7 @@ func createTempConfig(cfg any) (interface{}, configInfo) {
 		originalVal: cfgValue,
 		tempVal:     tempCfgValue,
 		isPtr:       isPtr,
-	}
+	}, nil
 }
 
 func updateConfig(app *Application, provider *ConfigProvider, info configInfo) {

@@ -79,9 +79,9 @@ func (m *Module) Dependencies() []string {
 	return nil
 }
 
-func (m *Module) ProvidesServices() []modular.Service {
+func (m *Module) ProvidesServices() []modular.ServiceProvider {
 	fmt.Printf("router: %v\n", m.router)
-	return []modular.Service{
+	return []modular.ServiceProvider{
 		{Name: "router", Description: "HTTP RouterModule", Instance: m.router},
 		{Name: "routerService", Description: "Router Service Interface", Instance: m.router},
 	}

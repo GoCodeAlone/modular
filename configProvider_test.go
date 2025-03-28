@@ -34,27 +34,6 @@ func (m *MockComplexFeeder) FeedKey(key string, target interface{}) error {
 	return args.Error(0)
 }
 
-// Mock logger
-type MockLogger struct {
-	mock.Mock
-}
-
-func (m *MockLogger) Debug(msg string, args ...interface{}) {
-	m.Called(msg, args)
-}
-
-func (m *MockLogger) Info(msg string, args ...interface{}) {
-	m.Called(msg, args)
-}
-
-func (m *MockLogger) Warn(msg string, args ...interface{}) {
-	m.Called(msg, args)
-}
-
-func (m *MockLogger) Error(msg string, args ...interface{}) {
-	m.Called(msg, args)
-}
-
 func TestNewStdConfigProvider(t *testing.T) {
 	cfg := &testCfg{Str: "test", Num: 42}
 	provider := NewStdConfigProvider(cfg)
@@ -212,18 +191,20 @@ func TestConfig_Feed(t *testing.T) {
 func Test_createTempConfig(t *testing.T) {
 	t.Run("with pointer", func(t *testing.T) {
 		originalCfg := &testCfg{Str: "test", Num: 42}
-		tempCfg, info := createTempConfig(originalCfg)
+		tempCfg, info, err := createTempConfig(originalCfg)
 
 		assert.NotNil(t, tempCfg)
+		assert.NoError(t, err)
 		assert.True(t, info.isPtr)
 		assert.Equal(t, reflect.ValueOf(originalCfg).Type(), info.tempVal.Type())
 	})
 
 	t.Run("with non-pointer", func(t *testing.T) {
 		originalCfg := testCfg{Str: "test", Num: 42}
-		tempCfg, info := createTempConfig(originalCfg)
+		tempCfg, info, err := createTempConfig(originalCfg)
 
 		assert.NotNil(t, tempCfg)
+		assert.NoError(t, err)
 		assert.False(t, info.isPtr)
 		assert.Equal(t, reflect.PtrTo(reflect.ValueOf(originalCfg).Type()), info.tempVal.Type())
 	})
@@ -253,7 +234,8 @@ func Test_updateConfig(t *testing.T) {
 
 	t.Run("with non-pointer config", func(t *testing.T) {
 		originalCfg := testCfg{Str: "old", Num: 0}
-		tempCfgPtr, origInfo := createTempConfig(originalCfg)
+		tempCfgPtr, origInfo, err := createTempConfig(originalCfg)
+		assert.NoError(t, err)
 		tempCfgPtr.(*testCfg).Str = "new"
 		tempCfgPtr.(*testCfg).Num = 42
 
@@ -301,7 +283,12 @@ func Test_updateSectionConfig(t *testing.T) {
 
 	t.Run("with non-pointer section config", func(t *testing.T) {
 		originalCfg := testSectionCfg{Enabled: false, Name: "old"}
-		tempCfgPtr := &testSectionCfg{Enabled: true, Name: "new"}
+		tempCfgPtr, sectionInfo, err := createTempConfig(originalCfg)
+		assert.NoError(t, err)
+
+		// Cast and update the temp config
+		tempCfgPtr.(*testSectionCfg).Enabled = true
+		tempCfgPtr.(*testSectionCfg).Name = "new"
 
 		mockLogger := new(MockLogger)
 		mockLogger.On("Info", "Creating new provider for section", []interface{}{"section", "test"}).Return()
@@ -311,12 +298,6 @@ func Test_updateSectionConfig(t *testing.T) {
 			cfgSections: make(map[string]ConfigProvider),
 		}
 		app.cfgSections["test"] = NewStdConfigProvider(originalCfg)
-
-		sectionInfo := configInfo{
-			originalVal: reflect.ValueOf(originalCfg),
-			tempVal:     reflect.ValueOf(tempCfgPtr),
-			isPtr:       false,
-		}
 
 		updateSectionConfig(app, "test", sectionInfo)
 

@@ -23,7 +23,7 @@ type Module interface {
 	Dependencies() []string
 
 	// ProvidesServices returns a list of services provided by this module
-	ProvidesServices() []Service
+	ProvidesServices() []ServiceProvider
 
 	// RequiresServices returns a list of services required by this module
 	RequiresServices() []ServiceDependency

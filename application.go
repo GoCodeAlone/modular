@@ -89,10 +89,49 @@ func (app *Application) GetService(name string, target any) error {
 		return fmt.Errorf("target must be a pointer")
 	}
 
+	if targetValue.IsNil() {
+		return fmt.Errorf("target cannot be nil")
+	}
+
 	serviceType := reflect.TypeOf(service)
+	if !targetValue.Elem().IsValid() {
+		return fmt.Errorf("target value is invalid")
+	}
+
 	targetType := targetValue.Elem().Type()
 
+	// Special case for interfaces
+	if targetType.Kind() == reflect.Interface && serviceType.Implements(targetType) {
+		targetValue.Elem().Set(reflect.ValueOf(service))
+		return nil
+	}
+
+	// Special case for structs with embedded interfaces
+	if targetType.Kind() == reflect.Struct {
+		for i := 0; i < targetType.NumField(); i++ {
+			field := targetType.Field(i)
+			// Check if the field is an interface and the service implements it
+			if field.Type.Kind() == reflect.Interface && serviceType.Implements(field.Type) {
+				// Set the interface field to the service value
+				fieldValue := targetValue.Elem().Field(i)
+				if fieldValue.CanSet() {
+					fieldValue.Set(reflect.ValueOf(service))
+					return nil
+				}
+			}
+		}
+	}
+
+	// Handle pointers correctly - check if the service type is directly assignable to target type
+	// or if service is a pointer and the underlying type is assignable
 	if !serviceType.AssignableTo(targetType) {
+		// For pointers, we might need to dereference one level
+		if serviceType.Kind() == reflect.Ptr && serviceType.Elem().AssignableTo(targetType) {
+			// Dereference the service pointer and set target to the dereferenced value
+			targetValue.Elem().Set(reflect.ValueOf(service).Elem())
+			return nil
+		}
+
 		return fmt.Errorf("service '%s' of type %s cannot be assigned to %s",
 			name, serviceType, targetType)
 	}
@@ -108,7 +147,7 @@ func (app *Application) Init() error {
 		app.logger.Info("Registering module", "name", name)
 	}
 
-	if err := loadAppConfig(app); err != nil {
+	if err := AppConfigLoader(app); err != nil {
 		return fmt.Errorf("failed to load app config: %w", err)
 	}
 

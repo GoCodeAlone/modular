@@ -5,8 +5,8 @@ import "reflect"
 // ServiceRegistry allows registration and retrieval of services
 type ServiceRegistry map[string]any
 
-// Service defines a service with metadata
-type Service struct {
+// ServiceProvider defines a service with metadata
+type ServiceProvider struct {
 	Name        string
 	Description string
 	Instance    any
