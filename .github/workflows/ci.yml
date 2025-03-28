@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+  build-example:
+    name: Build and run example
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Build example
+        run: cd example && go build -v .
+
+      - name: Test example executable
+        run: |
+          cd example
+          # Run the example app in the background and give it 5 seconds to start
+          ./$(basename $(pwd)) &
+          APP_PID=$!
+          sleep 5
+          # Check if process is still running (successful start)
+          if ps -p $APP_PID > /dev/null; then
+            echo "Example app started successfully"
+            kill $APP_PID
+            exit 0
+          else
+            echo "Example app failed to start"
+            exit 1
+          fi
