@@ -1,0 +1,9 @@
+# Configuration file for golangci-lint
+# See the docs here for how to configure linters: https://golangci-lint.run/usage/configuration/
+linters:
+  enable:
+    - gofmt
+
+  presets:
+    - bugs
+    - error

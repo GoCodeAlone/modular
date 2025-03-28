@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  GO_VERSION: '^1.23.5'
+
 jobs:
   test:
     name: Test
@@ -17,15 +20,47 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
-      - name: Run tests
-        run: go test -v ./...
+      - name: Run tests with coverage
+        run: |
+          go test ./... -v
+          go test -v -coverprofile=coverage.out -covermode=atomic -json ./... >> report.json
+
+      - name: CTRF Test Output
+        run: |
+          go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
+          cat report.json | go-ctrf-json-reporter -o report.ctrf.json
+        if: always()
+
+      # https://github.com/ctrf-io/github-test-reporter
+      - name: Publish CTRF Test Summary Results
+        run: npx github-actions-ctrf report.ctrf.json
+        if: always()
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        # See: https://github.com/marketplace/actions/golangci-lint for configuration options
+        with:
+          # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
+          version: latest
 
   build-example:
     name: Build and run example
@@ -38,12 +73,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Build example
         run: cd example && go build -v .
