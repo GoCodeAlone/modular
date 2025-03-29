@@ -1,13 +1,10 @@
-module example
+module example_tenants
 
 go 1.23.5
 
 replace github.com/GoCodeAlone/modular => ../
 
-require (
-	github.com/GoCodeAlone/modular v1.0.0
-	github.com/go-chi/chi/v5 v5.2.1
-)
+require github.com/GoCodeAlone/modular v1.0.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect

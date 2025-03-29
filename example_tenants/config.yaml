@@ -1,0 +1,14 @@
+appName: Multi-Tenant Example Application
+environment: development
+
+webserver:
+  port: 8080
+
+content:
+  defaultTemplate: standard
+  cacheTTL: 300
+
+notifications:
+  provider: smtp
+  fromAddress: noreply@example.com
+  maxRetries: 3

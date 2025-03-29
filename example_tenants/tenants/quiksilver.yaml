@@ -1,0 +1,8 @@
+content:
+  defaultTemplate: quiksilver-branded
+  cacheTTL: 600
+
+notifications:
+  provider: aws-sns
+  fromAddress: support@quiksilver.example.com
+  maxRetries: 5

@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"fmt"
 	"github.com/GoCodeAlone/modular"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -80,7 +79,6 @@ func (m *Module) Dependencies() []string {
 }
 
 func (m *Module) ProvidesServices() []modular.ServiceProvider {
-	fmt.Printf("router: %v\n", m.router)
 	return []modular.ServiceProvider{
 		{Name: "router", Description: "HTTP RouterModule", Instance: m.router},
 		{Name: "routerService", Description: "Router Service Interface", Instance: m.router},

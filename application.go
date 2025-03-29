@@ -24,6 +24,7 @@ type Application struct {
 	logger         Logger
 	ctx            context.Context
 	cancel         context.CancelFunc
+	tenantService  TenantService // Added tenant service reference
 }
 
 // NewApplication creates a new application instance
@@ -178,6 +179,42 @@ func (app *Application) Init() error {
 			return fmt.Errorf("failed to initialize module '%s': %w", moduleName, err)
 		}
 		app.logger.Info(fmt.Sprintf("Initialized module %s", moduleName))
+	}
+
+	// Initialize tenant configuration after modules have registered their configurations
+	if err = app.initTenantConfigurations(); err != nil {
+		return fmt.Errorf("failed to initialize tenant configurations: %w", err)
+	}
+
+	return nil
+}
+
+// initTenantConfigurations initializes tenant configurations after modules have registered their configs
+func (app *Application) initTenantConfigurations() error {
+	var tenantSvc TenantService
+	if err := app.GetService("tenantService", &tenantSvc); err == nil {
+		app.tenantService = tenantSvc
+
+		// If there's a TenantConfigLoader service, use it to load tenant configs
+		var loader TenantConfigLoader
+		if err = app.GetService("tenantConfigLoader", &loader); err == nil {
+			app.logger.Info("Loading tenant configurations using TenantConfigLoader")
+			if err = loader.LoadTenantConfigurations(app, tenantSvc); err != nil {
+				return fmt.Errorf("failed to load tenant configurations: %w", err)
+			}
+		}
+
+		// Notify tenant-aware modules about existing tenants
+		tenants := tenantSvc.GetTenants()
+		for _, tenantID := range tenants {
+			for _, module := range app.moduleRegistry {
+				if tenantAwareModule, ok := module.(TenantAwareModule); ok {
+					tenantAwareModule.OnTenantRegistered(tenantID)
+				}
+			}
+		}
+	} else {
+		app.logger.Info("Tenant service not found, skipping tenant configuration initialization")
 	}
 
 	return nil
@@ -388,4 +425,30 @@ func (app *Application) resolveDependencies() ([]string, error) {
 	app.logger.Info("Module initialization order", "order", result)
 
 	return result, nil
+}
+
+// GetTenantService returns the application's tenant service if available
+func (app *Application) GetTenantService() (TenantService, error) {
+	var ts TenantService
+	if err := app.GetService("tenantService", &ts); err != nil {
+		return nil, fmt.Errorf("tenant service not available: %w", err)
+	}
+	return ts, nil
+}
+
+// WithTenant creates a tenant context from the application context
+func (app *Application) WithTenant(tenantID TenantID) (*TenantContext, error) {
+	if app.ctx == nil {
+		return nil, fmt.Errorf("application context not initialized")
+	}
+	return NewTenantContext(app.ctx, tenantID), nil
+}
+
+// GetTenantConfig retrieves configuration for a specific tenant and section
+func (app *Application) GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error) {
+	ts, err := app.GetTenantService()
+	if err != nil {
+		return nil, err
+	}
+	return ts.GetTenantConfig(tenantID, section)
 }

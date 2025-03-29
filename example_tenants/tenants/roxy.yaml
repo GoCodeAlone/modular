@@ -1,0 +1,8 @@
+content:
+  defaultTemplate: roxy-premium
+  cacheTTL: 900
+
+notifications:
+  provider: twilio
+  fromAddress: hello@roxy.example.com
+  maxRetries: 2

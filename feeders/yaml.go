@@ -18,7 +18,7 @@ func NewYamlFeeder(filePath string) YamlFeeder {
 // FeedKey reads a YAML file and extracts a specific key
 func (y YamlFeeder) FeedKey(key string, target interface{}) error {
 	// Create a temporary map to hold all YAML data
-	var allData map[string]interface{}
+	var allData map[interface{}]interface{}
 
 	// Use the embedded Yaml feeder to read the file
 	if err := y.Feed(&allData); err != nil {
@@ -28,7 +28,7 @@ func (y YamlFeeder) FeedKey(key string, target interface{}) error {
 	// Look for the specific key
 	value, exists := allData[key]
 	if !exists {
-		//return fmt.Errorf("key '%s' not found in YAML data", key)
+		//return fmt.Errorf("key '%s' not found in YAML data %+v", key, allData)
 		return nil
 	}
 
