@@ -111,7 +111,7 @@ func (m *mockTenantAwareModule) Name() string {
 	return "MockTenantAwareModule"
 }
 
-func (m *mockTenantAwareModule) Init(*Application) error {
+func (m *mockTenantAwareModule) Init(Application) error {
 	return nil
 }
 
@@ -135,7 +135,7 @@ func (m *mockTenantAwareModule) RequiresServices() []ServiceDependency {
 	return []ServiceDependency{}
 }
 
-func (m *mockTenantAwareModule) RegisterConfig(app *Application) {
+func (m *mockTenantAwareModule) RegisterConfig(app Application) {
 	// Do nothing
 }
 

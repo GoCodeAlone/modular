@@ -13,7 +13,7 @@ const configSection = "router"
 type Router = chi.Router
 
 type Module struct {
-	app    *modular.Application
+	app    *modular.StdApplication
 	config *Config
 	router Router
 }
@@ -28,13 +28,13 @@ type Config struct {
 	RoutePrefix string
 }
 
-func (m *Module) RegisterConfig(app *modular.Application) {
+func (m *Module) RegisterConfig(app modular.Application) {
 	app.RegisterConfigSection(configSection, modular.NewStdConfigProvider(&Config{
 		RoutePrefix: "/",
 	}))
 }
 
-func (m *Module) Init(app *modular.Application) error {
+func (m *Module) Init(app modular.Application) error {
 	m.router.Use(middleware.RequestID)
 	m.router.Use(middleware.RealIP)
 	m.router.Use(middleware.Logger)

@@ -1,11 +1,13 @@
 module github.com/GoCodeAlone/modular
 
 go 1.23.5
+
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/golobby/cast v1.3.3
 	github.com/golobby/config/v3 v3.4.2
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/mock v0.5.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

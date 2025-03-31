@@ -10,7 +10,7 @@ import (
 )
 
 type Module struct {
-	app           *modular.Application
+	app           *modular.StdApplication
 	routerService router.Router
 }
 
@@ -18,7 +18,7 @@ func NewAPIModule() *Module {
 	return &Module{}
 }
 
-func (m *Module) Init(app *modular.Application) error {
+func (m *Module) Init(app modular.Application) error {
 	m.registerRoutes()
 	return nil
 }
@@ -53,13 +53,13 @@ func (m *Module) RequiresServices() []modular.ServiceDependency {
 	}
 }
 
-func (m *Module) RegisterConfig(app *modular.Application) {
+func (m *Module) RegisterConfig(app modular.Application) {
 	// No configuration required
 }
 
 // Constructor implements ModuleConstructor interface for dependency injection
 func (m *Module) Constructor() modular.ModuleConstructor {
-	return func(app *modular.Application, services map[string]any) (modular.Module, error) {
+	return func(app *modular.StdApplication, services map[string]any) (modular.Module, error) {
 		m.app = app
 		m.routerService = services["routerService"].(router.Router)
 		return m, nil

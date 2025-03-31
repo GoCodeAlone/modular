@@ -11,12 +11,14 @@ import (
 	"time"
 )
 
+//go:generate mockgen -destination=./mock_application_test.go -source=$GOFILE -package=$GOPACKAGE
+
 type AppRegistry interface {
 	SvcRegistry() ServiceRegistry
 }
 
-// Application represents the core Application container
-type Application struct {
+// StdApplication represents the core StdApplication container
+type StdApplication struct {
 	cfgProvider    ConfigProvider
 	cfgSections    map[string]ConfigProvider
 	svcRegistry    ServiceRegistry
@@ -27,9 +29,9 @@ type Application struct {
 	tenantService  TenantService // Added tenant service reference
 }
 
-// NewApplication creates a new application instance
-func NewApplication(cp ConfigProvider, logger Logger) *Application {
-	return &Application{
+// NewStdApplication creates a new application instance
+func NewStdApplication(cp ConfigProvider, logger Logger) Application {
+	return &StdApplication{
 		cfgProvider:    cp,
 		cfgSections:    make(map[string]ConfigProvider),
 		svcRegistry:    make(ServiceRegistry),
@@ -39,27 +41,32 @@ func NewApplication(cp ConfigProvider, logger Logger) *Application {
 }
 
 // ConfigProvider retrieves the application config provider
-func (app *Application) ConfigProvider() ConfigProvider {
+func (app *StdApplication) ConfigProvider() ConfigProvider {
 	return app.cfgProvider
 }
 
 // SvcRegistry retrieves the service svcRegistry
-func (app *Application) SvcRegistry() ServiceRegistry {
+func (app *StdApplication) SvcRegistry() ServiceRegistry {
 	return app.svcRegistry
 }
 
 // RegisterModule adds a module to the application
-func (app *Application) RegisterModule(module Module) {
+func (app *StdApplication) RegisterModule(module Module) {
 	app.moduleRegistry[module.Name()] = module
 }
 
 // RegisterConfigSection registers a configuration section with the application
-func (app *Application) RegisterConfigSection(section string, cp ConfigProvider) {
+func (app *StdApplication) RegisterConfigSection(section string, cp ConfigProvider) {
 	app.cfgSections[section] = cp
 }
 
+// ConfigSections retrieves all registered configuration sections
+func (app *StdApplication) ConfigSections() map[string]ConfigProvider {
+	return app.cfgSections
+}
+
 // GetConfigSection retrieves a configuration section
-func (app *Application) GetConfigSection(section string) (ConfigProvider, error) {
+func (app *StdApplication) GetConfigSection(section string) (ConfigProvider, error) {
 	cp, exists := app.cfgSections[section]
 	if !exists {
 		return nil, fmt.Errorf("config section '%s' not found", section)
@@ -68,7 +75,7 @@ func (app *Application) GetConfigSection(section string) (ConfigProvider, error)
 }
 
 // RegisterService adds a service with type checking
-func (app *Application) RegisterService(name string, service any) error {
+func (app *StdApplication) RegisterService(name string, service any) error {
 	if _, exists := app.svcRegistry[name]; exists {
 		return fmt.Errorf("service '%s' already registered", name)
 	}
@@ -79,7 +86,7 @@ func (app *Application) RegisterService(name string, service any) error {
 }
 
 // GetService retrieves a service with type assertion
-func (app *Application) GetService(name string, target any) error {
+func (app *StdApplication) GetService(name string, target any) error {
 	service, exists := app.svcRegistry[name]
 	if !exists {
 		return fmt.Errorf("service '%s' not found", name)
@@ -142,7 +149,7 @@ func (app *Application) GetService(name string, target any) error {
 }
 
 // Init initializes the application with the provided modules
-func (app *Application) Init() error {
+func (app *StdApplication) Init() error {
 	for name, module := range app.moduleRegistry {
 		module.RegisterConfig(app)
 		app.logger.Info("Registering module", "name", name)
@@ -190,7 +197,7 @@ func (app *Application) Init() error {
 }
 
 // initTenantConfigurations initializes tenant configurations after modules have registered their configs
-func (app *Application) initTenantConfigurations() error {
+func (app *StdApplication) initTenantConfigurations() error {
 	var tenantSvc TenantService
 	if err := app.GetService("tenantService", &tenantSvc); err == nil {
 		app.tenantService = tenantSvc
@@ -221,7 +228,7 @@ func (app *Application) initTenantConfigurations() error {
 }
 
 // Start starts the application
-func (app *Application) Start() error {
+func (app *StdApplication) Start() error {
 	// Create cancellable context for the application
 	ctx, cancel := context.WithCancel(context.Background())
 	app.ctx = ctx
@@ -245,7 +252,7 @@ func (app *Application) Start() error {
 }
 
 // Stop stops the application
-func (app *Application) Stop() error {
+func (app *StdApplication) Stop() error {
 	// Get modules in reverse dependency order
 	modules, err := app.resolveDependencies()
 	if err != nil {
@@ -279,7 +286,7 @@ func (app *Application) Stop() error {
 }
 
 // Run starts the application and blocks until termination
-func (app *Application) Run() error {
+func (app *StdApplication) Run() error {
 	// Initialize
 	if err := app.Init(); err != nil {
 		return err
@@ -303,7 +310,7 @@ func (app *Application) Run() error {
 }
 
 // injectServices injects required services into a module
-func (app *Application) injectServices(module Module) (Module, error) {
+func (app *StdApplication) injectServices(module Module) (Module, error) {
 	requiredServices := make(map[string]any)
 	for _, dep := range module.RequiresServices() {
 		if service, exists := app.svcRegistry[dep.Name]; exists {
@@ -370,12 +377,12 @@ func checkServiceCompatibility(service any, dep ServiceDependency) (bool, error)
 }
 
 // Logger represents a logger
-func (app *Application) Logger() Logger {
+func (app *StdApplication) Logger() Logger {
 	return app.logger
 }
 
 // resolveDependencies returns modules in initialization order
-func (app *Application) resolveDependencies() ([]string, error) {
+func (app *StdApplication) resolveDependencies() ([]string, error) {
 	// Create dependency graph
 	graph := make(map[string][]string)
 	for name, module := range app.moduleRegistry {
@@ -428,7 +435,7 @@ func (app *Application) resolveDependencies() ([]string, error) {
 }
 
 // GetTenantService returns the application's tenant service if available
-func (app *Application) GetTenantService() (TenantService, error) {
+func (app *StdApplication) GetTenantService() (TenantService, error) {
 	var ts TenantService
 	if err := app.GetService("tenantService", &ts); err != nil {
 		return nil, fmt.Errorf("tenant service not available: %w", err)
@@ -437,7 +444,7 @@ func (app *Application) GetTenantService() (TenantService, error) {
 }
 
 // WithTenant creates a tenant context from the application context
-func (app *Application) WithTenant(tenantID TenantID) (*TenantContext, error) {
+func (app *StdApplication) WithTenant(tenantID TenantID) (*TenantContext, error) {
 	if app.ctx == nil {
 		return nil, fmt.Errorf("application context not initialized")
 	}
@@ -445,10 +452,32 @@ func (app *Application) WithTenant(tenantID TenantID) (*TenantContext, error) {
 }
 
 // GetTenantConfig retrieves configuration for a specific tenant and section
-func (app *Application) GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error) {
+func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error) {
 	ts, err := app.GetTenantService()
 	if err != nil {
 		return nil, err
 	}
 	return ts.GetTenantConfig(tenantID, section)
+}
+
+type Application interface {
+	ConfigProvider() ConfigProvider
+	SvcRegistry() ServiceRegistry
+	RegisterModule(module Module)
+	RegisterConfigSection(section string, cp ConfigProvider)
+	ConfigSections() map[string]ConfigProvider
+	GetConfigSection(section string) (ConfigProvider, error)
+	RegisterService(name string, service any) error
+	GetService(name string, target any) error
+	Init() error
+	Start() error
+	Stop() error
+	Run() error
+	Logger() Logger
+}
+
+type TenantApplication interface {
+	GetTenantService() (TenantService, error)
+	WithTenant(tenantID TenantID) (*TenantContext, error)
+	GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error)
 }

@@ -21,7 +21,7 @@ func (w *WebServer) Name() string {
 	return "webserver"
 }
 
-func (w *WebServer) RegisterConfig(app *modular.Application) {
+func (w *WebServer) RegisterConfig(app modular.Application) {
 	app.RegisterConfigSection("webserver", modular.NewStdConfigProvider(&WebConfig{}))
 }
 
@@ -33,7 +33,7 @@ func (w *WebServer) RequiresServices() []modular.ServiceDependency {
 	return nil
 }
 
-func (w *WebServer) Init(app *modular.Application) error {
+func (w *WebServer) Init(app modular.Application) error {
 	w.logger = app.Logger()
 
 	// Get config from app
@@ -79,7 +79,7 @@ func (r *Router) Name() string {
 	return "router"
 }
 
-func (r *Router) RegisterConfig(app *modular.Application) {
+func (r *Router) RegisterConfig(app modular.Application) {
 }
 
 func (r *Router) ProvidesServices() []modular.ServiceProvider {
@@ -90,7 +90,7 @@ func (r *Router) RequiresServices() []modular.ServiceDependency {
 	return nil
 }
 
-func (r *Router) Init(app *modular.Application) error {
+func (r *Router) Init(app modular.Application) error {
 	r.logger = app.Logger()
 	r.logger.Info("Router initialized")
 	return nil
@@ -123,7 +123,7 @@ func (a *APIModule) Name() string {
 	return "api"
 }
 
-func (a *APIModule) RegisterConfig(app *modular.Application) {
+func (a *APIModule) RegisterConfig(app modular.Application) {
 }
 
 func (a *APIModule) ProvidesServices() []modular.ServiceProvider {
@@ -134,7 +134,7 @@ func (a *APIModule) RequiresServices() []modular.ServiceDependency {
 	return nil
 }
 
-func (a *APIModule) Init(app *modular.Application) error {
+func (a *APIModule) Init(app modular.Application) error {
 	a.logger = app.Logger()
 	a.logger.Info("API module initialized")
 	return nil
@@ -157,7 +157,7 @@ func (a *APIModule) Dependencies() []string {
 // ContentManager - tenant-aware module
 type ContentManager struct {
 	logger        modular.Logger
-	app           *modular.Application
+	app           *modular.StdApplication
 	tenantService modular.TenantService
 	defaultConfig *ContentConfig
 }
@@ -170,11 +170,11 @@ func (cm *ContentManager) Name() string {
 	return "content"
 }
 
-func (cm *ContentManager) RegisterConfig(app *modular.Application) {
+func (cm *ContentManager) RegisterConfig(app modular.Application) {
 	app.RegisterConfigSection("content", modular.NewStdConfigProvider(&ContentConfig{}))
 }
 
-func (cm *ContentManager) Init(app *modular.Application) error {
+func (cm *ContentManager) Init(app modular.Application) error {
 	cm.logger = app.Logger()
 	cm.app = app
 
@@ -262,7 +262,7 @@ func (cm *ContentManager) Dependencies() []string {
 // NotificationManager - tenant-aware module
 type NotificationManager struct {
 	logger        modular.Logger
-	app           *modular.Application
+	app           *modular.StdApplication
 	tenantService modular.TenantService
 	defaultConfig *NotificationConfig
 }
@@ -275,11 +275,11 @@ func (nm *NotificationManager) Name() string {
 	return "notifications"
 }
 
-func (nm *NotificationManager) RegisterConfig(app *modular.Application) {
+func (nm *NotificationManager) RegisterConfig(app modular.Application) {
 	app.RegisterConfigSection("notifications", modular.NewStdConfigProvider(&NotificationConfig{}))
 }
 
-func (nm *NotificationManager) Init(app *modular.Application) error {
+func (nm *NotificationManager) Init(app modular.Application) error {
 	nm.logger = app.Logger()
 	nm.app = app
 

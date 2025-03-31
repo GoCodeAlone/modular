@@ -7,7 +7,7 @@ import (
 )
 
 // LoadAppConfigFunc is the function type for loading application configuration
-type LoadAppConfigFunc func(*Application) error
+type LoadAppConfigFunc func(*StdApplication) error
 
 // AppConfigLoader is the default implementation that can be replaced in tests
 var AppConfigLoader LoadAppConfigFunc = loadAppConfig
@@ -79,7 +79,7 @@ type ConfigSetup interface {
 	Setup() error
 }
 
-func loadAppConfig(app *Application) error {
+func loadAppConfig(app *StdApplication) error {
 	// Guard against nil application
 	if app == nil {
 		return fmt.Errorf("application is nil")
@@ -198,7 +198,7 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	}, nil
 }
 
-func updateConfig(app *Application, provider *ConfigProvider, info configInfo) {
+func updateConfig(app *StdApplication, provider *ConfigProvider, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {
@@ -207,7 +207,7 @@ func updateConfig(app *Application, provider *ConfigProvider, info configInfo) {
 	}
 }
 
-func updateSectionConfig(app *Application, sectionKey string, info configInfo) {
+func updateSectionConfig(app *StdApplication, sectionKey string, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {

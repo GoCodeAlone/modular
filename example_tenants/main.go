@@ -23,7 +23,7 @@ func main() {
 		&slog.HandlerOptions{Level: slog.LevelDebug},
 	))
 
-	app := modular.NewApplication(
+	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
 		logger,
 	)

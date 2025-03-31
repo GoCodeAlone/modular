@@ -22,10 +22,10 @@ type TenantConfigParams struct {
 // LoadTenantConfigs scans the given directory for config files. Each file should be named with the tenant ID (e.g. "tenant123.json").
 // For each file, it unmarshals the configuration and registers it with the provided TenantService for the given section.
 // The configNameRegex is a regex pattern for the config file names (e.g. "^tenant[0-9]+\\.json$").
-func LoadTenantConfigs(app *Application, tenantService TenantService, params TenantConfigParams) error {
+func LoadTenantConfigs(app Application, tenantService TenantService, params TenantConfigParams) error {
 	// Check if directory exists, and throw a error if it doesn't
 	if _, err := os.Stat(params.ConfigDir); os.IsNotExist(err) {
-		app.logger.Error("Tenant config directory does not exist", "directory", params.ConfigDir)
+		app.Logger().Error("Tenant config directory does not exist", "directory", params.ConfigDir)
 		return fmt.Errorf("tenant config directory does not exist: %w", err)
 	}
 
@@ -35,8 +35,8 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 	}
 
 	if len(files) == 0 {
-		app.logger.Info("No files found in tenant config directory", "directory", params.ConfigDir)
-		return nil
+		app.Logger().Info("No files found in tenant config directory", "directory", params.ConfigDir)
+		return fmt.Errorf("no files found in tenant config directory")
 	}
 
 	loadedTenants := 0
@@ -45,7 +45,7 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 			continue
 		}
 		if !params.ConfigNameRegex.MatchString(file.Name()) {
-			app.logger.Debug("Skipping file that doesn't match regex pattern",
+			app.Logger().Debug("Skipping file that doesn't match regex pattern",
 				"file", file.Name(), "pattern", params.ConfigNameRegex.String())
 			continue
 		}
@@ -57,7 +57,7 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 		tenantID := TenantID(name)
 		configPath := filepath.Join(params.ConfigDir, file.Name())
 
-		app.logger.Debug("Loading tenant config file", "tenantID", tenantID, "file", configPath)
+		app.Logger().Debug("Loading tenant config file", "tenantID", tenantID, "file", configPath)
 
 		var feederSlice []Feeder
 		switch strings.ToLower(ext) { // Ensure case-insensitive extension matching
@@ -68,7 +68,7 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 		case ".toml":
 			feederSlice = append(feederSlice, feeders.NewTomlFeeder(configPath))
 		default:
-			app.logger.Warn("Unsupported config file extension", "file", file.Name(), "extension", ext)
+			app.Logger().Warn("Unsupported config file extension", "file", file.Name(), "extension", ext)
 			continue // Skip but don't fail
 		}
 
@@ -79,7 +79,7 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 
 		tenantCfgs, err := loadTenantConfig(app, feederSlice)
 		if err != nil {
-			app.logger.Error("Failed to load tenant config", "tenantID", tenantID, "error", err)
+			app.Logger().Error("Failed to load tenant config", "tenantID", tenantID, "error", err)
 			continue // Skip this tenant but continue with others
 		}
 
@@ -91,7 +91,7 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 			}
 			loadedTenants++
 		} else {
-			app.logger.Warn("No valid configs loaded for tenant", "tenantID", tenantID)
+			app.Logger().Warn("No valid configs loaded for tenant", "tenantID", tenantID)
 			// Still register the tenant but without configs
 			if err = tenantService.RegisterTenant(tenantID, nil); err != nil {
 				return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
@@ -100,11 +100,11 @@ func LoadTenantConfigs(app *Application, tenantService TenantService, params Ten
 		}
 	}
 
-	app.logger.Info("Tenant configuration loading complete", "loadedTenants", loadedTenants)
+	app.Logger().Info("Tenant configuration loading complete", "loadedTenants", loadedTenants)
 	return nil
 }
 
-func loadTenantConfig(app *Application, configFeeders []Feeder) (map[string]ConfigProvider, error) {
+func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]ConfigProvider, error) {
 	// Guard against nil application
 	if app == nil {
 		return nil, fmt.Errorf("application is nil")
@@ -112,11 +112,11 @@ func loadTenantConfig(app *Application, configFeeders []Feeder) (map[string]Conf
 
 	// Skip if no configFeeders are defined
 	if len(configFeeders) == 0 {
-		app.logger.Info("No config feeders defined, skipping tenant config loading")
+		app.Logger().Info("No config feeders defined, skipping tenant config loading")
 		return nil, nil
 	}
 
-	app.logger.Debug("Loading tenant config", "configFeeders", configFeeders)
+	app.Logger().Debug("Loading tenant config", "configFeeders", configFeeders)
 
 	// Build the configuration
 	cfgBuilder := NewConfig()
@@ -130,15 +130,15 @@ func loadTenantConfig(app *Application, configFeeders []Feeder) (map[string]Conf
 	tenantCfgSections := make(map[string]ConfigProvider)
 
 	// Create temporary structs for all registered sections
-	for sectionKey, provider := range app.cfgSections {
+	for sectionKey, provider := range app.ConfigSections() {
 		if provider == nil {
-			app.logger.Warn("Skipping nil config provider", "section", sectionKey)
+			app.Logger().Warn("Skipping nil config provider", "section", sectionKey)
 			continue
 		}
 
 		sectionCfg := provider.GetConfig()
 		if sectionCfg == nil {
-			app.logger.Warn("Skipping section with nil config", "section", sectionKey)
+			app.Logger().Warn("Skipping section with nil config", "section", sectionKey)
 			continue
 		}
 
@@ -161,35 +161,39 @@ func loadTenantConfig(app *Application, configFeeders []Feeder) (map[string]Conf
 		// Update all section configs
 		for sectionKey, info := range sectionInfos {
 			if !info.tempVal.Elem().IsValid() {
-				app.logger.Warn("Tenant section config is invalid after feeding", "section", sectionKey)
+				app.Logger().Warn("Tenant section config is invalid after feeding", "section", sectionKey)
 				continue
 			}
 
 			// Get the actual instance of the config
 			configValue := info.tempVal.Elem().Interface()
 			if configValue == nil {
-				app.logger.Warn("Tenant section config is nil after feeding", "section", sectionKey)
+				app.Logger().Warn("Tenant section config is nil after feeding", "section", sectionKey)
 				continue
 			}
 
 			// Create a deep clone of the original section config type
 			// This ensures we have the correct type that the modules expect
-			originalSectionCfg := app.cfgSections[sectionKey].GetConfig()
+			originalSectionCfg, err := app.GetConfigSection(sectionKey)
+			if err != nil {
+				app.Logger().Warn("Failed to get original section config", "section", sectionKey, "error", err)
+				continue
+			}
 			configClone, err := cloneConfigWithValues(originalSectionCfg, configValue)
 			if err != nil {
-				app.logger.Warn("Failed to clone config with values", "section", sectionKey, "error", err)
+				app.Logger().Warn("Failed to clone config with values", "section", sectionKey, "error", err)
 				continue
 			}
 
 			// Create a new provider with the properly typed config
 			provider := NewStdConfigProvider(configClone)
 			if provider == nil || provider.GetConfig() == nil {
-				app.logger.Warn("Created nil provider for tenant section", "section", sectionKey)
+				app.Logger().Warn("Created nil provider for tenant section", "section", sectionKey)
 				continue
 			}
 
 			tenantCfgSections[sectionKey] = provider
-			app.logger.Debug("Added tenant config section",
+			app.Logger().Debug("Added tenant config section",
 				"section", sectionKey,
 				"configType", fmt.Sprintf("%T", configClone))
 		}
@@ -198,16 +202,16 @@ func loadTenantConfig(app *Application, configFeeders []Feeder) (map[string]Conf
 	// Log the loaded configurations for debugging
 	if len(tenantCfgSections) > 0 {
 		for section, provider := range tenantCfgSections {
-			app.logger.Debug("Tenant config section loaded",
+			app.Logger().Debug("Tenant config section loaded",
 				"section", section,
 				"configType", fmt.Sprintf("%T", provider.GetConfig()),
 				"config", fmt.Sprintf("%+v", provider.GetConfig()))
 		}
 	} else {
-		app.logger.Warn("No tenant config sections were loaded. Check file format and section names.")
+		app.Logger().Warn("No tenant config sections were loaded. Check file format and section names.")
 	}
 
-	app.logger.Info("Loaded tenant config", "sectionCount", len(tenantCfgSections))
+	app.Logger().Info("Loaded tenant config", "sectionCount", len(tenantCfgSections))
 
 	return tenantCfgSections, nil
 }

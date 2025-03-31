@@ -27,7 +27,7 @@ func (m *TenantAwareConfigTestModule) Name() string {
 	return m.name
 }
 
-func (m *TenantAwareConfigTestModule) Init(app *Application) error {
+func (m *TenantAwareConfigTestModule) Init(app Application) error {
 	return nil
 }
 
@@ -51,7 +51,7 @@ func (m *TenantAwareConfigTestModule) RequiresServices() []ServiceDependency {
 	return []ServiceDependency{}
 }
 
-func (m *TenantAwareConfigTestModule) RegisterConfig(app *Application) {
+func (m *TenantAwareConfigTestModule) RegisterConfig(app Application) {
 	// Register a test config section
 	app.RegisterConfigSection("TestConfig", NewStdConfigProvider(&TestTenantConfig{}))
 }
@@ -120,7 +120,7 @@ func TestTenantAwareConfigModule(t *testing.T) {
 
 	// Create test app with tenant-aware module
 	log := &logger{t}
-	app := NewApplication(NewStdConfigProvider(nil), log)
+	app := NewStdApplication(NewStdConfigProvider(nil), log)
 
 	tm := NewTenantAwareConfigTestModule("TestModule")
 	app.RegisterModule(tm)
@@ -141,13 +141,15 @@ func TestTenantAwareConfigModule(t *testing.T) {
 	// Register the tenant-aware module with the tenant service
 	tenantService.RegisterTenantAwareModule(tm)
 
+	app.RegisterConfigSection("TestConfig", NewStdConfigProvider(&TestTenantConfig{}))
+
 	// Initialize the module to register its config section
 	err = tm.Init(app)
 	if err != nil {
 		t.Fatalf("Failed to initialize test module: %v", err)
 	}
 
-	err = app.initTenantConfigurations()
+	err = app.(*StdApplication).initTenantConfigurations()
 	if err != nil {
 		t.Fatalf("Failed to initialize tenant configurations: %v", err)
 	}

@@ -5,10 +5,10 @@ import "context"
 // Module represents a registrable component in the application
 type Module interface {
 	// RegisterConfig registers configuration requirements
-	RegisterConfig(app *Application)
+	RegisterConfig(app Application)
 
 	// Init Initialize the module with the application context
-	Init(app *Application) error
+	Init(app Application) error
 
 	// Start starts the module (non-blocking)
 	Start(ctx context.Context) error
@@ -29,7 +29,7 @@ type Module interface {
 	RequiresServices() []ServiceDependency
 }
 
-type ModuleConstructor func(app *Application, services map[string]any) (Module, error)
+type ModuleConstructor func(app *StdApplication, services map[string]any) (Module, error)
 
 type ModuleWithConstructor interface {
 	Module

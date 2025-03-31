@@ -15,7 +15,7 @@ func main() {
 		feeders.NewYamlFeeder("config.yaml"),
 		feeders.NewEnvFeeder(),
 	}
-	app := modular.NewApplication(
+	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&myCfg{}),
 		slog.New(slog.NewTextHandler(
 			os.Stdout,

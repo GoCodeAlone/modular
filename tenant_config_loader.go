@@ -7,7 +7,7 @@ import (
 // TenantConfigLoader is an interface for loading tenant configurations
 type TenantConfigLoader interface {
 	// LoadTenantConfigurations loads configurations for all tenants
-	LoadTenantConfigurations(app *Application, tenantService TenantService) error
+	LoadTenantConfigurations(app Application, tenantService TenantService) error
 }
 
 // FileBasedTenantConfigLoader implements TenantConfigLoader for file-based tenant configurations
@@ -23,7 +23,7 @@ func NewFileBasedTenantConfigLoader(params TenantConfigParams) *FileBasedTenantC
 }
 
 // LoadTenantConfigurations loads tenant configurations from files
-func (l *FileBasedTenantConfigLoader) LoadTenantConfigurations(app *Application, tenantService TenantService) error {
+func (l *FileBasedTenantConfigLoader) LoadTenantConfigurations(app Application, tenantService TenantService) error {
 	app.Logger().Info("Loading tenant configurations from files",
 		"directory", l.configParams.ConfigDir,
 		"pattern", l.configParams.ConfigNameRegex.String())

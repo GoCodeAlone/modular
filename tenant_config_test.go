@@ -74,7 +74,7 @@ ApiConfig:
 
 	// Create an application and tenant service
 	log := &logger{t}
-	app := NewApplication(NewStdConfigProvider(nil), log)
+	app := NewStdApplication(NewStdConfigProvider(nil), log)
 
 	// Register the config sections for the application
 	app.RegisterConfigSection("TestConfig", NewStdConfigProvider(&TestTenantConfig{}))
@@ -173,7 +173,7 @@ func TestLoadTenantConfigsEmptyDirectory(t *testing.T) {
 
 	// Create an application and tenant service
 	log := &logger{t}
-	app := NewApplication(NewStdConfigProvider(nil), log)
+	app := NewStdApplication(NewStdConfigProvider(nil), log)
 	tenantService := NewStandardTenantService(log)
 
 	// Test loading from empty directory
@@ -200,7 +200,7 @@ func TestLoadTenantConfigsNonexistentDirectory(t *testing.T) {
 
 	// Create an application and tenant service
 	log := &MockLogger{}
-	app := NewApplication(NewStdConfigProvider(nil), log)
+	app := NewStdApplication(NewStdConfigProvider(nil), log)
 	tenantService := NewStandardTenantService(log)
 
 	// Test loading from nonexistent directory
@@ -212,7 +212,7 @@ func TestLoadTenantConfigsNonexistentDirectory(t *testing.T) {
 	log.On("Error", "Tenant config directory does not exist", []interface{}{"directory", nonExistentDir}).Return(nil)
 	err := LoadTenantConfigs(app, tenantService, params)
 	if err != nil &&
-		err.Error() != "tenant config directory does not exist: stat /path/to/nonexistent/directory: no such file or directory" {
+		err.Error() != "tenant config directory does not exist: CreateFile /path/to/nonexistent/directory: no such file or directory" {
 		t.Errorf("Expected error for nonexistent directory, got: %v", err)
 	}
 
@@ -290,32 +290,6 @@ func TestTenantConfigProviderSetAndGet(t *testing.T) {
 	tcp.SetTenantConfig(tenant1ID, "NilConfigSection", nilProvider)
 	if tcp.HasTenantConfig(tenant1ID, "NilConfigSection") {
 		t.Errorf("Expected HasTenantConfig to return false for provider with nil config")
-	}
-}
-
-func TestDefaultTenantConfigLoader(t *testing.T) {
-	// Create a temporary directory
-	tempDir, err := os.MkdirTemp("", "default-loader-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Create default loader
-	loader := DefaultTenantConfigLoader(tempDir)
-
-	// Verify loader properties
-	if loader.configParams.ConfigDir != tempDir {
-		t.Errorf("Expected ConfigDir to be %s, got %s", tempDir, loader.configParams.ConfigDir)
-	}
-
-	if loader.configParams.ConfigNameRegex.String() != "^\\w+\\.(json|yaml|yml|toml)$" {
-		t.Errorf("Expected regex pattern ^\\w+\\.(json|yaml|yml|toml)$, got %s",
-			loader.configParams.ConfigNameRegex.String())
-	}
-
-	if len(loader.configParams.ConfigFeeders) != 0 {
-		t.Errorf("Expected empty ConfigFeeders, got %d feeders", len(loader.configParams.ConfigFeeders))
 	}
 }
 

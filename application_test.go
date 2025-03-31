@@ -27,7 +27,7 @@ func TestNewApplication(t *testing.T) {
 				cfgProvider: nil,
 				logger:      nil,
 			},
-			want: &Application{
+			want: &StdApplication{
 				cfgProvider:    nil,
 				cfgSections:    make(map[string]ConfigProvider),
 				svcRegistry:    make(ServiceRegistry),
@@ -41,7 +41,7 @@ func TestNewApplication(t *testing.T) {
 				cfgProvider: cp,
 				logger:      log,
 			},
-			want: &Application{
+			want: &StdApplication{
 				cfgProvider:    cp,
 				cfgSections:    make(map[string]ConfigProvider),
 				svcRegistry:    make(ServiceRegistry),
@@ -52,8 +52,8 @@ func TestNewApplication(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewApplication(tt.args.cfgProvider, tt.args.logger); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewApplication() = %v, want %v", got, tt.want)
+			if got := NewStdApplication(tt.args.cfgProvider, tt.args.logger); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewStdApplication() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -67,12 +67,12 @@ type configRegisteringModule struct {
 	initError        error
 }
 
-func (m *configRegisteringModule) RegisterConfig(app *Application) {
+func (m *configRegisteringModule) RegisterConfig(app Application) {
 	app.RegisterConfigSection(m.name+"-config", NewStdConfigProvider(m.name+"-config-value"))
 	m.configRegistered = true
 }
 
-func (m *configRegisteringModule) Init(app *Application) error {
+func (m *configRegisteringModule) Init(app Application) error {
 	m.initCalled = true
 	return m.initError
 }
@@ -108,7 +108,7 @@ type OrderTrackingModule struct {
 	servicesProvided []ServiceProvider
 }
 
-func (m *OrderTrackingModule) Init(app *Application) error {
+func (m *OrderTrackingModule) Init(app Application) error {
 	m.initCalled = true
 	return m.initError
 }
@@ -133,7 +133,7 @@ func Test_application_Init(t *testing.T) {
 	// Create a test-only mock AppConfigLoader that does nothing
 	originalLoader := AppConfigLoader
 	defer func() { AppConfigLoader = originalLoader }()
-	AppConfigLoader = func(app *Application) error {
+	AppConfigLoader = func(app *StdApplication) error {
 		// Return error if config provider is nil
 		if app.cfgProvider == nil {
 			return fmt.Errorf("failed to load app config: config provider is nil")
@@ -154,14 +154,14 @@ func Test_application_Init(t *testing.T) {
 		modules       []Module
 		wantErr       bool
 		errorContains string
-		verify        func(t *testing.T, app *Application)
+		verify        func(t *testing.T, app *StdApplication)
 	}{
 		{
 			name:        "basic initialization - no modules",
 			cfgProvider: stdConfig,
 			modules:     []Module{},
 			wantErr:     false,
-			verify: func(t *testing.T, app *Application) {
+			verify: func(t *testing.T, app *StdApplication) {
 				if len(app.moduleRegistry) != 0 {
 					t.Error("Expected empty module registry")
 				}
@@ -176,7 +176,7 @@ func Test_application_Init(t *testing.T) {
 				},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, app *Application) {
+			verify: func(t *testing.T, app *StdApplication) {
 				// Check that config was registered
 				configModule, ok := app.moduleRegistry["config-module"].(*configRegisteringModule)
 				if !ok {
@@ -215,7 +215,7 @@ func Test_application_Init(t *testing.T) {
 				},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, app *Application) {
+			verify: func(t *testing.T, app *StdApplication) {
 				// Check that service was registered
 				if _, exists := app.svcRegistry["test-service"]; !exists {
 					t.Error("Service was not registered")
@@ -254,7 +254,7 @@ func Test_application_Init(t *testing.T) {
 				},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, app *Application) {
+			verify: func(t *testing.T, app *StdApplication) {
 				// Verify the consumer module received the service
 				consumer, ok := app.moduleRegistry["consumer"].(*ConstructorInjectionModule)
 				if !ok {
@@ -279,7 +279,7 @@ func Test_application_Init(t *testing.T) {
 				&testModule{name: "C", dependencies: []string{"B"}},
 			},
 			wantErr: false,
-			verify: func(t *testing.T, app *Application) {
+			verify: func(t *testing.T, app *StdApplication) {
 				// The modules should have been initialized in order A, B, C
 				// but we can't directly verify the order after initialization
 
@@ -371,7 +371,7 @@ func Test_application_Init(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &Application{
+			app := &StdApplication{
 				cfgProvider:    tt.cfgProvider,
 				cfgSections:    make(map[string]ConfigProvider),
 				svcRegistry:    make(ServiceRegistry),
@@ -420,7 +420,7 @@ func Test_application_Init_OrderTracking(t *testing.T) {
 
 	// Mock the AppConfigLoader function for this test
 	originalLoader := AppConfigLoader
-	AppConfigLoader = func(app *Application) error {
+	AppConfigLoader = func(app *StdApplication) error {
 		return nil // Just return success, no actual loading
 	}
 	defer func() { AppConfigLoader = originalLoader }()
@@ -430,7 +430,7 @@ func Test_application_Init_OrderTracking(t *testing.T) {
 	moduleB := &OrderTrackingModule{testModule: testModule{name: "B"}, dependsOn: []string{"A"}}
 	moduleC := &OrderTrackingModule{testModule: testModule{name: "C"}, dependsOn: []string{"B"}}
 
-	app := &Application{
+	app := &StdApplication{
 		cfgProvider:    stdConfig,
 		cfgSections:    make(map[string]ConfigProvider),
 		svcRegistry:    make(ServiceRegistry),
@@ -486,13 +486,13 @@ func Test_application_Init_ContextCreation(t *testing.T) {
 
 	// Mock the AppConfigLoader function for this test
 	originalLoader := AppConfigLoader
-	AppConfigLoader = func(app *Application) error {
+	AppConfigLoader = func(app *StdApplication) error {
 		return nil // Just return success, no actual loading
 	}
 	defer func() { AppConfigLoader = originalLoader }()
 
 	// Create an application
-	app := &Application{
+	app := &StdApplication{
 		cfgProvider:    stdConfig,
 		cfgSections:    make(map[string]ConfigProvider),
 		svcRegistry:    make(ServiceRegistry),
@@ -568,11 +568,11 @@ func withMockConfigLoader(mockLoader LoadAppConfigFunc, testFunc func()) {
 func Test_application_Init_WithMockedConfigLoader(t *testing.T) {
 	t.Run("mocked config loader success", func(t *testing.T) {
 		mockCalled := false
-		withMockConfigLoader(func(app *Application) error {
+		withMockConfigLoader(func(app *StdApplication) error {
 			mockCalled = true
 			return nil
 		}, func() {
-			app := NewApplication(nil, &logger{t})
+			app := NewStdApplication(nil, &logger{t})
 			err := app.Init()
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
@@ -585,10 +585,10 @@ func Test_application_Init_WithMockedConfigLoader(t *testing.T) {
 
 	t.Run("mocked config loader error", func(t *testing.T) {
 		expectedErr := fmt.Errorf("mock config error")
-		withMockConfigLoader(func(app *Application) error {
+		withMockConfigLoader(func(app *StdApplication) error {
 			return expectedErr
 		}, func() {
-			app := NewApplication(nil, &logger{t})
+			app := NewStdApplication(nil, &logger{t})
 			err := app.Init()
 			if err == nil {
 				t.Error("Expected error but got nil")
@@ -629,7 +629,7 @@ func Test_application_Logger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &Application{
+			app := &StdApplication{
 				cfgProvider:    nil,
 				svcRegistry:    nil,
 				moduleRegistry: nil,
@@ -719,7 +719,7 @@ func Test_application_RegisterModule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &Application{
+			app := &StdApplication{
 				moduleRegistry: tt.initialRegistry,
 				logger:         &logger{t},
 			}
@@ -782,7 +782,7 @@ func Test_application_RegisterService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := &logger{t}
-			app := &Application{
+			app := &StdApplication{
 				svcRegistry: make(ServiceRegistry),
 				logger:      logger,
 			}
@@ -908,7 +908,7 @@ func Test_application_GetService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &Application{
+			app := &StdApplication{
 				svcRegistry: tt.registry,
 				logger:      &logger{t},
 			}
@@ -977,7 +977,7 @@ type ConstructorInjectionModule struct {
 }
 
 func (m *ConstructorInjectionModule) Constructor() ModuleConstructor {
-	return func(app *Application, services map[string]any) (Module, error) {
+	return func(app *StdApplication, services map[string]any) (Module, error) {
 		module := &ConstructorInjectionModule{
 			testModule: m.testModule,
 		}
@@ -1012,7 +1012,7 @@ func (m *ConstructorInjectionModule) RequiresServices() []ServiceDependency {
 func Test_injectServices(t *testing.T) {
 	tests := []struct {
 		name          string
-		setupServices func(app *Application)
+		setupServices func(app *StdApplication)
 		module        Module
 		wantErr       bool
 		errorContains string
@@ -1020,7 +1020,7 @@ func Test_injectServices(t *testing.T) {
 	}{
 		{
 			name: "constructor injection with all services",
-			setupServices: func(app *Application) {
+			setupServices: func(app *StdApplication) {
 				app.RegisterService("storage", &MockStorage{data: map[string]string{"key": "value"}})
 				app.RegisterService("logger", &MockLogger{})
 			},
@@ -1052,7 +1052,7 @@ func Test_injectServices(t *testing.T) {
 		},
 		{
 			name: "missing required service",
-			setupServices: func(app *Application) {
+			setupServices: func(app *StdApplication) {
 				// Not registering the required storage service
 				app.RegisterService("logger", &MockLogger{})
 			},
@@ -1068,7 +1068,7 @@ func Test_injectServices(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &Application{
+			app := &StdApplication{
 				svcRegistry:    make(ServiceRegistry),
 				moduleRegistry: make(ModuleRegistry),
 				logger:         &logger{t},
@@ -1113,10 +1113,10 @@ type testModule struct {
 // Implement Module interface for our test module
 func (m testModule) Name() string                          { return m.name }
 func (m testModule) Dependencies() []string                { return m.dependencies }
-func (m testModule) Init(app *Application) error           { return nil }
+func (m testModule) Init(app Application) error            { return nil }
 func (m testModule) Start(ctx context.Context) error       { return nil }
 func (m testModule) Stop(ctx context.Context) error        { return nil }
-func (m testModule) RegisterConfig(app *Application)       {}
+func (m testModule) RegisterConfig(app Application)        {}
 func (m testModule) ProvidesServices() []ServiceProvider   { return nil }
 func (m testModule) RequiresServices() []ServiceDependency { return nil }
 
@@ -1190,7 +1190,7 @@ func Test_application_resolveDependencies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a new application for each test with a mock logger
-			app := &Application{
+			app := &StdApplication{
 				svcRegistry:    make(ServiceRegistry),
 				moduleRegistry: make(ModuleRegistry),
 				logger:         &logger{t},
