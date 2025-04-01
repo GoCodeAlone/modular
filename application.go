@@ -211,12 +211,13 @@ func (app *StdApplication) initTenantConfigurations() error {
 			}
 		}
 
-		// Notify tenant-aware modules about existing tenants
-		tenants := tenantSvc.GetTenants()
-		for _, tenantID := range tenants {
-			for _, module := range app.moduleRegistry {
-				if tenantAwareModule, ok := module.(TenantAwareModule); ok {
-					tenantAwareModule.OnTenantRegistered(tenantID)
+		// Register tenant-aware modules with the tenant service
+		// instead of directly notifying them, to avoid duplicate notifications
+		for _, module := range app.moduleRegistry {
+			if tenantAwareModule, ok := module.(TenantAwareModule); ok {
+				// The tenant service will handle notification about existing tenants
+				if standardTenantSvc, ok := tenantSvc.(*StandardTenantService); ok {
+					standardTenantSvc.RegisterTenantAwareModule(tenantAwareModule)
 				}
 			}
 		}

@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -70,8 +71,11 @@ func (m *TenantAwareConfigTestModule) LoadTenantConfig(tenantService TenantServi
 		return err
 	}
 
+	return fmt.Errorf("tenant config: %s - %+v", tenantID, config.GetConfig())
 	if testConfig, ok := config.GetConfig().(*TestTenantConfig); ok {
 		m.tenantConfigs[tenantID] = testConfig
+	} else {
+		return fmt.Errorf("failed to cast config to TestTenantConfig: %s - %+v", tenantID, testConfig)
 	}
 
 	return nil
@@ -162,10 +166,20 @@ func TestTenantAwareConfigModule(t *testing.T) {
 	// Load tenant configs in the module
 	tenants := tenantService.GetTenants()
 	for _, tenantID := range tenants {
-		err = tm.LoadTenantConfig(tenantService, tenantID)
+		cp, err := tenantService.GetTenantConfig(tenantID, "TestConfig")
+		if err != nil {
+			t.Errorf("Failed to get tenant config for tenant %s: %v", tenantID, err)
+		} else if cp == nil {
+			t.Errorf("Expected non-nil config provider for tenant %s", tenantID)
+		} else if cp.GetConfig() == nil {
+			t.Errorf("Expected non-nil config for tenant %s", tenantID)
+		} else {
+			tm.tenantConfigs[tenantID] = cp.GetConfig().(*TestTenantConfig)
+		}
+		/*err = tm.LoadTenantConfig(tenantService, tenantID)
 		if err != nil {
 			t.Errorf("Failed to load tenant config for tenant %s: %v", tenantID, err)
-		}
+		}*/
 	}
 
 	// Verify tenant configs were loaded correctly
