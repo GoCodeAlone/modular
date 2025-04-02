@@ -93,7 +93,8 @@ func (m *Module) RequiresServices() []modular.ServiceDependency {
 		{
 			Name:               "router",
 			Required:           true,
-			SatisfiesInterface: reflect.TypeOf((*http.Handler)(nil)).Elem()},
+			SatisfiesInterface: reflect.TypeOf((*http.Handler)(nil)).Elem(),
+		},
 		{
 			Name:               "routerService",
 			Required:           true,
