@@ -176,8 +176,11 @@ func (cm *ContentManager) RegisterConfig(app modular.Application) {
 
 func (cm *ContentManager) Init(app modular.Application) error {
 	cm.logger = app.Logger()
-	cm.app = app.(modular.TenantApplication)
-
+	var ok bool
+	cm.app, ok = app.(modular.TenantApplication)
+	if !ok {
+		return fmt.Errorf("app does not implement TenantApplication interface")
+	}
 	// Get tenant service
 	ts, err := cm.app.GetTenantService()
 	if err != nil {
