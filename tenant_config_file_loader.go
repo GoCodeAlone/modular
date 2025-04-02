@@ -35,8 +35,8 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 	}
 
 	if len(files) == 0 {
-		app.Logger().Info("No files found in tenant config directory", "directory", params.ConfigDir)
-		return fmt.Errorf("no files found in tenant config directory")
+		app.Logger().Warn("No files found in tenant config directory", "directory", params.ConfigDir)
+		return nil
 	}
 
 	loadedTenants := 0
@@ -174,11 +174,12 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 
 			// Create a deep clone of the original section config type
 			// This ensures we have the correct type that the modules expect
-			originalSectionCfg, err := app.GetConfigSection(sectionKey)
+			originalSectionCfgProvider, err := app.GetConfigSection(sectionKey)
 			if err != nil {
 				app.Logger().Warn("Failed to get original section config", "section", sectionKey, "error", err)
 				continue
 			}
+			originalSectionCfg := originalSectionCfgProvider.GetConfig()
 			configClone, err := cloneConfigWithValues(originalSectionCfg, configValue)
 			if err != nil {
 				app.Logger().Warn("Failed to clone config with values", "section", sectionKey, "error", err)

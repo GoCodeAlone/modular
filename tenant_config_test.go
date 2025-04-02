@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -211,8 +212,7 @@ func TestLoadTenantConfigsNonexistentDirectory(t *testing.T) {
 
 	log.On("Error", "Tenant config directory does not exist", []interface{}{"directory", nonExistentDir}).Return(nil)
 	err := LoadTenantConfigs(app, tenantService, params)
-	if err != nil &&
-		err.Error() != "tenant config directory does not exist: CreateFile /path/to/nonexistent/directory: no such file or directory" {
+	if err == nil || !strings.Contains(err.Error(), "tenant config directory does not exist") {
 		t.Errorf("Expected error for nonexistent directory, got: %v", err)
 	}
 

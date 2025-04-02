@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -207,8 +208,8 @@ func TestLoadTenantConfigurationsEmptyDirectory(t *testing.T) {
 	err = loader.LoadTenantConfigurations(app, tenantService)
 
 	// Should error with empty directory
-	if err == nil {
-		t.Errorf("Expected error with empty directory, got nil")
+	if err != nil {
+		t.Errorf("Expected no error, got: %v", err)
 	}
 
 	// Should be no tenants registered
@@ -219,7 +220,7 @@ func TestLoadTenantConfigurationsEmptyDirectory(t *testing.T) {
 
 // Test with non-existent directory
 func TestLoadTenantConfigurationsNonExistentDirectory(t *testing.T) {
-	app := NewStdApplication(nil, &logger{t})
+	app := NewStdApplication(nil, slog.Default())
 	tenantService := NewMockTenantService()
 
 	params := TenantConfigParams{
