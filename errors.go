@@ -52,4 +52,10 @@ var (
 	ErrDestinationNotPointer = errors.New("destination must be a pointer")
 	ErrCannotCopyMapToStruct = errors.New("cannot copy from map to non-struct")
 	ErrUnsupportedSourceType = errors.New("unsupported source type")
+
+	// Additional tenant config errors
+	ErrTenantSectionConfigNil     = errors.New("tenant section config is nil after feeding")
+	ErrCreatedNilProvider         = errors.New("created nil provider for tenant section")
+	ErrIncompatibleFieldTypes     = errors.New("incompatible types for field assignment")
+	ErrIncompatibleInterfaceValue = errors.New("incompatible interface value for field")
 )

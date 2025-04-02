@@ -195,7 +195,7 @@ func createSectionProvider(app Application, sectionKey string, info configInfo) 
 	// Get the actual instance of the config
 	configValue := info.tempVal.Elem().Interface()
 	if configValue == nil {
-		return nil, fmt.Errorf("tenant section config is nil after feeding")
+		return nil, ErrTenantSectionConfigNil
 	}
 
 	// Create a deep clone of the original section config type
@@ -213,7 +213,7 @@ func createSectionProvider(app Application, sectionKey string, info configInfo) 
 	// Create a new provider with the properly typed config
 	provider := NewStdConfigProvider(configClone)
 	if provider == nil || provider.GetConfig() == nil {
-		return nil, fmt.Errorf("created nil provider for tenant section")
+		return nil, ErrCreatedNilProvider
 	}
 
 	return provider, nil
@@ -281,6 +281,7 @@ func copyStructFields(dst, src interface{}) error {
 	}
 
 	// Handle different source types
+	//nolint:exhaustive
 	switch srcVal.Kind() {
 	case reflect.Map:
 		return copyMapToStruct(dstVal, srcVal)
@@ -356,7 +357,7 @@ func setFieldValue(dstField, srcValue reflect.Value) error {
 		return setInterfaceFieldValue(dstField, srcValue)
 	}
 
-	return fmt.Errorf("incompatible types for field assignment")
+	return ErrIncompatibleFieldTypes
 }
 
 // setInterfaceFieldValue handles setting a field from an interface{} value
@@ -374,7 +375,7 @@ func setInterfaceFieldValue(dstField, srcValue reflect.Value) error {
 		return copyMapValues(dstField, concreteValue)
 	}
 
-	return fmt.Errorf("incompatible interface value for field")
+	return ErrIncompatibleInterfaceValue
 }
 
 // copyMapValues copies values from one map to another
