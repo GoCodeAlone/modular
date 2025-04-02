@@ -2,7 +2,6 @@ package modular
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -71,7 +70,7 @@ func (m *configRegisteringModule) RegisterConfig(app Application) {
 	m.configRegistered = true
 }
 
-func (m *configRegisteringModule) Init(app Application) error {
+func (m *configRegisteringModule) Init(Application) error {
 	m.initCalled = true
 	return m.initError
 }
@@ -86,44 +85,6 @@ func (m *serviceProvidingModule) ProvidesServices() []ServiceProvider {
 	return m.services
 }
 
-// Mock module that requires services
-type serviceRequiringModule struct {
-	testModule
-	requiredServices []ServiceDependency
-}
-
-func (m *serviceRequiringModule) RequiresServices() []ServiceDependency {
-	return m.requiredServices
-}
-
-// OrderTrackingModule tracks initialization order for testing
-type OrderTrackingModule struct {
-	testModule
-	initCalled       bool
-	initOrder        int
-	initError        error
-	dependsOn        []string
-	servicesNeeded   []ServiceDependency
-	servicesProvided []ServiceProvider
-}
-
-func (m *OrderTrackingModule) Init(app Application) error {
-	m.initCalled = true
-	return m.initError
-}
-
-func (m *OrderTrackingModule) Dependencies() []string {
-	return m.dependsOn
-}
-
-func (m *OrderTrackingModule) RequiresServices() []ServiceDependency {
-	return m.servicesNeeded
-}
-
-func (m *OrderTrackingModule) ProvidesServices() []ServiceProvider {
-	return m.servicesProvided
-}
-
 func Test_application_Init(t *testing.T) {
 	// Setup standard config and logger for tests
 	stdConfig := NewStdConfigProvider(testCfg{Str: "test"})
@@ -135,12 +96,12 @@ func Test_application_Init(t *testing.T) {
 	AppConfigLoader = func(app *StdApplication) error {
 		// Return error if config provider is nil
 		if app.cfgProvider == nil {
-			return fmt.Errorf("failed to load app config: config provider is nil")
+			return ErrConfigProviderNil
 		}
 
 		// Return error if there's an "error-trigger" section
 		if _, exists := app.cfgSections["error-trigger"]; exists {
-			return fmt.Errorf("failed to load app config: error triggered by section")
+			return ErrConfigSectionError
 		}
 
 		return nil
@@ -303,9 +264,9 @@ type testModule struct {
 // Implement Module interface for our test module
 func (m testModule) Name() string                          { return m.name }
 func (m testModule) Dependencies() []string                { return m.dependencies }
-func (m testModule) Init(app Application) error            { return nil }
-func (m testModule) Start(ctx context.Context) error       { return nil }
-func (m testModule) Stop(ctx context.Context) error        { return nil }
-func (m testModule) RegisterConfig(app Application)        {}
+func (m testModule) Init(Application) error                { return nil }
+func (m testModule) Start(context.Context) error           { return nil }
+func (m testModule) Stop(context.Context) error            { return nil }
+func (m testModule) RegisterConfig(Application)            {}
 func (m testModule) ProvidesServices() []ServiceProvider   { return nil }
 func (m testModule) RequiresServices() []ServiceDependency { return nil }

@@ -43,16 +43,10 @@ func (m *MockTenantService) RegisterTenant(tenantID TenantID, configs map[string
 		m.tenants[tenantID] = make(map[string]ConfigProvider)
 	}
 
-	if configs != nil {
-		for section, provider := range configs {
-			m.tenants[tenantID][section] = provider
-		}
+	for section, provider := range configs {
+		m.tenants[tenantID][section] = provider
 	}
 	return nil
-}
-
-func (m *MockTenantService) logTenantConfigStatus(tenantID TenantID) {
-	// Just a mock implementation for the StandardTenantService method
 }
 
 // setupTestDirectory creates a temporary directory with test tenant config files
@@ -74,7 +68,11 @@ key = "value4"`)
 	createTestFile(t, tempDir, "invalid.txt", `Not a valid config`)
 
 	cleanup := func() {
-		os.RemoveAll(tempDir)
+		err := os.RemoveAll(tempDir)
+		if err != nil {
+			t.Fatalf("Failed to remove temp directory: %v", err)
+			return
+		}
 	}
 
 	return tempDir, cleanup
@@ -82,7 +80,7 @@ key = "value4"`)
 
 func createTestFile(t *testing.T, dir, name, content string) {
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatalf("Failed to create test file %s: %v", name, err)
 	}
 }
@@ -90,7 +88,7 @@ func createTestFile(t *testing.T, dir, name, content string) {
 // Test the constructor functions
 func TestNewFileBasedTenantConfigLoader(t *testing.T) {
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant\\d+\\.json$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.json$`),
 		ConfigDir:       "/test/dir",
 	}
 
@@ -122,7 +120,7 @@ func TestDefaultTenantConfigLoader(t *testing.T) {
 		t.Errorf("Expected ConfigDir %s, got %s", configDir, loader.configParams.ConfigDir)
 	}
 
-	expectedRegex := "^\\w+\\.(json|yaml|yml|toml)$"
+	expectedRegex := `^\w+\.(json|yaml|yml|toml)$`
 	if loader.configParams.ConfigNameRegex.String() != expectedRegex {
 		t.Errorf("Expected ConfigNameRegex %s, got %s",
 			expectedRegex, loader.configParams.ConfigNameRegex.String())
@@ -147,7 +145,7 @@ func TestLoadTenantConfigurations(t *testing.T) {
 
 	// Create the loader
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant\\d+\\.(json|yaml|yml|toml)$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.(json|yaml|yml|toml)$`),
 		ConfigDir:       tempDir,
 	}
 	loader := NewFileBasedTenantConfigLoader(params)
@@ -194,13 +192,18 @@ func TestLoadTenantConfigurationsEmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		err := os.RemoveAll(path)
+		if err != nil {
+			t.Fatalf("Failed to remove temp directory: %v", err)
+		}
+	}(tempDir)
 
 	app := NewStdApplication(nil, &logger{t})
 	tenantService := NewMockTenantService()
 
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant\\d+\\.json$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.json$`),
 		ConfigDir:       tempDir,
 	}
 	loader := NewFileBasedTenantConfigLoader(params)
@@ -224,7 +227,7 @@ func TestLoadTenantConfigurationsNonExistentDirectory(t *testing.T) {
 	tenantService := NewMockTenantService()
 
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant\\d+\\.json$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.json$`),
 		ConfigDir:       "/this/directory/should/not/exist",
 	}
 	loader := NewFileBasedTenantConfigLoader(params)

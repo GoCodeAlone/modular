@@ -73,9 +73,7 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 		}
 
 		// Add any additional feeders from params
-		for _, feeder := range params.ConfigFeeders {
-			feederSlice = append(feederSlice, feeder)
-		}
+		feederSlice = append(feederSlice, params.ConfigFeeders...)
 
 		tenantCfgs, err := loadTenantConfig(app, feederSlice)
 		if err != nil {
@@ -97,7 +95,7 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]ConfigProvider, error) {
 	// Guard against nil application
 	if app == nil {
-		return nil, fmt.Errorf("application is nil")
+		return nil, ErrApplicationNil
 	}
 
 	// Skip if no configFeeders are defined
@@ -211,7 +209,7 @@ func getSectionNames(sections map[string]ConfigProvider) []string {
 // and copies values from loadedConfig into it
 func cloneConfigWithValues(originalConfig, loadedConfig interface{}) (interface{}, error) {
 	if originalConfig == nil || loadedConfig == nil {
-		return nil, fmt.Errorf("original or loaded config is nil")
+		return nil, ErrOriginalOrLoadedNil
 	}
 
 	origType := reflect.TypeOf(originalConfig)
@@ -237,7 +235,7 @@ func copyStructFields(dst, src interface{}) error {
 
 	// Ensure we're working with pointers
 	if dstVal.Kind() != reflect.Ptr {
-		return fmt.Errorf("destination must be a pointer")
+		return ErrDestinationNotPointer
 	}
 
 	// Dereference pointers to get the underlying values
@@ -253,7 +251,7 @@ func copyStructFields(dst, src interface{}) error {
 	if srcVal.Kind() == reflect.Map {
 		// If source is a map, copy key/value pairs
 		if dstVal.Kind() != reflect.Struct {
-			return fmt.Errorf("cannot copy from map to non-struct")
+			return ErrCannotCopyMapToStruct
 		}
 
 		for _, key := range srcVal.MapKeys() {
@@ -319,5 +317,5 @@ func copyStructFields(dst, src interface{}) error {
 		return nil
 	}
 
-	return fmt.Errorf("unsupported source type: %v", srcVal.Kind())
+	return fmt.Errorf("%w: %v", ErrUnsupportedSourceType, srcVal.Kind())
 }

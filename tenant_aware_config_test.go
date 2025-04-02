@@ -28,15 +28,15 @@ func (m *TenantAwareConfigTestModule) Name() string {
 	return m.name
 }
 
-func (m *TenantAwareConfigTestModule) Init(app Application) error {
+func (m *TenantAwareConfigTestModule) Init(Application) error {
 	return nil
 }
 
-func (m *TenantAwareConfigTestModule) Start(ctx context.Context) error {
+func (m *TenantAwareConfigTestModule) Start(context.Context) error {
 	return nil
 }
 
-func (m *TenantAwareConfigTestModule) Stop(ctx context.Context) error {
+func (m *TenantAwareConfigTestModule) Stop(context.Context) error {
 	return nil
 }
 
@@ -57,24 +57,24 @@ func (m *TenantAwareConfigTestModule) RegisterConfig(app Application) {
 	app.RegisterConfigSection("TestConfig", NewStdConfigProvider(&TestTenantConfig{}))
 }
 
-func (m *TenantAwareConfigTestModule) OnTenantRegistered(tenantID TenantID) {
+func (m *TenantAwareConfigTestModule) OnTenantRegistered(TenantID) {
 	m.tenantRegisteredCalls++
 }
 
-func (m *TenantAwareConfigTestModule) OnTenantRemoved(tenantID TenantID) {
+func (m *TenantAwareConfigTestModule) OnTenantRemoved(TenantID) {
 	m.tenantRemovedCalls++
 }
 
 func (m *TenantAwareConfigTestModule) LoadTenantConfig(tenantService TenantService, tenantID TenantID) error {
 	config, err := tenantService.GetTenantConfig(tenantID, "TestConfig")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get tenant config: %w", err)
 	}
 
 	if testConfig, ok := config.GetConfig().(*TestTenantConfig); ok {
 		m.tenantConfigs[tenantID] = testConfig
 	} else {
-		return fmt.Errorf("failed to cast config to TestTenantConfig: %s - %+v", tenantID, testConfig)
+		return fmt.Errorf("%w: %s - %+v", ErrConfigCastFailed, tenantID, config.GetConfig())
 	}
 
 	return nil
@@ -86,7 +86,12 @@ func TestTenantAwareConfigModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		err := os.RemoveAll(path)
+		if err != nil {
+			t.Fatalf("Failed to remove temp directory: %v", err)
+		}
+	}(tempDir)
 
 	// Create tenant config files
 	tenant1Config := `{
@@ -111,12 +116,12 @@ func TestTenantAwareConfigModule(t *testing.T) {
 		}
 	}`
 
-	err = os.WriteFile(filepath.Join(tempDir, "tenant1.json"), []byte(tenant1Config), 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "tenant1.json"), []byte(tenant1Config), 0600)
 	if err != nil {
 		t.Fatalf("Failed to write tenant1.json: %v", err)
 	}
 
-	err = os.WriteFile(filepath.Join(tempDir, "tenant2.json"), []byte(tenant2Config), 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "tenant2.json"), []byte(tenant2Config), 0600)
 	if err != nil {
 		t.Fatalf("Failed to write tenant2.json: %v", err)
 	}
@@ -132,14 +137,18 @@ func TestTenantAwareConfigModule(t *testing.T) {
 	tenantService := NewStandardTenantService(log)
 
 	// Register the tenant service with the module
-	app.RegisterService("tenantService", tenantService)
+	if err := app.RegisterService("tenantService", tenantService); err != nil {
+		t.Fatalf("Failed to register tenant service: %v", err)
+	}
 
 	// Setup TenantConfigLoader
 	loader := NewFileBasedTenantConfigLoader(TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant[0-9]+\\.json$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.json$`),
 		ConfigDir:       tempDir,
 	})
-	app.RegisterService("tenantConfigLoader", loader)
+	if err := app.RegisterService("tenantConfigLoader", loader); err != nil {
+		t.Fatalf("Failed to register tenant config loader: %v", err)
+	}
 
 	// Register the tenant-aware module with the tenant service
 	tenantService.RegisterTenantAwareModule(tm)

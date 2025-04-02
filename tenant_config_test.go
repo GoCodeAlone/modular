@@ -1,8 +1,6 @@
 package modular
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,7 +28,12 @@ func TestFileBasedTenantConfigLoader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		err := os.RemoveAll(path)
+		if err != nil {
+			t.Fatalf("Failed to remove temp directory: %v", err)
+		}
+	}(tempDir)
 
 	// Create test JSON config file
 	tenant1Config := `{
@@ -63,12 +66,12 @@ ApiConfig:
   Timeout: 60
 `
 
-	err = os.WriteFile(filepath.Join(tempDir, "tenant1.json"), []byte(tenant1Config), 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "tenant1.json"), []byte(tenant1Config), 0600)
 	if err != nil {
 		t.Fatalf("Failed to write tenant1.json: %v", err)
 	}
 
-	err = os.WriteFile(filepath.Join(tempDir, "tenant2.yaml"), []byte(tenant2Config), 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "tenant2.yaml"), []byte(tenant2Config), 0600)
 	if err != nil {
 		t.Fatalf("Failed to write tenant2.yaml: %v", err)
 	}
@@ -85,7 +88,7 @@ ApiConfig:
 
 	// Create a file-based tenant config loader
 	loader := NewFileBasedTenantConfigLoader(TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant[0-9]+\\.(json|yaml)$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.(json|yaml)$`),
 		ConfigDir:       tempDir,
 	})
 
@@ -179,7 +182,7 @@ func TestLoadTenantConfigsEmptyDirectory(t *testing.T) {
 
 	// Test loading from empty directory
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant[0-9]+\\.json$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.json$`),
 		ConfigDir:       tempDir,
 	}
 
@@ -206,7 +209,7 @@ func TestLoadTenantConfigsNonexistentDirectory(t *testing.T) {
 
 	// Test loading from nonexistent directory
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^tenant[0-9]+\\.json$"),
+		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.json$`),
 		ConfigDir:       nonExistentDir,
 	}
 
@@ -339,39 +342,6 @@ func TestCloneConfigWithValues(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error for nil loaded config")
 	}
-}
-
-// MockFeeder implements Feeder interface for testing
-type MockFeeder struct {
-	data map[string]interface{}
-	err  error
-}
-
-func NewMockFeeder(data map[string]interface{}, err error) *MockFeeder {
-	return &MockFeeder{
-		data: data,
-		err:  err,
-	}
-}
-
-func (m *MockFeeder) Feed(config interface{}) error {
-	if m.err != nil {
-		return m.err
-	}
-
-	// Convert mock data to JSON
-	jsonData, err := json.Marshal(m.data)
-	if err != nil {
-		return fmt.Errorf("failed to marshal mock data: %w", err)
-	}
-
-	// Unmarshal JSON into the config interface
-	err = json.Unmarshal(jsonData, config)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal mock data: %w", err)
-	}
-
-	return nil
 }
 
 func TestCopyStructFields(t *testing.T) {

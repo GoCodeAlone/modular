@@ -90,7 +90,7 @@ func (app *StdApplication) ConfigSections() map[string]ConfigProvider {
 func (app *StdApplication) GetConfigSection(section string) (ConfigProvider, error) {
 	cp, exists := app.cfgSections[section]
 	if !exists {
-		return nil, fmt.Errorf("config section '%s' not found", section)
+		return nil, fmt.Errorf("%w: %s", ErrConfigSectionNotFound, section)
 	}
 	return cp, nil
 }
@@ -98,7 +98,7 @@ func (app *StdApplication) GetConfigSection(section string) (ConfigProvider, err
 // RegisterService adds a service with type checking
 func (app *StdApplication) RegisterService(name string, service any) error {
 	if _, exists := app.svcRegistry[name]; exists {
-		return fmt.Errorf("service '%s' already registered", name)
+		return fmt.Errorf("%w: %s", ErrServiceAlreadyRegistered, name)
 	}
 
 	app.svcRegistry[name] = service
@@ -110,16 +110,16 @@ func (app *StdApplication) RegisterService(name string, service any) error {
 func (app *StdApplication) GetService(name string, target any) error {
 	service, exists := app.svcRegistry[name]
 	if !exists {
-		return fmt.Errorf("service '%s' not found", name)
+		return fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
 
 	targetValue := reflect.ValueOf(target)
 	if targetValue.Kind() != reflect.Ptr || targetValue.IsNil() {
-		return fmt.Errorf("target must be a non-nil pointer")
+		return ErrTargetNotPointer
 	}
 
 	if !targetValue.Elem().IsValid() {
-		return fmt.Errorf("target value is invalid")
+		return ErrTargetValueInvalid
 	}
 
 	serviceType := reflect.TypeOf(service)
@@ -154,8 +154,8 @@ func (app *StdApplication) GetService(name string, target any) error {
 		return nil
 	}
 
-	return fmt.Errorf("service '%s' of type %s cannot be assigned to %s",
-		name, serviceType, targetType)
+	return fmt.Errorf("%w: service '%s' of type %s cannot be assigned to %s",
+		ErrServiceIncompatible, name, serviceType, targetType)
 }
 
 // Init initializes the application with the provided modules
@@ -329,8 +329,8 @@ func (app *StdApplication) injectServices(module Module) (Module, error) {
 
 			requiredServices[dep.Name] = service
 		} else if dep.Required {
-			return nil, fmt.Errorf("required service '%s' not found for module '%s'",
-				dep.Name, module.Name())
+			return nil, fmt.Errorf("%w: %s for %s",
+				ErrRequiredServiceNotFound, dep.Name, module.Name())
 		}
 	}
 
@@ -353,15 +353,15 @@ func (app *StdApplication) injectServices(module Module) (Module, error) {
 // checkServiceCompatibility checks if a service satisfies the dependency requirements
 func checkServiceCompatibility(service any, dep ServiceDependency) (bool, error) {
 	if service == nil {
-		return false, fmt.Errorf("service '%s' is nil", dep.Name)
+		return false, fmt.Errorf("%w: %s", ErrServiceNil, dep.Name)
 	}
 
 	serviceType := reflect.TypeOf(service)
 
 	// Check concrete type if specified
 	if dep.Type != nil && !serviceType.AssignableTo(dep.Type) {
-		return false, fmt.Errorf("service '%s' of type %s doesn't satisfy required type %s",
-			dep.Name, serviceType, dep.Type)
+		return false, fmt.Errorf("%w: service '%s' of type %s doesn't satisfy required type %s",
+			ErrServiceWrongType, dep.Name, serviceType, dep.Type)
 	}
 
 	// Check interface satisfaction
@@ -371,8 +371,8 @@ func checkServiceCompatibility(service any, dep ServiceDependency) (bool, error)
 			return true, nil
 		}
 
-		return false, fmt.Errorf("service '%s' of type %s doesn't satisfy required interface %s",
-			dep.Name, serviceType, dep.SatisfiesInterface)
+		return false, fmt.Errorf("%w: service '%s' of type %s doesn't satisfy required interface %s",
+			ErrServiceWrongInterface, dep.Name, serviceType, dep.SatisfiesInterface)
 	}
 
 	return true, nil
@@ -399,7 +399,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	var visit func(string) error
 	visit = func(node string) error {
 		if temp[node] {
-			return fmt.Errorf("circular dependency detected: %s", node)
+			return fmt.Errorf("%w: %s", ErrCircularDependency, node)
 		}
 		if visited[node] {
 			return nil
@@ -408,7 +408,8 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 
 		for _, dep := range graph[node] {
 			if _, exists := app.moduleRegistry[dep]; !exists {
-				return fmt.Errorf("module '%s' depends on non-existent module '%s'", node, dep)
+				return fmt.Errorf("%w: %s depends on non-existent module %s",
+					ErrModuleDependencyMissing, node, dep)
 			}
 			if err := visit(dep); err != nil {
 				return err
@@ -448,7 +449,7 @@ func (app *StdApplication) GetTenantService() (TenantService, error) {
 // WithTenant creates a tenant context from the application context
 func (app *StdApplication) WithTenant(tenantID TenantID) (*TenantContext, error) {
 	if app.ctx == nil {
-		return nil, fmt.Errorf("application context not initialized")
+		return nil, ErrAppContextNotInitialized
 	}
 	return NewTenantContext(app.ctx, tenantID), nil
 }
@@ -459,5 +460,9 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 	if err != nil {
 		return nil, err
 	}
-	return ts.GetTenantConfig(tenantID, section)
+	provider, err := ts.GetTenantConfig(tenantID, section)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tenant config: %w", err)
+	}
+	return provider, nil
 }

@@ -33,7 +33,7 @@ func (ts *StandardTenantService) GetTenantConfig(tenantID TenantID, section stri
 	tenantCfg, exists := ts.tenantConfigs[tenantID]
 	if !exists {
 		ts.logger.Debug("Tenant not found", "tenantID", tenantID)
-		return nil, fmt.Errorf("tenant %s not found", tenantID)
+		return nil, fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
 	provider, err := tenantCfg.GetTenantConfig(tenantID, section)
@@ -67,7 +67,7 @@ func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[s
 		ts.logger.Info("Tenant already registered, merging configurations", "tenantID", tenantID)
 
 		// Add or update configs for existing tenant
-		if configs != nil && len(configs) > 0 {
+		if len(configs) > 0 {
 			for section, provider := range configs {
 				if provider == nil || provider.GetConfig() == nil {
 					ts.logger.Warn("Skipping nil config provider or config", "tenantID", tenantID, "section", section)
@@ -85,7 +85,7 @@ func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[s
 	ts.tenantConfigs[tenantID] = tenantCfg
 
 	// Add initial configs if provided
-	if configs != nil && len(configs) > 0 {
+	if len(configs) > 0 {
 		for section, provider := range configs {
 			if provider == nil || provider.GetConfig() == nil {
 				ts.logger.Warn("Skipping nil config provider or config", "tenantID", tenantID, "section", section)
@@ -136,7 +136,7 @@ func (ts *StandardTenantService) RemoveTenant(tenantID TenantID) error {
 	defer ts.mutex.Unlock()
 
 	if _, exists := ts.tenantConfigs[tenantID]; !exists {
-		return fmt.Errorf("tenant %s not found", tenantID)
+		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
 	delete(ts.tenantConfigs, tenantID)
@@ -200,7 +200,7 @@ func (ts *StandardTenantService) RegisterTenantConfigSection(tenantID TenantID, 
 	}
 
 	if provider == nil || provider.GetConfig() == nil {
-		return fmt.Errorf("cannot register nil config provider or config for tenant %s section %s", tenantID, section)
+		return fmt.Errorf("%w: section '%s' for tenant %s", ErrTenantRegisterNilConfig, section, tenantID)
 	}
 
 	tenantCfg.SetTenantConfig(tenantID, section, provider)

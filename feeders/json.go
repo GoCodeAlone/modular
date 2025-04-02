@@ -22,7 +22,7 @@ func (j JsonFeeder) FeedKey(key string, target interface{}) error {
 
 	// Use the embedded Json feeder to read the file
 	if err := j.Feed(&allData); err != nil {
-		return err
+		return fmt.Errorf("failed to read JSON file: %w", err)
 	}
 
 	// Look for the specific key

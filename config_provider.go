@@ -47,7 +47,7 @@ func (c *Config) AddStructKey(key string, target interface{}) *Config {
 
 func (c *Config) Feed() error {
 	if err := c.Config.Feed(); err != nil {
-		return err
+		return fmt.Errorf("config feed error: %w", err)
 	}
 
 	for key, target := range c.StructKeys {
@@ -58,13 +58,13 @@ func (c *Config) Feed() error {
 			}
 
 			if err := cf.FeedKey(key, target); err != nil {
-				return fmt.Errorf("config: feeder error: %v", err)
+				return fmt.Errorf("%w", ErrConfigFeederError)
 			}
 		}
 
 		if setupable, ok := target.(ConfigSetup); ok {
 			if err := setupable.Setup(); err != nil {
-				return fmt.Errorf("config: setup error for %s: %v", key, err)
+				return fmt.Errorf("%w for %s", ErrConfigSetupError, key)
 			}
 		}
 	}
@@ -81,7 +81,7 @@ type ConfigSetup interface {
 func loadAppConfig(app *StdApplication) error {
 	// Guard against nil application
 	if app == nil {
-		return fmt.Errorf("application is nil")
+		return ErrApplicationNil
 	}
 
 	// Skip if no ConfigFeeders are defined
@@ -183,7 +183,7 @@ type configInfo struct {
 // createTempConfig creates a temporary config for feeding values
 func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	if cfg == nil {
-		return nil, configInfo{}, fmt.Errorf("cannot create temp config: config is nil")
+		return nil, configInfo{}, ErrConfigNil
 	}
 
 	cfgValue := reflect.ValueOf(cfg)
@@ -192,7 +192,7 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	var targetType reflect.Type
 	if isPtr {
 		if cfgValue.IsNil() {
-			return nil, configInfo{}, fmt.Errorf("cannot create temp config: config pointer is nil")
+			return nil, configInfo{}, ErrConfigNilPointer
 		}
 		targetType = cfgValue.Elem().Type()
 	} else {

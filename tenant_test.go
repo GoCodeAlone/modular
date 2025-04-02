@@ -72,10 +72,10 @@ func TestGetTenantIDFromContext(t *testing.T) {
 	}
 
 	// Test case: Extract from nil context (should handle gracefully)
-	_, ok = GetTenantIDFromContext(nil)
+	_, ok = GetTenantIDFromContext(context.TODO()) // Using context.TODO() instead of nil
 
 	if ok {
-		t.Error("Expected ok to be false when extracting tenant ID from nil context")
+		t.Error("Expected ok to be false when extracting tenant ID from an empty context")
 	}
 }
 
@@ -93,7 +93,7 @@ func TestTenantInterfaces(t *testing.T) {
 
 type mockTenantService struct{}
 
-func (m *mockTenantService) GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error) {
+func (m *mockTenantService) GetTenantConfig(TenantID, string) (ConfigProvider, error) {
 	return nil, nil
 }
 
@@ -101,7 +101,7 @@ func (m *mockTenantService) GetTenants() []TenantID {
 	return nil
 }
 
-func (m *mockTenantService) RegisterTenant(tenantID TenantID, configs map[string]ConfigProvider) error {
+func (m *mockTenantService) RegisterTenant(TenantID, map[string]ConfigProvider) error {
 	return nil
 }
 
@@ -115,11 +115,11 @@ func (m *mockTenantAwareModule) Init(Application) error {
 	return nil
 }
 
-func (m *mockTenantAwareModule) Start(ctx context.Context) error {
+func (m *mockTenantAwareModule) Start(context.Context) error {
 	return nil
 }
 
-func (m *mockTenantAwareModule) Stop(ctx context.Context) error {
+func (m *mockTenantAwareModule) Stop(context.Context) error {
 	return nil
 }
 
@@ -135,14 +135,14 @@ func (m *mockTenantAwareModule) RequiresServices() []ServiceDependency {
 	return []ServiceDependency{}
 }
 
-func (m *mockTenantAwareModule) RegisterConfig(app Application) {
+func (m *mockTenantAwareModule) RegisterConfig(Application) {
 	// Do nothing
 }
 
-func (m *mockTenantAwareModule) OnTenantRegistered(tenantID TenantID) {
+func (m *mockTenantAwareModule) OnTenantRegistered(TenantID) {
 	// Do nothing
 }
 
-func (m *mockTenantAwareModule) OnTenantRemoved(tenantID TenantID) {
+func (m *mockTenantAwareModule) OnTenantRemoved(TenantID) {
 	// Do nothing
 }

@@ -79,20 +79,20 @@ func (tcp *TenantConfigProvider) GetTenantConfig(tenantID TenantID, section stri
 
 	tenantCfgs, exists := tcp.tenantConfigs[tenantID]
 	if !exists {
-		return nil, fmt.Errorf("no configs found for tenant %s", tenantID)
+		return nil, fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
 	cfg, exists := tenantCfgs[section]
 	if !exists {
-		return nil, fmt.Errorf("config section '%s' not found for tenant %s", section, tenantID)
+		return nil, fmt.Errorf("%w: section '%s' for tenant %s", ErrTenantConfigNotFound, section, tenantID)
 	}
 
 	if cfg == nil {
-		return nil, fmt.Errorf("config provider for tenant %s section '%s' is nil", tenantID, section)
+		return nil, fmt.Errorf("%w: section '%s' for tenant %s", ErrTenantConfigProviderNil, section, tenantID)
 	}
 
 	if cfg.GetConfig() == nil {
-		return nil, fmt.Errorf("config for tenant %s section '%s' is nil", tenantID, section)
+		return nil, fmt.Errorf("%w: section '%s' for tenant %s", ErrTenantConfigValueNil, section, tenantID)
 	}
 
 	return cfg, nil

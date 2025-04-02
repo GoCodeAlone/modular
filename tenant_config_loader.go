@@ -57,7 +57,7 @@ func (l *FileBasedTenantConfigLoader) LoadTenantConfigurations(app Application, 
 // DefaultTenantConfigLoader creates a loader with default configuration
 func DefaultTenantConfigLoader(configDir string) *FileBasedTenantConfigLoader {
 	return NewFileBasedTenantConfigLoader(TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^\\w+\\.(json|yaml|yml|toml)$"),
+		ConfigNameRegex: regexp.MustCompile(`^\w+\.(json|yaml|yml|toml)$`),
 		ConfigDir:       configDir,
 		ConfigFeeders:   []Feeder{},
 	})
