@@ -113,11 +113,31 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 	}
 
 	// Process registered sections
+	sectionInfos, hasValidSections := prepareSectionConfigs(app, cfgBuilder)
+	if !hasValidSections {
+		app.Logger().Warn("No valid sections found for tenant config")
+		return make(map[string]ConfigProvider), nil
+	}
+
+	// Feed the config
+	if err := cfgBuilder.Feed(); err != nil {
+		return nil, fmt.Errorf("failed to feed configuration: %w", err)
+	}
+
+	// Process fed configurations
+	tenantCfgSections := processFedConfigurations(app, sectionInfos)
+
+	// Log the loaded configurations for debugging only - don't print actual values in production
+	logLoadedSections(app, tenantCfgSections)
+
+	return tenantCfgSections, nil
+}
+
+// prepareSectionConfigs creates temporary configurations for all registered sections
+func prepareSectionConfigs(app Application, cfgBuilder *Config) (map[string]configInfo, bool) {
 	sectionInfos := make(map[string]configInfo)
 	hasValidSections := false
-	tenantCfgSections := make(map[string]ConfigProvider)
 
-	// Create temporary structs for all registered sections
 	for sectionKey, provider := range app.ConfigSections() {
 		if provider == nil {
 			app.Logger().Warn("Skipping nil config provider", "section", sectionKey)
@@ -132,7 +152,8 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 
 		tempSectionCfg, sectionInfo, err := createTempConfig(sectionCfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create temp config for section %s: %w", sectionKey, err)
+			app.Logger().Warn("Failed to create temp config", "section", sectionKey, "error", err)
+			continue
 		}
 
 		sectionInfos[sectionKey] = sectionInfo
@@ -140,60 +161,72 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 		hasValidSections = true
 	}
 
-	// Feed the config for sections if any exist
-	if hasValidSections {
-		if err := cfgBuilder.Feed(); err != nil {
-			return nil, fmt.Errorf("failed to feed configuration: %w", err)
+	return sectionInfos, hasValidSections
+}
+
+// processFedConfigurations handles the configuration after it's been fed with values
+func processFedConfigurations(app Application, sectionInfos map[string]configInfo) map[string]ConfigProvider {
+	tenantCfgSections := make(map[string]ConfigProvider)
+
+	for sectionKey, info := range sectionInfos {
+		if !info.tempVal.Elem().IsValid() {
+			app.Logger().Warn("Tenant section config is invalid after feeding", "section", sectionKey)
+			continue
 		}
 
-		// Update all section configs
-		for sectionKey, info := range sectionInfos {
-			if !info.tempVal.Elem().IsValid() {
-				app.Logger().Warn("Tenant section config is invalid after feeding", "section", sectionKey)
-				continue
-			}
+		provider, err := createSectionProvider(app, sectionKey, info)
+		if err != nil {
+			app.Logger().Warn("Failed to create section provider", "section", sectionKey, "error", err)
+			continue
+		}
 
-			// Get the actual instance of the config
-			configValue := info.tempVal.Elem().Interface()
-			if configValue == nil {
-				app.Logger().Warn("Tenant section config is nil after feeding", "section", sectionKey)
-				continue
-			}
-
-			// Create a deep clone of the original section config type
-			originalSectionCfgProvider, err := app.GetConfigSection(sectionKey)
-			if err != nil {
-				app.Logger().Warn("Failed to get original section config", "section", sectionKey, "error", err)
-				continue
-			}
-			originalSectionCfg := originalSectionCfgProvider.GetConfig()
-			configClone, err := cloneConfigWithValues(originalSectionCfg, configValue)
-			if err != nil {
-				app.Logger().Warn("Failed to clone config with values", "section", sectionKey, "error", err)
-				continue
-			}
-
-			// Create a new provider with the properly typed config
-			provider := NewStdConfigProvider(configClone)
-			if provider == nil || provider.GetConfig() == nil {
-				app.Logger().Warn("Created nil provider for tenant section", "section", sectionKey)
-				continue
-			}
-
+		if provider != nil {
 			tenantCfgSections[sectionKey] = provider
-			app.Logger().Debug("Added tenant config section", "section", sectionKey, "configType", fmt.Sprintf("%T", configClone))
+			app.Logger().Debug("Added tenant config section", "section", sectionKey,
+				"configType", fmt.Sprintf("%T", provider.GetConfig()))
 		}
 	}
 
-	// Log the loaded configurations for debugging only - don't print actual values in production
+	return tenantCfgSections
+}
+
+// createSectionProvider creates a provider for a section with the fed configuration
+func createSectionProvider(app Application, sectionKey string, info configInfo) (ConfigProvider, error) {
+	// Get the actual instance of the config
+	configValue := info.tempVal.Elem().Interface()
+	if configValue == nil {
+		return nil, fmt.Errorf("tenant section config is nil after feeding")
+	}
+
+	// Create a deep clone of the original section config type
+	originalSectionCfgProvider, err := app.GetConfigSection(sectionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get original section config: %w", err)
+	}
+
+	originalSectionCfg := originalSectionCfgProvider.GetConfig()
+	configClone, err := cloneConfigWithValues(originalSectionCfg, configValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to clone config with values: %w", err)
+	}
+
+	// Create a new provider with the properly typed config
+	provider := NewStdConfigProvider(configClone)
+	if provider == nil || provider.GetConfig() == nil {
+		return nil, fmt.Errorf("created nil provider for tenant section")
+	}
+
+	return provider, nil
+}
+
+// logLoadedSections logs information about the loaded tenant config sections
+func logLoadedSections(app Application, tenantCfgSections map[string]ConfigProvider) {
 	if len(tenantCfgSections) > 0 {
 		app.Logger().Debug("Loaded tenant config sections", "sectionCount", len(tenantCfgSections),
 			"sections", getSectionNames(tenantCfgSections))
 	} else {
 		app.Logger().Warn("No tenant config sections were loaded. Check file format and section names.")
 	}
-
-	return tenantCfgSections, nil
 }
 
 // Helper function to extract section names for logging
@@ -247,75 +280,114 @@ func copyStructFields(dst, src interface{}) error {
 		srcVal = srcVal.Elem()
 	}
 
-	// Handle different kinds of src/dst
-	if srcVal.Kind() == reflect.Map {
-		// If source is a map, copy key/value pairs
-		if dstVal.Kind() != reflect.Struct {
-			return ErrCannotCopyMapToStruct
+	// Handle different source types
+	switch srcVal.Kind() {
+	case reflect.Map:
+		return copyMapToStruct(dstVal, srcVal)
+	case reflect.Struct:
+		return copyStructToStruct(dstVal, srcVal)
+	default:
+		return fmt.Errorf("%w: %v", ErrUnsupportedSourceType, srcVal.Kind())
+	}
+}
+
+// copyMapToStruct copies values from a map to a struct
+func copyMapToStruct(dstVal, srcVal reflect.Value) error {
+	if dstVal.Kind() != reflect.Struct {
+		return ErrCannotCopyMapToStruct
+	}
+
+	for _, key := range srcVal.MapKeys() {
+		if key.Kind() != reflect.String {
+			continue // Skip non-string keys
 		}
 
-		for _, key := range srcVal.MapKeys() {
-			if key.Kind() != reflect.String {
-				continue // Skip non-string keys
-			}
-
-			fieldName := key.String()
-			dstField := dstVal.FieldByName(fieldName)
-			if !dstField.IsValid() || !dstField.CanSet() {
-				continue // Skip fields that can't be set
-			}
-
-			srcValue := srcVal.MapIndex(key)
-			if !srcValue.IsValid() {
-				continue
-			}
-
-			// Convert and set if types are compatible
-			if srcValue.Type().AssignableTo(dstField.Type()) {
-				dstField.Set(srcValue)
-			} else if srcValue.Kind() == reflect.Interface {
-				// Try to handle interface{} values by using their concrete type
-				concreteValue := srcValue.Elem()
-				if concreteValue.Type().AssignableTo(dstField.Type()) {
-					dstField.Set(concreteValue)
-				} else if dstField.Kind() == reflect.Map && concreteValue.Kind() == reflect.Map {
-					// Special handling for map types
-					if dstField.IsNil() {
-						dstField.Set(reflect.MakeMap(dstField.Type()))
-					}
-
-					// Copy map entries if key types are compatible
-					for _, mapKey := range concreteValue.MapKeys() {
-						mapValue := concreteValue.MapIndex(mapKey)
-						dstField.SetMapIndex(mapKey, mapValue)
-					}
-				}
-			}
+		fieldName := key.String()
+		dstField := dstVal.FieldByName(fieldName)
+		if !dstField.IsValid() || !dstField.CanSet() {
+			continue // Skip fields that can't be set
 		}
+
+		srcValue := srcVal.MapIndex(key)
+		if !srcValue.IsValid() {
+			continue
+		}
+
+		if err := setFieldValue(dstField, srcValue); err != nil {
+			// Just log and continue if a specific field can't be set
+			continue
+		}
+	}
+	return nil
+}
+
+// copyStructToStruct copies values from one struct to another
+func copyStructToStruct(dstVal, srcVal reflect.Value) error {
+	for i := 0; i < dstVal.NumField(); i++ {
+		dstField := dstVal.Field(i)
+		if !dstField.CanSet() {
+			continue
+		}
+
+		fieldName := dstVal.Type().Field(i).Name
+		srcField := srcVal.FieldByName(fieldName)
+		if !srcField.IsValid() {
+			continue
+		}
+
+		// Copy if types are compatible
+		if srcField.Type().AssignableTo(dstField.Type()) {
+			dstField.Set(srcField)
+		}
+	}
+	return nil
+}
+
+// setFieldValue attempts to set a field value, handling various type conversions
+func setFieldValue(dstField, srcValue reflect.Value) error {
+	// Direct assignment if types are compatible
+	if srcValue.Type().AssignableTo(dstField.Type()) {
+		dstField.Set(srcValue)
 		return nil
 	}
 
-	// If source is a struct, copy matching fields
-	if srcVal.Kind() == reflect.Struct {
-		for i := 0; i < dstVal.NumField(); i++ {
-			dstField := dstVal.Field(i)
-			if !dstField.CanSet() {
-				continue
-			}
+	// Try to handle interface{} values by using their concrete type
+	if srcValue.Kind() == reflect.Interface {
+		return setInterfaceFieldValue(dstField, srcValue)
+	}
 
-			fieldName := dstVal.Type().Field(i).Name
-			srcField := srcVal.FieldByName(fieldName)
-			if !srcField.IsValid() {
-				continue
-			}
+	return fmt.Errorf("incompatible types for field assignment")
+}
 
-			// Copy if types are compatible
-			if srcField.Type().AssignableTo(dstField.Type()) {
-				dstField.Set(srcField)
-			}
-		}
+// setInterfaceFieldValue handles setting a field from an interface{} value
+func setInterfaceFieldValue(dstField, srcValue reflect.Value) error {
+	concreteValue := srcValue.Elem()
+
+	// Direct assignment of concrete value if possible
+	if concreteValue.Type().AssignableTo(dstField.Type()) {
+		dstField.Set(concreteValue)
 		return nil
 	}
 
-	return fmt.Errorf("%w: %v", ErrUnsupportedSourceType, srcVal.Kind())
+	// Special handling for map types
+	if dstField.Kind() == reflect.Map && concreteValue.Kind() == reflect.Map {
+		return copyMapValues(dstField, concreteValue)
+	}
+
+	return fmt.Errorf("incompatible interface value for field")
+}
+
+// copyMapValues copies values from one map to another
+func copyMapValues(dstMap, srcMap reflect.Value) error {
+	if dstMap.IsNil() {
+		dstMap.Set(reflect.MakeMap(dstMap.Type()))
+	}
+
+	// Copy map entries if key types are compatible
+	for _, mapKey := range srcMap.MapKeys() {
+		mapValue := srcMap.MapIndex(mapKey)
+		dstMap.SetMapIndex(mapKey, mapValue)
+	}
+
+	return nil
 }

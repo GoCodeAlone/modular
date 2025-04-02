@@ -6,6 +6,8 @@ import (
 	"reflect"
 )
 
+const mainConfigSection = "_main"
+
 // LoadAppConfigFunc is the function type for loading application configuration
 type LoadAppConfigFunc func(*StdApplication) error
 
@@ -96,30 +98,73 @@ func loadAppConfig(app *StdApplication) error {
 		cfgBuilder.AddFeeder(feeder)
 	}
 
-	// Process main app config and all sections
-	hasConfigs := false
+	// Process configs
+	tempConfigs, hasConfigs := processConfigs(app, cfgBuilder)
+
+	// If no valid configs found, return early
+	if !hasConfigs {
+		app.logger.Info("No valid configs found, skipping config loading")
+		return nil
+	}
+
+	// Feed all configs at once
+	if err := cfgBuilder.Feed(); err != nil {
+		return err
+	}
+
+	// Apply updated configs
+	applyConfigUpdates(app, tempConfigs)
+
+	return nil
+}
+
+// processConfigs handles the collection and preparation of configs
+func processConfigs(app *StdApplication, cfgBuilder *Config) (map[string]configInfo, bool) {
 	tempConfigs := make(map[string]configInfo)
+	hasConfigs := false
 
 	// Process main app config if provided
-	if app.cfgProvider != nil {
-		mainCfg := app.cfgProvider.GetConfig()
-		if mainCfg == nil {
-			app.logger.Warn("Main config is nil, skipping main config loading")
-		} else {
-			tempMainCfg, mainCfgInfo, err := createTempConfig(mainCfg)
-			if err != nil {
-				return fmt.Errorf("failed to create temp config: %w", err)
-			}
-
-			cfgBuilder.AddStruct(tempMainCfg)
-			tempConfigs["main"] = mainCfgInfo
-			hasConfigs = true
-
-			app.logger.Debug("Added main config for loading", "type", reflect.TypeOf(mainCfg))
-		}
+	if processedMain := processMainConfig(app, cfgBuilder, tempConfigs); processedMain {
+		hasConfigs = true
 	}
 
 	// Process registered sections
+	if processedSections := processSectionConfigs(app, cfgBuilder, tempConfigs); processedSections {
+		hasConfigs = true
+	}
+
+	return tempConfigs, hasConfigs
+}
+
+// processMainConfig handles the main application config
+func processMainConfig(app *StdApplication, cfgBuilder *Config, tempConfigs map[string]configInfo) bool {
+	if app.cfgProvider == nil {
+		return false
+	}
+
+	mainCfg := app.cfgProvider.GetConfig()
+	if mainCfg == nil {
+		app.logger.Warn("Main config is nil, skipping main config loading")
+		return false
+	}
+
+	tempMainCfg, mainCfgInfo, err := createTempConfig(mainCfg)
+	if err != nil {
+		app.logger.Warn("Failed to create temp config, skipping main config", "error", err)
+		return false
+	}
+
+	cfgBuilder.AddStruct(tempMainCfg)
+	tempConfigs[mainConfigSection] = mainCfgInfo
+	app.logger.Debug("Added main config for loading", "type", reflect.TypeOf(mainCfg))
+
+	return true
+}
+
+// processSectionConfigs handles the section configs
+func processSectionConfigs(app *StdApplication, cfgBuilder *Config, tempConfigs map[string]configInfo) bool {
+	hasValidSections := false
+
 	for sectionKey, provider := range app.cfgSections {
 		if provider == nil {
 			app.logger.Warn("Skipping nil config provider", "section", sectionKey)
@@ -134,43 +179,38 @@ func loadAppConfig(app *StdApplication) error {
 
 		tempSectionCfg, sectionInfo, err := createTempConfig(sectionCfg)
 		if err != nil {
-			return fmt.Errorf("failed to create temp config for section %s: %w", sectionKey, err)
+			app.logger.Warn("Failed to create temp config for section, skipping",
+				"section", sectionKey, "error", err)
+			continue
 		}
 
 		cfgBuilder.AddStructKey(sectionKey, tempSectionCfg)
 		tempConfigs[sectionKey] = sectionInfo
-		hasConfigs = true
+		hasValidSections = true
 
-		app.logger.Debug("Added section config for loading", "section", sectionKey, "type", reflect.TypeOf(sectionCfg))
+		app.logger.Debug("Added section config for loading",
+			"section", sectionKey, "type", reflect.TypeOf(sectionCfg))
 	}
 
-	// If no valid configs found, return early
-	if !hasConfigs {
-		app.logger.Info("No valid configs found, skipping config loading")
-		return nil
-	}
+	return hasValidSections
+}
 
-	// Feed all configs at once
-	if err := cfgBuilder.Feed(); err != nil {
-		return err
-	}
-
-	// Update all configs with newly populated values
-	if mainInfo, exists := tempConfigs["main"]; exists {
+// applyConfigUpdates applies updates to all configs
+func applyConfigUpdates(app *StdApplication, tempConfigs map[string]configInfo) {
+	// Update main config if it exists
+	if mainInfo, exists := tempConfigs[mainConfigSection]; exists {
 		updateConfig(app, &app.cfgProvider, mainInfo)
 		app.logger.Debug("Updated main config")
 	}
 
 	// Update section configs
 	for sectionKey, info := range tempConfigs {
-		if sectionKey == "main" {
+		if sectionKey == mainConfigSection {
 			continue
 		}
 		updateSectionConfig(app, sectionKey, info)
 		app.logger.Debug("Updated section config", "section", sectionKey)
 	}
-
-	return nil
 }
 
 // Helper types and functions

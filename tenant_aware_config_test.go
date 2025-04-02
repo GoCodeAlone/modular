@@ -80,18 +80,15 @@ func (m *TenantAwareConfigTestModule) LoadTenantConfig(tenantService TenantServi
 	return nil
 }
 
-func TestTenantAwareConfigModule(t *testing.T) {
+// setupTempConfigDir creates a temporary directory with tenant config files and returns the directory path
+func setupTempConfigDir(t *testing.T) string {
+	t.Helper()
+
 	// Create a temporary directory for tenant config files
 	tempDir, err := os.MkdirTemp("", "tenant-aware-config-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer func(path string) {
-		err := os.RemoveAll(path)
-		if err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
-		}
-	}(tempDir)
 
 	// Create tenant config files
 	tenant1Config := `{
@@ -126,6 +123,13 @@ func TestTenantAwareConfigModule(t *testing.T) {
 		t.Fatalf("Failed to write tenant2.json: %v", err)
 	}
 
+	return tempDir
+}
+
+// setupTestApp creates and initializes the test application with necessary services
+func setupTestApp(t *testing.T, tempDir string) (Application, *TenantAwareConfigTestModule, *StandardTenantService) {
+	t.Helper()
+
 	// Create test app with tenant-aware module
 	log := &logger{t}
 	app := NewStdApplication(NewStdConfigProvider(nil), log)
@@ -156,22 +160,40 @@ func TestTenantAwareConfigModule(t *testing.T) {
 	app.RegisterConfigSection("TestConfig", NewStdConfigProvider(&TestTenantConfig{}))
 
 	// Initialize the module to register its config section
-	err = tm.Init(app)
-	if err != nil {
+	if err := tm.Init(app); err != nil {
 		t.Fatalf("Failed to initialize test module: %v", err)
 	}
 
-	err = app.(*StdApplication).initTenantConfigurations()
-	if err != nil {
-		t.Fatalf("Failed to initialize tenant configurations: %v", err)
+	return app, tm, tenantService
+}
+
+// verifyTenantConfig checks if tenant configs were loaded correctly
+func verifyTenantConfig(t *testing.T, tm *TenantAwareConfigTestModule, tenantID TenantID, expectedName, expectedEnv string, featureKey string, featureValue bool) {
+	t.Helper()
+
+	tenantCfg, exists := tm.tenantConfigs[tenantID]
+	if !exists {
+		t.Errorf("Expected %s config to be loaded", tenantID)
+		return
 	}
 
-	// Verify tenants were registered
-	if tm.tenantRegisteredCalls != 2 {
-		t.Errorf("Expected 2 tenant registered calls, got %d", tm.tenantRegisteredCalls)
+	if tenantCfg.Name != expectedName {
+		t.Errorf("Expected %s Name to be '%s', got '%s'", tenantID, expectedName, tenantCfg.Name)
 	}
 
-	// Load tenant configs in the module
+	if tenantCfg.Environment != expectedEnv {
+		t.Errorf("Expected %s Environment to be '%s', got '%s'", tenantID, expectedEnv, tenantCfg.Environment)
+	}
+
+	if tenantCfg.Features[featureKey] != featureValue {
+		t.Errorf("Expected %s Features['%s'] to be %v", tenantID, featureKey, featureValue)
+	}
+}
+
+// loadTenantConfigs loads tenant configs in the module
+func loadTenantConfigs(t *testing.T, tm *TenantAwareConfigTestModule, tenantService *StandardTenantService, app Application) {
+	t.Helper()
+
 	tenants := tenantService.GetTenants()
 	for _, tenantID := range tenants {
 		cp, err := tenantService.GetTenantConfig(tenantID, "TestConfig")
@@ -187,43 +209,38 @@ func TestTenantAwareConfigModule(t *testing.T) {
 			tm.tenantConfigs[tenantID] = cp.GetConfig().(*TestTenantConfig)
 		}
 	}
+}
+
+func TestTenantAwareConfigModule(t *testing.T) {
+	// Setup
+	tempDir := setupTempConfigDir(t)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Fatalf("Failed to remove temp directory: %v", err)
+		}
+	}()
+
+	app, tm, tenantService := setupTestApp(t, tempDir)
+
+	// Initialize tenant configurations
+	if err := app.(*StdApplication).initTenantConfigurations(); err != nil {
+		t.Fatalf("Failed to initialize tenant configurations: %v", err)
+	}
+
+	// Verify tenants were registered
+	if tm.tenantRegisteredCalls != 2 {
+		t.Errorf("Expected 2 tenant registered calls, got %d", tm.tenantRegisteredCalls)
+	}
+
+	// Load tenant configs in the module
+	loadTenantConfigs(t, tm, tenantService, app)
 
 	// Verify tenant configs were loaded correctly
-	tenant1ID := TenantID("tenant1")
-	tenant1Cfg, exists := tm.tenantConfigs[tenant1ID]
-	if !exists {
-		t.Errorf("Expected tenant1 config to be loaded")
-	} else {
-		if tenant1Cfg.Name != "Tenant1" {
-			t.Errorf("Expected tenant1 Name to be 'Tenant1', got '%s'", tenant1Cfg.Name)
-		}
-		if tenant1Cfg.Environment != "test" {
-			t.Errorf("Expected tenant1 Environment to be 'test', got '%s'", tenant1Cfg.Environment)
-		}
-		if !tenant1Cfg.Features["feature1"] {
-			t.Errorf("Expected tenant1 Features['feature1'] to be true")
-		}
-	}
-
-	tenant2ID := TenantID("tenant2")
-	tenant2Cfg, exists := tm.tenantConfigs[tenant2ID]
-	if !exists {
-		t.Errorf("Expected tenant2 config to be loaded")
-	} else {
-		if tenant2Cfg.Name != "Tenant2" {
-			t.Errorf("Expected tenant2 Name to be 'Tenant2', got '%s'", tenant2Cfg.Name)
-		}
-		if tenant2Cfg.Environment != "production" {
-			t.Errorf("Expected tenant2 Environment to be 'production', got '%s'", tenant2Cfg.Environment)
-		}
-		if tenant2Cfg.Features["feature1"] {
-			t.Errorf("Expected tenant2 Features['feature1'] to be false")
-		}
-	}
+	verifyTenantConfig(t, tm, TenantID("tenant1"), "Tenant1", "test", "feature1", true)
+	verifyTenantConfig(t, tm, TenantID("tenant2"), "Tenant2", "production", "feature1", false)
 
 	// Test tenant removal
-	err = tenantService.RemoveTenant(tenant1ID)
-	if err != nil {
+	if err := tenantService.RemoveTenant(TenantID("tenant1")); err != nil {
 		t.Errorf("Failed to remove tenant: %v", err)
 	}
 

@@ -22,18 +22,13 @@ type AnotherTestConfig struct {
 	Timeout        int    `yaml:"Timeout"`
 }
 
-func TestFileBasedTenantConfigLoader(t *testing.T) {
+// setupTestConfigFiles creates temporary tenant configuration files for testing
+func setupTestConfigFiles(t *testing.T) string {
 	// Create a temporary directory for test config files
 	tempDir, err := os.MkdirTemp("", "tenant-config-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer func(path string) {
-		err := os.RemoveAll(path)
-		if err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
-		}
-	}(tempDir)
 
 	// Create test JSON config file
 	tenant1Config := `{
@@ -76,7 +71,11 @@ ApiConfig:
 		t.Fatalf("Failed to write tenant2.yaml: %v", err)
 	}
 
-	// Create an application and tenant service
+	return tempDir
+}
+
+// setupTenantServices creates application and tenant services for testing
+func setupTenantServices(t *testing.T) (Application, *StandardTenantService) {
 	log := &logger{t}
 	app := NewStdApplication(NewStdConfigProvider(nil), log)
 
@@ -85,6 +84,15 @@ ApiConfig:
 	app.RegisterConfigSection("ApiConfig", NewStdConfigProvider(&AnotherTestConfig{}))
 
 	tenantService := NewStandardTenantService(log)
+	return app, tenantService
+}
+
+// TestFileBasedTenantConfigLoader tests loading tenant configurations from files
+func TestFileBasedTenantConfigLoader(t *testing.T) {
+	tempDir := setupTestConfigFiles(t)
+	defer os.RemoveAll(tempDir)
+
+	app, tenantService := setupTenantServices(t)
 
 	// Create a file-based tenant config loader
 	loader := NewFileBasedTenantConfigLoader(TenantConfigParams{
@@ -93,7 +101,7 @@ ApiConfig:
 	})
 
 	// Test loading tenant configurations
-	err = loader.LoadTenantConfigurations(app, tenantService)
+	err := loader.LoadTenantConfigurations(app, tenantService)
 	if err != nil {
 		t.Fatalf("Failed to load tenant configurations: %v", err)
 	}
@@ -104,66 +112,84 @@ ApiConfig:
 		t.Errorf("Expected 2 tenants, got %d", len(tenants))
 	}
 
-	// Check tenant1 configs
+	// Verify each tenant's configurations
+	verifyTenant1Config(t, tenantService)
+	verifyTenant2Config(t, tenantService)
+}
+
+// verifyTenant1Config verifies the configuration for tenant1
+func verifyTenant1Config(t *testing.T, tenantService *StandardTenantService) {
 	tenant1ID := TenantID("tenant1")
+
+	// Check TestConfig
 	testConfigProvider, err := tenantService.GetTenantConfig(tenant1ID, "TestConfig")
 	if err != nil {
 		t.Errorf("Failed to get TestConfig for tenant1: %v", err)
-	} else {
-		testConfig, ok := testConfigProvider.GetConfig().(*TestTenantConfig)
-		if !ok {
-			t.Errorf("Expected *TestTenantConfig, got %T", testConfigProvider.GetConfig())
-		} else {
-			if testConfig.Name != "Tenant1" {
-				t.Errorf("Expected Name 'Tenant1', got '%s'", testConfig.Name)
-			}
-			if testConfig.Environment != "test" {
-				t.Errorf("Expected Environment 'test', got '%s'", testConfig.Environment)
-			}
-			if !testConfig.Features["feature1"] {
-				t.Errorf("Expected Features['feature1'] to be true")
-			}
-		}
+		return
 	}
 
+	testConfig, ok := testConfigProvider.GetConfig().(*TestTenantConfig)
+	if !ok {
+		t.Errorf("Expected *TestTenantConfig, got %T", testConfigProvider.GetConfig())
+		return
+	}
+
+	if testConfig.Name != "Tenant1" {
+		t.Errorf("Expected Name 'Tenant1', got '%s'", testConfig.Name)
+	}
+	if testConfig.Environment != "test" {
+		t.Errorf("Expected Environment 'test', got '%s'", testConfig.Environment)
+	}
+	if !testConfig.Features["feature1"] {
+		t.Errorf("Expected Features['feature1'] to be true")
+	}
+
+	// Check ApiConfig
 	apiConfigProvider, err := tenantService.GetTenantConfig(tenant1ID, "ApiConfig")
 	if err != nil {
 		t.Errorf("Failed to get ApiConfig for tenant1: %v", err)
-	} else {
-		apiConfig, ok := apiConfigProvider.GetConfig().(*AnotherTestConfig)
-		if !ok {
-			t.Errorf("Expected *AnotherTestConfig, got %T", apiConfigProvider.GetConfig())
-		} else {
-			if apiConfig.ApiKey != "tenant1-api-key" {
-				t.Errorf("Expected ApiKey 'tenant1-api-key', got '%s'", apiConfig.ApiKey)
-			}
-			if apiConfig.MaxConnections != 10 {
-				t.Errorf("Expected MaxConnections 10, got %d", apiConfig.MaxConnections)
-			}
-		}
+		return
 	}
 
-	// Check tenant2 configs
+	apiConfig, ok := apiConfigProvider.GetConfig().(*AnotherTestConfig)
+	if !ok {
+		t.Errorf("Expected *AnotherTestConfig, got %T", apiConfigProvider.GetConfig())
+		return
+	}
+
+	if apiConfig.ApiKey != "tenant1-api-key" {
+		t.Errorf("Expected ApiKey 'tenant1-api-key', got '%s'", apiConfig.ApiKey)
+	}
+	if apiConfig.MaxConnections != 10 {
+		t.Errorf("Expected MaxConnections 10, got %d", apiConfig.MaxConnections)
+	}
+}
+
+// verifyTenant2Config verifies the configuration for tenant2
+func verifyTenant2Config(t *testing.T, tenantService *StandardTenantService) {
 	tenant2ID := TenantID("tenant2")
-	testConfigProvider, err = tenantService.GetTenantConfig(tenant2ID, "TestConfig")
+
+	testConfigProvider, err := tenantService.GetTenantConfig(tenant2ID, "TestConfig")
 	if err != nil {
 		t.Errorf("Failed to get TestConfig for tenant2: %v", err)
-	} else {
-		testConfig, ok := testConfigProvider.GetConfig().(*TestTenantConfig)
-		if !ok {
-			t.Errorf("Expected *TestTenantConfig, got %T", testConfigProvider.GetConfig())
-		} else {
-			t.Logf("Got TestConfig for tenant2 of type %T", testConfig)
-			if testConfig.Name != "Tenant2" {
-				t.Errorf("Expected Name 'Tenant2', got '%s'", testConfig.Name)
-			}
-			if testConfig.Environment != "production" {
-				t.Errorf("Expected Environment 'production', got '%s'", testConfig.Environment)
-			}
-			if testConfig.Features["feature1"] {
-				t.Errorf("Expected Features['feature1'] to be false")
-			}
-		}
+		return
+	}
+
+	testConfig, ok := testConfigProvider.GetConfig().(*TestTenantConfig)
+	if !ok {
+		t.Errorf("Expected *TestTenantConfig, got %T", testConfigProvider.GetConfig())
+		return
+	}
+
+	t.Logf("Got TestConfig for tenant2 of type %T", testConfig)
+	if testConfig.Name != "Tenant2" {
+		t.Errorf("Expected Name 'Tenant2', got '%s'", testConfig.Name)
+	}
+	if testConfig.Environment != "production" {
+		t.Errorf("Expected Environment 'production', got '%s'", testConfig.Environment)
+	}
+	if testConfig.Features["feature1"] {
+		t.Errorf("Expected Features['feature1'] to be false")
 	}
 }
 

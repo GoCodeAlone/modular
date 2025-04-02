@@ -32,7 +32,12 @@ jobs:
       - name: Run tests with coverage
         run: |
           go test ./... -v
-          go test -v -coverprofile=coverage.out -covermode=atomic -json ./... >> report.json
+          go test -v -coverprofile=coverage.txt -covermode=atomic -json ./... >> report.json
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: CTRF Test Output
         run: |
