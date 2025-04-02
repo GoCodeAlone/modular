@@ -15,6 +15,28 @@ type AppRegistry interface {
 	SvcRegistry() ServiceRegistry
 }
 
+type Application interface {
+	ConfigProvider() ConfigProvider
+	SvcRegistry() ServiceRegistry
+	RegisterModule(module Module)
+	RegisterConfigSection(section string, cp ConfigProvider)
+	ConfigSections() map[string]ConfigProvider
+	GetConfigSection(section string) (ConfigProvider, error)
+	RegisterService(name string, service any) error
+	GetService(name string, target any) error
+	Init() error
+	Start() error
+	Stop() error
+	Run() error
+	Logger() Logger
+}
+
+type TenantApplication interface {
+	GetTenantService() (TenantService, error)
+	WithTenant(tenantID TenantID) (*TenantContext, error)
+	GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error)
+}
+
 // StdApplication represents the core StdApplication container
 type StdApplication struct {
 	cfgProvider    ConfigProvider
@@ -437,26 +459,4 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 		return nil, err
 	}
 	return ts.GetTenantConfig(tenantID, section)
-}
-
-type Application interface {
-	ConfigProvider() ConfigProvider
-	SvcRegistry() ServiceRegistry
-	RegisterModule(module Module)
-	RegisterConfigSection(section string, cp ConfigProvider)
-	ConfigSections() map[string]ConfigProvider
-	GetConfigSection(section string) (ConfigProvider, error)
-	RegisterService(name string, service any) error
-	GetService(name string, target any) error
-	Init() error
-	Start() error
-	Stop() error
-	Run() error
-	Logger() Logger
-}
-
-type TenantApplication interface {
-	GetTenantService() (TenantService, error)
-	WithTenant(tenantID TenantID) (*TenantContext, error)
-	GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error)
 }
