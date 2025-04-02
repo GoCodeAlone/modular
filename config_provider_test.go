@@ -1,12 +1,13 @@
 package modular
 
 import (
-	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type testCfg struct {
@@ -26,12 +27,18 @@ type MockComplexFeeder struct {
 
 func (m *MockComplexFeeder) Feed(structure interface{}) error {
 	args := m.Called(structure)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock feeder error: %w", err)
+	}
+	return nil
 }
 
 func (m *MockComplexFeeder) FeedKey(key string, target interface{}) error {
 	args := m.Called(key, target)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock feeder key error: %w", err)
+	}
+	return nil
 }
 
 func TestNewStdConfigProvider(t *testing.T) {
@@ -79,7 +86,7 @@ type testSetupCfg struct {
 func (t *testSetupCfg) Setup() error {
 	t.setupCalled = true
 	if t.shouldError {
-		return errors.New("setup error")
+		return ErrSetupFailed
 	}
 	return nil
 }
@@ -111,7 +118,7 @@ func TestConfig_Feed(t *testing.T) {
 			setupConfig: func() (*Config, *MockComplexFeeder) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
-				feeder.On("Feed", mock.Anything).Return(errors.New("feed error"))
+				feeder.On("Feed", mock.Anything).Return(ErrFeedFailed)
 				cfg.AddFeeder(feeder)
 				cfg.AddStruct(&testCfg{})
 				return cfg, feeder
@@ -125,7 +132,7 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
-				feeder.On("FeedKey", "test", mock.Anything).Return(errors.New("feedKey error"))
+				feeder.On("FeedKey", "test", mock.Anything).Return(ErrFeedKeyFailed)
 				cfg.AddFeeder(feeder)
 				cfg.AddStruct(&testCfg{})
 				cfg.AddStructKey("test", &testCfg{})
@@ -133,7 +140,7 @@ func TestConfig_Feed(t *testing.T) {
 			},
 			expectFeedErr:  true,
 			expectKeyErr:   true,
-			expectedErrMsg: "config: feeder error: feedKey error",
+			expectedErrMsg: "feeder error",
 		},
 		{
 			name: "setup success",
@@ -162,7 +169,7 @@ func TestConfig_Feed(t *testing.T) {
 				return cfg, feeder
 			},
 			expectFeedErr:  true,
-			expectedErrMsg: "config: setup error for test: setup error",
+			expectedErrMsg: "config: setup error for test",
 		},
 	}
 
@@ -173,10 +180,10 @@ func TestConfig_Feed(t *testing.T) {
 			err := cfg.Feed()
 
 			if tt.expectFeedErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				// Check if setup was called when using testSetupCfg
 				if setupCfg, ok := cfg.StructKeys["test"].(*testSetupCfg); ok {
 					assert.True(t, setupCfg.setupCalled)
@@ -193,8 +200,8 @@ func Test_createTempConfig(t *testing.T) {
 		originalCfg := &testCfg{Str: "test", Num: 42}
 		tempCfg, info, err := createTempConfig(originalCfg)
 
-		assert.NotNil(t, tempCfg)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		require.NotNil(t, tempCfg)
 		assert.True(t, info.isPtr)
 		assert.Equal(t, reflect.ValueOf(originalCfg).Type(), info.tempVal.Type())
 	})
@@ -203,10 +210,10 @@ func Test_createTempConfig(t *testing.T) {
 		originalCfg := testCfg{Str: "test", Num: 42}
 		tempCfg, info, err := createTempConfig(originalCfg)
 
-		assert.NotNil(t, tempCfg)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		require.NotNil(t, tempCfg)
 		assert.False(t, info.isPtr)
-		assert.Equal(t, reflect.PtrTo(reflect.ValueOf(originalCfg).Type()), info.tempVal.Type())
+		assert.Equal(t, reflect.PointerTo(reflect.ValueOf(originalCfg).Type()), info.tempVal.Type())
 	})
 }
 
@@ -216,7 +223,7 @@ func Test_updateConfig(t *testing.T) {
 		tempCfg := &testCfg{Str: "new", Num: 42}
 
 		mockLogger := new(MockLogger)
-		app := &Application{logger: mockLogger}
+		app := &StdApplication{logger: mockLogger}
 
 		provider := ConfigProvider(NewStdConfigProvider(originalCfg))
 		origInfo := configInfo{
@@ -235,13 +242,13 @@ func Test_updateConfig(t *testing.T) {
 	t.Run("with non-pointer config", func(t *testing.T) {
 		originalCfg := testCfg{Str: "old", Num: 0}
 		tempCfgPtr, origInfo, err := createTempConfig(originalCfg)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		tempCfgPtr.(*testCfg).Str = "new"
 		tempCfgPtr.(*testCfg).Num = 42
 
 		mockLogger := new(MockLogger)
-		mockLogger.On("Info", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
-		app := &Application{logger: mockLogger}
+		mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
+		app := &StdApplication{logger: mockLogger}
 
 		provider := ConfigProvider(NewStdConfigProvider(originalCfg))
 
@@ -249,7 +256,7 @@ func Test_updateConfig(t *testing.T) {
 
 		// Check a new provider was created with the expected values
 		updated := provider.GetConfig()
-		assert.True(t, reflect.ValueOf(updated).Kind() == reflect.Struct)
+		assert.Equal(t, reflect.Struct, reflect.ValueOf(updated).Kind())
 		assert.Equal(t, "new", updated.(testCfg).Str)
 		assert.Equal(t, 42, updated.(testCfg).Num)
 		mockLogger.AssertExpectations(t)
@@ -262,7 +269,7 @@ func Test_updateSectionConfig(t *testing.T) {
 		tempCfg := &testSectionCfg{Enabled: true, Name: "new"}
 
 		mockLogger := new(MockLogger)
-		app := &Application{
+		app := &StdApplication{
 			logger:      mockLogger,
 			cfgSections: make(map[string]ConfigProvider),
 		}
@@ -284,16 +291,16 @@ func Test_updateSectionConfig(t *testing.T) {
 	t.Run("with non-pointer section config", func(t *testing.T) {
 		originalCfg := testSectionCfg{Enabled: false, Name: "old"}
 		tempCfgPtr, sectionInfo, err := createTempConfig(originalCfg)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Cast and update the temp config
 		tempCfgPtr.(*testSectionCfg).Enabled = true
 		tempCfgPtr.(*testSectionCfg).Name = "new"
 
 		mockLogger := new(MockLogger)
-		mockLogger.On("Info", "Creating new provider for section", []interface{}{"section", "test"}).Return()
+		mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "test"}).Return()
 
-		app := &Application{
+		app := &StdApplication{
 			logger:      mockLogger,
 			cfgSections: make(map[string]ConfigProvider),
 		}
@@ -316,16 +323,21 @@ func Test_loadAppConfig(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setupApp       func() *Application
+		setupApp       func() *StdApplication
 		setupFeeders   func() []Feeder
 		expectError    bool
-		validateResult func(t *testing.T, app *Application)
+		validateResult func(t *testing.T, app *StdApplication)
 	}{
 		{
 			name: "successful config load",
-			setupApp: func() *Application {
+			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
-				app := &Application{
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated main config", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated section config", mock.Anything).Return()
+
+				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(&testCfg{Str: "old", Num: 0}),
 					cfgSections: make(map[string]ConfigProvider),
@@ -350,7 +362,7 @@ func Test_loadAppConfig(t *testing.T) {
 				return []Feeder{feeder}
 			},
 			expectError: false,
-			validateResult: func(t *testing.T, app *Application) {
+			validateResult: func(t *testing.T, app *StdApplication) {
 				mainCfg := app.cfgProvider.GetConfig().(*testCfg)
 				assert.Equal(t, "updated", mainCfg.Str)
 				assert.Equal(t, 42, mainCfg.Num)
@@ -362,9 +374,10 @@ func Test_loadAppConfig(t *testing.T) {
 		},
 		{
 			name: "feed error",
-			setupApp: func() *Application {
+			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
-				app := &Application{
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(&testCfg{Str: "old", Num: 0}),
 					cfgSections: make(map[string]ConfigProvider),
@@ -373,11 +386,11 @@ func Test_loadAppConfig(t *testing.T) {
 			},
 			setupFeeders: func() []Feeder {
 				feeder := new(MockComplexFeeder)
-				feeder.On("Feed", mock.Anything).Return(errors.New("feed error"))
+				feeder.On("Feed", mock.Anything).Return(ErrFeedFailed)
 				return []Feeder{feeder}
 			},
 			expectError: true,
-			validateResult: func(t *testing.T, app *Application) {
+			validateResult: func(t *testing.T, app *StdApplication) {
 				// Config should remain unchanged
 				mainCfg := app.cfgProvider.GetConfig().(*testCfg)
 				assert.Equal(t, "old", mainCfg.Str)
@@ -386,9 +399,11 @@ func Test_loadAppConfig(t *testing.T) {
 		},
 		{
 			name: "feedKey error",
-			setupApp: func() *Application {
+			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
-				app := &Application{
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
+				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(&testCfg{Str: "old", Num: 0}),
 					cfgSections: make(map[string]ConfigProvider),
@@ -399,11 +414,11 @@ func Test_loadAppConfig(t *testing.T) {
 			setupFeeders: func() []Feeder {
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
-				feeder.On("FeedKey", "section1", mock.Anything).Return(errors.New("feedKey error"))
+				feeder.On("FeedKey", "section1", mock.Anything).Return(ErrFeedKeyFailed)
 				return []Feeder{feeder}
 			},
 			expectError: true,
-			validateResult: func(t *testing.T, app *Application) {
+			validateResult: func(t *testing.T, app *StdApplication) {
 				// Configs should remain unchanged
 				mainCfg := app.cfgProvider.GetConfig().(*testCfg)
 				assert.Equal(t, "old", mainCfg.Str)
@@ -414,12 +429,16 @@ func Test_loadAppConfig(t *testing.T) {
 		},
 		{
 			name: "non-pointer configs",
-			setupApp: func() *Application {
+			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
-				mockLogger.On("Info", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
-				mockLogger.On("Info", "Creating new provider for section", []interface{}{"section", "section1"}).Return()
+				mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
+				mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "section1"}).Return()
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated main config", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated section config", mock.Anything).Return()
 
-				app := &Application{
+				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(testCfg{Str: "old", Num: 0}), // non-pointer
 					cfgSections: make(map[string]ConfigProvider),
@@ -442,7 +461,7 @@ func Test_loadAppConfig(t *testing.T) {
 				return []Feeder{feeder}
 			},
 			expectError: false,
-			validateResult: func(t *testing.T, app *Application) {
+			validateResult: func(t *testing.T, app *StdApplication) {
 				mainCfg := app.cfgProvider.GetConfig()
 				assert.Equal(t, "updated", mainCfg.(testCfg).Str)
 				assert.Equal(t, 42, mainCfg.(testCfg).Num)
@@ -462,9 +481,9 @@ func Test_loadAppConfig(t *testing.T) {
 			err := loadAppConfig(app)
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				tt.validateResult(t, app)
 			}
 

@@ -7,7 +7,7 @@ import (
 )
 
 // LoadAppConfigFunc is the function type for loading application configuration
-type LoadAppConfigFunc func(*Application) error
+type LoadAppConfigFunc func(*StdApplication) error
 
 // AppConfigLoader is the default implementation that can be replaced in tests
 var AppConfigLoader LoadAppConfigFunc = loadAppConfig
@@ -42,13 +42,12 @@ func NewConfig() *Config {
 
 func (c *Config) AddStructKey(key string, target interface{}) *Config {
 	c.StructKeys[key] = target
-
 	return c
 }
 
 func (c *Config) Feed() error {
 	if err := c.Config.Feed(); err != nil {
-		return err
+		return fmt.Errorf("config feed error: %w", err)
 	}
 
 	for key, target := range c.StructKeys {
@@ -59,13 +58,13 @@ func (c *Config) Feed() error {
 			}
 
 			if err := cf.FeedKey(key, target); err != nil {
-				return fmt.Errorf("config: feeder error: %v", err)
+				return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
 			}
 		}
 
 		if setupable, ok := target.(ConfigSetup); ok {
 			if err := setupable.Setup(); err != nil {
-				return fmt.Errorf("config: setup error for %s: %v", key, err)
+				return fmt.Errorf("%w for %s", ErrConfigSetupError, key)
 			}
 		}
 	}
@@ -79,10 +78,10 @@ type ConfigSetup interface {
 	Setup() error
 }
 
-func loadAppConfig(app *Application) error {
+func loadAppConfig(app *StdApplication) error {
 	// Guard against nil application
 	if app == nil {
-		return fmt.Errorf("application is nil")
+		return ErrApplicationNil
 	}
 
 	// Skip if no ConfigFeeders are defined
@@ -97,7 +96,11 @@ func loadAppConfig(app *Application) error {
 		cfgBuilder.AddFeeder(feeder)
 	}
 
-	// Handle main app config if provided
+	// Process main app config and all sections
+	hasConfigs := false
+	tempConfigs := make(map[string]configInfo)
+
+	// Process main app config if provided
 	if app.cfgProvider != nil {
 		mainCfg := app.cfgProvider.GetConfig()
 		if mainCfg == nil {
@@ -109,22 +112,14 @@ func loadAppConfig(app *Application) error {
 			}
 
 			cfgBuilder.AddStruct(tempMainCfg)
+			tempConfigs["main"] = mainCfgInfo
+			hasConfigs = true
 
-			// Feed the config
-			if err := cfgBuilder.Feed(); err != nil {
-				return err
-			}
-
-			// Update main app config
-			updateConfig(app, &app.cfgProvider, mainCfgInfo)
+			app.logger.Debug("Added main config for loading", "type", reflect.TypeOf(mainCfg))
 		}
 	}
 
 	// Process registered sections
-	sectionInfos := make(map[string]configInfo)
-	hasValidSections := false
-
-	// Create temporary structs for all registered sections
 	for sectionKey, provider := range app.cfgSections {
 		if provider == nil {
 			app.logger.Warn("Skipping nil config provider", "section", sectionKey)
@@ -142,21 +137,37 @@ func loadAppConfig(app *Application) error {
 			return fmt.Errorf("failed to create temp config for section %s: %w", sectionKey, err)
 		}
 
-		sectionInfos[sectionKey] = sectionInfo
 		cfgBuilder.AddStructKey(sectionKey, tempSectionCfg)
-		hasValidSections = true
+		tempConfigs[sectionKey] = sectionInfo
+		hasConfigs = true
+
+		app.logger.Debug("Added section config for loading", "section", sectionKey, "type", reflect.TypeOf(sectionCfg))
 	}
 
-	// Feed the config for sections if any exist
-	if hasValidSections {
-		if err := cfgBuilder.Feed(); err != nil {
-			return err
-		}
+	// If no valid configs found, return early
+	if !hasConfigs {
+		app.logger.Info("No valid configs found, skipping config loading")
+		return nil
+	}
 
-		// Update all section configs
-		for sectionKey, info := range sectionInfos {
-			updateSectionConfig(app, sectionKey, info)
+	// Feed all configs at once
+	if err := cfgBuilder.Feed(); err != nil {
+		return err
+	}
+
+	// Update all configs with newly populated values
+	if mainInfo, exists := tempConfigs["main"]; exists {
+		updateConfig(app, &app.cfgProvider, mainInfo)
+		app.logger.Debug("Updated main config")
+	}
+
+	// Update section configs
+	for sectionKey, info := range tempConfigs {
+		if sectionKey == "main" {
+			continue
 		}
+		updateSectionConfig(app, sectionKey, info)
+		app.logger.Debug("Updated section config", "section", sectionKey)
 	}
 
 	return nil
@@ -170,10 +181,9 @@ type configInfo struct {
 }
 
 // createTempConfig creates a temporary config for feeding values
-// Returns error if cfg is nil
 func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	if cfg == nil {
-		return nil, configInfo{}, fmt.Errorf("cannot create temp config: config is nil")
+		return nil, configInfo{}, ErrConfigNil
 	}
 
 	cfgValue := reflect.ValueOf(cfg)
@@ -182,7 +192,7 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	var targetType reflect.Type
 	if isPtr {
 		if cfgValue.IsNil() {
-			return nil, configInfo{}, fmt.Errorf("cannot create temp config: config pointer is nil")
+			return nil, configInfo{}, ErrConfigNilPointer
 		}
 		targetType = cfgValue.Elem().Type()
 	} else {
@@ -198,20 +208,20 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	}, nil
 }
 
-func updateConfig(app *Application, provider *ConfigProvider, info configInfo) {
+func updateConfig(app *StdApplication, provider *ConfigProvider, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {
-		app.logger.Info("Creating new provider with updated config (original was non-pointer)")
+		app.logger.Debug("Creating new provider with updated config (original was non-pointer)")
 		*provider = NewStdConfigProvider(info.tempVal.Elem().Interface())
 	}
 }
 
-func updateSectionConfig(app *Application, sectionKey string, info configInfo) {
+func updateSectionConfig(app *StdApplication, sectionKey string, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {
-		app.logger.Info("Creating new provider for section", "section", sectionKey)
+		app.logger.Debug("Creating new provider for section", "section", sectionKey)
 		app.cfgSections[sectionKey] = NewStdConfigProvider(info.tempVal.Elem().Interface())
 	}
 }

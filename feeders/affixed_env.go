@@ -10,6 +10,9 @@ import (
 	"unsafe"
 )
 
+var ErrEnvInvalidStructure = errors.New("env: invalid structure")
+var ErrEnvEmptyPrefixAndSuffix = errors.New("env: prefix or suffix cannot be empty")
+
 // AffixedEnvFeeder is a feeder that reads environment variables with a prefix and/or suffix
 type AffixedEnvFeeder struct {
 	Prefix string
@@ -30,13 +33,13 @@ func (f AffixedEnvFeeder) Feed(structure interface{}) error {
 		}
 	}
 
-	return errors.New("env: invalid structure")
+	return ErrEnvInvalidStructure
 }
 
 // fillStruct sets struct fields from environment variables
 func fillStruct(rv reflect.Value, prefix, suffix string) error {
 	if prefix == "" && suffix == "" {
-		return errors.New("env: prefix or suffix cannot be empty")
+		return ErrEnvEmptyPrefixAndSuffix
 	}
 
 	prefix = strings.ToUpper(prefix)
@@ -64,12 +67,16 @@ func processField(field reflect.Value, fieldType reflect.StructField, prefix, su
 	switch field.Kind() {
 	case reflect.Struct:
 		return processStructFields(field, prefix, suffix)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if !field.IsZero() && field.Elem().Kind() == reflect.Struct {
 			return processStructFields(field.Elem(), prefix, suffix)
 		}
-	default:
-		// Check for env tag
+	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16,
+		reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128, reflect.Array, reflect.Chan, reflect.Func,
+		reflect.Interface, reflect.Map, reflect.Slice, reflect.String, reflect.UnsafePointer:
+		// Check for env tag for primitive types and other non-struct types
 		if envTag, exists := fieldType.Tag.Lookup("env"); exists {
 			return setFieldFromEnv(field, envTag, prefix, suffix)
 		}

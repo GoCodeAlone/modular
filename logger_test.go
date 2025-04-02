@@ -1,7 +1,11 @@
 package modular
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/mock"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -9,20 +13,40 @@ type logger struct {
 	t *testing.T
 }
 
+func (l *logger) getCallerInfo() string {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return "unknown"
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = "."
+	}
+	relPath, err := filepath.Rel(wd, file)
+	if err != nil {
+		relPath = file
+	}
+	return fmt.Sprintf("%s:%d", relPath, line)
+}
+
 func (l *logger) Info(msg string, args ...any) {
-	l.t.Log(msg, args)
+	dir := l.getCallerInfo()
+	l.t.Log(fmt.Sprintf("[%s] %s", dir, msg), args)
 }
 
 func (l *logger) Error(msg string, args ...any) {
-	l.t.Error(msg, args)
+	dir := l.getCallerInfo()
+	l.t.Error(fmt.Sprintf("[%s] %s", dir, msg), args)
 }
 
 func (l *logger) Warn(msg string, args ...any) {
-	l.t.Error(msg, args)
+	dir := l.getCallerInfo()
+	l.t.Log(fmt.Sprintf("[%s] %s", dir, msg), args)
 }
 
 func (l *logger) Debug(msg string, args ...any) {
-	l.t.Log(msg, args)
+	dir := l.getCallerInfo()
+	l.t.Log(fmt.Sprintf("[%s] %s", dir, msg), args)
 }
 
 // MockLogger

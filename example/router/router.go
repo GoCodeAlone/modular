@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"fmt"
 	"github.com/GoCodeAlone/modular"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,7 +13,7 @@ const configSection = "router"
 type Router = chi.Router
 
 type Module struct {
-	app    *modular.Application
+	app    modular.Application
 	config *Config
 	router Router
 }
@@ -29,13 +28,13 @@ type Config struct {
 	RoutePrefix string
 }
 
-func (m *Module) RegisterConfig(app *modular.Application) {
+func (m *Module) RegisterConfig(app modular.Application) {
 	app.RegisterConfigSection(configSection, modular.NewStdConfigProvider(&Config{
 		RoutePrefix: "/",
 	}))
 }
 
-func (m *Module) Init(app *modular.Application) error {
+func (m *Module) Init(app modular.Application) error {
 	m.router.Use(middleware.RequestID)
 	m.router.Use(middleware.RealIP)
 	m.router.Use(middleware.Logger)
@@ -54,7 +53,7 @@ func (m *Module) Init(app *modular.Application) error {
 	return nil
 }
 
-func (m *Module) Start(ctx context.Context) error {
+func (m *Module) Start(context.Context) error {
 	// print routes
 	err := chi.Walk(m.router, func(method, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
 		m.app.Logger().Info("Route", "method", method, "route", route)
@@ -67,7 +66,7 @@ func (m *Module) Start(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(context.Context) error {
 	return nil
 }
 
@@ -80,7 +79,6 @@ func (m *Module) Dependencies() []string {
 }
 
 func (m *Module) ProvidesServices() []modular.ServiceProvider {
-	fmt.Printf("router: %v\n", m.router)
 	return []modular.ServiceProvider{
 		{Name: "router", Description: "HTTP RouterModule", Instance: m.router},
 		{Name: "routerService", Description: "Router Service Interface", Instance: m.router},

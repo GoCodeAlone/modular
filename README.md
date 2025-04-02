@@ -14,6 +14,7 @@ Modular is a package that provides a structured way to create modular applicatio
 - **Service registry**: Register and retrieve application services
 - **Configuration management**: Handle configuration for modules and services
 - **Dependency injection**: Inject required services into modules
+- **Multi-tenancy support**: Build applications that serve multiple tenants with isolated configurations
 
 ## Installation
 
@@ -178,6 +179,122 @@ func (c *AppConfig) Setup() error {
 }
 ```
 
+## Multi-Tenant Support
+
+Modular provides built-in support for multi-tenant applications through:
+
+### Tenant Contexts
+
+```go
+// Creating a tenant context
+tenantID := modular.TenantID("tenant1")
+ctx := modular.NewTenantContext(context.Background(), tenantID)
+
+// Using tenant context with the application
+tenantCtx, err := app.WithTenant(tenantID)
+if err != nil {
+    log.Fatal("Failed to create tenant context:", err)
+}
+
+// Extract tenant ID from a context
+if id, ok := modular.GetTenantIDFromContext(ctx); ok {
+    fmt.Println("Current tenant:", id)
+}
+```
+
+### Tenant-Aware Configuration
+
+```go
+// Register a tenant service in your module
+func (m *MultiTenantModule) ProvidesServices() []modular.ServiceProvider {
+    return []modular.ServiceProvider{
+        {
+            Name:        "tenantService",
+            Description: "Tenant management service",
+            Instance:    modular.NewStandardTenantService(m.logger),
+        },
+        {
+            Name:        "tenantConfigLoader",
+            Description: "Tenant configuration loader",
+            Instance:    modular.DefaultTenantConfigLoader("./configs/tenants"),
+        },
+    }
+}
+
+// Create tenant-aware configuration
+func (m *MultiTenantModule) RegisterConfig(app *modular.Application) {
+    // Default config
+    defaultConfig := &MyConfig{
+        Setting: "default",
+    }
+    
+    // Get tenant service (must be provided by another module)
+    var tenantService modular.TenantService
+    app.GetService("tenantService", &tenantService)
+    
+    // Create tenant-aware config provider
+    tenantAwareConfig := modular.NewTenantAwareConfig(
+        modular.NewStdConfigProvider(defaultConfig),
+        tenantService,
+        "mymodule",
+    )
+    
+    app.RegisterConfigSection("mymodule", tenantAwareConfig)
+}
+
+// Using tenant-aware configs in your code
+func (m *MultiTenantModule) ProcessRequestWithTenant(ctx context.Context) {
+    // Get config specific to the tenant in the context
+    config, ok := m.config.(*modular.TenantAwareConfig)
+    if !ok {
+        // Handle non-tenant-aware config
+        return
+    }
+    
+    // Get tenant-specific configuration
+    myConfig := config.GetConfigWithContext(ctx).(*MyConfig)
+    
+    // Use tenant-specific settings
+    fmt.Println("Tenant setting:", myConfig.Setting)
+}
+```
+
+### Tenant-Aware Modules
+
+```go
+// Implement the TenantAwareModule interface
+type MultiTenantModule struct {
+    modular.Module
+    tenantData map[modular.TenantID]*TenantData
+}
+
+func (m *MultiTenantModule) OnTenantRegistered(tenantID modular.TenantID) {
+    // Initialize resources for this tenant
+    m.tenantData[tenantID] = &TenantData{
+        initialized: true,
+    }
+}
+
+func (m *MultiTenantModule) OnTenantRemoved(tenantID modular.TenantID) {
+    // Clean up tenant resources
+    delete(m.tenantData, tenantID)
+}
+```
+
+### Loading Tenant Configurations
+
+```go
+// Set up a file-based tenant config loader
+configLoader := modular.NewFileBasedTenantConfigLoader(modular.TenantConfigParams{
+    ConfigNameRegex: regexp.MustCompile("^tenant-[\\w-]+\\.(json|yaml)$"),
+    ConfigDir:       "./configs/tenants",
+    ConfigFeeders:   []modular.Feeder{},
+})
+
+// Register the loader as a service
+app.RegisterService("tenantConfigLoader", configLoader)
+```
+
 ## Key Interfaces
 
 ### Module
@@ -194,6 +311,30 @@ type Module interface {
     Dependencies() []string
     ProvidesServices() []ServiceProvider
     RequiresServices() []ServiceDependency
+}
+```
+
+### TenantAwareModule
+
+Interface for modules that need to respond to tenant lifecycle events:
+
+```go
+type TenantAwareModule interface {
+    Module
+    OnTenantRegistered(tenantID TenantID)
+    OnTenantRemoved(tenantID TenantID)
+}
+```
+
+### TenantService
+
+Interface for managing tenants:
+
+```go
+type TenantService interface {
+    GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error)
+    GetTenants() []TenantID
+    RegisterTenant(tenantID TenantID, configs map[string]ConfigProvider) error
 }
 ```
 
