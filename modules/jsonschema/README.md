@@ -20,7 +20,7 @@ The JSON Schema module provides a service for validating JSON data against JSON 
 ## Installation
 
 ```bash
-go get github.com/GoCodeAlone/modular/modules/jsonschema
+GOPROXY=direct go get github.com/GoCodeAlone/modular/modules/jsonschema@jsonchema/v1.0.0
 ```
 
 ## Usage
