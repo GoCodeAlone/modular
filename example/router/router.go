@@ -13,7 +13,7 @@ const configSection = "router"
 type Router = chi.Router
 
 type Module struct {
-	app    *modular.StdApplication
+	app    modular.Application
 	config *Config
 	router Router
 }
@@ -53,7 +53,7 @@ func (m *Module) Init(app modular.Application) error {
 	return nil
 }
 
-func (m *Module) Start(ctx context.Context) error {
+func (m *Module) Start(context.Context) error {
 	// print routes
 	err := chi.Walk(m.router, func(method, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
 		m.app.Logger().Info("Route", "method", method, "route", route)
@@ -66,7 +66,7 @@ func (m *Module) Start(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(context.Context) error {
 	return nil
 }
 

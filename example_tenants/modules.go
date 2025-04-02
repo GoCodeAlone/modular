@@ -52,12 +52,12 @@ func (w *WebServer) Init(app modular.Application) error {
 	return nil
 }
 
-func (w *WebServer) Start(ctx context.Context) error {
+func (w *WebServer) Start(context.Context) error {
 	w.logger.Info("WebServer started", "port", w.config.Port)
 	return nil
 }
 
-func (w *WebServer) Stop(ctx context.Context) error {
+func (w *WebServer) Stop(context.Context) error {
 	w.logger.Info("WebServer stopped")
 	return nil
 }
@@ -79,7 +79,7 @@ func (r *Router) Name() string {
 	return "router"
 }
 
-func (r *Router) RegisterConfig(app modular.Application) {
+func (r *Router) RegisterConfig(modular.Application) {
 }
 
 func (r *Router) ProvidesServices() []modular.ServiceProvider {
@@ -96,12 +96,12 @@ func (r *Router) Init(app modular.Application) error {
 	return nil
 }
 
-func (r *Router) Start(ctx context.Context) error {
+func (r *Router) Start(context.Context) error {
 	r.logger.Info("Router started")
 	return nil
 }
 
-func (r *Router) Stop(ctx context.Context) error {
+func (r *Router) Stop(context.Context) error {
 	r.logger.Info("Router stopped")
 	return nil
 }
@@ -123,7 +123,7 @@ func (a *APIModule) Name() string {
 	return "api"
 }
 
-func (a *APIModule) RegisterConfig(app modular.Application) {
+func (a *APIModule) RegisterConfig(modular.Application) {
 }
 
 func (a *APIModule) ProvidesServices() []modular.ServiceProvider {
@@ -140,12 +140,12 @@ func (a *APIModule) Init(app modular.Application) error {
 	return nil
 }
 
-func (a *APIModule) Start(ctx context.Context) error {
+func (a *APIModule) Start(context.Context) error {
 	a.logger.Info("API module started")
 	return nil
 }
 
-func (a *APIModule) Stop(ctx context.Context) error {
+func (a *APIModule) Stop(context.Context) error {
 	a.logger.Info("API module stopped")
 	return nil
 }
@@ -236,19 +236,21 @@ func (cm *ContentManager) logTenantConfig(tenantID modular.TenantID) {
 		"cacheTTL", config.CacheTTL)
 }
 
-func (cm *ContentManager) Start(ctx context.Context) error {
+func (cm *ContentManager) Start(context.Context) error {
 	cm.logger.Info("Content manager started")
 	return nil
 }
 
-func (cm *ContentManager) Stop(ctx context.Context) error {
+func (cm *ContentManager) Stop(context.Context) error {
 	cm.logger.Info("Content manager stopped")
 	return nil
 }
 
 func (cm *ContentManager) OnTenantRegistered(tenantID modular.TenantID) {
 	cm.logger.Info("Tenant registered in Content Manager", "tenant", tenantID)
-	cm.logTenantConfig(tenantID)
+	go func() {
+		cm.logTenantConfig(tenantID)
+	}()
 }
 
 func (cm *ContentManager) OnTenantRemoved(tenantID modular.TenantID) {
@@ -342,19 +344,21 @@ func (nm *NotificationManager) logTenantConfig(tenantID modular.TenantID) {
 		"maxRetries", config.MaxRetries)
 }
 
-func (nm *NotificationManager) Start(ctx context.Context) error {
+func (nm *NotificationManager) Start(context.Context) error {
 	nm.logger.Info("Notification manager started")
 	return nil
 }
 
-func (nm *NotificationManager) Stop(ctx context.Context) error {
+func (nm *NotificationManager) Stop(context.Context) error {
 	nm.logger.Info("Notification manager stopped")
 	return nil
 }
 
 func (nm *NotificationManager) OnTenantRegistered(tenantID modular.TenantID) {
 	nm.logger.Info("Tenant registered in Notification Manager", "tenant", tenantID)
-	nm.logTenantConfig(tenantID)
+	go func() {
+		nm.logTenantConfig(tenantID)
+	}()
 }
 
 func (nm *NotificationManager) OnTenantRemoved(tenantID modular.TenantID) {
