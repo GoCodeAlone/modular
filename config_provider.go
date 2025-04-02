@@ -58,7 +58,7 @@ func (c *Config) Feed() error {
 			}
 
 			if err := cf.FeedKey(key, target); err != nil {
-				return fmt.Errorf("%w", ErrConfigFeederError)
+				return fmt.Errorf("config feeder error: %w: %v", ErrConfigFeederError, err)
 			}
 		}
 
