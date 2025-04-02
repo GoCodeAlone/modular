@@ -38,19 +38,8 @@ func (ts *StandardTenantService) GetTenantConfig(tenantID TenantID, section stri
 
 	provider, err := tenantCfg.GetTenantConfig(tenantID, section)
 	if err != nil {
-		ts.logger.Debug("Tenant config section not found", "tenantID", tenantID, "section", section, "error", err)
+		ts.logger.Debug("Tenant config section not found", "tenantID", tenantID, "section", section)
 		return nil, err
-	}
-
-	if provider == nil {
-		ts.logger.Warn("Tenant config provider is nil", "tenantID", tenantID, "section", section)
-		return nil, fmt.Errorf("tenant %s has nil config provider for section %s", tenantID, section)
-	}
-
-	cfg := provider.GetConfig()
-	if cfg == nil {
-		ts.logger.Warn("Tenant config is nil", "tenantID", tenantID, "section", section)
-		return nil, fmt.Errorf("tenant %s has nil config for section %s", tenantID, section)
 	}
 
 	return provider, nil
@@ -84,7 +73,7 @@ func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[s
 					ts.logger.Warn("Skipping nil config provider or config", "tenantID", tenantID, "section", section)
 					continue
 				}
-				ts.logger.Info(fmt.Sprintf("Updating config for tenant %s", tenantID), "section", section)
+				ts.logger.Debug("Updating config for tenant", "tenantID", tenantID, "section", section)
 				existingConfig.SetTenantConfig(tenantID, section, provider)
 			}
 		}
@@ -102,7 +91,7 @@ func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[s
 				ts.logger.Warn("Skipping nil config provider or config", "tenantID", tenantID, "section", section)
 				continue
 			}
-			ts.logger.Info(fmt.Sprintf("Registering tenant %s", tenantID), "section", section)
+			ts.logger.Debug("Registering config for tenant", "tenantID", tenantID, "section", section)
 			tenantCfg.SetTenantConfig(tenantID, section, provider)
 		}
 	} else {
@@ -154,9 +143,10 @@ func (ts *StandardTenantService) RemoveTenant(tenantID TenantID) error {
 	ts.logger.Info("Removed tenant", "tenantID", tenantID)
 
 	// Notify tenant-aware modules
-	for k, module := range ts.tenantAwareModules {
+	for _, module := range ts.tenantAwareModules {
 		module.OnTenantRemoved(tenantID)
-		ts.logger.Debug("Notified module about tenant removal", "key", k, "module", module.Name(), "tenantID", tenantID)
+		ts.logger.Debug("Notified module about tenant removal",
+			"module", fmt.Sprintf("%T", module), "tenantID", tenantID)
 
 		// Also remove this tenant from the notification tracking
 		if notifications, exists := ts.moduleNotifications[module]; exists {
@@ -235,16 +225,13 @@ func (ts *StandardTenantService) logTenantConfigStatus(tenantID TenantID) {
 	}
 
 	// Count sections and log them
-	sectionCount := 0
 	var sections []string
-
 	for section := range tenantCfg.tenantConfigs[tenantID] {
-		sectionCount++
 		sections = append(sections, section)
 	}
 
 	ts.logger.Info("Tenant configuration status",
 		"tenantID", tenantID,
-		"sectionCount", sectionCount,
+		"sectionCount", len(sections),
 		"sections", sections)
 }

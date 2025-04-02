@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-//go:generate mockgen -destination=./mock_application_test.go -source=$GOFILE -package=$GOPACKAGE
-
 type AppRegistry interface {
 	SvcRegistry() ServiceRegistry
 }
@@ -81,7 +79,7 @@ func (app *StdApplication) RegisterService(name string, service any) error {
 	}
 
 	app.svcRegistry[name] = service
-	app.logger.Info("Registered service", "name", name, "type", reflect.TypeOf(service))
+	app.logger.Debug("Registered service", "name", name, "type", reflect.TypeOf(service))
 	return nil
 }
 
@@ -93,34 +91,28 @@ func (app *StdApplication) GetService(name string, target any) error {
 	}
 
 	targetValue := reflect.ValueOf(target)
-	if targetValue.Kind() != reflect.Ptr {
-		return fmt.Errorf("target must be a pointer")
+	if targetValue.Kind() != reflect.Ptr || targetValue.IsNil() {
+		return fmt.Errorf("target must be a non-nil pointer")
 	}
 
-	if targetValue.IsNil() {
-		return fmt.Errorf("target cannot be nil")
-	}
-
-	serviceType := reflect.TypeOf(service)
 	if !targetValue.Elem().IsValid() {
 		return fmt.Errorf("target value is invalid")
 	}
 
+	serviceType := reflect.TypeOf(service)
 	targetType := targetValue.Elem().Type()
 
-	// Special case for interfaces
+	// Case 1: Target is an interface that the service implements
 	if targetType.Kind() == reflect.Interface && serviceType.Implements(targetType) {
 		targetValue.Elem().Set(reflect.ValueOf(service))
 		return nil
 	}
 
-	// Special case for structs with embedded interfaces
+	// Case 2: Target is a struct with embedded interfaces
 	if targetType.Kind() == reflect.Struct {
 		for i := 0; i < targetType.NumField(); i++ {
 			field := targetType.Field(i)
-			// Check if the field is an interface and the service implements it
 			if field.Type.Kind() == reflect.Interface && serviceType.Implements(field.Type) {
-				// Set the interface field to the service value
 				fieldValue := targetValue.Elem().Field(i)
 				if fieldValue.CanSet() {
 					fieldValue.Set(reflect.ValueOf(service))
@@ -130,29 +122,24 @@ func (app *StdApplication) GetService(name string, target any) error {
 		}
 	}
 
-	// Handle pointers correctly - check if the service type is directly assignable to target type
-	// or if service is a pointer and the underlying type is assignable
-	if !serviceType.AssignableTo(targetType) {
-		// For pointers, we might need to dereference one level
-		if serviceType.Kind() == reflect.Ptr && serviceType.Elem().AssignableTo(targetType) {
-			// Dereference the service pointer and set target to the dereferenced value
-			targetValue.Elem().Set(reflect.ValueOf(service).Elem())
-			return nil
-		}
-
-		return fmt.Errorf("service '%s' of type %s cannot be assigned to %s",
-			name, serviceType, targetType)
+	// Case 3: Direct assignment or pointer dereference
+	if serviceType.AssignableTo(targetType) {
+		targetValue.Elem().Set(reflect.ValueOf(service))
+		return nil
+	} else if serviceType.Kind() == reflect.Ptr && serviceType.Elem().AssignableTo(targetType) {
+		targetValue.Elem().Set(reflect.ValueOf(service).Elem())
+		return nil
 	}
 
-	targetValue.Elem().Set(reflect.ValueOf(service))
-	return nil
+	return fmt.Errorf("service '%s' of type %s cannot be assigned to %s",
+		name, serviceType, targetType)
 }
 
 // Init initializes the application with the provided modules
 func (app *StdApplication) Init() error {
 	for name, module := range app.moduleRegistry {
 		module.RegisterConfig(app)
-		app.logger.Info("Registering module", "name", name)
+		app.logger.Debug("Registering module", "name", name)
 	}
 
 	if err := AppConfigLoader(app); err != nil {
@@ -205,24 +192,22 @@ func (app *StdApplication) initTenantConfigurations() error {
 		// If there's a TenantConfigLoader service, use it to load tenant configs
 		var loader TenantConfigLoader
 		if err = app.GetService("tenantConfigLoader", &loader); err == nil {
-			app.logger.Info("Loading tenant configurations using TenantConfigLoader")
+			app.logger.Debug("Loading tenant configurations using TenantConfigLoader")
 			if err = loader.LoadTenantConfigurations(app, tenantSvc); err != nil {
 				return fmt.Errorf("failed to load tenant configurations: %w", err)
 			}
 		}
 
 		// Register tenant-aware modules with the tenant service
-		// instead of directly notifying them, to avoid duplicate notifications
-		for _, module := range app.moduleRegistry {
-			if tenantAwareModule, ok := module.(TenantAwareModule); ok {
-				// The tenant service will handle notification about existing tenants
-				if standardTenantSvc, ok := tenantSvc.(*StandardTenantService); ok {
+		if standardTenantSvc, ok := tenantSvc.(*StandardTenantService); ok {
+			for _, module := range app.moduleRegistry {
+				if tenantAwareModule, ok := module.(TenantAwareModule); ok {
 					standardTenantSvc.RegisterTenantAwareModule(tenantAwareModule)
 				}
 			}
 		}
 	} else {
-		app.logger.Info("Tenant service not found, skipping tenant configuration initialization")
+		app.logger.Debug("Tenant service not found, skipping tenant configuration initialization")
 	}
 
 	return nil
@@ -339,8 +324,6 @@ func (app *StdApplication) injectServices(module Module) (Module, error) {
 		module = newModule
 	}
 
-	// TODO: potentially add support for field injection or other DI methods
-
 	return module, nil
 }
 
@@ -358,15 +341,10 @@ func checkServiceCompatibility(service any, dep ServiceDependency) (bool, error)
 			dep.Name, serviceType, dep.Type)
 	}
 
-	// Check interface satisfaction - handle pointer types better
+	// Check interface satisfaction
 	if dep.SatisfiesInterface != nil && dep.SatisfiesInterface.Kind() == reflect.Interface {
-		// Direct implementation check
-		if serviceType.Implements(dep.SatisfiesInterface) {
-			return true, nil
-		}
-
-		// For pointer types, check if the pointed-to type implements it
-		if serviceType.Kind() == reflect.Ptr && serviceType.Elem().Implements(dep.SatisfiesInterface) {
+		if serviceType.Implements(dep.SatisfiesInterface) ||
+			(serviceType.Kind() == reflect.Ptr && serviceType.Elem().Implements(dep.SatisfiesInterface)) {
 			return true, nil
 		}
 
@@ -430,7 +408,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	}
 
 	// log result
-	app.logger.Info("Module initialization order", "order", result)
+	app.logger.Debug("Module initialization order", "order", result)
 
 	return result, nil
 }

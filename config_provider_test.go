@@ -240,7 +240,7 @@ func Test_updateConfig(t *testing.T) {
 		tempCfgPtr.(*testCfg).Num = 42
 
 		mockLogger := new(MockLogger)
-		mockLogger.On("Info", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
+		mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
 		app := &StdApplication{logger: mockLogger}
 
 		provider := ConfigProvider(NewStdConfigProvider(originalCfg))
@@ -291,7 +291,7 @@ func Test_updateSectionConfig(t *testing.T) {
 		tempCfgPtr.(*testSectionCfg).Name = "new"
 
 		mockLogger := new(MockLogger)
-		mockLogger.On("Info", "Creating new provider for section", []interface{}{"section", "test"}).Return()
+		mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "test"}).Return()
 
 		app := &StdApplication{
 			logger:      mockLogger,
@@ -325,6 +325,11 @@ func Test_loadAppConfig(t *testing.T) {
 			name: "successful config load",
 			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated main config", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated section config", mock.Anything).Return()
+
 				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(&testCfg{Str: "old", Num: 0}),
@@ -364,6 +369,7 @@ func Test_loadAppConfig(t *testing.T) {
 			name: "feed error",
 			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
 				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(&testCfg{Str: "old", Num: 0}),
@@ -388,6 +394,8 @@ func Test_loadAppConfig(t *testing.T) {
 			name: "feedKey error",
 			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
 				app := &StdApplication{
 					logger:      mockLogger,
 					cfgProvider: NewStdConfigProvider(&testCfg{Str: "old", Num: 0}),
@@ -416,8 +424,12 @@ func Test_loadAppConfig(t *testing.T) {
 			name: "non-pointer configs",
 			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
-				mockLogger.On("Info", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
-				mockLogger.On("Info", "Creating new provider for section", []interface{}{"section", "section1"}).Return()
+				mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
+				mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "section1"}).Return()
+				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated main config", mock.Anything).Return()
+				mockLogger.On("Debug", "Updated section config", mock.Anything).Return()
 
 				app := &StdApplication{
 					logger:      mockLogger,

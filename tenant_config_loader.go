@@ -28,7 +28,6 @@ func (l *FileBasedTenantConfigLoader) LoadTenantConfigurations(app Application, 
 		"directory", l.configParams.ConfigDir,
 		"pattern", l.configParams.ConfigNameRegex.String())
 
-	// Ensure LoadTenantConfigs properly handles existing tenants
 	if err := LoadTenantConfigs(app, tenantService, l.configParams); err != nil {
 		app.Logger().Error("Failed to load tenant configurations", "error", err)
 		return err
@@ -37,18 +36,16 @@ func (l *FileBasedTenantConfigLoader) LoadTenantConfigurations(app Application, 
 	// Get the current tenants after loading
 	tenants := tenantService.GetTenants()
 
-	// If no tenants were loaded, log a warning but don't consider it an error
 	if len(tenants) == 0 {
 		app.Logger().Warn("No tenant configurations were loaded",
 			"directory", l.configParams.ConfigDir,
 			"pattern", l.configParams.ConfigNameRegex.String())
 	} else {
-		app.Logger().Info("Successfully loaded tenant configurations",
-			"tenantCount", len(tenants))
+		app.Logger().Info("Successfully loaded tenant configurations", "tenantCount", len(tenants))
 
-		// Validate that each tenant has the expected config sections
-		for _, tenantID := range tenants {
-			if service, ok := tenantService.(*StandardTenantService); ok {
+		// Log tenant config status if Standard service is used
+		if service, ok := tenantService.(*StandardTenantService); ok {
+			for _, tenantID := range tenants {
 				service.logTenantConfigStatus(tenantID)
 			}
 		}

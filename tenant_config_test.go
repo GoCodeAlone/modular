@@ -150,7 +150,7 @@ ApiConfig:
 		if !ok {
 			t.Errorf("Expected *TestTenantConfig, got %T", testConfigProvider.GetConfig())
 		} else {
-			t.Logf("TestConfig for tenant2: %+v", testConfig)
+			t.Logf("Got TestConfig for tenant2 of type %T", testConfig)
 			if testConfig.Name != "Tenant2" {
 				t.Errorf("Expected Name 'Tenant2', got '%s'", testConfig.Name)
 			}

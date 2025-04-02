@@ -83,21 +83,11 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 			continue // Skip this tenant but continue with others
 		}
 
-		// Only register the tenant if we have valid configs to register
-		if tenantCfgs != nil && len(tenantCfgs) > 0 {
-			// Register the tenant with the loaded configs (will merge if tenant already exists)
-			if err = tenantService.RegisterTenant(tenantID, tenantCfgs); err != nil {
-				return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
-			}
-			loadedTenants++
-		} else {
-			app.Logger().Warn("No valid configs loaded for tenant", "tenantID", tenantID)
-			// Still register the tenant but without configs
-			if err = tenantService.RegisterTenant(tenantID, nil); err != nil {
-				return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
-			}
-			loadedTenants++
+		// Register the tenant even with empty configs
+		if err = tenantService.RegisterTenant(tenantID, tenantCfgs); err != nil {
+			return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
 		}
+		loadedTenants++
 	}
 
 	app.Logger().Info("Tenant configuration loading complete", "loadedTenants", loadedTenants)
@@ -116,7 +106,7 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 		return nil, nil
 	}
 
-	app.Logger().Debug("Loading tenant config", "configFeeders", configFeeders)
+	app.Logger().Debug("Loading tenant config", "configFeedersCount", len(configFeeders))
 
 	// Build the configuration
 	cfgBuilder := NewConfig()
@@ -173,7 +163,6 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 			}
 
 			// Create a deep clone of the original section config type
-			// This ensures we have the correct type that the modules expect
 			originalSectionCfgProvider, err := app.GetConfigSection(sectionKey)
 			if err != nil {
 				app.Logger().Warn("Failed to get original section config", "section", sectionKey, "error", err)
@@ -194,27 +183,28 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 			}
 
 			tenantCfgSections[sectionKey] = provider
-			app.Logger().Debug("Added tenant config section",
-				"section", sectionKey,
-				"configType", fmt.Sprintf("%T", configClone))
+			app.Logger().Debug("Added tenant config section", "section", sectionKey, "configType", fmt.Sprintf("%T", configClone))
 		}
 	}
 
-	// Log the loaded configurations for debugging
+	// Log the loaded configurations for debugging only - don't print actual values in production
 	if len(tenantCfgSections) > 0 {
-		for section, provider := range tenantCfgSections {
-			app.Logger().Debug("Tenant config section loaded",
-				"section", section,
-				"configType", fmt.Sprintf("%T", provider.GetConfig()),
-				"config", fmt.Sprintf("%+v", provider.GetConfig()))
-		}
+		app.Logger().Debug("Loaded tenant config sections", "sectionCount", len(tenantCfgSections),
+			"sections", getSectionNames(tenantCfgSections))
 	} else {
 		app.Logger().Warn("No tenant config sections were loaded. Check file format and section names.")
 	}
 
-	app.Logger().Info("Loaded tenant config", "sectionCount", len(tenantCfgSections))
-
 	return tenantCfgSections, nil
+}
+
+// Helper function to extract section names for logging
+func getSectionNames(sections map[string]ConfigProvider) []string {
+	names := make([]string, 0, len(sections))
+	for name := range sections {
+		names = append(names, name)
+	}
+	return names
 }
 
 // cloneConfigWithValues creates a new instance of the originalConfig type

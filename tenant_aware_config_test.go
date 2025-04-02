@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"testing"
 )
@@ -72,7 +71,6 @@ func (m *TenantAwareConfigTestModule) LoadTenantConfig(tenantService TenantServi
 		return err
 	}
 
-	return fmt.Errorf("tenant config: %s - %+v", tenantID, config.GetConfig())
 	if testConfig, ok := config.GetConfig().(*TestTenantConfig); ok {
 		m.tenantConfigs[tenantID] = testConfig
 	} else {
@@ -175,13 +173,10 @@ func TestTenantAwareConfigModule(t *testing.T) {
 		} else if cp.GetConfig() == nil {
 			t.Errorf("Expected non-nil config for tenant %s", tenantID)
 		} else {
-			app.Logger().Debug("Tenant config loaded", "tenantID", tenantID, "config", reflect.ValueOf(cp).Elem().Interface())
+			// Use Debug level for logging config contents
+			app.Logger().Debug("Tenant config loaded", "tenantID", tenantID)
 			tm.tenantConfigs[tenantID] = cp.GetConfig().(*TestTenantConfig)
 		}
-		/*err = tm.LoadTenantConfig(tenantService, tenantID)
-		if err != nil {
-			t.Errorf("Failed to load tenant config for tenant %s: %v", tenantID, err)
-		}*/
 	}
 
 	// Verify tenant configs were loaded correctly
