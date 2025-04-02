@@ -1,7 +1,7 @@
 # modular
 Modular Go
 
-[![GitHub License](https://github.com/GoCodeAlone/modular/LICENSE)](https://img.shields.io/github/license/GoCodeAlone/modular)
+[![GitHub License](https://github.com/GoCodeAlone/modular/blob/main/LICENSE)](https://img.shields.io/github/license/GoCodeAlone/modular)
 [![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular)
 [![CodeQL](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql)
 [![Dependabot Updates](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates)
