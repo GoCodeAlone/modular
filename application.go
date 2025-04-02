@@ -32,6 +32,7 @@ type Application interface {
 }
 
 type TenantApplication interface {
+	Application
 	GetTenantService() (TenantService, error)
 	WithTenant(tenantID TenantID) (*TenantContext, error)
 	GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error)

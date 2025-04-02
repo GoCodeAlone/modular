@@ -157,7 +157,7 @@ func (a *APIModule) Dependencies() []string {
 // ContentManager - tenant-aware module
 type ContentManager struct {
 	logger        modular.Logger
-	app           *modular.StdApplication
+	app           modular.TenantApplication
 	tenantService modular.TenantService
 	defaultConfig *ContentConfig
 }
@@ -176,10 +176,10 @@ func (cm *ContentManager) RegisterConfig(app modular.Application) {
 
 func (cm *ContentManager) Init(app modular.Application) error {
 	cm.logger = app.Logger()
-	cm.app = app
+	cm.app = app.(modular.TenantApplication)
 
 	// Get tenant service
-	ts, err := app.GetTenantService()
+	ts, err := cm.app.GetTenantService()
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func (cm *ContentManager) Dependencies() []string {
 // NotificationManager - tenant-aware module
 type NotificationManager struct {
 	logger        modular.Logger
-	app           *modular.StdApplication
+	app           modular.TenantApplication
 	tenantService modular.TenantService
 	defaultConfig *NotificationConfig
 }
@@ -281,10 +281,10 @@ func (nm *NotificationManager) RegisterConfig(app modular.Application) {
 
 func (nm *NotificationManager) Init(app modular.Application) error {
 	nm.logger = app.Logger()
-	nm.app = app
+	nm.app = app.(modular.TenantApplication)
 
 	// Get tenant service
-	ts, err := app.GetTenantService()
+	ts, err := nm.app.GetTenantService()
 	if err != nil {
 		return err
 	}
