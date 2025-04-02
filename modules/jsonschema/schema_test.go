@@ -183,7 +183,7 @@ func TestExample_dependentModule(t *testing.T) {
 		)),
 	)
 
-	app.RegisterModule(jsonschema.NewModule(app))
+	app.RegisterModule(jsonschema.NewModule())
 	app.RegisterModule(&YourModule{t: t})
 
 	if err := app.Init(); err != nil {

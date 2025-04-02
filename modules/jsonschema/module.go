@@ -6,31 +6,29 @@ import (
 )
 
 type Module struct {
-	app           modular.Application
 	schemaService JSONSchemaService
 }
 
-func NewModule(application modular.Application) *Module {
+func NewModule() *Module {
 	return &Module{
-		app:           application,
 		schemaService: NewJSONSchemaService(),
 	}
 }
 
-func (m *Module) RegisterConfig(app modular.Application) {
+func (m *Module) RegisterConfig(modular.Application) {
 	// nothing to do
 }
 
-func (m *Module) Init(app modular.Application) error {
+func (m *Module) Init(modular.Application) error {
 	return nil
 }
 
-func (m *Module) Start(ctx context.Context) error {
+func (m *Module) Start(context.Context) error {
 	// Nothing special needed for startup
 	return nil
 }
 
-func (m *Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(context.Context) error {
 	// Nothing special needed for shutdown
 	return nil
 }
