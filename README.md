@@ -19,6 +19,16 @@ Modular is a package that provides a structured way to create modular applicatio
 - **Dependency injection**: Inject required services into modules
 - **Multi-tenancy support**: Build applications that serve multiple tenants with isolated configurations
 
+## Available Modules
+
+Modular comes with a collection of reusable modules that you can incorporate into your applications:
+
+| Module                             | Description                     | Documentation                                   |
+|------------------------------------|---------------------------------|-------------------------------------------------|
+| [jsonschema](./modules/jsonschema) | JSON Schema validation services | [Documentation](./modules/jsonschema/README.md) |
+
+For more information about the available modules, see the [modules directory](./modules).
+
 ## Installation
 
 ```go
