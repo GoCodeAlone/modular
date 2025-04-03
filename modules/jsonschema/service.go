@@ -2,6 +2,7 @@ package jsonschema
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"io"
 )
@@ -38,7 +39,10 @@ type schemaWrapper struct {
 }
 
 func (s *schemaWrapper) Validate(value interface{}) error {
-	return s.schema.Validate(value)
+	if err := s.schema.Validate(value); err != nil {
+		return fmt.Errorf("schema validation failed: %w", err)
+	}
+	return nil
 }
 
 // NewJSONSchemaService creates a new JSON schema service
@@ -51,7 +55,7 @@ func NewJSONSchemaService() JSONSchemaService {
 func (s *schemaServiceImpl) CompileSchema(source string) (Schema, error) {
 	schema, err := s.compiler.Compile(source)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to compile schema from %s: %w", source, err)
 	}
 	return &schemaWrapper{schema: schema}, nil
 }
@@ -59,19 +63,28 @@ func (s *schemaServiceImpl) CompileSchema(source string) (Schema, error) {
 func (s *schemaServiceImpl) ValidateBytes(schema Schema, data []byte) error {
 	var v interface{}
 	if err := json.Unmarshal(data, &v); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal JSON data: %w", err)
 	}
-	return schema.Validate(v)
+	if err := schema.Validate(v); err != nil {
+		return fmt.Errorf("JSON validation failed: %w", err)
+	}
+	return nil
 }
 
 func (s *schemaServiceImpl) ValidateReader(schema Schema, reader io.Reader) error {
 	v, err := jsonschema.UnmarshalJSON(reader)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal JSON from reader: %w", err)
 	}
-	return schema.Validate(v)
+	if err := schema.Validate(v); err != nil {
+		return fmt.Errorf("JSON validation failed: %w", err)
+	}
+	return nil
 }
 
 func (s *schemaServiceImpl) ValidateInterface(schema Schema, data interface{}) error {
-	return schema.Validate(data)
+	if err := schema.Validate(data); err != nil {
+		return fmt.Errorf("interface validation failed: %w", err)
+	}
+	return nil
 }

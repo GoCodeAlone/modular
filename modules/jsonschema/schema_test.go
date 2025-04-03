@@ -2,6 +2,7 @@ package jsonschema_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/modules/jsonschema"
@@ -11,6 +12,9 @@ import (
 	"strings"
 	"testing"
 )
+
+// Define static error
+var errInvalidJSONSchemaService = errors.New("service is not of type jsonschema.JSONSchemaService or is nil")
 
 func TestJSONSchemaService(t *testing.T) {
 	// Create a simple schema
@@ -161,7 +165,7 @@ func (m *YourModule) Constructor() modular.ModuleConstructor {
 		// Get the JSONSchemaService from the services map
 		schemaService, ok := services["jsonschema.service"].(jsonschema.JSONSchemaService)
 		if !ok {
-			return nil, fmt.Errorf("service 'jsonschema.service' is not of type jsonschema.JSONSchemaService or is nil. Detected type: %T", services["jsonschema.service"])
+			return nil, fmt.Errorf("service 'jsonschema.service': %w", errInvalidJSONSchemaService)
 		}
 
 		return &YourModule{
