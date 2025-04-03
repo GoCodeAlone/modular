@@ -139,18 +139,17 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
           
           echo "Generated changelog for $MODULE"
-      
+
       - name: Create release
         id: create_release
-        uses: actions/create-release@v1
+        run: |
+          gh release create ${{ steps.version.outputs.tag }} \
+            --title "${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}" \
+            --notes-file changelog.md \
+            --repo ${{ github.repository }} \
+            --make-latest=false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          release_name: "${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}"
-          body: ${{ fromJSON(steps.changelog.outputs.changelog) }}
-          draft: false
-          prerelease: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce to Go proxy
         run: |
