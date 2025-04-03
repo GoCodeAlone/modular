@@ -36,7 +36,7 @@ jobs:
         id: set-matrix
         run: |
           # Get all module directories
-          ALL_MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d | sed 's|^modules/||' | sort)
+          ALL_MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort)
           
           # Default to running all modules on main branch or if workflow_dispatch is used
           if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == "refs/heads/main" ]]; then

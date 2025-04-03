@@ -39,7 +39,11 @@ jobs:
         id: get-modules
         run: |
           MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | jq -R . | jq -s .)
-          echo "modules=$MODULES" >> $GITHUB_OUTPUT
+          {
+            echo "modules<<EOF"
+            echo "$MODULES_JSON"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
           echo "Available modules: $MODULES"
     
   release-module:
