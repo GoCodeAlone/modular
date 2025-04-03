@@ -6,6 +6,7 @@ This directory contains a collection of reusable modules for the [Modular](https
 
 | Module                     | Description                              | Documentation                           |
 |----------------------------|------------------------------------------|-----------------------------------------|
+| [database](./database)     | Database connectivity and SQL operations | [Documentation](./database/README.md)   |
 | [jsonschema](./jsonschema) | Provides JSON Schema validation services | [Documentation](./jsonschema/README.md) |
 
 ## Using Modules
@@ -16,10 +17,12 @@ Each module can be imported and used independently:
 import (
     "github.com/GoCodeAlone/modular"
     "github.com/GoCodeAlone/modular/modules/jsonschema"
+    "github.com/GoCodeAlone/modular/modules/database"
 )
 
-// Register the module with your Modular application
-app.RegisterModule(jsonschema.NewModule(app))
+// Register the modules with your Modular application
+app.RegisterModule(jsonschema.NewModule())
+app.RegisterModule(database.NewModule())
 ```
 
 ## Module Structure

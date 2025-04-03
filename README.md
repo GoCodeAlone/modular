@@ -23,9 +23,10 @@ Modular is a package that provides a structured way to create modular applicatio
 
 Modular comes with a collection of reusable modules that you can incorporate into your applications:
 
-| Module                             | Description                     | Documentation                                   |
-|------------------------------------|---------------------------------|-------------------------------------------------|
-| [jsonschema](./modules/jsonschema) | JSON Schema validation services | [Documentation](./modules/jsonschema/README.md) |
+| Module                             | Description                              | Documentation                                   |
+|------------------------------------|------------------------------------------|-------------------------------------------------|
+| [database](./modules/database)     | Database connectivity and SQL operations | [Documentation](./modules/database/README.md)   |
+| [jsonschema](./modules/jsonschema) | JSON Schema validation services          | [Documentation](./modules/jsonschema/README.md) |
 
 For more information about the available modules, see the [modules directory](./modules).
 
