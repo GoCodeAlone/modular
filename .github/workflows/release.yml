@@ -126,7 +126,7 @@ jobs:
             --title "Modular ${{ steps.version.outputs.next_version }}" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
-            --make-latest=true
+            --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
