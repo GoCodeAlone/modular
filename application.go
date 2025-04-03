@@ -169,15 +169,6 @@ func (app *StdApplication) Init() error {
 		return fmt.Errorf("failed to load app config: %w", err)
 	}
 
-	// Register services provided by modules
-	for name, module := range app.moduleRegistry {
-		for _, svc := range module.ProvidesServices() {
-			if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
-				return fmt.Errorf("module '%s' failed to register service: %w", name, err)
-			}
-		}
-	}
-
 	// Build dependency graph
 	moduleOrder, err := app.resolveDependencies()
 	if err != nil {
@@ -195,6 +186,14 @@ func (app *StdApplication) Init() error {
 		if err = app.moduleRegistry[moduleName].Init(app); err != nil {
 			return fmt.Errorf("failed to initialize module '%s': %w", moduleName, err)
 		}
+
+		// Register services provided by modules
+		for _, svc := range app.moduleRegistry[moduleName].ProvidesServices() {
+			if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
+				return fmt.Errorf("module '%s' failed to register service: %w", moduleName, err)
+			}
+		}
+
 		app.logger.Info(fmt.Sprintf("Initialized module %s", moduleName))
 	}
 
