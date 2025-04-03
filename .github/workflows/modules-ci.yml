@@ -36,7 +36,7 @@ jobs:
         id: set-matrix
         run: |
           # Get all module directories
-          ALL_MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d | sort)
+          ALL_MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d | sed 's|^modules/||' | sort)
           
           # Default to running all modules on main branch or if workflow_dispatch is used
           if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == "refs/heads/main" ]]; then
@@ -56,7 +56,7 @@ jobs:
               # Otherwise, determine which modules were modified
               MODIFIED_MODULES=""
               for MODULE in $ALL_MODULES; do
-                if echo "$MODIFIED_FILES" | grep -q "^$MODULE/"; then
+                if echo "$MODIFIED_FILES" | grep -q "^modules/$MODULE/"; then
                   MODIFIED_MODULES="$MODIFIED_MODULES $MODULE"
                 fi
               done
@@ -105,20 +105,23 @@ jobs:
           cache: true
 
       - name: Get dependencies
+        working-directory: modules/${{ matrix.module }}
         run: |
           go mod download
           go mod verify
 
       - name: Run tests for ${{ matrix.module }}
+        working-directory: modules/${{ matrix.module }}
         run: |
-          go test -v ./${{ matrix.module }}/... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic
+          go test -v ./... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic
 
       - name: Upload coverage for ${{ matrix.module }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
-          file: ./${{ matrix.module }}-coverage.txt
+          directory: modules/${{ matrix.module }}/
+          files: ${{ matrix.module }}-coverage.txt
           flags: ${{ matrix.module }}
 
   # This job ensures each module can build properly
@@ -142,36 +145,43 @@ jobs:
           cache: true
 
       - name: Get dependencies
+        working-directory: modules/${{ matrix.module }}
         run: |
           go mod download
           go mod verify
 
       - name: Verify ${{ matrix.module }}
+        working-directory: modules/${{ matrix.module }}
         run: |
           # Verify package can be resolved
-          go list -e ./${{ matrix.module }}/...
+          go list -e ./...
           # Run vet to check for issues
-          go vet ./${{ matrix.module }}/...
+          go vet ./...
 
   # Lint runs on all modules together for efficiency
   lint-modules:
     runs-on: ubuntu-latest
     needs: detect-modules
-    if: ${{ needs.detect-modules.outputs.modules != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
+
+    name: Lint ${{ matrix.module }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: go.sum
+          cache-dependency-path: modules/${{ matrix.module }}/go.sum
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           only-new-issues: true
-          args: -c .golangci.github.yml --path-prefix=$(echo "${{ needs.detect-modules.outputs.modules }}" | jq -r '.[]' | paste -sd, -)
+          working-directory: modules/${{ matrix.module }}
+          args: -c ../../.golangci.github.yml
 
   # This job summarizes the results
   modules-summary:
