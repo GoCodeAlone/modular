@@ -2,8 +2,14 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/GoCodeAlone/modular"
+)
+
+// Define static errors
+var (
+	ErrDefaultConnectionNotFound = errors.New("default database connection not found in configuration")
 )
 
 // Module provides database connectivity for modular applications
@@ -48,7 +54,7 @@ func (m *Module) Init(app modular.Application) error {
 		if len(keys) > 0 {
 			m.defaultDBKey = keys[0]
 		} else {
-			return fmt.Errorf("default database connection '%s' not found in configuration", m.config.Default)
+			return fmt.Errorf("%w: %s", ErrDefaultConnectionNotFound, m.config.Default)
 		}
 	}
 

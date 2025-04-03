@@ -14,6 +14,11 @@ import (
 	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
 )
 
+// Define static errors
+var (
+	ErrInvalidDatabaseService = fmt.Errorf("service is not of type database.DatabaseService or is nil")
+)
+
 // Package database_test provides tests for the database module
 // use sqlite3 in memory for testing
 
@@ -144,7 +149,7 @@ func (y *YourModule) Constructor() modular.ModuleConstructor {
 		// Get the JSONSchemaService from the services map
 		dbService, ok := services["database.service"].(database.DatabaseService)
 		if !ok {
-			return nil, fmt.Errorf("service 'database.service' is not of type database.DatabaseService or is nil. Detected type: %T", services["database.service"])
+			return nil, fmt.Errorf("%w: detected type %T", ErrInvalidDatabaseService, services["database.service"])
 		}
 
 		return &YourModule{

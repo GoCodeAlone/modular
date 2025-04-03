@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// Define static errors
+var (
+	ErrEmptyDriver          = errors.New("database driver cannot be empty")
+	ErrEmptyDSN             = errors.New("database connection string (DSN) cannot be empty")
+	ErrDatabaseNotConnected = errors.New("database not connected")
+)
+
 // DatabaseService defines the operations that can be performed with a database
 type DatabaseService interface {
 	// Connect establishes the database connection
@@ -59,11 +66,11 @@ type databaseServiceImpl struct {
 // NewDatabaseService creates a new database service from configuration
 func NewDatabaseService(config ConnectionConfig) (DatabaseService, error) {
 	if config.Driver == "" {
-		return nil, errors.New("database driver cannot be empty")
+		return nil, ErrEmptyDriver
 	}
 
 	if config.DSN == "" {
-		return nil, errors.New("database connection string (DSN) cannot be empty")
+		return nil, ErrEmptyDSN
 	}
 
 	return &databaseServiceImpl{
@@ -105,7 +112,10 @@ func (s *databaseServiceImpl) Connect() error {
 
 func (s *databaseServiceImpl) Close() error {
 	if s.db != nil {
-		return s.db.Close()
+		err := s.db.Close()
+		if err != nil {
+			return fmt.Errorf("closing database connection: %w", err)
+		}
 	}
 	return nil
 }
@@ -116,9 +126,13 @@ func (s *databaseServiceImpl) DB() *sql.DB {
 
 func (s *databaseServiceImpl) Ping(ctx context.Context) error {
 	if s.db == nil {
-		return errors.New("database not connected")
+		return ErrDatabaseNotConnected
 	}
-	return s.db.PingContext(ctx)
+	err := s.db.PingContext(ctx)
+	if err != nil {
+		return fmt.Errorf("pinging database: %w", err)
+	}
+	return nil
 }
 
 func (s *databaseServiceImpl) Stats() sql.DBStats {
@@ -130,9 +144,13 @@ func (s *databaseServiceImpl) Stats() sql.DBStats {
 
 func (s *databaseServiceImpl) ExecuteContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if s.db == nil {
-		return nil, errors.New("database not connected")
+		return nil, ErrDatabaseNotConnected
 	}
-	return s.db.ExecContext(ctx, query, args...)
+	result, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("executing query: %w", err)
+	}
+	return result, nil
 }
 
 func (s *databaseServiceImpl) Execute(query string, args ...interface{}) (sql.Result, error) {
@@ -141,9 +159,13 @@ func (s *databaseServiceImpl) Execute(query string, args ...interface{}) (sql.Re
 
 func (s *databaseServiceImpl) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	if s.db == nil {
-		return nil, errors.New("database not connected")
+		return nil, ErrDatabaseNotConnected
 	}
-	return s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying database: %w", err)
+	}
+	return rows, nil
 }
 
 func (s *databaseServiceImpl) Query(query string, args ...interface{}) (*sql.Rows, error) {
@@ -163,14 +185,22 @@ func (s *databaseServiceImpl) QueryRow(query string, args ...interface{}) *sql.R
 
 func (s *databaseServiceImpl) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	if s.db == nil {
-		return nil, errors.New("database not connected")
+		return nil, ErrDatabaseNotConnected
 	}
-	return s.db.BeginTx(ctx, opts)
+	tx, err := s.db.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("beginning database transaction: %w", err)
+	}
+	return tx, nil
 }
 
 func (s *databaseServiceImpl) Begin() (*sql.Tx, error) {
 	if s.db == nil {
-		return nil, errors.New("database not connected")
+		return nil, ErrDatabaseNotConnected
 	}
-	return s.db.Begin()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("beginning database transaction: %w", err)
+	}
+	return tx, nil
 }
