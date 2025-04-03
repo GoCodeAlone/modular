@@ -2,6 +2,8 @@
 
 This directory contains a collection of reusable modules for the [Modular](https://github.com/GoCodeAlone/modular) framework. Each module is independently versioned and can be imported separately.
 
+[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
+
 ## Available Modules
 
 | Module                     | Description                              | Documentation                           |
@@ -46,3 +48,5 @@ If you'd like to contribute a module:
 ## License
 
 All modules are licensed under the [MIT License](../LICENSE).
+
+`

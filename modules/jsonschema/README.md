@@ -1,6 +1,7 @@
 # JSON Schema Module for Modular
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/jsonschema.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/jsonschema)
+[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
 
 A [Modular](https://github.com/GoCodeAlone/modular) module that provides JSON Schema validation capabilities.
 

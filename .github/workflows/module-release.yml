@@ -1,0 +1,165 @@
+name: Module Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to release (select from dropdown)'
+        required: true
+        type: choice
+        options:
+          - database
+          - jsonschema
+      version:
+        description: 'Version to release (leave blank for auto-increment)'
+        required: false
+        type: string
+      releaseType:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.get-modules.outputs.modules }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get available modules
+        id: get-modules
+        run: |
+          MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | jq -R . | jq -s .)
+          echo "modules=$MODULES" >> $GITHUB_OUTPUT
+          echo "Available modules: $MODULES"
+    
+  release-module:
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Determine release version
+        id: version
+        run: |
+          MODULE="${{ github.event.inputs.module }}"
+          echo "Selected module: $MODULE"
+          
+          # Find the latest tag for this module
+          LATEST_TAG=$(git tag -l "${MODULE}/v*" | sort -V | tail -n1 || echo "")
+          echo "Latest tag: $LATEST_TAG"
+          
+          if [ -z "$LATEST_TAG" ]; then
+            # No existing tag, start with v0.0.0
+            CURRENT_VERSION="v0.0.0"
+            echo "No previous version found, starting with v0.0.0"
+          else
+            CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|${MODULE}/||")
+            echo "Current version: $CURRENT_VERSION"
+          fi
+          
+          # Remove the 'v' prefix for semver calculations
+          CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
+          
+          # Extract the parts
+          MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
+          
+          # Calculate next version based on release type
+          if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
+            NEXT_VERSION="v$((MAJOR + 1)).0.0"
+          elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
+            NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+          else
+            NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          
+          # Use manual version if provided
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            MANUAL_VERSION="${{ github.event.inputs.version }}"
+            # Ensure the 'v' prefix
+            if [[ $MANUAL_VERSION != v* ]]; then
+              MANUAL_VERSION="v${MANUAL_VERSION}"
+            fi
+            NEXT_VERSION="${MANUAL_VERSION}"
+          fi
+          
+          echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${MODULE}/${NEXT_VERSION}" >> $GITHUB_OUTPUT
+          echo "module=${MODULE}" >> $GITHUB_OUTPUT
+          echo "Next version: ${NEXT_VERSION}, tag will be: ${MODULE}/${NEXT_VERSION}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          MODULE=${{ steps.version.outputs.module }}
+          TAG=${{ steps.version.outputs.tag }}
+          
+          # Find the previous tag for this module to use as starting point for changelog
+          PREV_TAG=$(git tag -l "${MODULE}/v*" | sort -V | tail -n1 || echo "")
+          
+          # Generate changelog by looking at commits that touched the module's directory
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, including all history for the module"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- "modules/${MODULE}")
+          else
+            echo "Generating changelog from $PREV_TAG to HEAD"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD -- "modules/${MODULE}")
+          fi
+          
+          # If no specific changes found for this module
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- No specific changes to this module since last release"
+          fi
+          
+          # Save changelog to a file with module & version info
+          echo "# ${MODULE} ${TAG}" > changelog.md
+          echo "" >> changelog.md
+          echo "## Changes" >> changelog.md
+          echo "" >> changelog.md
+          echo "$CHANGELOG" >> changelog.md
+          
+          # Escape special characters for GitHub Actions
+          CHANGELOG_ESCAPED=$(cat changelog.md | jq -Rs .)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "Generated changelog for $MODULE"
+      
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: "${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}"
+          body: ${{ fromJSON(steps.changelog.outputs.changelog) }}
+          draft: false
+          prerelease: false
+
+      - name: Announce to Go proxy
+        run: |
+          VERSION=${{ steps.version.outputs.next_version }}
+          MODULE_NAME="github.com/GoCodeAlone/modular/modules/${{ steps.version.outputs.module }}"
+          
+          GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
+          
+          echo "Announced version ${{steps.version.outputs.module}}@${VERSION} to Go proxy"
+
+      - name: Display Release URL
+        run: echo "Released at ${{ steps.create_release.outputs.html_url }}"

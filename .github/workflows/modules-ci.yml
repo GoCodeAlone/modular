@@ -1,0 +1,184 @@
+name: Modules CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'modules/**'
+      - 'go.*'
+      - '.github/workflows/modules-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'modules/**'
+      - 'go.*'
+      - '.github/workflows/modules-ci.yml'
+  # Allow manual trigger
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '^1.23.5'
+
+jobs:
+  # This job identifies which modules have been modified
+  detect-modules:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      modules: ${{ steps.set-matrix.outputs.modules }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get modified modules
+        id: set-matrix
+        run: |
+          # Get all module directories
+          ALL_MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d | sort)
+          
+          # Default to running all modules on main branch or if workflow_dispatch is used
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == "refs/heads/main" ]]; then
+            MODIFIED_MODULES=$ALL_MODULES
+          else
+            # For pull requests, check which modules were modified
+            BASE_SHA=$(git merge-base origin/main HEAD)
+            
+            # Get modified files
+            MODIFIED_FILES=$(git diff --name-only $BASE_SHA HEAD)
+            
+            # Check if go.mod or go.sum were modified
+            if echo "$MODIFIED_FILES" | grep -E '^go\.(mod|sum)$'; then
+              # Run all modules if go.mod or go.sum were modified
+              MODIFIED_MODULES=$ALL_MODULES
+            else
+              # Otherwise, determine which modules were modified
+              MODIFIED_MODULES=""
+              for MODULE in $ALL_MODULES; do
+                if echo "$MODIFIED_FILES" | grep -q "^$MODULE/"; then
+                  MODIFIED_MODULES="$MODIFIED_MODULES $MODULE"
+                fi
+              done
+              
+              # If no specific modules were modified, run for all modules
+              if [ -z "$MODIFIED_MODULES" ]; then
+                MODIFIED_MODULES=$ALL_MODULES
+              fi
+            fi
+          fi
+          
+          # Format for matrix
+          MODULES_JSON=$(echo "$MODIFIED_MODULES" | tr ' ' '\n' | jq -R . | jq -s .)
+          echo "matrix={\"module\":$MODULES_JSON}" >> $GITHUB_OUTPUT
+          echo "modules=$MODULES_JSON" >> $GITHUB_OUTPUT
+          
+          echo "Modules to test: $MODULES_JSON"
+
+  # This job runs the tests for each module
+  test-modules:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
+    
+    name: Test ${{ matrix.module }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run tests for ${{ matrix.module }}
+        run: |
+          go test -v ./${{ matrix.module }}/... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic
+
+      - name: Upload coverage for ${{ matrix.module }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: GoCodeAlone/modular
+          file: ./${{ matrix.module }}-coverage.txt
+          flags: ${{ matrix.module }}
+
+  # This job ensures each module can build properly
+  build-modules:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
+    
+    name: Build ${{ matrix.module }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Build ${{ matrix.module }}
+        run: go build -v ./${{ matrix.module }}/...
+
+  # Lint runs on all modules together for efficiency
+  lint-modules:
+    runs-on: ubuntu-latest
+    needs: detect-modules
+    if: ${{ needs.detect-modules.outputs.modules != '[]' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          only-new-issues: true
+          args: -c .golangci.github.yml --path-prefix=$(echo "${{ needs.detect-modules.outputs.modules }}" | jq -r '.[]' | paste -sd, -)
+
+  # This job summarizes the results
+  modules-summary:
+    needs: [test-modules, build-modules, lint-modules]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "# Module Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | Test | Build | Lint |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|-------|------|" >> $GITHUB_STEP_SUMMARY
+          
+          modules=$(echo '${{ needs.detect-modules.outputs.modules }}' | jq -r '.[]')
+          
+          for module in $modules; do
+            test_result="${{ needs.test-modules.result }}"
+            build_result="${{ needs.build-modules.result }}"
+            lint_result="${{ needs.lint-modules.result }}"
+            
+            echo "| $module | $test_result | $build_result | $lint_result |" >> $GITHUB_STEP_SUMMARY
+          done

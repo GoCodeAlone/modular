@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (leave blank for auto-increment)'
+        required: false
+        type: string
+      releaseType:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Determine release version
+        id: version
+        run: |
+          # Find the latest tag for the main library (excluding module tags)
+          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
+          echo "Latest tag: $LATEST_TAG"
+          
+          if [ -z "$LATEST_TAG" ]; then
+            # No existing tag, start with v0.0.0
+            CURRENT_VERSION="v0.0.0"
+            echo "No previous version found, starting with v0.0.0"
+          else
+            CURRENT_VERSION=$LATEST_TAG
+            echo "Current version: $CURRENT_VERSION"
+          fi
+          
+          # Remove the 'v' prefix for semver calculations
+          CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
+          
+          # Extract the parts
+          MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
+          
+          # Calculate next version based on release type
+          if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
+            NEXT_VERSION="v$((MAJOR + 1)).0.0"
+          elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
+            NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+          else
+            NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          
+          # Use manual version if provided
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            MANUAL_VERSION="${{ github.event.inputs.version }}"
+            # Ensure the 'v' prefix
+            if [[ $MANUAL_VERSION != v* ]]; then
+              MANUAL_VERSION="v${MANUAL_VERSION}"
+            fi
+            NEXT_VERSION="${MANUAL_VERSION}"
+          fi
+          
+          echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
+          echo "Next version: ${NEXT_VERSION}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.23.5'
+          check-latest: true
+
+      - name: Run tests
+        run: |
+          go test -v ./...
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG=${{ steps.version.outputs.next_version }}
+          
+          # Find the previous tag for the main library
+          PREV_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
+          
+          # Generate changelog by looking at commits, excluding the modules/ directory
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, including all history"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- . ':!modules')
+          else
+            echo "Generating changelog from $PREV_TAG to HEAD"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD -- . ':!modules')
+          fi
+          
+          # If no specific changes found
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- No specific changes to the main library since last release"
+          fi
+          
+          # Save changelog to a file
+          echo "# Release ${TAG}" > changelog.md
+          echo "" >> changelog.md
+          echo "## Changes" >> changelog.md
+          echo "" >> changelog.md
+          echo "$CHANGELOG" >> changelog.md
+          
+          # Escape special characters for GitHub Actions
+          CHANGELOG_ESCAPED=$(cat changelog.md | jq -Rs .)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "Generated changelog for main library"
+      
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.next_version }}
+          release_name: "Modular ${{ steps.version.outputs.next_version }}"
+          body: ${{ fromJSON(steps.changelog.outputs.changelog) }}
+          draft: false
+          prerelease: false
+      
+      - name: Announce to Go proxy
+        run: |
+          VERSION=${{ steps.version.outputs.next_version }}
+          MODULE_NAME="github.com/GoCodeAlone/modular"
+          
+          GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
+          
+          echo "Announced version ${VERSION} to Go proxy"
+      
+      - name: Display Release URL
+        run: echo "Released at ${{ steps.create_release.outputs.html_url }}"

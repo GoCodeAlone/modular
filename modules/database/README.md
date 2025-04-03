@@ -1,6 +1,7 @@
 # Database Module for Modular
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/database.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/database)
+[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
 
 A [Modular](https://github.com/GoCodeAlone/modular) module that provides database connectivity and management.
 
