@@ -70,8 +70,17 @@ jobs:
           
           # Format for matrix
           MODULES_JSON=$(echo "$MODIFIED_MODULES" | tr ' ' '\n' | jq -R . | jq -s .)
-          echo "matrix={\"module\":$MODULES_JSON}" >> $GITHUB_OUTPUT
-          echo "modules=$MODULES_JSON" >> $GITHUB_OUTPUT
+          {
+            echo "matrix<<EOF"
+            echo "{\"module\":$MODULES_JSON}"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          
+          {
+            echo "modules<<EOF"
+            echo "$MODULES_JSON"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
           
           echo "Modules to test: $MODULES_JSON"
 
