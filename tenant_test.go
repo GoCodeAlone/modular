@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -91,10 +92,22 @@ func TestTenantInterfaces(t *testing.T) {
 
 // Mock implementations for interface verification
 
-type mockTenantService struct{}
+type mockTenantService struct {
+	tenantConfigs map[TenantID]map[string]ConfigProvider
+}
 
-func (m *mockTenantService) GetTenantConfig(TenantID, string) (ConfigProvider, error) {
-	return nil, nil
+func (m *mockTenantService) GetTenantConfig(tid TenantID, section string) (ConfigProvider, error) {
+	if m.tenantConfigs == nil {
+		return nil, fmt.Errorf("mock tenant configs not initialized")
+	}
+	if m.tenantConfigs[tid] == nil {
+		return nil, fmt.Errorf("tenant %s not found", tid)
+	}
+	cp := m.tenantConfigs[tid][section]
+	if cp == nil {
+		return nil, fmt.Errorf("config section %s not found for tenant %s", section, tid)
+	}
+	return cp, nil
 }
 
 func (m *mockTenantService) GetTenants() []TenantID {

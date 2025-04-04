@@ -36,6 +36,11 @@ func (tac *TenantAwareConfig) GetConfigWithContext(ctx context.Context) any {
 		return tac.GetConfig()
 	}
 
+	if tac.tenantService == nil {
+		// No tenant service available, return default config
+		return tac.GetConfig()
+	}
+
 	// Try to get tenant-specific config
 	cfg, err := tac.tenantService.GetTenantConfig(tenantID, tac.configSection)
 	if err != nil {

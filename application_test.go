@@ -2,7 +2,11 @@ package modular
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 	"reflect"
+	"regexp"
 	"testing"
 )
 
@@ -268,3 +272,472 @@ func (m testModule) Stop(context.Context) error            { return nil }
 func (m testModule) RegisterConfig(Application)            {}
 func (m testModule) ProvidesServices() []ServiceProvider   { return nil }
 func (m testModule) RequiresServices() []ServiceDependency { return nil }
+
+// Test_RegisterService tests service registration scenarios
+func Test_RegisterService(t *testing.T) {
+	app := &StdApplication{
+		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:    make(map[string]ConfigProvider),
+		svcRegistry:    make(ServiceRegistry),
+		moduleRegistry: make(ModuleRegistry),
+		logger:         &logger{t},
+	}
+
+	// Test successful registration
+	err := app.RegisterService("storage", &MockStorage{data: map[string]string{"key": "value"}})
+	if err != nil {
+		t.Errorf("RegisterService() error = %v, expected no error", err)
+	}
+
+	// Test duplicate registration
+	err = app.RegisterService("storage", &MockStorage{data: map[string]string{}})
+	if err == nil {
+		t.Error("RegisterService() expected error for duplicate service, got nil")
+	} else if !IsServiceAlreadyRegisteredError(err) {
+		t.Errorf("RegisterService() expected ErrServiceAlreadyRegistered, got %v", err)
+	}
+}
+
+// Test_GetService tests service retrieval scenarios
+func Test_GetService(t *testing.T) {
+	app := &StdApplication{
+		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:    make(map[string]ConfigProvider),
+		svcRegistry:    make(ServiceRegistry),
+		moduleRegistry: make(ModuleRegistry),
+		logger:         &logger{t},
+	}
+
+	// Register test services
+	mockStorage := &MockStorage{data: map[string]string{"key": "value"}}
+	app.RegisterService("storage", mockStorage)
+
+	// Test retrieving existing service
+	tests := []struct {
+		name        string
+		serviceName string
+		target      interface{}
+		wantErr     bool
+		errCheck    func(error) bool
+	}{
+		{
+			name:        "Get existing service with interface target",
+			serviceName: "storage",
+			target:      new(StorageService),
+			wantErr:     false,
+		},
+		{
+			name:        "Get existing service with concrete type target",
+			serviceName: "storage",
+			target:      new(MockStorage),
+			wantErr:     false,
+		},
+		{
+			name:        "Get non-existent service",
+			serviceName: "unknown",
+			target:      new(StorageService),
+			wantErr:     true,
+			errCheck:    IsServiceNotFoundError,
+		},
+		{
+			name:        "Target not a pointer",
+			serviceName: "storage",
+			target:      StorageService(nil),
+			wantErr:     true,
+			errCheck:    func(err error) bool { return err == ErrTargetNotPointer },
+		},
+		{
+			name:        "Incompatible target type",
+			serviceName: "storage",
+			target:      new(string),
+			wantErr:     true,
+			errCheck:    IsServiceIncompatibleError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := app.GetService(tt.serviceName, tt.target)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetService() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.errCheck != nil && !tt.errCheck(err) {
+				t.Errorf("GetService() expected specific error, got %v", err)
+			}
+
+			if !tt.wantErr {
+				if ptr, ok := tt.target.(*StorageService); ok && *ptr == nil {
+					t.Error("GetService() service was nil after successful retrieval")
+				}
+			}
+		})
+	}
+}
+
+// Test_ResolveDependencies tests module dependency resolution
+func Test_ResolveDependencies(t *testing.T) {
+	tests := []struct {
+		name       string
+		modules    []Module
+		wantErr    bool
+		errCheck   func(error) bool
+		checkOrder func([]string) bool
+	}{
+		{
+			name: "Simple dependency chain",
+			modules: []Module{
+				&testModule{name: "module-c", dependencies: []string{"module-b"}},
+				&testModule{name: "module-b", dependencies: []string{"module-a"}},
+				&testModule{name: "module-a", dependencies: []string{}},
+			},
+			wantErr: false,
+			checkOrder: func(order []string) bool {
+				// Ensure module-a comes before module-b and module-b before module-c
+				aIdx := -1
+				bIdx := -1
+				cIdx := -1
+				for i, name := range order {
+					switch name {
+					case "module-a":
+						aIdx = i
+					case "module-b":
+						bIdx = i
+					case "module-c":
+						cIdx = i
+					}
+				}
+				return aIdx < bIdx && bIdx < cIdx
+			},
+		},
+		{
+			name: "Circular dependency",
+			modules: []Module{
+				&testModule{name: "module-a", dependencies: []string{"module-b"}},
+				&testModule{name: "module-b", dependencies: []string{"module-a"}},
+			},
+			wantErr:  true,
+			errCheck: IsCircularDependencyError,
+		},
+		{
+			name: "Missing dependency",
+			modules: []Module{
+				&testModule{name: "module-a", dependencies: []string{"non-existent"}},
+			},
+			wantErr:  true,
+			errCheck: IsModuleDependencyMissingError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &StdApplication{
+				cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+				cfgSections:    make(map[string]ConfigProvider),
+				svcRegistry:    make(ServiceRegistry),
+				moduleRegistry: make(ModuleRegistry),
+				logger:         &logger{t},
+			}
+
+			// Register modules
+			for _, module := range tt.modules {
+				app.RegisterModule(module)
+			}
+
+			// Resolve dependencies
+			order, err := app.resolveDependencies()
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveDependencies() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.errCheck != nil && !tt.errCheck(err) {
+				t.Errorf("resolveDependencies() expected specific error, got %v", err)
+			}
+
+			if !tt.wantErr && tt.checkOrder != nil && !tt.checkOrder(order) {
+				t.Errorf("resolveDependencies() returned incorrect order: %v", order)
+			}
+		})
+	}
+}
+
+// Mock module that tracks lifecycle methods
+type lifecycleTestModule struct {
+	testModule
+	initCalled  bool
+	startCalled bool
+	stopCalled  bool
+	startError  error
+	stopError   error
+}
+
+func (m *lifecycleTestModule) Init(Application) error {
+	m.initCalled = true
+	return nil
+}
+
+func (m *lifecycleTestModule) Start(context.Context) error {
+	m.startCalled = true
+	return m.startError
+}
+
+func (m *lifecycleTestModule) Stop(context.Context) error {
+	m.stopCalled = true
+	return m.stopError
+}
+
+// Test_ApplicationLifecycle tests the Start and Stop methods
+func Test_ApplicationLifecycle(t *testing.T) {
+	// Test successful Start and Stop
+	t.Run("Successful lifecycle", func(t *testing.T) {
+		app := &StdApplication{
+			cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+			cfgSections:    make(map[string]ConfigProvider),
+			svcRegistry:    make(ServiceRegistry),
+			moduleRegistry: make(ModuleRegistry),
+			logger:         &logger{t},
+		}
+
+		module1 := &lifecycleTestModule{testModule: testModule{name: "module1"}}
+		module2 := &lifecycleTestModule{testModule: testModule{name: "module2", dependencies: []string{"module1"}}}
+
+		app.RegisterModule(module1)
+		app.RegisterModule(module2)
+
+		// Test Start
+		if err := app.Start(); err != nil {
+			t.Errorf("Start() error = %v, expected no error", err)
+		}
+
+		// Verify context was created
+		if app.ctx == nil {
+			t.Error("Start() did not create application context")
+		}
+
+		// Verify modules were started in correct order
+		if !module1.startCalled {
+			t.Error("Start() did not call Start on first module")
+		}
+		if !module2.startCalled {
+			t.Error("Start() did not call Start on second module")
+		}
+
+		// Test Stop
+		if err := app.Stop(); err != nil {
+			t.Errorf("Stop() error = %v, expected no error", err)
+		}
+
+		// Verify modules were stopped (should be in reverse order)
+		if !module1.stopCalled {
+			t.Error("Stop() did not call Stop on first module")
+		}
+		if !module2.stopCalled {
+			t.Error("Stop() did not call Stop on second module")
+		}
+	})
+
+	// Test Start failure
+	t.Run("Start failure", func(t *testing.T) {
+		app := &StdApplication{
+			cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+			cfgSections:    make(map[string]ConfigProvider),
+			svcRegistry:    make(ServiceRegistry),
+			moduleRegistry: make(ModuleRegistry),
+			logger:         &logger{t},
+		}
+
+		failingModule := &lifecycleTestModule{
+			testModule: testModule{name: "failing"},
+			startError: ErrModuleStartFailed,
+		}
+
+		app.RegisterModule(failingModule)
+
+		// Test Start
+		if err := app.Start(); err == nil {
+			t.Error("Start() expected error for failing module, got nil")
+		}
+	})
+
+	// Test Stop with error
+	t.Run("Stop with error", func(t *testing.T) {
+		app := &StdApplication{
+			cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+			cfgSections:    make(map[string]ConfigProvider),
+			svcRegistry:    make(ServiceRegistry),
+			moduleRegistry: make(ModuleRegistry),
+			logger:         slog.Default(),
+		}
+
+		failingModule := &lifecycleTestModule{
+			testModule: testModule{name: "failing"},
+			stopError:  ErrModuleStopFailed,
+		}
+
+		app.RegisterModule(failingModule)
+
+		// Start first so we can test Stop
+		if err := app.Start(); err != nil {
+			t.Fatalf("Start() error = %v, expected no error", err)
+		}
+
+		// Test Stop - should return error but continue stopping
+		if err := app.Stop(); err == nil {
+			t.Error("Stop() expected error for failing module, got nil")
+		}
+	})
+}
+
+// Test_TenantFunctionality tests tenant-related methods
+func Test_TenantFunctionality(t *testing.T) {
+	// Setup tenant service and configs
+	tenantSvc := &mockTenantService{
+		tenantConfigs: map[TenantID]map[string]ConfigProvider{
+			"tenant1": {
+				"app": NewStdConfigProvider(testCfg{Str: "tenant1-config"}),
+			},
+		},
+	}
+
+	app := &StdApplication{
+		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:    make(map[string]ConfigProvider),
+		svcRegistry:    make(ServiceRegistry),
+		moduleRegistry: make(ModuleRegistry),
+		logger:         &logger{t},
+		ctx:            context.Background(),
+	}
+
+	// Register tenant service
+	app.RegisterService("tenantService", tenantSvc)
+	app.RegisterService("tenantConfigLoader", NewFileBasedTenantConfigLoader(TenantConfigParams{
+		ConfigNameRegex: regexp.MustCompile(`.*\.json$`),
+		ConfigDir:       "",
+		ConfigFeeders:   nil,
+	}))
+
+	// Test GetTenantService
+	t.Run("GetTenantService", func(t *testing.T) {
+		ts, err := app.GetTenantService()
+		if err != nil {
+			t.Errorf("GetTenantService() error = %v, expected no error", err)
+			return
+		}
+		if ts == nil {
+			t.Error("GetTenantService() returned nil service")
+		}
+	})
+
+	// Test WithTenant
+	t.Run("WithTenant", func(t *testing.T) {
+		tctx, err := app.WithTenant("tenant1")
+		if err != nil {
+			t.Errorf("WithTenant() error = %v, expected no error", err)
+			return
+		}
+		if tctx == nil {
+			t.Error("WithTenant() returned nil context")
+			return
+		}
+		if tctx.GetTenantID() != "tenant1" {
+			t.Errorf("WithTenant() tenantID = %v, expected tenant1", tctx.GetTenantID())
+		}
+	})
+
+	// Test WithTenant with nil context
+	t.Run("WithTenant with nil context", func(t *testing.T) {
+		appWithNoCtx := &StdApplication{
+			cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
+			cfgSections:    make(map[string]ConfigProvider),
+			svcRegistry:    make(ServiceRegistry),
+			moduleRegistry: make(ModuleRegistry),
+			logger:         &logger{t},
+			ctx:            nil, // No context initialized
+		}
+
+		_, err := appWithNoCtx.WithTenant("tenant1")
+		if err == nil {
+			t.Error("WithTenant() expected error for nil app context, got nil")
+		}
+	})
+
+	// Test GetTenantConfig
+	t.Run("GetTenantConfig", func(t *testing.T) {
+		cfg, err := app.GetTenantConfig("tenant1", "app")
+		if err != nil {
+			t.Errorf("GetTenantConfig() error = %v, expected no error", err)
+			return
+		}
+		if cfg == nil {
+			t.Error("GetTenantConfig() returned nil config")
+			return
+		}
+
+		// Verify the config content
+		tcfg, ok := cfg.GetConfig().(testCfg)
+		if !ok {
+			t.Errorf("Failed to get structured config: %v", err)
+			return
+		}
+		if tcfg.Str != "tenant1-config" {
+			t.Errorf("Expected config value 'tenant1-config', got '%s'", tcfg.Str)
+		}
+	})
+
+	// Test GetTenantConfig for non-existent tenant
+	t.Run("GetTenantConfig for non-existent tenant", func(t *testing.T) {
+		_, err := app.GetTenantConfig("non-existent", "app")
+		if err == nil {
+			t.Error("GetTenantConfig() expected error for non-existent tenant, got nil")
+		}
+	})
+}
+
+// Helper for error checking
+func IsServiceAlreadyRegisteredError(err error) bool {
+	return err != nil && ErrorIs(err, ErrServiceAlreadyRegistered)
+}
+
+func IsServiceNotFoundError(err error) bool {
+	return err != nil && ErrorIs(err, ErrServiceNotFound)
+}
+
+func IsServiceIncompatibleError(err error) bool {
+	return err != nil && ErrorIs(err, ErrServiceIncompatible)
+}
+
+func IsCircularDependencyError(err error) bool {
+	return err != nil && ErrorIs(err, ErrCircularDependency)
+}
+
+func IsModuleDependencyMissingError(err error) bool {
+	return err != nil && ErrorIs(err, ErrModuleDependencyMissing)
+}
+
+// ErrorIs is a helper function that checks if err contains target error
+func ErrorIs(err, target error) bool {
+	// Simple implementation that checks if target is in err's chain
+	for {
+		if errors.Is(err, target) {
+			return true
+		}
+		if unwrapper, ok := err.(interface{ Unwrap() error }); ok {
+			err = unwrapper.Unwrap()
+			if err == nil {
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+}
+
+// Placeholder errors for tests
+var (
+	ErrModuleStartFailed = fmt.Errorf("module start failed")
+	ErrModuleStopFailed  = fmt.Errorf("module stop failed")
+)

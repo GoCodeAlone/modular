@@ -411,3 +411,177 @@ func TestTenantConfigMerging(t *testing.T) {
 		t.Errorf("TestConfig section should still exist after adding ApiConfig")
 	}
 }
+
+// TestTenantAwareConfig tests the TenantAwareConfig functionality
+func TestTenantAwareConfig(t *testing.T) {
+	// Create test logger
+	log := &logger{t}
+
+	// Create default config
+	defaultCfg := &TestTenantConfig{
+		Name:        "Default",
+		Environment: "default",
+		Features:    map[string]bool{"default": true},
+	}
+	defaultProvider := NewStdConfigProvider(defaultCfg)
+
+	// Create tenant service
+	tenantService := NewStandardTenantService(log)
+
+	// Register tenants with configs
+	tenant1ID := TenantID("tenant1")
+	tenant1Cfg := &TestTenantConfig{
+		Name:        "Tenant1",
+		Environment: "test",
+		Features:    map[string]bool{"feature1": true},
+	}
+	tenant1Configs := map[string]ConfigProvider{
+		"TestConfig": NewStdConfigProvider(tenant1Cfg),
+	}
+	err := tenantService.RegisterTenant(tenant1ID, tenant1Configs)
+	if err != nil {
+		t.Fatalf("Failed to register tenant1: %v", err)
+	}
+
+	// Register another tenant
+	tenant2ID := TenantID("tenant2")
+	tenant2Cfg := &TestTenantConfig{
+		Name:        "Tenant2",
+		Environment: "production",
+		Features:    map[string]bool{"feature2": true},
+	}
+	tenant2Configs := map[string]ConfigProvider{
+		"TestConfig": NewStdConfigProvider(tenant2Cfg),
+	}
+	err = tenantService.RegisterTenant(tenant2ID, tenant2Configs)
+	if err != nil {
+		t.Fatalf("Failed to register tenant2: %v", err)
+	}
+
+	// Create TenantAwareConfig
+	tacConfig := NewTenantAwareConfig(defaultProvider, tenantService, "TestConfig")
+
+	// Test 1: GetConfig should return default config
+	config := tacConfig.GetConfig()
+	testCfg, ok := config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Default" {
+		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	}
+
+	// Test 2: GetConfigWithContext with no tenant ID should return default config
+	ctx := context.Background()
+	config = tacConfig.GetConfigWithContext(ctx)
+	testCfg, ok = config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Default" {
+		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	}
+
+	// Test 3: GetConfigWithContext with tenant1 ID should return tenant1 config
+	ctx1 := NewTenantContext(ctx, tenant1ID)
+	config = tacConfig.GetConfigWithContext(ctx1)
+	testCfg, ok = config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Tenant1" {
+		t.Errorf("Expected Name 'Tenant1', got '%s'", testCfg.Name)
+	}
+	if testCfg.Environment != "test" {
+		t.Errorf("Expected Environment 'test', got '%s'", testCfg.Environment)
+	}
+	if !testCfg.Features["feature1"] {
+		t.Errorf("Expected Features['feature1'] to be true")
+	}
+
+	// Test 4: GetConfigWithContext with tenant2 ID should return tenant2 config
+	ctx2 := NewTenantContext(ctx, tenant2ID)
+	config = tacConfig.GetConfigWithContext(ctx2)
+	testCfg, ok = config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Tenant2" {
+		t.Errorf("Expected Name 'Tenant2', got '%s'", testCfg.Name)
+	}
+	if testCfg.Environment != "production" {
+		t.Errorf("Expected Environment 'production', got '%s'", testCfg.Environment)
+	}
+	if !testCfg.Features["feature2"] {
+		t.Errorf("Expected Features['feature2'] to be true")
+	}
+
+	// Test 5: GetConfigWithContext with non-existent tenant ID should return default config
+	nonExistentCtx := NewTenantContext(ctx, TenantID("non-existent"))
+	config = tacConfig.GetConfigWithContext(nonExistentCtx)
+	testCfg, ok = config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Default" {
+		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	}
+
+	// Test 6: nil default config provider
+	nilConfig := NewTenantAwareConfig(nil, tenantService, "TestConfig")
+	config = nilConfig.GetConfig()
+	if config != nil {
+		t.Errorf("Expected nil config, got %+v", config)
+	}
+
+	// Test 7: GetConfigWithContext with tenant ID but invalid section
+	wrongSectionConfig := NewTenantAwareConfig(defaultProvider, tenantService, "NonExistentSection")
+	config = wrongSectionConfig.GetConfigWithContext(ctx1)
+	testCfg, ok = config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Default" {
+		t.Errorf("Expected to fall back to default config, got Name '%s'", testCfg.Name)
+	}
+}
+
+// TestTenantAwareConfigNilCases tests edge cases with nil values
+func TestTenantAwareConfigNilCases(t *testing.T) {
+	// Create default config and tenant service
+	defaultCfg := &TestTenantConfig{Name: "Default"}
+	defaultProvider := NewStdConfigProvider(defaultCfg)
+
+	// Test with nil tenant service but valid default config
+	tacNilTenantService := NewTenantAwareConfig(defaultProvider, nil, "TestConfig")
+
+	// GetConfig should still work with nil tenant service
+	config := tacNilTenantService.GetConfig()
+	testCfg, ok := config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Default" {
+		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	}
+
+	// GetConfigWithContext should fall back to default when tenant service is nil
+	ctx := NewTenantContext(context.Background(), TenantID("tenant1"))
+	config = tacNilTenantService.GetConfigWithContext(ctx)
+	testCfg, ok = config.(*TestTenantConfig)
+	if !ok {
+		t.Fatalf("Expected *TestTenantConfig, got %T", config)
+	}
+	if testCfg.Name != "Default" {
+		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	}
+
+	// Test fully nil case
+	tacAllNil := NewTenantAwareConfig(nil, nil, "")
+	if config = tacAllNil.GetConfig(); config != nil {
+		t.Errorf("Expected nil config, got %+v", config)
+	}
+	if config = tacAllNil.GetConfigWithContext(ctx); config != nil {
+		t.Errorf("Expected nil config, got %+v", config)
+	}
+}

@@ -279,7 +279,7 @@ func (app *StdApplication) Stop() error {
 	for _, name := range modules {
 		module := app.moduleRegistry[name]
 		app.logger.Info("Stopping module", "module", name)
-		if err := module.Stop(ctx); err != nil {
+		if err = module.Stop(ctx); err != nil {
 			app.logger.Error("Error stopping module", "module", name, "error", err)
 			lastErr = err
 		}
