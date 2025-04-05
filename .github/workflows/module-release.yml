@@ -160,7 +160,7 @@ jobs:
           VERSION=${{ steps.version.outputs.next_version }}
           MODULE_NAME="github.com/GoCodeAlone/modular/modules/${{ steps.version.outputs.module }}"
           
-          GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
+          go get ${MODULE_NAME}@${VERSION}
           
           echo "Announced version ${{steps.version.outputs.module}}@${VERSION} to Go proxy"
 
