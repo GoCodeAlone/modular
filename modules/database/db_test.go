@@ -1,3 +1,5 @@
+//go:build cgo
+
 package database_test
 
 import (
@@ -145,7 +147,7 @@ func (y *YourModule) RequiresServices() []modular.ServiceDependency {
 }
 
 func (y *YourModule) Constructor() modular.ModuleConstructor {
-	return func(app *modular.StdApplication, services map[string]any) (modular.Module, error) {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
 		// Get the JSONSchemaService from the services map
 		dbService, ok := services["database.service"].(database.DatabaseService)
 		if !ok {
