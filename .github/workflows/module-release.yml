@@ -152,6 +152,16 @@ jobs:
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
             --latest=false
+          
+          COMMIT_SHA=$(git rev-parse ${{ steps.version.outputs.tag }})
+          git tag ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }} $COMMIT_SHA
+          git push origin ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }}
+          
+          # Get all assets of the release and delete each one
+          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' | while read asset; do
+            echo "Deleting asset: $asset"
+            gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
+          done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
