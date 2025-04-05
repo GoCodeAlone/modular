@@ -161,7 +161,7 @@ func (m *YourModule) ProvidesServices() []modular.ServiceProvider {
 }
 
 func (m *YourModule) Constructor() modular.ModuleConstructor {
-	return func(app *modular.StdApplication, services map[string]any) (modular.Module, error) {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
 		// Get the JSONSchemaService from the services map
 		schemaService, ok := services["jsonschema.service"].(jsonschema.JSONSchemaService)
 		if !ok {
