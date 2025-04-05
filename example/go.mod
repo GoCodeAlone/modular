@@ -5,7 +5,7 @@ go 1.23.5
 replace github.com/GoCodeAlone/modular => ../
 
 require (
-	github.com/GoCodeAlone/modular v1.0.0
+	github.com/GoCodeAlone/modular v1.2.0
 	github.com/go-chi/chi/v5 v5.2.1
 )
 

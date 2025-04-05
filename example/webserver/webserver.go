@@ -17,7 +17,7 @@ type Module struct {
 	router        http.Handler // Dependency
 	server        *http.Server
 	config        *WebConfig
-	app           *modular.StdApplication
+	app           modular.Application
 	routerService router.Router
 }
 
@@ -29,10 +29,11 @@ type WebConfig struct {
 	Port string
 }
 
-func (m *Module) RegisterConfig(app modular.Application) {
+func (m *Module) RegisterConfig(app modular.Application) error {
 	app.RegisterConfigSection(configSection, modular.NewStdConfigProvider(&WebConfig{
 		Port: "8080",
 	}))
+	return nil
 }
 
 func (m *Module) Init(app modular.Application) error {
@@ -104,7 +105,7 @@ func (m *Module) RequiresServices() []modular.ServiceDependency {
 }
 
 func (m *Module) Constructor() modular.ModuleConstructor {
-	return func(app *modular.StdApplication, services map[string]any) (modular.Module, error) {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
 		// Get router dependency
 		rtr, ok := services["router"].(http.Handler)
 		if !ok {

@@ -28,10 +28,11 @@ type Config struct {
 	RoutePrefix string
 }
 
-func (m *Module) RegisterConfig(app modular.Application) {
+func (m *Module) RegisterConfig(app modular.Application) error {
 	app.RegisterConfigSection(configSection, modular.NewStdConfigProvider(&Config{
 		RoutePrefix: "/",
 	}))
+	return nil
 }
 
 func (m *Module) Init(app modular.Application) error {

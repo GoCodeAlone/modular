@@ -4,7 +4,7 @@ go 1.23.5
 
 replace github.com/GoCodeAlone/modular => ../
 
-require github.com/GoCodeAlone/modular v1.0.0
+require github.com/GoCodeAlone/modular v1.2.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect

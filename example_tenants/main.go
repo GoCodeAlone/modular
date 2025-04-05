@@ -45,14 +45,13 @@ func main() {
 	app.RegisterService("tenantConfigLoader", tenantConfigLoader)
 
 	// Register standard modules
-	app.RegisterModule(NewWebServer())
-	app.RegisterModule(NewRouter())
-	app.RegisterModule(NewAPIModule())
+	app.RegisterModule(NewWebServer(app.Logger()))
+	app.RegisterModule(NewRouter(app.Logger()))
+	app.RegisterModule(NewAPIModule(app.Logger()))
 
 	// Register tenant-aware module
-	contentManager := NewContentManager()
-	app.RegisterModule(contentManager)
-	app.RegisterModule(NewNotificationManager())
+	app.RegisterModule(NewContentManager(app.Logger()))
+	app.RegisterModule(NewNotificationManager(app.Logger()))
 
 	// Run application with lifecycle management
 	if err := app.Run(); err != nil {
