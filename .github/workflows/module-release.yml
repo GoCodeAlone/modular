@@ -62,7 +62,7 @@ jobs:
           echo "Selected module: $MODULE"
           
           # Find the latest tag for this module
-          LATEST_TAG=$(git tag -l "${MODULE}/v*" | sort -V | tail -n1 || echo "")
+          LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
           echo "Latest tag: $LATEST_TAG"
           
           if [ -z "$LATEST_TAG" ]; then
@@ -70,7 +70,7 @@ jobs:
             CURRENT_VERSION="v0.0.0"
             echo "No previous version found, starting with v0.0.0"
           else
-            CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|${MODULE}/||")
+            CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|modules/${MODULE}/||")
             echo "Current version: $CURRENT_VERSION"
           fi
           
@@ -102,7 +102,7 @@ jobs:
           fi
           
           echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=${MODULE}/${NEXT_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=modules/${MODULE}/${NEXT_VERSION}" >> $GITHUB_OUTPUT
           echo "module=${MODULE}" >> $GITHUB_OUTPUT
           echo "Next version: ${NEXT_VERSION}, tag will be: ${MODULE}/${NEXT_VERSION}"
 
@@ -113,7 +113,7 @@ jobs:
           TAG=${{ steps.version.outputs.tag }}
           
           # Find the previous tag for this module to use as starting point for changelog
-          PREV_TAG=$(git tag -l "${MODULE}/v*" | sort -V | tail -n1 || echo "")
+          PREV_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
           
           # Generate changelog by looking at commits that touched the module's directory
           if [ -z "$PREV_TAG" ]; then
