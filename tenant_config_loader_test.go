@@ -49,6 +49,11 @@ func (m *MockTenantService) RegisterTenant(tenantID TenantID, configs map[string
 	return nil
 }
 
+func (m *MockTenantService) RegisterTenantAwareModule(module TenantAwareModule) error {
+	// No-op for mock
+	return nil
+}
+
 // setupTestDirectory creates a temporary directory with test tenant config files
 func setupTestDirectory(t *testing.T) (string, func()) {
 	tempDir, err := os.MkdirTemp("", "tenant_config_test")

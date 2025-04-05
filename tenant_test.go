@@ -118,6 +118,10 @@ func (m *mockTenantService) RegisterTenant(TenantID, map[string]ConfigProvider) 
 	return nil
 }
 
+func (m *mockTenantService) RegisterTenantAwareModule(module TenantAwareModule) error {
+	return nil
+}
+
 type mockTenantAwareModule struct{}
 
 func (m *mockTenantAwareModule) Name() string {

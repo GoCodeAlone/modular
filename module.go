@@ -4,36 +4,53 @@ import "context"
 
 // Module represents a registrable component in the application
 type Module interface {
-	// RegisterConfig registers configuration requirements
-	RegisterConfig(app Application)
-
-	// Init Initialize the module with the application context
-	Init(app Application) error
-
-	// Start starts the module (non-blocking)
-	Start(ctx context.Context) error
-
-	// Stop gracefully stops the module
-	Stop(ctx context.Context) error
-
 	// Name returns the unique identifier for this module
 	Name() string
+	// Init Initialize the module with the application context
+	Init(app Application) error
+}
 
+// Configurable is an interface for modules that can have configuration
+type Configurable interface {
+	// RegisterConfig registers configuration requirements
+	RegisterConfig(app Application) error
+}
+
+// DependencyAware is an interface for modules that can have dependencies
+type DependencyAware interface {
 	// Dependencies returns names of other modules this module depends on
 	Dependencies() []string
+}
 
+// ServiceAware is an interface for modules that can provide or require services
+type ServiceAware interface {
 	// ProvidesServices returns a list of services provided by this module
 	ProvidesServices() []ServiceProvider
-
 	// RequiresServices returns a list of services required by this module
 	RequiresServices() []ServiceDependency
 }
 
-type ModuleConstructor func(app *StdApplication, services map[string]any) (Module, error)
+// Startable is an interface for modules that can be started
+type Startable interface {
+	Start(ctx context.Context) error
+}
+
+// Stoppable is an interface for modules that can be stopped
+type Stoppable interface {
+	Stop(ctx context.Context) error
+}
+
+// Constructable is an interface for modules that can be constructed with a constructor
+type Constructable interface {
+	// Constructor returns a function to construct this module
+	Constructor() ModuleConstructor
+}
+
+type ModuleConstructor func(app Application, services map[string]any) (Module, error)
 
 type ModuleWithConstructor interface {
 	Module
-	Constructor() ModuleConstructor
+	Constructable
 }
 
 // ModuleRegistry represents a svcRegistry of modules

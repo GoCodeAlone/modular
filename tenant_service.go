@@ -158,7 +158,7 @@ func (ts *StandardTenantService) RemoveTenant(tenantID TenantID) error {
 }
 
 // RegisterTenantAwareModule registers a module to receive tenant events
-func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareModule) {
+func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareModule) error {
 	ts.mutex.Lock()
 	defer ts.mutex.Unlock()
 
@@ -167,7 +167,7 @@ func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareMod
 		if existingModule == module {
 			ts.logger.Debug("Module already registered as tenant-aware",
 				"module", fmt.Sprintf("%T", module), "name", module.Name())
-			return
+			return nil
 		}
 	}
 
@@ -179,6 +179,7 @@ func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareMod
 	for tenantID := range ts.tenantConfigs {
 		ts.notifyModuleAboutTenant(module, tenantID)
 	}
+	return nil
 }
 
 // RegisterTenantConfigSection registers a configuration section for a specific tenant

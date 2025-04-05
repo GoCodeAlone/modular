@@ -44,6 +44,9 @@ type TenantService interface {
 
 	// RegisterTenant registers a new tenant with optional initial configs
 	RegisterTenant(tenantID TenantID, configs map[string]ConfigProvider) error
+
+	// RegisterTenantAwareModule registers a module that wants to be notified about tenant lifecycle events
+	RegisterTenantAwareModule(module TenantAwareModule) error
 }
 
 // TenantAwareModule is an optional interface that modules can implement

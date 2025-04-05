@@ -161,7 +161,15 @@ func (app *StdApplication) GetService(name string, target any) error {
 // Init initializes the application with the provided modules
 func (app *StdApplication) Init() error {
 	for name, module := range app.moduleRegistry {
-		module.RegisterConfig(app)
+		configurableModule, ok := module.(Configurable)
+		if !ok {
+			app.logger.Debug("Module does not implement Configurable, skipping", "module", name)
+			continue
+		}
+		err := configurableModule.RegisterConfig(app)
+		if err != nil {
+			return err
+		}
 		app.logger.Debug("Registering module", "name", name)
 	}
 
@@ -177,20 +185,24 @@ func (app *StdApplication) Init() error {
 
 	// Initialize modules in order
 	for _, moduleName := range moduleOrder {
-		// Inject required services
-		app.moduleRegistry[moduleName], err = app.injectServices(app.moduleRegistry[moduleName])
-		if err != nil {
-			return fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err)
+		if _, ok := app.moduleRegistry[moduleName].(ServiceAware); ok {
+			// Inject required services
+			app.moduleRegistry[moduleName], err = app.injectServices(app.moduleRegistry[moduleName])
+			if err != nil {
+				return fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err)
+			}
 		}
 
 		if err = app.moduleRegistry[moduleName].Init(app); err != nil {
 			return fmt.Errorf("failed to initialize module '%s': %w", moduleName, err)
 		}
 
-		// Register services provided by modules
-		for _, svc := range app.moduleRegistry[moduleName].ProvidesServices() {
-			if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
-				return fmt.Errorf("module '%s' failed to register service: %w", moduleName, err)
+		if _, ok := app.moduleRegistry[moduleName].(ServiceAware); ok {
+			// Register services provided by modules
+			for _, svc := range app.moduleRegistry[moduleName].(ServiceAware).ProvidesServices() {
+				if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
+					return fmt.Errorf("module '%s' failed to register service: %w", moduleName, err)
+				}
 			}
 		}
 
@@ -221,7 +233,7 @@ func (app *StdApplication) initTenantConfigurations() error {
 		}
 
 		// Register tenant-aware modules with the tenant service
-		if standardTenantSvc, ok := tenantSvc.(*StandardTenantService); ok {
+		if standardTenantSvc, ok := tenantSvc.(TenantService); ok {
 			for _, module := range app.moduleRegistry {
 				if tenantAwareModule, ok := module.(TenantAwareModule); ok {
 					standardTenantSvc.RegisterTenantAwareModule(tenantAwareModule)
@@ -250,8 +262,13 @@ func (app *StdApplication) Start() error {
 
 	for _, name := range modules {
 		module := app.moduleRegistry[name]
+		startableModule, ok := module.(Startable)
+		if !ok {
+			app.logger.Debug("Module does not implement Startable, skipping", "module", name)
+			continue
+		}
 		app.logger.Info("Starting module", "module", name)
-		if err := module.Start(ctx); err != nil {
+		if err := startableModule.Start(ctx); err != nil {
 			return fmt.Errorf("failed to start module %s: %w", name, err)
 		}
 	}
@@ -278,8 +295,13 @@ func (app *StdApplication) Stop() error {
 	var lastErr error
 	for _, name := range modules {
 		module := app.moduleRegistry[name]
+		stoppableModule, ok := module.(Stoppable)
+		if !ok {
+			app.logger.Debug("Module does not implement Stoppable, skipping", "module", name)
+			continue
+		}
 		app.logger.Info("Stopping module", "module", name)
-		if err = module.Stop(ctx); err != nil {
+		if err = stoppableModule.Stop(ctx); err != nil {
 			app.logger.Error("Error stopping module", "module", name, "error", err)
 			lastErr = err
 		}
@@ -320,7 +342,7 @@ func (app *StdApplication) Run() error {
 // injectServices injects required services into a module
 func (app *StdApplication) injectServices(module Module) (Module, error) {
 	requiredServices := make(map[string]any)
-	for _, dep := range module.RequiresServices() {
+	for _, dep := range module.(ServiceAware).RequiresServices() {
 		if service, exists := app.svcRegistry[dep.Name]; exists {
 			if valid, err := checkServiceCompatibility(service, dep); !valid {
 				return nil, fmt.Errorf("failed to inject service '%s': %w", dep.Name, err)
@@ -334,7 +356,7 @@ func (app *StdApplication) injectServices(module Module) (Module, error) {
 	}
 
 	// If module supports constructor injection, use it
-	if withConstructor, ok := module.(ModuleWithConstructor); ok {
+	if withConstructor, ok := module.(Constructable); ok {
 		constructor := withConstructor.Constructor()
 		newModule, err := constructor(app, requiredServices)
 		if err != nil {
@@ -387,7 +409,11 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	// Create dependency graph
 	graph := make(map[string][]string)
 	for name, module := range app.moduleRegistry {
-		graph[name] = module.Dependencies()
+		if _, ok := module.(DependencyAware); !ok {
+			app.logger.Debug("Module does not implement DependencyAware, skipping", "module", name)
+			continue
+		}
+		graph[name] = module.(DependencyAware).Dependencies()
 	}
 
 	// Topological sort

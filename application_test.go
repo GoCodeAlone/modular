@@ -68,9 +68,10 @@ type configRegisteringModule struct {
 	initError        error
 }
 
-func (m *configRegisteringModule) RegisterConfig(app Application) {
+func (m *configRegisteringModule) RegisterConfig(app Application) error {
 	app.RegisterConfigSection(m.name+"-config", NewStdConfigProvider(m.name+"-config-value"))
 	m.configRegistered = true
+	return nil
 }
 
 func (m *configRegisteringModule) Init(Application) error {
@@ -269,7 +270,7 @@ func (m testModule) Dependencies() []string                { return m.dependenci
 func (m testModule) Init(Application) error                { return nil }
 func (m testModule) Start(context.Context) error           { return nil }
 func (m testModule) Stop(context.Context) error            { return nil }
-func (m testModule) RegisterConfig(Application)            {}
+func (m testModule) RegisterConfig(Application) error      { return nil }
 func (m testModule) ProvidesServices() []ServiceProvider   { return nil }
 func (m testModule) RequiresServices() []ServiceDependency { return nil }
 
