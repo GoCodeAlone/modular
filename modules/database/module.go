@@ -28,12 +28,14 @@ func NewModule() *Module {
 }
 
 // RegisterConfig registers database configuration
-func (m *Module) RegisterConfig(app modular.Application) {
+func (m *Module) RegisterConfig(app modular.Application) error {
 	m.config = &Config{
 		Connections: make(map[string]ConnectionConfig),
 		Default:     "default",
 	}
 	app.RegisterConfigSection("database", modular.NewStdConfigProvider(m.config))
+
+	return nil
 }
 
 // Init initializes the database connections
@@ -102,11 +104,6 @@ func (m *Module) Stop(ctx context.Context) error {
 // Name returns the module name
 func (m *Module) Name() string {
 	return "database"
-}
-
-// Dependencies returns module dependencies
-func (m *Module) Dependencies() []string {
-	return nil
 }
 
 // ProvidesServices returns services provided by this module
