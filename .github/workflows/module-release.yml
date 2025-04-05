@@ -158,7 +158,7 @@ jobs:
           git push origin ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }}
           
           # Get all assets of the release and delete each one
-          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' | while read asset; do
+          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' -- | while read asset; do
             echo "Deleting asset: $asset"
             gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
           done
