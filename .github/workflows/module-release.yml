@@ -153,8 +153,8 @@ jobs:
             --repo ${{ github.repository }} \
             --latest=false --
           
-          COMMIT_SHA=$(git rev-parse ${{ steps.version.outputs.tag }})
-          git tag ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }} $COMMIT_SHA
+          COMMIT_SHA=$(git rev-parse ${{ steps.version.outputs.tag }} --)
+          git tag ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }} $COMMIT_SHA --
           git push origin ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }}
           
           # Get all assets of the release and delete each one
