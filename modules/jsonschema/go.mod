@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/jsonschema
 go 1.23.5
 
 require (
-	github.com/GoCodeAlone/modular v1.2.0
+	github.com/GoCodeAlone/modular v1.2.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
 )
 
