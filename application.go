@@ -411,6 +411,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	for name, module := range app.moduleRegistry {
 		if _, ok := module.(DependencyAware); !ok {
 			app.logger.Debug("Module does not implement DependencyAware, skipping", "module", name)
+			graph[name] = nil
 			continue
 		}
 		graph[name] = module.(DependencyAware).Dependencies()
