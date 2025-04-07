@@ -18,6 +18,10 @@ func (m *Module) Name() string {
 	return "jsonschema"
 }
 
+func (m *Module) Init(app modular.Application) error {
+	return nil
+}
+
 func (m *Module) ProvidesServices() []modular.ServiceProvider {
 	return []modular.ServiceProvider{
 		{
