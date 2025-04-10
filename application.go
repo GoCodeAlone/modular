@@ -206,7 +206,7 @@ func (app *StdApplication) Init() error {
 			}
 		}
 
-		app.logger.Info(fmt.Sprintf("Initialized module %s", moduleName))
+		app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
 	}
 
 	// Initialize tenant configuration after modules have registered their configurations

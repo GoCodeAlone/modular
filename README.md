@@ -17,6 +17,8 @@ Modular is a package that provides a structured way to create modular applicatio
 - **Dependency management**: Automatically resolve and order module dependencies
 - **Service registry**: Register and retrieve application services
 - **Configuration management**: Handle configuration for modules and services
+- **Configuration validation**: Validate configurations with defaults, required fields, and custom logic
+- **Sample config generation**: Generate sample configuration files in various formats
 - **Dependency injection**: Inject required services into modules
 - **Multi-tenancy support**: Build applications that serve multiple tenants with isolated configurations
 
@@ -110,7 +112,7 @@ func (m *DatabaseModule) Dependencies() []string {
 func (m *DatabaseModule) Init(app *modular.Application) error {
     // Initialize database connection
     db, err := sql.Open("postgres", m.config.DSN)
-    if err != nil {
+    if (err != nil) {
         return err
     }
     m.db = db
@@ -180,17 +182,111 @@ func (m *APIModule) Constructor() modular.ModuleConstructor {
 ```go
 // Define your configuration struct
 type AppConfig struct {
-    Name    string `json:"name" yaml:"name"`
-    Version string `json:"version" yaml:"version"`
+    Name    string `json:"name" yaml:"name" default:"DefaultApp" desc:"Application name"`
+    Version string `json:"version" yaml:"version" required:"true" desc:"Application version"`
+    Debug   bool   `json:"debug" yaml:"debug" default:"false" desc:"Enable debug mode"`
 }
 
-// Implement ConfigSetup interface if needed
-func (c *AppConfig) Setup() error {
-    // Validate configuration or set defaults
-    if c.Name == "" {
-        c.Name = "DefaultApp"
+// Implement ConfigValidator interface for custom validation
+func (c *AppConfig) Validate() error {
+    // Custom validation logic
+    if c.Version == "0.0.0" {
+        return fmt.Errorf("invalid version: %s", c.Version)
     }
     return nil
+}
+```
+
+### Configuration Validation and Default Values
+
+Modular now includes powerful configuration validation features:
+
+#### Default Values with Struct Tags
+
+```go
+// Define struct with default values
+type ServerConfig struct {
+    Host        string `yaml:"host" default:"localhost" desc:"Server host"`
+    Port        int    `yaml:"port" default:"8080" desc:"Server port"`
+    ReadTimeout int    `yaml:"readTimeout" default:"30" desc:"Read timeout in seconds"`
+    Debug       bool   `yaml:"debug" default:"false" desc:"Enable debug mode"`
+}
+```
+
+Default values are automatically applied to fields that have zero/empty values when configurations are loaded.
+
+#### Required Field Validation
+
+```go
+type DatabaseConfig struct {
+    Host     string `yaml:"host" default:"localhost" desc:"Database host"`
+    Port     int    `yaml:"port" default:"5432" desc:"Database port"`
+    Name     string `yaml:"name" required:"true" desc:"Database name"` // Must be provided
+    User     string `yaml:"user" default:"postgres" desc:"Database user"`
+    Password string `yaml:"password" required:"true" desc:"Database password"` // Must be provided
+}
+```
+
+Required fields are validated during configuration loading, and appropriate errors are returned if they're missing.
+
+#### Custom Validation Logic
+
+```go
+// Implement the ConfigValidator interface
+func (c *AppConfig) Validate() error {
+    // Validate environment is one of the expected values
+    validEnvs := map[string]bool{"dev": true, "test": true, "prod": true}
+    if !validEnvs[c.Environment] {
+        return fmt.Errorf("%w: environment must be one of [dev, test, prod]", modular.ErrConfigValidationFailed)
+    }
+    
+    // Additional custom validation
+    if c.Server.Port < 1024 || c.Server.Port > 65535 {
+        return fmt.Errorf("%w: server port must be between 1024 and 65535", modular.ErrConfigValidationFailed)
+    }
+    
+    return nil
+}
+```
+
+#### Generating Sample Configuration Files
+
+```go
+// Generate a sample configuration file
+cfg := &AppConfig{}
+err := modular.SaveSampleConfig(cfg, "yaml", "config-sample.yaml")
+if err != nil {
+    log.Fatalf("Error generating sample config: %v", err)
+}
+```
+
+Sample configurations can be generated in YAML, JSON, or TOML formats, with all default values pre-populated.
+
+#### Command-Line Integration
+
+```go
+func main() {
+    // Generate sample config file if requested
+    if len(os.Args) > 1 && os.Args[1] == "--generate-config" {
+        format := "yaml"
+        if len(os.Args) > 2 {
+            format = os.Args[2]
+        }
+        outputFile := "config-sample." + format
+        if len(os.Args) > 3 {
+            outputFile = os.Args[3]
+        }
+        
+        cfg := &AppConfig{}
+        if err := modular.SaveSampleConfig(cfg, format, outputFile); err != nil {
+            fmt.Printf("Error generating sample config: %v\n", err)
+            os.Exit(1)
+        }
+        fmt.Printf("Sample config generated at %s\n", outputFile)
+        os.Exit(0)
+    }
+    
+    // Continue with normal application startup...
 }
 ```
 
@@ -363,8 +459,16 @@ type ConfigProvider interface {
 }
 ```
 
+### ConfigValidator
+
+Interface for implementing custom configuration validation logic:
+
+```go
+type ConfigValidator interface {
+    Validate() error
+}
+```
+
 ## License
 
 [MIT License](LICENSE)
-
-`

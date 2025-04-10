@@ -1,3 +1,28 @@
 appName: Example Application
-webserver:
+environment: dev
+
+server:
+  host: localhost
   port: 9999
+  readTimeout: 60
+  debug: true
+
+database:
+  enabled: true
+  host: localhost
+  port: 5432
+  name: exampledb
+  user: dbuser
+  sslMode: disable
+
+features:
+  logging: true
+  metrics: true
+  caching: false
+
+cors:
+  - "localhost:3000"
+  - "example.com"
+
+admins:
+  - "admin@example.com"

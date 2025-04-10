@@ -2,8 +2,9 @@ package modular
 
 import (
 	"fmt"
-	"github.com/golobby/config/v3"
 	"reflect"
+
+	"github.com/golobby/config/v3"
 )
 
 const mainConfigSection = "_main"
@@ -47,6 +48,7 @@ func (c *Config) AddStructKey(key string, target interface{}) *Config {
 	return c
 }
 
+// Feed with validation applies defaults and validates configs after feeding
 func (c *Config) Feed() error {
 	if err := c.Config.Feed(); err != nil {
 		return fmt.Errorf("config feed error: %w", err)
@@ -64,6 +66,12 @@ func (c *Config) Feed() error {
 			}
 		}
 
+		// Apply defaults and validate config
+		if err := ValidateConfig(target); err != nil {
+			return fmt.Errorf("config validation error for %s: %w", key, err)
+		}
+
+		// Call Setup if implemented
 		if setupable, ok := target.(ConfigSetup); ok {
 			if err := setupable.Setup(); err != nil {
 				return fmt.Errorf("%w for %s", ErrConfigSetupError, key)

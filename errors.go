@@ -16,6 +16,13 @@ var (
 	ErrConfigProviderNil     = errors.New("failed to load app config: config provider is nil")
 	ErrConfigSectionError    = errors.New("failed to load app config: error triggered by section")
 
+	// Config validation errors
+	ErrConfigNotPointer           = errors.New("config must be a non-nil pointer")
+	ErrConfigNotStruct            = errors.New("config must be a struct")
+	ErrConfigRequiredFieldMissing = errors.New("required field(s) missing in config")
+	ErrConfigValidationFailed     = errors.New("configuration validation failed")
+	ErrConfigInvalidFormat        = errors.New("invalid configuration format")
+
 	// Service registry errors
 	ErrServiceAlreadyRegistered = errors.New("service already registered")
 	ErrServiceNotFound          = errors.New("service not found")
