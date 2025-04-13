@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,489 +12,546 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewGenerateConfigCommand creates a command for generating standalone config files
+// Use the SurveyIO from survey_stdio.go
+var configSurveyIO = DefaultSurveyIO
+
+// NewGenerateConfigCommand creates a new 'generate config' command
 func NewGenerateConfigCommand() *cobra.Command {
 	var outputDir string
 	var configName string
+	var fileFormats []string
 
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Generate a new configuration file",
-		Long:  `Generate a new configuration struct and optionally sample config files.`,
+		Short: "Generate a Go configuration struct and sample config files",
+		Long: `Generate a configuration struct for your Go application, along with sample configuration files.
+Supported formats include YAML, JSON, and TOML.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			options := &ConfigOptions{
-				Fields: []ConfigField{},
+			// Collect configuration information
+			configOptions := &ConfigOptions{
+				Name:           configName,
+				TagTypes:       fileFormats,
+				GenerateSample: true,
+				Fields:         []ConfigField{},
 			}
 
-			// Prompt for config name if not provided
-			if configName == "" {
+			// If config name is not provided, prompt for it
+			if configOptions.Name == "" {
 				namePrompt := &survey.Input{
-					Message: "What is the name of your configuration?",
-					Help:    "This will be used as the struct name for your config.",
+					Message: "What is the name of your configuration struct?",
+					Default: "Config",
+					Help:    "This will be the name of your Go struct (e.g., AppConfig).",
 				}
-				if err := survey.AskOne(namePrompt, &configName, survey.WithValidator(survey.Required)); err != nil {
+				if err := survey.AskOne(namePrompt, &configOptions.Name, configSurveyIO.WithStdio()); err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 					os.Exit(1)
 				}
 			}
 
-			// Collect config details
-			if err := promptForConfigInfo(options); err != nil {
-				fmt.Fprintf(os.Stderr, "Error gathering config information: %s\n", err)
+			// If file formats are not provided, prompt for them
+			if len(configOptions.TagTypes) == 0 {
+				formatPrompt := &survey.MultiSelect{
+					Message: "Which configuration formats do you want to support?",
+					Options: []string{"yaml", "json", "toml", "env"},
+					Default: []string{"yaml"},
+					Help:    "Select one or more formats for your configuration files.",
+				}
+				if err := survey.AskOne(formatPrompt, &configOptions.TagTypes, configSurveyIO.WithStdio()); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+					os.Exit(1)
+				}
+			}
+
+			// If no formats were selected, default to YAML
+			if len(configOptions.TagTypes) == 0 {
+				configOptions.TagTypes = []string{"yaml"}
+			}
+
+			// Prompt for configuration fields
+			if err := promptForConfigFields(configOptions); err != nil {
+				fmt.Fprintf(os.Stderr, "Error collecting field information: %s\n", err)
 				os.Exit(1)
 			}
 
-			// Generate the config file
-			if err := generateStandaloneConfigFile(outputDir, configName, options); err != nil {
-				fmt.Fprintf(os.Stderr, "Error generating config: %s\n", err)
+			// Generate the config struct file
+			if err := GenerateStandaloneConfigFile(outputDir, configOptions); err != nil {
+				fmt.Fprintf(os.Stderr, "Error generating config struct: %s\n", err)
 				os.Exit(1)
 			}
 
-			// Generate sample config files if requested
-			if options.GenerateSample {
-				if err := generateStandaloneSampleConfigs(outputDir, configName, options); err != nil {
+			// Generate sample configuration files
+			if configOptions.GenerateSample {
+				if err := GenerateStandaloneSampleConfigs(outputDir, configOptions); err != nil {
 					fmt.Fprintf(os.Stderr, "Error generating sample configs: %s\n", err)
 					os.Exit(1)
 				}
 			}
 
-			fmt.Printf("Successfully generated config '%s' in %s\n", configName, outputDir)
+			fmt.Printf("Successfully generated configuration files in %s\n", outputDir)
 		},
 	}
 
 	// Add flags
-	cmd.Flags().StringVarP(&outputDir, "output", "o", ".", "Directory where the config will be generated")
-	cmd.Flags().StringVarP(&configName, "name", "n", "", "Name of the config to generate")
+	cmd.Flags().StringVarP(&outputDir, "output", "o", ".", "Directory where the config files will be generated")
+	cmd.Flags().StringVarP(&configName, "name", "n", "", "Name of the configuration struct (e.g., AppConfig)")
+	cmd.Flags().StringSliceVarP(&fileFormats, "formats", "f", []string{}, "File formats to support (yaml, json, toml, env)")
 
 	return cmd
 }
 
-// promptForConfigInfo collects information about the config structure
-func promptForConfigInfo(options *ConfigOptions) error {
-	// Prompt for tag types
-	tagOptions := []string{"yaml", "json", "toml", "env"}
-	tagPrompt := &survey.MultiSelect{
-		Message: "Select tag types to include:",
-		Options: tagOptions,
-		Default: []string{"yaml", "json"},
-	}
-	if err := survey.AskOne(tagPrompt, &options.TagTypes); err != nil {
-		return err
-	}
-
-	// Prompt for whether to generate sample config files
-	generateSamplePrompt := &survey.Confirm{
-		Message: "Generate sample config files?",
+// promptForConfigFields collects information about configuration fields
+func promptForConfigFields(options *ConfigOptions) error {
+	// Ask if sample configs should be generated
+	samplePrompt := &survey.Confirm{
+		Message: "Generate sample configuration files?",
 		Default: true,
+		Help:    "If yes, sample configuration files will be generated in the selected formats.",
 	}
-	if err := survey.AskOne(generateSamplePrompt, &options.GenerateSample); err != nil {
+	if err := survey.AskOne(samplePrompt, &options.GenerateSample, configSurveyIO.WithStdio()); err != nil {
 		return err
 	}
 
-	// Prompt for config fields
-	if err := promptForConfigFields(&options.Fields); err != nil {
-		return err
-	}
+	// Collect field information
+	options.Fields = []ConfigField{}
+	addFields := true
 
-	return nil
-}
-
-// promptForConfigFields collects information about config fields
-func promptForConfigFields(fields *[]ConfigField) error {
-	for {
-		// Ask if user wants to add another field
-		addMore := true
-		if len(*fields) > 0 {
-			addMorePrompt := &survey.Confirm{
-				Message: "Add another field?",
-				Default: true,
-			}
-			if err := survey.AskOne(addMorePrompt, &addMore); err != nil {
-				return err
-			}
-		}
-
-		if !addMore {
-			break
-		}
-
-		// Collect field information
+	for addFields {
 		field := ConfigField{}
 
-		// Field name
+		// Ask for the field name
 		namePrompt := &survey.Input{
-			Message: "Field name:",
-			Help:    "The name of the field (e.g., ServerPort)",
+			Message: "Field name (CamelCase):",
+			Help:    "The name of the configuration field (e.g., ServerAddress)",
 		}
-		if err := survey.AskOne(namePrompt, &field.Name, survey.WithValidator(survey.Required)); err != nil {
+		if err := survey.AskOne(namePrompt, &field.Name, survey.WithValidator(survey.Required), configSurveyIO.WithStdio()); err != nil {
 			return err
 		}
 
-		// Field type
-		typeOptions := []string{
-			"string", "int", "bool", "float64",
-			"[]string (string array)", "[]int (int array)", "[]bool (bool array)",
-			"map[string]string", "map[string]int", "map[string]bool",
-			"nested struct", "custom",
-		}
+		// Ask for the field type
 		typePrompt := &survey.Select{
 			Message: "Field type:",
-			Options: typeOptions,
+			Options: []string{"string", "int", "bool", "float64", "[]string", "[]int", "map[string]string", "struct (nested)"},
+			Default: "string",
+			Help:    "The data type of this configuration field.",
 		}
-		var typeChoice string
-		if err := survey.AskOne(typePrompt, &typeChoice); err != nil {
+
+		var fieldType string
+		if err := survey.AskOne(typePrompt, &fieldType, configSurveyIO.WithStdio()); err != nil {
 			return err
 		}
 
-		// Handle different type choices
-		switch typeChoice {
-		case "nested struct":
+		// Set field type and additional properties based on selection
+		switch fieldType {
+		case "struct (nested)":
 			field.IsNested = true
-			nestedFields := []ConfigField{}
-			fmt.Println("Define fields for nested struct:")
-			if err := promptForConfigFields(&nestedFields); err != nil {
+			field.Type = field.Name + "Config" // Create a type name based on the field name
+			field.Tags = options.TagTypes
+
+			// Ask if we should define the nested struct fields now
+			defineNested := false
+			nestedPrompt := &survey.Confirm{
+				Message: "Do you want to define the nested struct fields now?",
+				Default: true,
+				Help:    "If yes, you'll be prompted to add fields to the nested struct.",
+			}
+			if err := survey.AskOne(nestedPrompt, &defineNested, configSurveyIO.WithStdio()); err != nil {
 				return err
 			}
-			field.NestedFields = nestedFields
-			field.Type = fmt.Sprintf("%sConfig", field.Name)
-		case "[]string (string array)", "[]int (int array)", "[]bool (bool array)":
+
+			if defineNested {
+				// Create a new options instance for the nested fields
+				nestedOptions := &ConfigOptions{
+					Fields:   []ConfigField{},
+					TagTypes: options.TagTypes,
+				}
+
+				// Reuse the promptForConfigFields function but without the sample generation prompt
+				addNestedFields := true
+				for addNestedFields {
+					nestedField := ConfigField{}
+
+					// Ask for the nested field name
+					nestedNamePrompt := &survey.Input{
+						Message: fmt.Sprintf("Nested field name for %s:", field.Type),
+						Help:    "The name of the nested configuration field.",
+					}
+					if err := survey.AskOne(nestedNamePrompt, &nestedField.Name, survey.WithValidator(survey.Required), configSurveyIO.WithStdio()); err != nil {
+						return err
+					}
+
+					// Ask for the nested field type
+					nestedTypePrompt := &survey.Select{
+						Message: "Nested field type:",
+						Options: []string{"string", "int", "bool", "float64", "[]string", "[]int", "map[string]string"},
+						Default: "string",
+						Help:    "The data type of this nested configuration field.",
+					}
+
+					var nestedFieldType string
+					if err := survey.AskOne(nestedTypePrompt, &nestedFieldType, configSurveyIO.WithStdio()); err != nil {
+						return err
+					}
+
+					// Set nested field type
+					nestedField.Type = nestedFieldType
+					nestedField.Tags = options.TagTypes
+
+					// Set additional properties for arrays and maps
+					if strings.HasPrefix(nestedFieldType, "[]") {
+						nestedField.IsArray = true
+					} else if strings.HasPrefix(nestedFieldType, "map[") {
+						nestedField.IsMap = true
+						parts := strings.Split(strings.Trim(nestedFieldType, "map[]"), "]")
+						if len(parts) >= 2 {
+							nestedField.KeyType = strings.TrimPrefix(parts[0], "[")
+							nestedField.ValueType = parts[1]
+						}
+					}
+
+					// Ask for a description
+					descPrompt := &survey.Input{
+						Message: "Description:",
+						Help:    "A brief description of what this nested field is used for.",
+					}
+					if err := survey.AskOne(descPrompt, &nestedField.Description, configSurveyIO.WithStdio()); err != nil {
+						return err
+					}
+
+					// Add the nested field
+					nestedOptions.Fields = append(nestedOptions.Fields, nestedField)
+
+					// Ask if more nested fields should be added
+					moreNestedPrompt := &survey.Confirm{
+						Message: fmt.Sprintf("Add another field to %s?", field.Type),
+						Default: true,
+						Help:    "If yes, you'll be prompted for another nested field.",
+					}
+					if err := survey.AskOne(moreNestedPrompt, &addNestedFields, configSurveyIO.WithStdio()); err != nil {
+						return err
+					}
+				}
+
+				// Set the nested fields on the parent field
+				field.NestedFields = nestedOptions.Fields
+			}
+		case "[]string", "[]int", "[]bool":
 			field.IsArray = true
-			field.Type = strings.Split(typeChoice, " ")[0] // Extract the actual type
-		case "map[string]string", "map[string]int", "map[string]bool":
+			field.Type = fieldType
+		case "map[string]string":
 			field.IsMap = true
-			field.Type = typeChoice
-			parts := strings.SplitN(typeChoice, "]", 2)
+			field.Type = fieldType
 			field.KeyType = "string"
-			field.ValueType = parts[1]
-		case "custom":
-			customTypePrompt := &survey.Input{
-				Message: "Enter custom type:",
-				Help:    "The custom type (e.g., time.Duration)",
-			}
-			if err := survey.AskOne(customTypePrompt, &field.Type, survey.WithValidator(survey.Required)); err != nil {
-				return err
-			}
+			field.ValueType = "string"
 		default:
-			field.Type = typeChoice
+			field.Type = fieldType
 		}
 
-		// Required field?
+		// Set the tags based on the selected formats
+		field.Tags = options.TagTypes
+
+		// Ask if this field is required
 		requiredPrompt := &survey.Confirm{
 			Message: "Is this field required?",
 			Default: false,
+			Help:    "If yes, validation will ensure this field is provided.",
 		}
-		if err := survey.AskOne(requiredPrompt, &field.IsRequired); err != nil {
+		if err := survey.AskOne(requiredPrompt, &field.IsRequired, configSurveyIO.WithStdio()); err != nil {
 			return err
 		}
 
-		// Default value (if not required)
-		if !field.IsRequired {
-			defaultValuePrompt := &survey.Input{
-				Message: "Default value (leave empty for none):",
-				Help:    "The default value for this field.",
-			}
-			if err := survey.AskOne(defaultValuePrompt, &field.DefaultValue); err != nil {
-				return err
-			}
+		// Ask for a default value
+		defaultPrompt := &survey.Input{
+			Message: "Default value (leave empty for none):",
+			Help:    "The default value for this field, if any.",
+		}
+		if err := survey.AskOne(defaultPrompt, &field.DefaultValue, configSurveyIO.WithStdio()); err != nil {
+			return err
 		}
 
-		// Description
+		// Ask for a description
 		descPrompt := &survey.Input{
-			Message: "Field description:",
-			Help:    "A short description of what this field is used for.",
+			Message: "Description:",
+			Help:    "A brief description of what this field is used for.",
 		}
-		if err := survey.AskOne(descPrompt, &field.Description); err != nil {
+		if err := survey.AskOne(descPrompt, &field.Description, configSurveyIO.WithStdio()); err != nil {
 			return err
 		}
 
-		// Add field to list
-		*fields = append(*fields, field)
+		// Add the field
+		options.Fields = append(options.Fields, field)
+
+		// Ask if more fields should be added
+		morePrompt := &survey.Confirm{
+			Message: "Add another field?",
+			Default: true,
+			Help:    "If yes, you'll be prompted for another configuration field.",
+		}
+		if err := survey.AskOne(morePrompt, &addFields, configSurveyIO.WithStdio()); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// generateStandaloneConfigFile generates a standalone config file
-func generateStandaloneConfigFile(outputDir, configName string, options *ConfigOptions) error {
-	configTmpl := `package config
-
-// {{.ConfigName}}Config holds configuration settings
-type {{.ConfigName}}Config struct {
-	{{- range .Options.Fields}}
-	{{template "configField" .}}
-	{{- end}}
-}
-
-{{- range .Options.Fields}}
-{{- if .IsNested}}
-// {{.Type}} holds nested configuration for {{.Name}}
-type {{.Type}} struct {
-	{{- range .NestedFields}}
-	{{template "configField" .}}
-	{{- end}}
-}
-{{- end}}
-{{- end}}
-
-// Validate implements the modular.ConfigValidator interface
-func (c *{{.ConfigName}}Config) Validate() error {
-	// Add custom validation logic here
-	return nil
-}
-
-// Setup implements modular.ConfigSetup (optional)
-func (c *{{.ConfigName}}Config) Setup() error {
-	// Perform any additional setup after config is loaded
-	return nil
-}
-`
-
-	fieldTmpl := `{{define "configField"}}{{.Name}} {{.Type}} {{template "tags" .}}{{if .Description}} // {{.Description}}{{end}}{{end}}`
-
-	tagsTmpl := `{{define "tags"}}{{if or .IsRequired .DefaultValue (len .Tags)}} ` + "`" + `{{range $i, $tag := $.Tags}}{{if $i}}, {{end}}{{$tag}}:"{{$.Name | ToLower}}"{{end}}{{if .IsRequired}} required:"true"{{end}}{{if .DefaultValue}} default:"{{.DefaultValue}}"{{end}}{{if .Description}} desc:"{{.Description}}"{{end}}` + "`" + `{{end}}{{end}}`
-
-	// Create function map for templates
-	funcMap := template.FuncMap{
-		"ToLower": strings.ToLower,
-	}
-
-	// Create and execute template
-	tmpl, err := template.New("config").Funcs(funcMap).Parse(configTmpl + fieldTmpl + tagsTmpl)
-	if err != nil {
-		return fmt.Errorf("failed to parse config template: %w", err)
-	}
-
+// GenerateStandaloneConfigFile generates a Go file with the config struct
+func GenerateStandaloneConfigFile(outputDir string, options *ConfigOptions) error {
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Create output file
-	outputFile := filepath.Join(outputDir, strings.ToLower(configName)+"_config.go")
-	file, err := os.Create(outputFile)
+	// Create function map for the template
+	funcMap := template.FuncMap{
+		"ToLowerF": ToLowerF,
+	}
+
+	// Parse the template from the embedded template string
+	configTemplate, err := template.New("config").Funcs(funcMap).Parse(configTemplateText)
 	if err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
-	}
-	defer file.Close()
-
-	// Prepare data for template
-	data := struct {
-		ConfigName string
-		Options    *ConfigOptions
-	}{
-		ConfigName: configName,
-		Options:    options,
+		return fmt.Errorf("failed to parse config template: %w", err)
 	}
 
-	// Execute template
-	if err := tmpl.Execute(file, data); err != nil {
+	// Execute the template
+	var content bytes.Buffer
+	data := map[string]interface{}{
+		"ConfigName": options.Name,
+		"Options":    options,
+	}
+
+	// Execute the main template
+	if err := configTemplate.Execute(&content, data); err != nil {
 		return fmt.Errorf("failed to execute config template: %w", err)
 	}
 
+	// Write the generated config to a file
+	outputFile := filepath.Join(outputDir, fmt.Sprintf("%s.go", strings.ToLower(options.Name)))
+	if err := os.WriteFile(outputFile, content.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
 	return nil
 }
 
-// generateStandaloneSampleConfigs generates sample config files in the requested formats
-func generateStandaloneSampleConfigs(outputDir, configName string, options *ConfigOptions) error {
-	// Create samples directory
-	samplesDir := filepath.Join(outputDir, "samples")
-	if err := os.MkdirAll(samplesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create samples directory: %w", err)
+// GenerateStandaloneSampleConfigs generates sample configuration files for the selected formats
+func GenerateStandaloneSampleConfigs(outputDir string, options *ConfigOptions) error {
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Generate samples in each requested format
+	// Generate sample files for each format
 	for _, format := range options.TagTypes {
-		var fileExt, content string
 		switch format {
 		case "yaml":
-			fileExt = "yaml"
-			content, _ = generateYAMLSample(configName, options)
-		case "json":
-			fileExt = "json"
-			content, _ = generateJSONSample(configName, options)
-		case "toml":
-			fileExt = "toml"
-			content, _ = generateTOMLSample(configName, options)
-		}
-
-		if content != "" {
-			outputFile := filepath.Join(samplesDir, fmt.Sprintf("config-sample.%s", fileExt))
-			if err := os.WriteFile(outputFile, []byte(content), 0644); err != nil {
-				return fmt.Errorf("failed to write %s sample file: %w", fileExt, err)
+			if err := generateYAMLSample(outputDir, options); err != nil {
+				return fmt.Errorf("failed to generate YAML sample: %w", err)
 			}
+		case "json":
+			if err := generateJSONSample(outputDir, options); err != nil {
+				return fmt.Errorf("failed to generate JSON sample: %w", err)
+			}
+		case "toml":
+			if err := generateTOMLSample(outputDir, options); err != nil {
+				return fmt.Errorf("failed to generate TOML sample: %w", err)
+			}
+		case "env":
+			// Skip .env sample for now as it's more complex
 		}
 	}
 
 	return nil
 }
 
-// generateYAMLSample generates a sample YAML config
-func generateYAMLSample(configName string, options *ConfigOptions) (string, error) {
-	// Sample config template for YAML
-	yamlTmpl := `# {{.ConfigName}} Configuration
-{{- range .Options.Fields}}
-{{- if .Description}}
-# {{.Description}}
+// generateYAMLSample generates a sample YAML configuration file
+func generateYAMLSample(outputDir string, options *ConfigOptions) error {
+	// Create function map for the template
+	funcMap := template.FuncMap{
+		"ToLowerF": ToLowerF,
+	}
+
+	// Create template for YAML
+	yamlTemplate, err := template.New("yaml").Funcs(funcMap).Parse(yamlTemplateText)
+	if err != nil {
+		return fmt.Errorf("failed to parse YAML template: %w", err)
+	}
+
+	// Execute the template
+	var content bytes.Buffer
+	if err := yamlTemplate.Execute(&content, options); err != nil {
+		return fmt.Errorf("failed to execute YAML template: %w", err)
+	}
+
+	// Write the sample YAML to a file
+	outputFile := filepath.Join(outputDir, "config-sample.yaml")
+	if err := os.WriteFile(outputFile, content.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write YAML sample: %w", err)
+	}
+
+	return nil
+}
+
+// generateJSONSample generates a sample JSON configuration file
+func generateJSONSample(outputDir string, options *ConfigOptions) error {
+	// Create function map for the template
+	funcMap := template.FuncMap{
+		"ToLowerF": ToLowerF,
+	}
+
+	// Create template for JSON
+	jsonTemplate, err := template.New("json").Funcs(funcMap).Parse(jsonTemplateText)
+	if err != nil {
+		return fmt.Errorf("failed to parse JSON template: %w", err)
+	}
+
+	// Execute the template
+	var content bytes.Buffer
+	if err := jsonTemplate.Execute(&content, options); err != nil {
+		return fmt.Errorf("failed to execute JSON template: %w", err)
+	}
+
+	// Write the sample JSON to a file
+	outputFile := filepath.Join(outputDir, "config-sample.json")
+	if err := os.WriteFile(outputFile, content.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write JSON sample: %w", err)
+	}
+
+	return nil
+}
+
+// generateTOMLSample generates a sample TOML configuration file
+func generateTOMLSample(outputDir string, options *ConfigOptions) error {
+	// Create function map for the template
+	funcMap := template.FuncMap{
+		"ToLowerF": ToLowerF,
+	}
+
+	// Create template for TOML
+	tomlTemplate, err := template.New("toml").Funcs(funcMap).Parse(tomlTemplateText)
+	if err != nil {
+		return fmt.Errorf("failed to parse TOML template: %w", err)
+	}
+
+	// Execute the template
+	var content bytes.Buffer
+	if err := tomlTemplate.Execute(&content, options); err != nil {
+		return fmt.Errorf("failed to execute TOML template: %w", err)
+	}
+
+	// Write the sample TOML to a file
+	outputFile := filepath.Join(outputDir, "config-sample.toml")
+	if err := os.WriteFile(outputFile, content.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write TOML sample: %w", err)
+	}
+
+	return nil
+}
+
+// Template for generating a config struct file
+const configTemplateText = `package config
+
+// {{.ConfigName}} defines the application configuration structure
+type {{.ConfigName}} struct {
+{{- range $field := .Options.Fields}}
+	{{if $field.Description}}// {{$field.Description}}{{end}}
+	{{$field.Name}} {{$field.Type}} ` + "`" + `{{range $i, $tag := $field.Tags}}{{if $i}} {{end}}{{$tag}}:"{{$field.Name | ToLowerF}}"{{end}}{{if $field.IsRequired}} validate:"required"{{end}}{{if $field.DefaultValue}} default:"{{$field.DefaultValue}}"{{end}}` + "`" + `
 {{- end}}
-{{.Name | ToLower}}: {{template "yamlValue" .}}
+}
+
+{{- range $field := .Options.Fields}}
+{{- if $field.IsNested}}
+
+// {{$field.Type}} defines the nested configuration for {{$field.Name}}
+type {{$field.Type}} struct {
+{{- range $nested := $field.NestedFields}}
+	{{if $nested.Description}}// {{$nested.Description}}{{end}}
+	{{$nested.Name}} {{$nested.Type}} ` + "`" + `{{range $i, $tag := $nested.Tags}}{{if $i}} {{end}}{{$tag}}:"{{$nested.Name | ToLowerF}}"{{end}}{{if $nested.IsRequired}} validate:"required"{{end}}{{if $nested.DefaultValue}} default:"{{$nested.DefaultValue}}"{{end}}` + "`" + `
+{{- end}}
+}
+{{- end}}
+{{- end}}
+
+// Validate validates the configuration
+func (c *{{.ConfigName}}) Validate() error {
+	// Add custom validation logic here
+	return nil
+}
+`
+
+// Template for generating a field in a config struct
+const fieldTemplateText = `{{define "field"}}{{.Name}} {{.Type}} ` + "`" + `{{range $i, $tag := .Tags}}{{if $i}} {{end}}{{$tag}}:"{{.Name | ToLowerF}}"{{end}}{{if .IsRequired}} validate:"required"{{end}}{{if .DefaultValue}} default:"{{.DefaultValue}}"{{end}}` + "`" + `{{if .Description}} // {{.Description}}{{end}}{{end}}`
+
+// Template for generating a sample YAML configuration file
+const yamlTemplateText = `# Sample configuration
+{{- range $field := .Fields}}
+{{- if $field.Description}}
+# {{$field.Description}}
+{{- end}}
+{{$field.Name | ToLowerF}}: {{if $field.IsNested}}
+{{- range $nested := $field.NestedFields}}
+  {{$nested.Name | ToLowerF}}: {{if $nested.DefaultValue}}{{$nested.DefaultValue}}{{else}}{{if eq $nested.Type "string"}}"example"{{else if eq $nested.Type "int"}}0{{else if eq $nested.Type "bool"}}false{{else if eq $nested.Type "float64"}}0.0{{else if $nested.IsArray}}[]{{else if $nested.IsMap}}{}{{else}}""{{end}}{{end}}
+{{- end}}
+{{- else if $field.DefaultValue}}
+  {{$field.DefaultValue}}
+{{- else if eq $field.Type "string"}}
+  "example string"
+{{- else if eq $field.Type "int"}}
+  0
+{{- else if eq $field.Type "bool"}}
+  false
+{{- else if eq $field.Type "float64"}}
+  0.0
+{{- else if $field.IsArray}}
+  []
+{{- else if $field.IsMap}}
+  {}
+{{- else}}
+  # Set a value appropriate for the type {{$field.Type}}
+{{- end}}
 {{- end}}
 `
 
-	yamlValueTmpl := `{{define "yamlValue"}}{{if .IsNested}}
-  {{- range .NestedFields}}
-  {{.Name | ToLower}}: {{template "yamlValue" .}}
-  {{- end}}
-{{- else if .IsArray}}
-  {{- if eq .Type "[]string"}}
-  - "example string"
-  - "another string"
-  {{- else if eq .Type "[]int"}}
-  - 1
-  - 2
-  {{- else if eq .Type "[]bool"}}
-  - true
-  - false
-  {{- end}}
-{{- else if .IsMap}}
-  key1: value1
-  key2: value2
-{{- else if .DefaultValue}}
-{{.DefaultValue}}
-{{- else if eq .Type "string"}}
-"example value"
-{{- else if eq .Type "int"}}
-42
-{{- else if eq .Type "bool"}}
-false
-{{- else if eq .Type "float64"}}
-3.14
+// Template for generating a sample JSON configuration file
+const jsonTemplateText = `{
+{{- range $i, $field := .Fields}}
+  {{- if $i}},{{end}}
+  "{{$field.Name | ToLowerF}}": {{if $field.IsNested}}{
+    {{- range $j, $nested := $field.NestedFields}}
+    {{- if $j}},{{end}}
+    "{{$nested.Name | ToLowerF}}": {{if $nested.DefaultValue}}{{$nested.DefaultValue}}{{else}}{{if eq $nested.Type "string"}}"example"{{else if eq $nested.Type "int"}}0{{else if eq $nested.Type "bool"}}false{{else if eq $nested.Type "float64"}}0.0{{else if $nested.IsArray}}[]{{else if $nested.IsMap}}{}{{else}}""{{end}}{{end}}
+    {{- end}}
+  }{{else if $field.DefaultValue}}{{$field.DefaultValue}}{{else if eq $field.Type "string"}}"example string"{{else if eq $field.Type "int"}}0{{else if eq $field.Type "bool"}}false{{else if eq $field.Type "float64"}}0.0{{else if $field.IsArray}}[]{{else if $field.IsMap}}{}{{else}}null{{end}}
+{{- end}}
+}
+`
+
+// Template for generating a sample TOML configuration file
+const tomlTemplateText = `# Sample configuration
+{{- range $field := .Fields}}
+{{- if $field.Description}}
+# {{$field.Description}}
+{{- end}}
+{{$field.Name | ToLowerF}} = {{if $field.IsNested}}
+{{- range $nested := $field.NestedFields}}
+  {{$nested.Name | ToLowerF}} = {{if $nested.DefaultValue}}{{$nested.DefaultValue}}{{else}}{{if eq $nested.Type "string"}}"example"{{else if eq $nested.Type "int"}}0{{else if eq $nested.Type "bool"}}false{{else if eq $nested.Type "float64"}}0.0{{else}}""{{end}}{{end}}
+{{- end}}
+{{- else if $field.DefaultValue}}
+  {{$field.DefaultValue}}
+{{- else if eq $field.Type "string"}}
+  "example string"
+{{- else if eq $field.Type "int"}}
+  0
+{{- else if eq $field.Type "bool"}}
+  false
+{{- else if eq $field.Type "float64"}}
+  0.0
 {{- else}}
-# TODO: Set appropriate value for {{.Type}}
-{{- end}}{{end}}`
+  # Set a value appropriate for the type {{$field.Type}}
+{{- end}}
+{{- end}}
+`
 
-	// Create function map for templates
-	funcMap := template.FuncMap{
-		"ToLower": strings.ToLower,
-	}
-
-	// Create and execute template
-	tmpl, err := template.New("yamlSample").Funcs(funcMap).Parse(yamlTmpl + yamlValueTmpl)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse YAML template: %w", err)
-	}
-
-	var buf strings.Builder
-	data := struct {
-		ConfigName string
-		Options    *ConfigOptions
-	}{
-		ConfigName: configName,
-		Options:    options,
-	}
-
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("failed to execute YAML template: %w", err)
-	}
-
-	return buf.String(), nil
-}
-
-// generateJSONSample generates a sample JSON config
-func generateJSONSample(configName string, options *ConfigOptions) (string, error) {
-	// For brevity, I'm providing a simplified JSON generator
-	var content strings.Builder
-	content.WriteString("{\n")
-
-	for i, field := range options.Fields {
-		if i > 0 {
-			content.WriteString(",\n")
-		}
-
-		fieldName := strings.ToLower(field.Name)
-		var value string
-
-		if field.DefaultValue != "" {
-			value = field.DefaultValue
-		} else {
-			switch {
-			case field.IsNested:
-				value = "{}"
-			case field.IsArray:
-				value = "[]"
-			case field.IsMap:
-				value = "{}"
-			case field.Type == "string":
-				value = "\"example value\""
-			case field.Type == "int":
-				value = "42"
-			case field.Type == "bool":
-				value = "false"
-			case field.Type == "float64":
-				value = "3.14"
-			default:
-				value = "null"
-			}
-		}
-
-		content.WriteString(fmt.Sprintf("  \"%s\": %s", fieldName, value))
-	}
-
-	content.WriteString("\n}")
-	return content.String(), nil
-}
-
-// generateTOMLSample generates a sample TOML config
-func generateTOMLSample(configName string, options *ConfigOptions) (string, error) {
-	// For brevity, I'm providing a simplified TOML generator
-	var content strings.Builder
-	content.WriteString("# " + configName + " Configuration\n\n")
-
-	for _, field := range options.Fields {
-		if field.Description != "" {
-			content.WriteString("# " + field.Description + "\n")
-		}
-
-		fieldName := strings.ToLower(field.Name)
-		var value string
-
-		if field.DefaultValue != "" {
-			if field.Type == "string" {
-				value = "\"" + field.DefaultValue + "\""
-			} else {
-				value = field.DefaultValue
-			}
-		} else {
-			switch {
-			case field.IsNested:
-				// TOML uses sections for nested structs
-				continue
-			case field.IsArray:
-				if field.Type == "[]string" {
-					value = "[\"example\", \"values\"]"
-				} else if field.Type == "[]int" {
-					value = "[1, 2, 3]"
-				} else if field.Type == "[]bool" {
-					value = "[true, false]"
-				}
-			case field.IsMap:
-				// Skip maps for now - TOML has a special syntax for them
-				continue
-			case field.Type == "string":
-				value = "\"example value\""
-			case field.Type == "int":
-				value = "42"
-			case field.Type == "bool":
-				value = "false"
-			case field.Type == "float64":
-				value = "3.14"
-			default:
-				value = "# TODO: Set appropriate value for " + field.Type
-				continue
-			}
-		}
-
-		content.WriteString(fmt.Sprintf("%s = %s\n\n", fieldName, value))
-	}
-
-	return content.String(), nil
+// ToLowerF is a function for templates to convert a string to lowercase
+func ToLowerF(s string) string {
+	return strings.ToLower(s)
 }

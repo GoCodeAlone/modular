@@ -1,0 +1,10 @@
+{
+  "goldenmodule": {
+    "apikey": "example value"
+    ,
+    "maxconnections": 10
+    ,
+    "debug": false
+    
+  }
+}
