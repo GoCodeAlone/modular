@@ -1,17 +1,17 @@
 package goldenmodule
 
 import (
-	"context" // Conditionally import context
+	"context" 
 	"testing"
-	"github.com/GoCodeAlone/modular" // Conditionally import modular
+	"github.com/GoCodeAlone/modular" 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require" // Conditionally import require
+	"github.com/stretchr/testify/require" 
+	"fmt" 
 )
 
 func TestNewGoldenModuleModule(t *testing.T) {
 	module := NewGoldenModuleModule()
 	assert.NotNil(t, module)
-
 	// Test module properties
 	modImpl, ok := module.(*GoldenModuleModule)
 	require.True(t, ok) // Use require here as the rest of the test depends on this
@@ -22,15 +22,12 @@ func TestNewGoldenModuleModule(t *testing.T) {
 
 func TestModule_RegisterConfig(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
-
 	// Create a mock application
 	mockApp := NewMockApplication()
-
 	// Test RegisterConfig
 	err := module.RegisterConfig(mockApp)
 	assert.NoError(t, err)
 	assert.NotNil(t, module.config) // Verify config struct was initialized
-
 	// Verify the config section was registered in the mock app
 	_, err = mockApp.GetConfigSection(module.Name())
 	assert.NoError(t, err, "Config section should be registered")
@@ -39,7 +36,6 @@ func TestModule_RegisterConfig(t *testing.T) {
 
 func TestModule_Init(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
-
 	// Create a mock application
 	mockApp := NewMockApplication()
 	
@@ -47,7 +43,6 @@ func TestModule_Init(t *testing.T) {
 	// mockService := &MockMyService{}
 	// mockApp.RegisterService("requiredService", mockService)
 	
-
 	// Test Init
 	err := module.Init(mockApp)
 	assert.NoError(t, err)
@@ -135,7 +130,6 @@ func (m *MockTenantService) GetTenants() []modular.TenantID { return nil } // No
 func (m *MockTenantService) RegisterTenant(modular.TenantID, map[string]modular.ConfigProvider) error { return nil } // Not needed
 func (m *MockTenantService) RemoveTenant(modular.TenantID) error { return nil } // Not needed
 func (m *MockTenantService) RegisterTenantAwareModule(modular.TenantAwareModule) error { return nil } // Not needed
-
 
 
 // Add more tests for specific module functionality

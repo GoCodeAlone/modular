@@ -1,10 +1,40 @@
 package goldenmodule
 
 import (
-	"context" // Conditionally import context
-	"github.com/GoCodeAlone/modular" // Conditionally import modular
-	"log/slog" // Conditionally import slog
+	"context" 
+	"github.com/GoCodeAlone/modular" 
+	"log/slog" 
+	"fmt" 
+	"encoding/json" 
 )
+
+
+// Config holds the configuration for the GoldenModule module
+type Config struct {
+	// Add configuration fields here
+	// ExampleField string `mapstructure:"example_field"`
+}
+
+// ProvideDefaults sets default values for the configuration
+func (c *Config) ProvideDefaults() {
+	// Set default values here
+	// c.ExampleField = "default_value"
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	// Add validation logic here
+	// if c.ExampleField == "" {
+	//     return fmt.Errorf("example_field cannot be empty")
+	// }
+	return nil
+}
+
+// GetConfig implements the modular.ConfigProvider interface
+func (c *Config) GetConfig() interface{} {
+	return c
+}
+
 
 // GoldenModuleModule represents the GoldenModule module
 type GoldenModuleModule struct {
@@ -31,9 +61,8 @@ func (m *GoldenModuleModule) Name() string {
 // RegisterConfig registers the module's configuration structure
 func (m *GoldenModuleModule) RegisterConfig(app modular.Application) error {
 	m.config = &Config{} // Initialize with defaults or empty struct
-	if err := app.RegisterConfigSection(m.Name(), m.config); err != nil {
-		return fmt.Errorf("failed to register config section for module %s: %w", m.Name(), err)
-	}
+	app.RegisterConfigSection(m.Name(), m.config)
+	
 	// Load initial config values if needed (e.g., from app's main provider)
 	// Note: Config values will be populated later by feeders during app.Init()
 	slog.Debug("Registered config section", "module", m.Name())
@@ -129,9 +158,14 @@ func (m *GoldenModuleModule) LoadTenantConfig(tenantService modular.TenantServic
 	}
 
 	tenantCfg := &Config{} // Create a new config struct for the tenant
-	// It's crucial to clone or create a new instance to avoid tenants sharing config objects.
-	// A simple approach is to unmarshal into a new struct.
-	if err := configProvider.Unmarshal(tenantCfg); err != nil {
+	
+	// Get the raw config data and unmarshal it
+	configData, err := json.Marshal(configProvider.GetConfig())
+	if err != nil {
+		return fmt.Errorf("failed to marshal config data for tenant %s in module %s: %w", tenantID, m.Name(), err)
+	}
+	
+	if err := json.Unmarshal(configData, tenantCfg); err != nil {
 		return fmt.Errorf("failed to unmarshal config for tenant %s in module %s: %w", tenantID, m.Name(), err)
 	}
 
