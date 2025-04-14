@@ -1,5 +1,11 @@
 # ModCLI
 
+[![CI](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml)
+[![Release](https://github.com/GoCodeAlone/modular/actions/workflows/cli-release.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/cli-release.yml)
+[![codecov](https://codecov.io/gh/GoCodeAlone/modular/branch/main/graph/badge.svg?flag=cli)](https://codecov.io/gh/GoCodeAlone/modular)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/cmd/modcli.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/cmd/modcli)
+[![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
+
 ModCLI is a command-line interface tool for the [Modular](https://github.com/GoCodeAlone/modular) framework that helps you scaffold and generate code for modular applications.
 
 ## Installation
