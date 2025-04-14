@@ -858,3 +858,194 @@ func findParentModularPath(t *testing.T) string {
 	t.Log("Could not find parent modular path, using default relative path")
 	return "../../../.."
 }
+
+// TestGenerateModule_EndToEnd verifies the module generation process
+func TestGenerateModule_EndToEnd(t *testing.T) {
+	testCases := []struct {
+		name          string
+		options       cmd.ModuleOptions
+		expectBuildOk bool
+		// Add fields for expected config validation results if needed
+	}{
+		{
+			name: "Basic Module",
+			options: cmd.ModuleOptions{
+				ModuleName:    "BasicTestModule",
+				PackageName:   "basictestmodule",
+				GenerateTests: true,
+			},
+			expectBuildOk: true,
+		},
+		{
+			name: "Module With Config",
+			options: cmd.ModuleOptions{
+				ModuleName:    "ConfigTestModule",
+				PackageName:   "configtestmodule",
+				HasConfig:     true,
+				GenerateTests: true,
+				ConfigOptions: &cmd.ConfigOptions{
+					GenerateSample: true,
+					TagTypes:       []string{"yaml", "json"},
+					Fields: []cmd.ConfigField{
+						{Name: "ServerAddress", Type: "string", IsRequired: true, Description: "Server address"},
+						{Name: "Port", Type: "int", DefaultValue: "8080"},
+					},
+				},
+			},
+			expectBuildOk: true,
+			// Add expectations for config file validation
+		},
+		// Add more test cases for different feature combinations
+	}
+
+	originalSetOptionsFn := cmd.SetOptionsFn
+	originalSurveyStdio := cmd.SurveyStdio
+	defer func() {
+		cmd.SetOptionsFn = originalSetOptionsFn
+		cmd.SurveyStdio = originalSurveyStdio
+		os.Unsetenv("TESTING") // Clean up env var if set
+	}()
+
+	// Set TESTING env var to handle go.mod generation correctly in tests
+	os.Setenv("TESTING", "1")
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			tc.options.OutputDir = tempDir // Generate into the temp directory
+
+			// Use SetOptionsFn to inject test case options
+			cmd.SetOptionsFn = func(opts *cmd.ModuleOptions) bool {
+				*opts = tc.options // Copy test case options
+				// Ensure PackageName is derived if not explicitly set in test case
+				if opts.PackageName == "" {
+					opts.PackageName = strings.ToLower(strings.ReplaceAll(opts.ModuleName, " ", ""))
+				}
+				return true // Indicate options were set
+			}
+			// Optionally mock SurveyStdio if needed for uncovered prompts
+
+			// Generate the module
+			err := cmd.GenerateModuleFiles(&tc.options) // Use exported function name
+			require.NoError(t, err, "Module generation failed")
+
+			moduleDir := filepath.Join(tempDir, tc.options.PackageName)
+
+			// --- Manually create go.mod for this test ---
+			// Since generateGoModFile skips creation when TESTING=1, create it here
+			// so that 'go mod tidy' and 'go test' can run.
+			goModPath := filepath.Join(moduleDir, "go.mod")
+			// Find the absolute path to the parent modular library root
+			parentModularRootPath := findModularRootPath(t) // Use a potentially renamed helper
+			goModContent := fmt.Sprintf(`module %s/modules/%s
+
+go 1.21
+
+require github.com/GoCodeAlone/modular v0.0.0 // Use v0.0.0
+require github.com/stretchr/testify v1.10.0 // Add testify for generated tests
+
+replace github.com/GoCodeAlone/modular => %s
+`, "example.com/test", tc.options.PackageName, parentModularRootPath) // Use absolute path to project root
+			err = os.WriteFile(goModPath, []byte(goModContent), 0644)
+			require.NoError(t, err, "Failed to create go.mod for test")
+			// --- End manual go.mod creation ---
+
+			// --- Go Code Validation ---
+			// Run 'go mod tidy' first to ensure dependencies are resolved
+			tidyCmd := exec.Command("go", "mod", "tidy")
+			tidyCmd.Dir = moduleDir
+			tidyCmd.Stdout = os.Stdout // Or capture output
+			tidyCmd.Stderr = os.Stderr
+			err = tidyCmd.Run()
+			require.NoError(t, err, "'go mod tidy' failed in generated module")
+
+			// Run 'go test ./...' to build and run generated tests
+			buildCmd := exec.Command("go", "test", "./...")
+			buildCmd.Dir = moduleDir
+			buildCmd.Stdout = os.Stdout // Or capture output
+			buildCmd.Stderr = os.Stderr
+			err = buildCmd.Run()
+
+			if tc.expectBuildOk {
+				require.NoError(t, err, "Build/Test failed for generated module")
+			} else {
+				require.Error(t, err, "Expected build/test to fail but it succeeded")
+			}
+
+			// --- Config File Validation (if applicable) ---
+			if tc.options.HasConfig && tc.options.ConfigOptions.GenerateSample {
+				for _, format := range tc.options.ConfigOptions.TagTypes {
+					sampleFileName := "config-sample." + format
+					sampleFilePath := filepath.Join(moduleDir, sampleFileName)
+					_, err := os.Stat(sampleFilePath)
+					require.NoError(t, err, "Sample config file %s not found", sampleFileName)
+
+					// Add specific validation logic for each format
+					// Example for YAML:
+					// if format == "yaml" {
+					//     data, err := os.ReadFile(sampleFilePath)
+					//     require.NoError(t, err)
+					//     var cfgData map[string]interface{}
+					//     err = yaml.Unmarshal(data, &cfgData)
+					//     require.NoError(t, err, "Failed to parse sample YAML config")
+					//     // Add more assertions on cfgData content if needed
+					// }
+					// Add similar blocks for json, toml
+				}
+			}
+
+			// --- README Validation ---
+			readmePath := filepath.Join(moduleDir, "README.md")
+			_, err = os.Stat(readmePath)
+			require.NoError(t, err, "README.md not found")
+			// Optionally read and check content
+
+			// --- go.mod Validation ---
+			// goModPath := filepath.Join(moduleDir, "go.mod") // Path already defined above
+			_, err = os.Stat(goModPath)
+			require.NoError(t, err, "go.mod not found") // Should exist now
+			// Optionally read and check content, especially the module path and replace directive
+
+		})
+	}
+}
+
+// Helper function to find the root of the modular project
+func findModularRootPath(t *testing.T) string {
+	// Start with the current directory of the test
+	dir, err := os.Getwd()
+	require.NoError(t, err, "Failed to get current directory")
+
+	// Try to find the root of the modular project by looking for go.mod
+	for {
+		goModPath := filepath.Join(dir, "go.mod")
+		if fileExists(goModPath) {
+			// Check if this contains the modular module root declaration
+			content, err := os.ReadFile(goModPath)
+			require.NoError(t, err, "Failed to read go.mod file at %s", goModPath)
+
+			// Check for the specific module line of the main project
+			if strings.Contains(string(content), "module github.com/GoCodeAlone/modular\n") {
+				// Found the project root!
+				return dir
+			}
+		}
+
+		// Move up one directory
+		parentDir := filepath.Dir(dir)
+		if parentDir == dir {
+			// We've reached the filesystem root without finding the go.mod file
+			break
+		}
+		dir = parentDir
+	}
+
+	// Fallback or error if not found - adjust as needed for your environment
+	t.Fatal("Could not find the root directory of the 'github.com/GoCodeAlone/modular' project")
+	return "" // Should not be reached
+}
+
+// Rename or remove the old findParentModularPath function if it exists
+
+// TestGenerateModule_EndToEnd verifies the module generation process
+// ...existing code...

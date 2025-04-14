@@ -421,27 +421,25 @@ func generateJSONSample(outputDir string, options *ConfigOptions) error {
 
 // generateTOMLSample generates a sample TOML configuration file
 func generateTOMLSample(outputDir string, options *ConfigOptions) error {
-	// Create function map for the template
+	filePath := filepath.Join(outputDir, "config-sample.toml")
+	file, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create TOML sample file: %w", err)
+	}
+	defer file.Close()
+
+	// Use standard template functions
 	funcMap := template.FuncMap{
 		"ToLowerF": ToLowerF,
 	}
 
-	// Create template for TOML
-	tomlTemplate, err := template.New("toml").Funcs(funcMap).Parse(tomlTemplateText)
+	tmpl, err := template.New("toml").Funcs(funcMap).Parse(tomlTemplateText)
 	if err != nil {
 		return fmt.Errorf("failed to parse TOML template: %w", err)
 	}
 
-	// Execute the template
-	var content bytes.Buffer
-	if err := tomlTemplate.Execute(&content, options); err != nil {
+	if err := tmpl.Execute(file, options); err != nil {
 		return fmt.Errorf("failed to execute TOML template: %w", err)
-	}
-
-	// Write the sample TOML to a file
-	outputFile := filepath.Join(outputDir, "config-sample.toml")
-	if err := os.WriteFile(outputFile, content.Bytes(), 0644); err != nil {
-		return fmt.Errorf("failed to write TOML sample: %w", err)
 	}
 
 	return nil
@@ -531,22 +529,33 @@ const tomlTemplateText = `# Sample configuration
 {{- if $field.Description}}
 # {{$field.Description}}
 {{- end}}
-{{$field.Name | ToLowerF}} = {{if $field.IsNested}}
+{{- if $field.DefaultValue}}
+  {{- if eq $field.Type "string"}}
+{{$field.Name | ToLowerF}} = "{{$field.DefaultValue}}"
+  {{- else}}
+# {{$field.Name | ToLowerF}} = {{$field.DefaultValue}} # Default value for type {{$field.Type}} - Uncomment and format correctly
+  {{- end}}
+{{- else if $field.IsNested}}
+# {{$field.Name | ToLowerF}} = # Nested structure, define below or inline
+# Example:
+# [{{$field.Name | ToLowerF}}]
 {{- range $nested := $field.NestedFields}}
-  {{$nested.Name | ToLowerF}} = {{if $nested.DefaultValue}}{{$nested.DefaultValue}}{{else}}{{if eq $nested.Type "string"}}"example"{{else if eq $nested.Type "int"}}0{{else if eq $nested.Type "bool"}}false{{else if eq $nested.Type "float64"}}0.0{{else}}""{{end}}{{end}}
+#   {{$nested.Name | ToLowerF}} = {{if eq $nested.Type "string"}}"nested_example"{{else if eq $nested.Type "int"}}0{{else if eq $nested.Type "bool"}}false{{else if eq $nested.Type "float64"}}0.0{{else}}""{{end}} # Example for nested field {{$nested.Name}}
 {{- end}}
-{{- else if $field.DefaultValue}}
-  {{$field.DefaultValue}}
 {{- else if eq $field.Type "string"}}
-  "example string"
+{{$field.Name | ToLowerF}} = "example string"
 {{- else if eq $field.Type "int"}}
-  0
+{{$field.Name | ToLowerF}} = 0
 {{- else if eq $field.Type "bool"}}
-  false
+{{$field.Name | ToLowerF}} = false
 {{- else if eq $field.Type "float64"}}
-  0.0
+{{$field.Name | ToLowerF}} = 0.0
+{{- else if $field.IsArray}}
+{{$field.Name | ToLowerF}} = [] # Example: ["item1", "item2"] or [1, 2]
+{{- else if $field.IsMap}}
+{{$field.Name | ToLowerF}} = {} # Example: { key1 = "value1", key2 = "value2" }
 {{- else}}
-  # Set a value appropriate for the type {{$field.Type}}
+{{$field.Name | ToLowerF}} = "" # Set a value appropriate for the type {{$field.Type}}
 {{- end}}
 {{- end}}
 `

@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors" // Added
 	"fmt"
+	"log/slog" // Added
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/modfile" // Added
 )
 
 // SurveyStdio is a public variable to make it accessible for testing
@@ -34,6 +37,131 @@ type ModuleOptions struct {
 	ConfigOptions    *ConfigOptions
 }
 
+// --- Template Definitions ---
+
+// Define the main module template
+// Use ` + "`" + ` within the string to represent backticks for struct tags
+const moduleTmpl = `package {{.PackageName}}
+// ... existing moduleTmpl content ...
+` // End of moduleTmpl
+
+// Define the module test template
+const moduleTestTmpl = `package {{.PackageName}}
+
+import (
+	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}}
+	"testing"
+	{{if or .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}}
+	"github.com/stretchr/testify/assert"
+	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/stretchr/testify/require"{{end}}
+	{{if or .HasConfig .IsTenantAware}}"fmt"{{end}}
+)
+
+func TestNew{{.ModuleName}}Module(t *testing.T) {
+	module := New{{.ModuleName}}Module()
+	assert.NotNil(t, module)
+
+	modImpl, ok := module.(*{{.ModuleName}}Module)
+	require.True(t, ok)
+	assert.Equal(t, "{{.PackageName}}", modImpl.Name())
+	{{if .IsTenantAware}}assert.NotNil(t, modImpl.tenantConfigs){{end}}
+}
+
+{{if .HasConfig}}
+func TestModule_RegisterConfig(t *testing.T) {
+	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
+	mockApp := NewMockApplication()
+	err := module.RegisterConfig(mockApp)
+	assert.NoError(t, err)
+	assert.NotNil(t, module.config)
+	_, err = mockApp.GetConfigSection(module.Name())
+	assert.NoError(t, err, "Config section should be registered")
+}
+{{end}}
+
+func TestModule_Init(t *testing.T) {
+	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
+	mockApp := NewMockApplication()
+	{{if .RequiresServices}}
+	{{end}}
+	err := module.Init(mockApp)
+	assert.NoError(t, err)
+}
+
+{{if .HasStartupLogic}}
+func TestModule_Start(t *testing.T) {
+	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
+	err := module.Start(context.Background())
+	assert.NoError(t, err)
+}
+{{end}}
+
+{{if .HasShutdownLogic}}
+func TestModule_Stop(t *testing.T) {
+	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
+	err := module.Stop(context.Background())
+	assert.NoError(t, err)
+}
+{{end}}
+
+{{if .IsTenantAware}}
+func TestModule_TenantLifecycle(t *testing.T) {
+	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
+	{{if .HasConfig}}
+	module.config = &Config{}
+	{{end}}
+
+	tenantID := modular.TenantID("test-tenant")
+	module.OnTenantRegistered(tenantID)
+
+	{{if .HasConfig}}
+	mockTenantService := &MockTenantService{
+		Configs: map[modular.TenantID]map[string]modular.ConfigProvider{
+			tenantID: {
+				module.Name(): modular.NewStdConfigProvider(&Config{}),
+			},
+		},
+	}
+	err := module.LoadTenantConfig(mockTenantService, tenantID)
+	assert.NoError(t, err)
+	loadedConfig := module.GetTenantConfig(tenantID)
+	require.NotNil(t, loadedConfig, "Loaded tenant config should not be nil")
+	{{else}}
+	{{end}}
+
+	module.OnTenantRemoved(tenantID)
+	_, exists := module.tenantConfigs[tenantID]
+	assert.False(t, exists, "Tenant config should be removed")
+}
+
+type MockTenantService struct {
+	Configs map[modular.TenantID]map[string]modular.ConfigProvider
+}
+
+func (m *MockTenantService) GetTenantConfig(tid modular.TenantID, section string) (modular.ConfigProvider, error) {
+	if tenantSections, ok := m.Configs[tid]; ok {
+		if provider, ok := tenantSections[section]; ok {
+			return provider, nil
+		}
+	}
+	return nil, fmt.Errorf("mock config not found for tenant %s, section %s", tid, section)
+}
+func (m *MockTenantService) GetTenants() []modular.TenantID { return nil }
+func (m *MockTenantService) RegisterTenant(modular.TenantID, map[string]modular.ConfigProvider) error { return nil }
+func (m *MockTenantService) RemoveTenant(modular.TenantID) error { return nil }
+func (m *MockTenantService) RegisterTenantAwareModule(modular.TenantAwareModule) error { return nil }
+
+{{end}}
+
+` // End of moduleTestTmpl
+
+// Define the mock application template separately
+const mockAppTmpl = `package {{.PackageName}}
+// ... existing mockAppTmpl content ...
+` // End of mockAppTmpl
+
+// --- End Template Definitions ---
+
 // NewGenerateModuleCommand creates a command for generating Modular modules
 func NewGenerateModuleCommand() *cobra.Command {
 	var outputDir string
@@ -57,7 +185,7 @@ func NewGenerateModuleCommand() *cobra.Command {
 			}
 
 			// Generate the module files
-			if err := generateModuleFiles(options); err != nil {
+			if err := GenerateModuleFiles(options); err != nil {
 				fmt.Fprintf(os.Stderr, "Error generating module: %s\n", err)
 				os.Exit(1)
 			}
@@ -319,8 +447,8 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 	return nil
 }
 
-// generateModuleFiles generates all the files for the module
-func generateModuleFiles(options *ModuleOptions) error {
+// GenerateModuleFiles generates all the files for the module
+func GenerateModuleFiles(options *ModuleOptions) error {
 	// Create output directory if it doesn't exist
 	outputDir := filepath.Join(options.OutputDir, options.PackageName)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -359,7 +487,7 @@ func generateModuleFiles(options *ModuleOptions) error {
 	}
 
 	// Generate go.mod file
-	if err := generateGoModFile(options.ModuleName, outputDir); err != nil {
+	if err := generateGoModFile(outputDir, options); err != nil {
 		return fmt.Errorf("failed to generate go.mod file: %w", err)
 	}
 
@@ -371,121 +499,179 @@ func generateModuleFile(outputDir string, options *ModuleOptions) error {
 	moduleTmpl := `package {{.PackageName}}
 
 import (
-	"context"
-	"github.com/GoCodeAlone/modular"
+	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}} {{/* Conditionally import context */}}
+	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}} {{/* Conditionally import modular */}}
+	{{if .HasConfig}}"log/slog"{{end}} {{/* Conditionally import slog */}}
+	{{if .HasConfig}}"fmt"{{end}} {{/* Conditionally import fmt */}}
 )
 
-// {{.ModuleName}}Module implements the Modular module interface
+{{if .HasConfig}}
+// Config holds the configuration for the {{.ModuleName}} module
+type Config struct {
+	// Add configuration fields here
+	// ExampleField string ` + "`mapstructure:\"example_field\"`" + `
+}
+
+// ProvideDefaults sets default values for the configuration
+func (c *Config) ProvideDefaults() {
+	// Set default values here
+	// c.ExampleField = "default_value"
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	// Add validation logic here
+	// if c.ExampleField == "" {
+	//     return fmt.Errorf("example_field cannot be empty")
+	// }
+	return nil
+}
+{{end}}
+
+// {{.ModuleName}}Module represents the {{.ModuleName}} module
 type {{.ModuleName}}Module struct {
-	{{- if .HasConfig}}
-	config *{{.ModuleName}}Config
-	{{- end}}
-	{{- if .IsTenantAware}}
-	tenantConfigs map[modular.TenantID]*{{.ModuleName}}Config
-	{{- end}}
+	name string
+	{{if .HasConfig}}config *Config{{end}}
+	{{if .IsTenantAware}}tenantConfigs map[modular.TenantID]*Config{{end}}
+	// Add other dependencies or state fields here
 }
 
 // New{{.ModuleName}}Module creates a new instance of the {{.ModuleName}} module
 func New{{.ModuleName}}Module() modular.Module {
 	return &{{.ModuleName}}Module{
-		{{- if .IsTenantAware}}
-		tenantConfigs: make(map[modular.TenantID]*{{.ModuleName}}Config),
-		{{- end}}
+		name: "{{.PackageName}}",
+		{{if .IsTenantAware}}tenantConfigs: make(map[modular.TenantID]*Config),{{end}}
 	}
 }
 
-// Name returns the unique identifier for this module
+// Name returns the name of the module
 func (m *{{.ModuleName}}Module) Name() string {
-	return "{{.PackageName}}"
+	return m.name
 }
 
-{{- if .HasConfig}}
-// RegisterConfig registers configuration requirements
+{{if .HasConfig}}
+// RegisterConfig registers the module's configuration structure
 func (m *{{.ModuleName}}Module) RegisterConfig(app modular.Application) error {
-	m.config = &{{.ModuleName}}Config{
-		// Default values can be set here
+	m.config = &Config{} // Initialize with defaults or empty struct
+	if err := app.RegisterConfigSection(m.Name(), m.config); err != nil { // Check error from RegisterConfigSection
+		return fmt.Errorf("failed to register config section for module %s: %w", m.Name(), err)
 	}
-	
-	app.RegisterConfigSection("{{.PackageName}}", modular.NewStdConfigProvider(m.config))
+	// Load initial config values if needed (e.g., from app's main provider)
+	// Note: Config values will be populated later by feeders during app.Init()
+	slog.Debug("Registered config section", "module", m.Name())
 	return nil
 }
-{{- end}}
+{{end}}
 
 // Init initializes the module
 func (m *{{.ModuleName}}Module) Init(app modular.Application) error {
-	// Initialize module resources
-	
+	{{if .HasConfig}}slog.Info("Initializing {{.ModuleName}} module"){{else}}// Add initialization logging if desired{{end}}
+	{{if .RequiresServices}}
+	// Example: Resolve service dependencies
+	// var myService MyServiceType
+	// if err := app.GetService("myServiceName", &myService); err != nil {
+	//     return fmt.Errorf("failed to get service 'myServiceName': %w", err)
+	// }
+	// m.myService = myService
+	{{end}}
+	// Add module initialization logic here
 	return nil
 }
 
-{{- if .HasDependencies}}
-// Dependencies returns names of other modules this module depends on
-func (m *{{.ModuleName}}Module) Dependencies() []string {
-	return []string{
-		// Add dependencies here
-	}
-}
-{{- end}}
-
-{{- if or .ProvidesServices .RequiresServices}}
-{{- if .ProvidesServices}}
-// ProvidesServices returns a list of services provided by this module
-func (m *{{.ModuleName}}Module) ProvidesServices() []modular.ServiceProvider {
-	return []modular.ServiceProvider{
-		// Example:
-		// {
-		//     Name:        "serviceName",
-		//     Description: "Description of the service",
-		//     Instance:    serviceInstance,
-		// },
-	}
-}
-{{- end}}
-
-{{- if .RequiresServices}}
-// RequiresServices returns a list of services required by this module
-func (m *{{.ModuleName}}Module) RequiresServices() []modular.ServiceDependency {
-	return []modular.ServiceDependency{
-		// Example:
-		// {
-		//     Name:     "requiredService",
-		//     Required: true, // Whether this service is optional or required
-		// },
-	}
-}
-{{- end}}
-{{- end}}
-
-{{- if .HasStartupLogic}}
-// Start is called when the application is starting
+{{if .HasStartupLogic}}
+// Start performs startup logic for the module
 func (m *{{.ModuleName}}Module) Start(ctx context.Context) error {
-	// Startup logic goes here
-	
+	{{if .HasConfig}}slog.Info("Starting {{.ModuleName}} module"){{else}}// Add startup logging if desired{{end}}
+	// Add module startup logic here
 	return nil
 }
-{{- end}}
+{{end}}
 
-{{- if .HasShutdownLogic}}
-// Stop is called when the application is shutting down
+{{if .HasShutdownLogic}}
+// Stop performs shutdown logic for the module
 func (m *{{.ModuleName}}Module) Stop(ctx context.Context) error {
-	// Shutdown/cleanup logic goes here
-	
+	{{if .HasConfig}}slog.Info("Stopping {{.ModuleName}} module"){{else}}// Add shutdown logging if desired{{end}}
+	// Add module shutdown logic here
 	return nil
 }
-{{- end}}
+{{end}}
 
-{{- if .IsTenantAware}}
+{{if .HasDependencies}}
+// Dependencies returns the names of modules this module depends on
+func (m *{{.ModuleName}}Module) Dependencies() []string {
+	// return []string{"otherModule"} // Add dependencies here
+	return nil
+}
+{{end}}
+
+{{if .ProvidesServices}}
+// ProvidesServices declares services provided by this module
+func (m *{{.ModuleName}}Module) ProvidesServices() []modular.ServiceProvider {
+	// return []modular.ServiceProvider{
+	//     {Name: "myService", Instance: myServiceImpl},
+	// }
+	return nil
+}
+{{end}}
+
+{{if .RequiresServices}}
+// RequiresServices declares services required by this module
+func (m *{{.ModuleName}}Module) RequiresServices() []modular.ServiceDependency {
+	// return []modular.ServiceDependency{
+	//     {Name: "requiredService", Optional: false},
+	// }
+	return nil
+}
+{{end}}
+
+{{if .IsTenantAware}}
 // OnTenantRegistered is called when a new tenant is registered
 func (m *{{.ModuleName}}Module) OnTenantRegistered(tenantID modular.TenantID) {
-	// Initialize tenant-specific resources
+	{{if .HasConfig}}slog.Info("Tenant registered in {{.ModuleName}} module", "tenantID", tenantID){{else}}// Add tenant registration logging if desired{{end}}
+	// Perform actions when a tenant is added, e.g., initialize tenant-specific resources
 }
 
 // OnTenantRemoved is called when a tenant is removed
 func (m *{{.ModuleName}}Module) OnTenantRemoved(tenantID modular.TenantID) {
-	// Clean up tenant-specific resources
+	{{if .HasConfig}}slog.Info("Tenant removed from {{.ModuleName}} module", "tenantID", tenantID){{else}}// Add tenant removal logging if desired{{end}}
+	// Perform cleanup for the removed tenant
 	delete(m.tenantConfigs, tenantID)
 }
-{{- end}}
+
+// LoadTenantConfig loads the configuration for a specific tenant
+func (m *{{.ModuleName}}Module) LoadTenantConfig(tenantService modular.TenantService, tenantID modular.TenantID) error {
+	configProvider, err := tenantService.GetTenantConfig(tenantID, m.Name())
+	if err != nil {
+		// Handle cases where config might be optional for a tenant
+		{{if .HasConfig}}slog.Warn("No specific config found for tenant, using defaults/base.", "module", m.Name(), "tenantID", tenantID){{end}}
+		// If config is required, return error:
+		// return fmt.Errorf("failed to get config for tenant %s in module %s: %w", tenantID, m.Name(), err)
+		{{if .HasConfig}}m.tenantConfigs[tenantID] = m.config{{end}} // Use base config as fallback
+		return nil
+	}
+
+	tenantCfg := &Config{} // Create a new config struct for the tenant
+	// It's crucial to clone or create a new instance to avoid tenants sharing config objects.
+	// A simple approach is to unmarshal into a new struct.
+	if err := configProvider.Unmarshal(tenantCfg); err != nil {
+		return fmt.Errorf("failed to unmarshal config for tenant %s in module %s: %w", tenantID, m.Name(), err)
+	}
+
+	m.tenantConfigs[tenantID] = tenantCfg
+	{{if .HasConfig}}slog.Debug("Loaded config for tenant", "module", m.Name(), "tenantID", tenantID){{end}}
+	return nil
+}
+
+// GetTenantConfig retrieves the loaded configuration for a specific tenant
+// Returns the base config if no specific tenant config is found.
+func (m *{{.ModuleName}}Module) GetTenantConfig(tenantID modular.TenantID) *Config {
+	if cfg, ok := m.tenantConfigs[tenantID]; ok {
+		return cfg
+	}
+	// Fallback to base config if tenant-specific config doesn't exist
+	{{if .HasConfig}}return m.config{{else}}return nil{{end}}
+}
+{{end}}
 `
 
 	// Create and execute template
@@ -526,8 +712,8 @@ type {{.ModuleName}}Config struct {
 {{- if .IsNested}}
 // {{.Type}} holds nested configuration for {{.Name}}
 type {{.Type}} struct {
-	{{- range .NestedFields}}
-	{{template "configField" .}}
+	{{- range $nfield := .NestedFields}}
+	{{template "configField" $nfield}}
 	{{- end}}
 }
 {{- end}}
@@ -634,7 +820,8 @@ func generateSampleConfigFiles(outputDir string, options *ModuleOptions) error {
   {{- else if eq $field.Type "float64"}}3.14
   {{- else}}null
   {{- end}}
-{{- end}}`
+{{- end}}
+`
 
 	// Sample template for JSON
 	jsonTmpl := `{
@@ -666,8 +853,8 @@ func generateSampleConfigFiles(outputDir string, options *ModuleOptions) error {
     {{else if eq $field.Type "float64"}}3.14
     {{else}}null
     {{end}}{{if not (last $i $.ConfigOptions.Fields)}},{{end}}
-{{- end}}
   }
+{{- end}}
 }`
 
 	// Sample template for TOML
@@ -770,125 +957,136 @@ func generateTestFiles(outputDir string, options *ModuleOptions) error {
 	testTmpl := `package {{.PackageName}}
 
 import (
-	"context"
+	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}} {{/* Conditionally import context */}}
 	"testing"
-	
-	"github.com/GoCodeAlone/modular"
+	{{if or .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}} {{/* Conditionally import modular */}}
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/stretchr/testify/require"{{end}} {{/* Conditionally import require */}}
 )
 
 func TestNew{{.ModuleName}}Module(t *testing.T) {
 	module := New{{.ModuleName}}Module()
 	assert.NotNil(t, module)
-	
 	// Test module properties
 	modImpl, ok := module.(*{{.ModuleName}}Module)
-	require.True(t, ok)
+	require.True(t, ok) // Use require here as the rest of the test depends on this
 	assert.Equal(t, "{{.PackageName}}", modImpl.Name())
-	{{- if .IsTenantAware}}
-	assert.NotNil(t, modImpl.tenantConfigs)
-	{{- end}}
+	{{if .IsTenantAware}}assert.NotNil(t, modImpl.tenantConfigs){{end}}
 }
 
-{{- if .HasConfig}}
+{{if .HasConfig}}
 func TestModule_RegisterConfig(t *testing.T) {
 	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	
 	// Create a mock application
 	mockApp := NewMockApplication()
-	
 	// Test RegisterConfig
 	err := module.RegisterConfig(mockApp)
 	assert.NoError(t, err)
-	assert.NotNil(t, module.config)
+	assert.NotNil(t, module.config) // Verify config struct was initialized
+	// Verify the config section was registered in the mock app
+	_, err = mockApp.GetConfigSection(module.Name())
+	assert.NoError(t, err, "Config section should be registered")
 }
-{{- end}}
+{{end}}
 
 func TestModule_Init(t *testing.T) {
 	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	
 	// Create a mock application
 	mockApp := NewMockApplication()
-	
+	{{if .RequiresServices}}
+	// Register mock services if needed for Init
+	// mockService := &MockMyService{}
+	// mockApp.RegisterService("requiredService", mockService)
+	{{end}}
 	// Test Init
 	err := module.Init(mockApp)
 	assert.NoError(t, err)
+	// Add assertions here to check the state of the module after Init
 }
 
-{{- if .HasStartupLogic}}
+{{if .HasStartupLogic}}
 func TestModule_Start(t *testing.T) {
 	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	
+	// Add setup if needed, e.g., call Init
+	// mockApp := NewMockApplication()
+	// module.Init(mockApp)
+
 	// Test Start
 	err := module.Start(context.Background())
 	assert.NoError(t, err)
+	// Add assertions here to check the state of the module after Start
 }
-{{- end}}
+{{end}}
 
-{{- if .HasShutdownLogic}}
+{{if .HasShutdownLogic}}
 func TestModule_Stop(t *testing.T) {
 	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	
+	// Add setup if needed, e.g., call Init and Start
+	// mockApp := NewMockApplication()
+	// module.Init(mockApp)
+	// module.Start(context.Background())
+
 	// Test Stop
 	err := module.Stop(context.Background())
 	assert.NoError(t, err)
+	// Add assertions here to check the state of the module after Stop
 }
-{{- end}}
+{{end}}
 
-{{- if .IsTenantAware}}
+{{if .IsTenantAware}}
 func TestModule_TenantLifecycle(t *testing.T) {
 	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	
-	// Test tenant registration
+	{{if .HasConfig}}
+	// Initialize base config if needed for tenant fallback
+	module.config = &Config{}
+	{{end}}
+
 	tenantID := modular.TenantID("test-tenant")
+	// Test tenant registration
 	module.OnTenantRegistered(tenantID)
-	
+	// Add assertions: check if tenant-specific resources were created
+	// Test loading tenant config (requires a mock TenantService)
+	mockTenantService := &MockTenantService{
+		Configs: map[modular.TenantID]map[string]modular.ConfigProvider{
+			tenantID: {
+				module.Name(): modular.NewStdConfigProvider(&Config{ /* Populate with test data */ }),
+			},
+		},
+	}
+	err := module.LoadTenantConfig(mockTenantService, tenantID)
+	assert.NoError(t, err)
+	loadedConfig := module.GetTenantConfig(tenantID)
+	require.NotNil(t, loadedConfig, "Loaded tenant config should not be nil")
+	// Add assertions to check the loaded config values
+	{{if .HasConfig}}
 	// Test tenant removal
 	module.OnTenantRemoved(tenantID)
 	_, exists := module.tenantConfigs[tenantID]
-	assert.False(t, exists)
+	assert.False(t, exists, "Tenant config should be removed")
+	// Add assertions: check if tenant-specific resources were cleaned up
 }
-{{- end}}
-`
-
-	// Define the mock application template separately
-	mockAppTmpl := `package {{.PackageName}}
-
-import (
-	"github.com/GoCodeAlone/modular"
-)
-
-// MockApplication is a mock implementation of the modular.Application interface for testing
-type MockApplication struct {
-	ConfigSections map[string]modular.ConfigProvider
+	// Test tenant registration
+// MockTenantService for testing LoadTenantConfig
+type MockTenantService struct {
+	Configs map[modular.TenantID]map[string]modular.ConfigProvider
 }
 
-func NewMockApplication() *MockApplication {
-	return &MockApplication{
-		ConfigSections: make(map[string]modular.ConfigProvider),
+func (m *MockTenantService) GetTenantConfig(tid modular.TenantID, section string) (modular.ConfigProvider, error) {
+	if tenantSections, ok := m.Configs[tid]; ok {
+		if provider, ok := tenantSections[section]; ok {
+			return provider, nil
+		}
 	}
+	return nil, fmt.Errorf("mock config not found for tenant %s, section %s", tid, section)
 }
+func (m *MockTenantService) GetTenants() []modular.TenantID { return nil } // Not needed for this test
+func (m *MockTenantService) RegisterTenant(modular.TenantID, map[string]modular.ConfigProvider) error { return nil } // Not needed
+func (m *MockTenantService) RemoveTenant(modular.TenantID) error { return nil } // Not needed
+func (m *MockTenantService) RegisterTenantAwareModule(modular.TenantAwareModule) error { return nil } // Not needed
 
-func (m *MockApplication) RegisterModule(module modular.Module) {
-	// No-op for tests
-}
+{{end}}
 
-func (m *MockApplication) RegisterService(name string, service interface{}) error {
-	return nil
-}
-
-func (m *MockApplication) GetService(name string, target interface{}) error {
-	return nil
-}
-
-func (m *MockApplication) RegisterConfigSection(name string, provider modular.ConfigProvider) {
-	m.ConfigSections[name] = provider
-}
-
-func (m *MockApplication) Logger() modular.Logger {
-	return nil
-}
+// Add more tests for specific module functionality
 `
 
 	// Create and execute test template
@@ -1044,61 +1242,114 @@ The {{.ModuleName}} module supports the following configuration options:
 	return nil
 }
 
-// generateGoModFile creates a go.mod file for the generated module
-func generateGoModFile(modulePath string, moduleFolder string) error {
-	// Only generate go.mod for test environments
+// generateGoModFile creates a go.mod file for the new module
+func generateGoModFile(outputDir string, options *ModuleOptions) error {
+	// Skip go.mod generation and tidy if running in test mode where manual creation might occur
 	if os.Getenv("TESTING") == "1" {
-		return "github.com/GoCodeAlone/modular", nil
+		slog.Debug("TESTING=1 set, skipping automatic go.mod generation and tidy.")
+		return nil
 	}
-	// Set the module name based on the parent module and the new module name
-	parentModule, err := getParentModulePath()
+
+	goModPath := filepath.Join(outputDir, "go.mod")
+	if _, err := os.Stat(goModPath); err == nil {
+		slog.Debug("go.mod file already exists, skipping generation.", "path", goModPath)
+		return nil // File already exists
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to check for existing go.mod: %w", err)
+	}
+
+	// --- Find and parse parent go.mod ---
+	parentGoModPath, err := findParentGoMod()
+	var parentReplaceDirectives []*modfile.Replace
 	if err != nil {
-		return fmt.Errorf("failed to determine parent module path: %w", err)
+		slog.Warn("Could not find parent go.mod, generated go.mod will not include parent replace directives.", "error", err)
+	} else {
+		slog.Debug("Found parent go.mod", "path", parentGoModPath)
+		parentGoModBytes, err := os.ReadFile(parentGoModPath)
+		if err != nil {
+			slog.Warn("Could not read parent go.mod, generated go.mod will not include parent replace directives.", "path", parentGoModPath, "error", err)
+		} else {
+			parentModFile, err := modfile.Parse(parentGoModPath, parentGoModBytes, nil)
+			if err != nil {
+				slog.Warn("Could not parse parent go.mod, generated go.mod will not include parent replace directives.", "path", parentGoModPath, "error", err)
+			} else {
+				parentReplaceDirectives = parentModFile.Replace
+				slog.Debug("Successfully parsed parent replace directives.", "count", len(parentReplaceDirectives))
+			}
+		}
+	}
+	// --- End find and parse parent go.mod ---
+
+	// Use a simple template for go.mod content
+	// Require modular v0.0.0 - rely on replace directives or user's go get/tidy
+	// Require testify for generated tests
+	// Construct a plausible module path based on the module name
+	modulePath := fmt.Sprintf("example.com/%s", strings.ToLower(options.ModuleName))
+	goModContent := fmt.Sprintf(`module %s
+
+go 1.21
+
+require (
+	github.com/GoCodeAlone/modular v0.0.0
+	github.com/stretchr/testify v1.10.0
+)`, modulePath) // Use the constructed module path
+
+	// Append parent replace directives if found
+	if len(parentReplaceDirectives) > 0 {
+		goModContent += "\nreplace (\n"
+		for _, rep := range parentReplaceDirectives {
+			goModContent += fmt.Sprintf("\t%s => %s\n", rep.Old.Path, rep.New.Path)
+			if rep.New.Version != "" {
+				goModContent = strings.TrimSuffix(goModContent, "\n") + " " + rep.New.Version + "\n"
+			}
+		}
+		goModContent += ")\n"
 	}
 
-	// Create the module path (parent/modules/moduleName)
-	moduleName := filepath.Base(moduleFolder)
-	fullModulePath := fmt.Sprintf("%s/modules/%s", parentModule, moduleName)
-
-	var goModContent string
-	// Regular go.mod with replacement directive
-	goModContent = fmt.Sprintf(`module %s
-
-go 1.24.2
-
-require %s v0.0.0
-
-replace %s => ../..
-`, fullModulePath, parentModule, parentModule)
-
-	// Write go.mod file
-	goModPath := filepath.Join(moduleFolder, "go.mod")
-	if err = os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
+	err = os.WriteFile(goModPath, []byte(goModContent), 0644)
+	if err != nil {
 		return fmt.Errorf("failed to write go.mod file: %w", err)
+	}
+	slog.Debug("Successfully created go.mod file.", "path", goModPath)
+
+	// Run 'go mod tidy'
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = outputDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Warn("go mod tidy failed after generating go.mod. Manual check might be needed.", "output", string(output), "error", err)
+		// Don't return error, as it might be due to environment issues not critical to generation
+	} else {
+		slog.Debug("Successfully ran go mod tidy.", "output", string(output))
 	}
 
 	return nil
 }
 
-// getParentModulePath determines the parent module path from the current go.mod
-// or returns a default for testing environments
-func getParentModulePath() (string, error) {
-	// For testing environments, use a default module path
-	if os.Getenv("TESTING") == "1" {
-		return "github.com/GoCodeAlone/modular", nil
-	}
-
-	// Try to determine from the current directory
-	cmd := exec.Command("go", "list", "-m")
-	output, err := cmd.Output()
+// findParentGoMod searches upwards from the current directory for a go.mod file.
+func findParentGoMod() (string, error) {
+	dir, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("failed to execute 'go list -m': %w", err)
+		return "", fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	modulePath := strings.TrimSpace(string(output))
-	if modulePath == "" {
-		return "", fmt.Errorf("could not determine module path from go.mod")
+	for {
+		goModPath := filepath.Join(dir, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			return goModPath, nil // Found it
+		} else if !errors.Is(err, os.ErrNotExist) {
+			// Error other than not found
+			return "", fmt.Errorf("error checking for go.mod at %s: %w", goModPath, err)
+		}
+
+		// Move up one directory
+		parentDir := filepath.Dir(dir)
+		if parentDir == dir {
+			// Reached the root
+			break
+		}
+		dir = parentDir
 	}
 
-	return modulePath, nil
+	return "", errors.New("go.mod file not found in any parent directory")
 }

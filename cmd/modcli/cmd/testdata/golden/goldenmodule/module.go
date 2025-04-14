@@ -1,96 +1,152 @@
 package goldenmodule
 
 import (
-	"context"
-	"github.com/GoCodeAlone/modular"
+	"context" // Conditionally import context
+	"github.com/GoCodeAlone/modular" // Conditionally import modular
+	"log/slog" // Conditionally import slog
 )
 
-// GoldenModuleModule implements the Modular module interface
+// GoldenModuleModule represents the GoldenModule module
 type GoldenModuleModule struct {
-	config        *GoldenModuleConfig
-	tenantConfigs map[modular.TenantID]*GoldenModuleConfig
+	name string
+	config *Config
+	tenantConfigs map[modular.TenantID]*Config
+	// Add other dependencies or state fields here
 }
 
 // NewGoldenModuleModule creates a new instance of the GoldenModule module
 func NewGoldenModuleModule() modular.Module {
 	return &GoldenModuleModule{
-		tenantConfigs: make(map[modular.TenantID]*GoldenModuleConfig),
+		name: "goldenmodule",
+		tenantConfigs: make(map[modular.TenantID]*Config),
 	}
 }
 
-// Name returns the unique identifier for this module
+// Name returns the name of the module
 func (m *GoldenModuleModule) Name() string {
-	return "goldenmodule"
+	return m.name
 }
 
-// RegisterConfig registers configuration requirements
-func (m *GoldenModuleModule) RegisterConfig(app modular.Application) error {
-	m.config = &GoldenModuleConfig{
-		// Default values can be set here
-	}
 
-	app.RegisterConfigSection("goldenmodule", modular.NewStdConfigProvider(m.config))
+// RegisterConfig registers the module's configuration structure
+func (m *GoldenModuleModule) RegisterConfig(app modular.Application) error {
+	m.config = &Config{} // Initialize with defaults or empty struct
+	if err := app.RegisterConfigSection(m.Name(), m.config); err != nil {
+		return fmt.Errorf("failed to register config section for module %s: %w", m.Name(), err)
+	}
+	// Load initial config values if needed (e.g., from app's main provider)
+	// Note: Config values will be populated later by feeders during app.Init()
+	slog.Debug("Registered config section", "module", m.Name())
 	return nil
 }
+
 
 // Init initializes the module
 func (m *GoldenModuleModule) Init(app modular.Application) error {
-	// Initialize module resources
-
+	slog.Info("Initializing GoldenModule module")
+	
+	// Example: Resolve service dependencies
+	// var myService MyServiceType
+	// if err := app.GetService("myServiceName", &myService); err != nil {
+	//     return fmt.Errorf("failed to get service 'myServiceName': %w", err)
+	// }
+	// m.myService = myService
+	
+	// Add module initialization logic here
 	return nil
 }
 
-// Dependencies returns names of other modules this module depends on
-func (m *GoldenModuleModule) Dependencies() []string {
-	return []string{
-		// Add dependencies here
-	}
-}
 
-// ProvidesServices returns a list of services provided by this module
-func (m *GoldenModuleModule) ProvidesServices() []modular.ServiceProvider {
-	return []modular.ServiceProvider{
-		// Example:
-		// {
-		//     Name:        "serviceName",
-		//     Description: "Description of the service",
-		//     Instance:    serviceInstance,
-		// },
-	}
-}
-
-// RequiresServices returns a list of services required by this module
-func (m *GoldenModuleModule) RequiresServices() []modular.ServiceDependency {
-	return []modular.ServiceDependency{
-		// Example:
-		// {
-		//     Name:     "requiredService",
-		//     Required: true, // Whether this service is optional or required
-		// },
-	}
-}
-
-// Start is called when the application is starting
+// Start performs startup logic for the module
 func (m *GoldenModuleModule) Start(ctx context.Context) error {
-	// Startup logic goes here
-
+	slog.Info("Starting GoldenModule module")
+	// Add module startup logic here
 	return nil
 }
 
-// Stop is called when the application is shutting down
+
+
+// Stop performs shutdown logic for the module
 func (m *GoldenModuleModule) Stop(ctx context.Context) error {
-	// Shutdown/cleanup logic goes here
-
+	slog.Info("Stopping GoldenModule module")
+	// Add module shutdown logic here
 	return nil
 }
+
+
+
+// Dependencies returns the names of modules this module depends on
+func (m *GoldenModuleModule) Dependencies() []string {
+	// return []string{"otherModule"} // Add dependencies here
+	return nil
+}
+
+
+
+// ProvidesServices declares services provided by this module
+func (m *GoldenModuleModule) ProvidesServices() []modular.ServiceProvider {
+	// return []modular.ServiceProvider{
+	//     {Name: "myService", Instance: myServiceImpl},
+	// }
+	return nil
+}
+
+
+
+// RequiresServices declares services required by this module
+func (m *GoldenModuleModule) RequiresServices() []modular.ServiceDependency {
+	// return []modular.ServiceDependency{
+	//     {Name: "requiredService", Optional: false},
+	// }
+	return nil
+}
+
+
 
 // OnTenantRegistered is called when a new tenant is registered
 func (m *GoldenModuleModule) OnTenantRegistered(tenantID modular.TenantID) {
-	// Initialize tenant-specific resources
+	slog.Info("Tenant registered in GoldenModule module", "tenantID", tenantID)
+	// Perform actions when a tenant is added, e.g., initialize tenant-specific resources
 }
 
 // OnTenantRemoved is called when a tenant is removed
 func (m *GoldenModuleModule) OnTenantRemoved(tenantID modular.TenantID) {
-	// Clean up tenant-specific resources
+	slog.Info("Tenant removed from GoldenModule module", "tenantID", tenantID)
+	// Perform cleanup for the removed tenant
 	delete(m.tenantConfigs, tenantID)
 }
+
+// LoadTenantConfig loads the configuration for a specific tenant
+func (m *GoldenModuleModule) LoadTenantConfig(tenantService modular.TenantService, tenantID modular.TenantID) error {
+	configProvider, err := tenantService.GetTenantConfig(tenantID, m.Name())
+	if err != nil {
+		// Handle cases where config might be optional for a tenant
+		slog.Warn("No specific config found for tenant, using defaults/base.", "module", m.Name(), "tenantID", tenantID)
+		// If config is required, return error:
+		// return fmt.Errorf("failed to get config for tenant %s in module %s: %w", tenantID, m.Name(), err)
+		m.tenantConfigs[tenantID] = m.config // Use base config as fallback
+		return nil
+	}
+
+	tenantCfg := &Config{} // Create a new config struct for the tenant
+	// It's crucial to clone or create a new instance to avoid tenants sharing config objects.
+	// A simple approach is to unmarshal into a new struct.
+	if err := configProvider.Unmarshal(tenantCfg); err != nil {
+		return fmt.Errorf("failed to unmarshal config for tenant %s in module %s: %w", tenantID, m.Name(), err)
+	}
+
+	m.tenantConfigs[tenantID] = tenantCfg
+	slog.Debug("Loaded config for tenant", "module", m.Name(), "tenantID", tenantID)
+	return nil
+}
+
+// GetTenantConfig retrieves the loaded configuration for a specific tenant
+// Returns the base config if no specific tenant config is found.
+func (m *GoldenModuleModule) GetTenantConfig(tenantID modular.TenantID) *Config {
+	if cfg, ok := m.tenantConfigs[tenantID]; ok {
+		return cfg
+	}
+	// Fallback to base config if tenant-specific config doesn't exist
+	return m.config
+}
+
