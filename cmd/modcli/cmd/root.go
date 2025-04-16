@@ -2,9 +2,20 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
+
+// Version information (set during build)
+var (
+	Version string = "dev"
+	Commit  string = "none"
+	Date    string = "unknown"
+)
+
+// OsExit allows us to mock os.Exit for testing
+var OsExit = os.Exit
 
 // NewRootCommand creates the root command for the modcli application
 func NewRootCommand() *cobra.Command {
@@ -14,9 +25,20 @@ func NewRootCommand() *cobra.Command {
 		Long: `Modular CLI provides tools for working with the Modular Go Framework.
 It helps with generating modules, configurations, and other common tasks.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Check if version flag is set
+			versionFlag, _ := cmd.Flags().GetBool("version")
+			if versionFlag {
+				fmt.Println(PrintVersion())
+				OsExit(0)
+				return
+			}
 			cmd.Help()
 		},
 	}
+
+	// Add version flag
+	cmd.Flags().BoolP("version", "v", false, "Print version information")
+	cmd.Version = Version
 
 	// Add subcommands
 	cmd.AddCommand(NewGenerateCommand())
@@ -41,13 +63,6 @@ func NewGenerateCommand() *cobra.Command {
 
 	return cmd
 }
-
-// Version information
-var (
-	Version = "dev"
-	Commit  = "none"
-	Date    = "unknown"
-)
 
 // PrintVersion prints version information
 func PrintVersion() string {

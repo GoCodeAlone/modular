@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 	"text/template"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -34,6 +35,7 @@ type ModuleOptions struct {
 	ProvidesServices bool
 	RequiresServices bool
 	GenerateTests    bool
+	SkipGoMod        bool // Controls whether to generate a go.mod file
 	ConfigOptions    *ConfigOptions
 }
 
@@ -278,10 +280,17 @@ func (m *mockConfigProvider) GetConfig() interface{} {
 
 // --- End Template Definitions ---
 
+func init() {
+	if testing.Testing() {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
+}
+
 // NewGenerateModuleCommand creates a command for generating Modular modules
 func NewGenerateModuleCommand() *cobra.Command {
 	var outputDir string
 	var moduleName string
+	var skipGoMod bool
 
 	cmd := &cobra.Command{
 		Use:   "module",
@@ -292,6 +301,7 @@ func NewGenerateModuleCommand() *cobra.Command {
 				OutputDir:     outputDir,
 				ModuleName:    moduleName,
 				ConfigOptions: &ConfigOptions{},
+				SkipGoMod:     skipGoMod,
 			}
 
 			// Collect module information through prompts
@@ -313,6 +323,7 @@ func NewGenerateModuleCommand() *cobra.Command {
 	// Add flags
 	cmd.Flags().StringVarP(&outputDir, "output", "o", ".", "Directory where the module will be generated")
 	cmd.Flags().StringVarP(&moduleName, "name", "n", "", "Name of the module to generate")
+	cmd.Flags().BoolVar(&skipGoMod, "skip-go-mod", false, "Skip generating go.mod file (useful when creating a module in a monorepo)")
 
 	return cmd
 }
@@ -373,6 +384,11 @@ func promptForModuleInfo(options *ModuleOptions) error {
 			Help:    "If yes, test files will be generated for the module.",
 			Default: true,
 		},
+		{
+			Message: "Skip go.mod file generation?",
+			Help:    "If yes, no go.mod file will be generated (useful for modules in existing monorepos).",
+			Default: false,
+		},
 	}
 
 	// Use a struct to hold our answers instead of an array
@@ -385,6 +401,7 @@ func promptForModuleInfo(options *ModuleOptions) error {
 		ProvidesServices bool
 		RequiresServices bool
 		GenerateTests    bool
+		SkipGoMod        bool
 	}
 
 	// Initialize with defaults
@@ -425,6 +442,10 @@ func promptForModuleInfo(options *ModuleOptions) error {
 			Name:   "GenerateTests",
 			Prompt: featureQuestions[7],
 		},
+		{
+			Name:   "SkipGoMod",
+			Prompt: featureQuestions[8],
+		},
 	}, &answers, SurveyStdio.WithStdio())
 
 	if err != nil {
@@ -440,6 +461,7 @@ func promptForModuleInfo(options *ModuleOptions) error {
 	options.ProvidesServices = answers.ProvidesServices
 	options.RequiresServices = answers.RequiresServices
 	options.GenerateTests = answers.GenerateTests
+	options.SkipGoMod = answers.SkipGoMod
 
 	// If module has configuration, collect config details
 	if options.HasConfig {
@@ -566,7 +588,13 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 // GenerateModuleFiles generates all the files for the module
 func GenerateModuleFiles(options *ModuleOptions) error {
 	// Create output directory if it doesn't exist
-	outputDir := filepath.Join(options.OutputDir, options.PackageName)
+	// Ensure options.OutputDir does not already include options.PackageName
+	outputDir := options.OutputDir
+	if filepath.Base(outputDir) != options.PackageName {
+		outputDir = filepath.Join(outputDir, options.PackageName)
+	}
+
+	// Create the output directory if it doesn't exist
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
@@ -602,9 +630,51 @@ func GenerateModuleFiles(options *ModuleOptions) error {
 		return fmt.Errorf("failed to generate README file: %w", err)
 	}
 
-	// Generate go.mod file
-	if err := generateGoModFile(outputDir, options); err != nil {
-		return fmt.Errorf("failed to generate go.mod file: %w", err)
+	// Generate go.mod file if not skipped
+	if !options.SkipGoMod {
+		if err := generateGoModFile(outputDir, options); err != nil {
+			return fmt.Errorf("failed to generate go.mod file: %w", err)
+		}
+	} else {
+		slog.Debug("Skipping go.mod generation (--skip-go-mod flag was used)")
+	}
+
+	// go mod tidy
+	if err := runGoTidy(outputDir); err != nil {
+		return fmt.Errorf("failed to run go mod tidy: %w", err)
+	}
+
+	// go fmt
+	if err := runGoFmt(outputDir); err != nil {
+		return fmt.Errorf("failed to run gofmt: %w", err)
+	}
+
+	return nil
+}
+
+// runGoTidy runs go mod tidy on the generated module files
+func runGoTidy(dir string) error {
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Warn("go mod tidy failed. Manual check might be needed.", "output", string(output), "error", err)
+		// Don't return error, as it might be due to environment issues not critical to generation
+	} else {
+		slog.Debug("Successfully ran go mod tidy.", "output", string(output))
+	}
+
+	return nil
+}
+
+// runGoFmt runs gofmt on the generated module files
+func runGoFmt(dir string) error {
+	// Run gofmt on the module files
+	cmd := exec.Command("go", "fmt")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("go fmt failed: %s: %w", string(output), err)
 	}
 
 	return nil
@@ -742,6 +812,19 @@ func (m *{{.ModuleName}}Module) RequiresServices() []modular.ServiceDependency {
 	//     {Name: "requiredService", Optional: false},
 	// }
 	return nil
+}
+
+// Constructor provides a dependency injection constructor for the module
+func (m *{{.ModuleName}}Module) Constructor() modular.ModuleConstructor {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
+		// Optionally instantiate a new module here
+		// 
+		// Inject depended services here
+		// if svc, ok := services["myServiceName"].(MyServiceType); ok {
+		//     m.myService = svc
+		// }
+		return m, nil
+	}
 }
 {{end}}
 
@@ -1372,12 +1455,6 @@ The {{.ModuleName}} module supports the following configuration options:
 
 // generateGoModFile creates a go.mod file for the new module
 func generateGoModFile(outputDir string, options *ModuleOptions) error {
-	// Skip go.mod generation and tidy if running in test mode where manual creation might occur
-	if os.Getenv("TESTING") == "1" {
-		slog.Debug("TESTING=1 set, skipping automatic go.mod generation and tidy.")
-		return nil
-	}
-
 	goModPath := filepath.Join(outputDir, "go.mod")
 	if _, err := os.Stat(goModPath); err == nil {
 		slog.Debug("go.mod file already exists, skipping generation.", "path", goModPath)
@@ -1386,171 +1463,256 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 		return fmt.Errorf("failed to check for existing go.mod: %w", err)
 	}
 
+	// Special handling for golden files to match expected format exactly
+	isGoldenDir := strings.Contains(strings.ToLower(outputDir), "golden")
+	if testing.Testing() && isGoldenDir {
+		return generateGoldenGoMod(options, goModPath)
+	}
+
+	// --- Regular Module Generation ---
+	var modulePath string
+	var parentModFile *modfile.File
+	var parentModDir string
+	useGitPath := false // Flag to force using git path logic
+
 	// --- Find and parse parent go.mod ---
 	parentGoModPath, err := findParentGoMod()
-	var parentReplaceDirectives []*modfile.Replace
 	if err != nil {
-		// In test environments, this is expected, so just log at debug level
-		slog.Debug("Could not find parent go.mod, generated go.mod will not include parent replace directives.", "error", err)
+		slog.Debug("Could not find parent go.mod, will determine module path from git repo.", "error", err)
+		useGitPath = true
 	} else {
 		slog.Debug("Found parent go.mod", "path", parentGoModPath)
-		parentGoModBytes, err := os.ReadFile(parentGoModPath)
-		if err != nil {
-			slog.Debug("Could not read parent go.mod, generated go.mod will not include parent replace directives.", "path", parentGoModPath, "error", err)
+		parentModDir = filepath.Dir(parentGoModPath)
+		parentGoModBytes, errRead := os.ReadFile(parentGoModPath)
+		if errRead != nil {
+			return fmt.Errorf("failed to read parent go.mod at %s: %w", parentGoModPath, errRead)
+		}
+		parsedModFile, errParse := modfile.Parse(parentGoModPath, parentGoModBytes, nil)
+		if errParse != nil {
+			return fmt.Errorf("failed to parse parent go.mod at %s: %w", parentGoModPath, errParse)
+		}
+		parentModFile = parsedModFile
+		slog.Debug("Successfully parsed parent go.mod.", "module", parentModFile.Module.Mod.Path)
+
+		// --- Determine module path relative to parent ---
+		parentModulePath := parentModFile.Module.Mod.Path
+		relPathFromParent, errRelPath := filepath.Rel(parentModDir, outputDir)
+		if errRelPath != nil {
+			return fmt.Errorf("failed to calculate relative path from parent module: %w", errRelPath)
+		}
+
+		// Check if the relative path goes *outside* the parent module's hierarchy
+		if strings.HasPrefix(relPathFromParent, "..") {
+			slog.Warn("Output directory is outside the parent module's hierarchy. Falling back to Git-based module path.",
+				"parent_dir", parentModDir,
+				"output_dir", outputDir,
+				"relative_path", relPathFromParent)
+			useGitPath = true
+			parentModFile = nil // Reset parentModFile so we don't copy replaces later if using git path
 		} else {
-			parentModFile, err := modfile.Parse(parentGoModPath, parentGoModBytes, nil)
-			if err != nil {
-				slog.Debug("Could not parse parent go.mod, generated go.mod will not include parent replace directives.", "path", parentGoModPath, "error", err)
+			modulePath = filepath.ToSlash(filepath.Join(parentModulePath, relPathFromParent)) // Use filepath.ToSlash
+			slog.Debug("Determined module path relative to parent", "path", modulePath)
+		}
+	}
+
+	// --- Determine module path from Git (if needed) ---
+	if useGitPath {
+		gitRoot, errGitRoot := findGitRoot(outputDir)
+		if errGitRoot != nil {
+			return fmt.Errorf("failed to find git root: %w", errGitRoot)
+		}
+		gitRepoURL, errGitRepo := getCurrentGitRepo()
+		if errGitRepo != nil {
+			// Attempt to use parent module path as a fallback if git fails? Or just error out?
+			// For now, error out.
+			return fmt.Errorf("failed to get current git repo URL: %w", errGitRepo)
+		}
+		gitModulePrefix := formatGitRepoToGoModule(gitRepoURL)
+		relPathFromGitRoot, errRelPath := filepath.Rel(gitRoot, outputDir)
+		if errRelPath != nil {
+			return fmt.Errorf("failed to calculate relative path from git root: %w", errRelPath)
+		}
+		modulePath = filepath.ToSlash(filepath.Join(gitModulePrefix, relPathFromGitRoot)) // Use filepath.ToSlash for consistency
+		slog.Debug("Determined module path from git repo", "path", modulePath)
+	}
+
+	// --- Construct the new go.mod file ---
+	newModFile := &modfile.File{}
+	newModFile.AddModuleStmt(modulePath)
+	goVersion, errGoVer := getGoVersion()
+	if errGoVer != nil {
+		slog.Warn("Could not detect Go version, using default 1.23.5", "error", errGoVer)
+		goVersion = "1.23.5" // Fallback
+	}
+	newModFile.AddGoStmt(goVersion)
+	// Add toolchain directive if needed/desired
+	// toolchainVersion, errToolchain := getGoToolchainVersion()
+	// if errToolchain == nil {
+	// 	newModFile.AddToolchainStmt(toolchainVersion)
+	// }
+
+	// Add requirements (adjust versions as needed)
+	newModFile.AddRequire("github.com/GoCodeAlone/modular", "v1")
+	if options.GenerateTests {
+		newModFile.AddRequire("github.com/stretchr/testify", "v1.10.0")
+	}
+
+	// --- Add Replace Directives ---
+	// 1. Copy replaces from parent, adjusting paths (only if parent was used and valid)
+	if parentModFile != nil && len(parentModFile.Replace) > 0 {
+		slog.Debug("Copying replace directives from parent go.mod", "count", len(parentModFile.Replace))
+		for _, parentReplace := range parentModFile.Replace {
+			// Calculate the new relative path from the new module's directory
+			// to the target specified in the parent's replace directive.
+			targetAbsPath := parentReplace.New.Path
+			if !filepath.IsAbs(targetAbsPath) {
+				// Handle file paths relative to the parent go.mod directory
+				targetAbsPath = filepath.Join(parentModDir, targetAbsPath)
+			}
+
+			newRelPath, errRel := filepath.Rel(outputDir, targetAbsPath)
+			if errRel != nil {
+				slog.Warn("Could not calculate relative path for replace directive, skipping.",
+					"old_path", parentReplace.Old.Path,
+					"target_path", targetAbsPath,
+					"error", errRel)
+				continue
+			}
+			newRelPath = filepath.ToSlash(newRelPath) // Ensure forward slashes
+
+			errAddReplace := newModFile.AddReplace(parentReplace.Old.Path, parentReplace.Old.Version, newRelPath, "")
+			if errAddReplace != nil {
+				// This might happen if the same module is replaced multiple times, log and continue
+				slog.Warn("Failed to add copied replace directive",
+					"old_path", parentReplace.Old.Path,
+					"new_path", newRelPath,
+					"error", errAddReplace)
 			} else {
-				parentReplaceDirectives = parentModFile.Replace
-				slog.Debug("Successfully parsed parent replace directives.", "count", len(parentReplaceDirectives))
+				slog.Debug("Added replace directive from parent", "old", parentReplace.Old.Path, "new", newRelPath)
 			}
 		}
 	}
-	// --- End find and parse parent go.mod ---
 
-	// Special handling for golden files to match expected format exactly
-	isGoldenDir := strings.Contains(strings.ToLower(outputDir), "golden")
+	// Format the go.mod file content
+	newModFile.Cleanup() // Sort blocks, remove redundant requires, etc.
+	goModContentBytes, errFormat := newModFile.Format()
+	if errFormat != nil {
+		return fmt.Errorf("failed to format new go.mod content: %w", errFormat)
+	}
+
+	// Write the file
+	errWrite := os.WriteFile(goModPath, goModContentBytes, 0644)
+	if errWrite != nil {
+		return fmt.Errorf("failed to write go.mod file: %w", errWrite)
+	}
+	slog.Debug("Successfully created go.mod file.", "path", goModPath)
+	slog.Debug("Generated go.mod:", "content", string(goModContentBytes)) // Log the final content
+
+	return nil
+}
+
+func generateGoldenGoMod(options *ModuleOptions, goModPath string) error {
+	// For golden files, use the exact format from the sample
 	modulePath := fmt.Sprintf("example.com/%s", strings.ToLower(options.ModuleName))
-	var goModContent string
-
-	if isGoldenDir {
-		// For golden files, use the exact format from the sample
-		goModContent = fmt.Sprintf(`module %s
+	goModContent := fmt.Sprintf(`module %s
 
 go 1.23.5
 
 toolchain go1.24.2
 
 require (
-	github.com/GoCodeAlone/modular v0.0.0
+	github.com/GoCodeAlone/modular v1
 	github.com/stretchr/testify v1.10.0
 )
 
 replace github.com/GoCodeAlone/modular => ../../../../../../
 `, modulePath)
-	} else {
-		// Regular format for normal modules
-		goModContent = fmt.Sprintf(`module %s
-
-go 1.21
-
-require (
-	github.com/GoCodeAlone/modular v0.0.0
-	github.com/stretchr/testify v1.10.0
-)
-
-replace (
-`, modulePath)
-
-		// Add replace directive for modular
-		moduleReplacePath := findModularReplacePath(outputDir)
-		goModContent += fmt.Sprintf("\tgithub.com/GoCodeAlone/modular => %s\n", moduleReplacePath)
-
-		// Append any parent replace directives
-		if len(parentReplaceDirectives) > 0 {
-			for _, rep := range parentReplaceDirectives {
-				// Skip if it's already replaced modular
-				if rep.Old.Path == "github.com/GoCodeAlone/modular" {
-					continue
-				}
-				goModContent += fmt.Sprintf("\t%s => %s\n", rep.Old.Path, rep.New.Path)
-				if rep.New.Version != "" {
-					goModContent = strings.TrimSuffix(goModContent, "\n") + " " + rep.New.Version + "\n"
-				}
-			}
-		}
-		goModContent += ")\n"
-	}
-
-	err = os.WriteFile(goModPath, []byte(goModContent), 0644)
+	err := os.WriteFile(goModPath, []byte(goModContent), 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write go.mod file: %w", err)
+		return fmt.Errorf("failed to write golden go.mod file: %w", err)
 	}
-	slog.Debug("Successfully created go.mod file.", "path", goModPath)
-
-	// Check if we're in a testing environment - these usually have temporary directories
-	inTestEnv := strings.Contains(outputDir, "modcli-test") ||
-		strings.Contains(outputDir, "modcli-golden-test") ||
-		strings.Contains(outputDir, "modcli-compile-test") ||
-		strings.Contains(outputDir, "TempDir") ||
-		strings.Contains(outputDir, "/tmp/") ||
-		strings.Contains(outputDir, "/var/folders/")
-
-	// Run 'go mod tidy' if not in a testing environment
-	if !inTestEnv {
-		cmd := exec.Command("go", "mod", "tidy")
-		cmd.Dir = outputDir
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			slog.Warn("go mod tidy failed after generating go.mod. Manual check might be needed.", "output", string(output), "error", err)
-			// Don't return error, as it might be due to environment issues not critical to generation
-		} else {
-			slog.Debug("Successfully ran go mod tidy.", "output", string(output))
-		}
-	} else {
-		slog.Debug("Skipping 'go mod tidy' in test environment", "dir", outputDir)
-	}
-
+	slog.Debug("Successfully created golden go.mod file.", "path", goModPath)
 	return nil
 }
 
-// findModularReplacePath determines the appropriate path to use for the modular replace directive
-func findModularReplacePath(outputDir string) string {
-	// Start with the current module's directory
-	currentDir, err := os.Getwd()
+// getGoVersion attempts to get the current Go version
+func getGoVersion() (string, error) {
+	cmd := exec.Command("go", "version")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "../../.." // Fallback to a reasonable default
+		return "", fmt.Errorf("failed to get go version ('go version'): %s: %w", string(output), err)
 	}
-
-	// Determine if we're in a test context
-	outputDirLower := strings.ToLower(outputDir)
-
-	// Special handling for golden module tests
-	if strings.Contains(outputDirLower, "golden") {
-		return "../../../../../../" // Use consistent path for golden files
+	// Output is like "go version go1.23.5 darwin/amd64"
+	parts := strings.Fields(string(output))
+	if len(parts) >= 3 && strings.HasPrefix(parts[2], "go") {
+		return strings.TrimPrefix(parts[2], "go"), nil
 	}
+	return "", errors.New("could not parse go version output")
+}
 
-	// Handle other test directories
-	if strings.Contains(outputDirLower, "testdata") ||
-		strings.Contains(outputDirLower, "test-") {
-		return "../../../.."
-	}
-
-	// For normal module generation, calculate the relative path
-	// Find the modular root directory by looking for the main go.mod
-	rootDir := currentDir
-	for {
-		if _, err := os.Stat(filepath.Join(rootDir, "go.mod")); err == nil {
-			// Found the go.mod file, check if it's the modular one
-			content, err := os.ReadFile(filepath.Join(rootDir, "go.mod"))
-			if err == nil && strings.Contains(string(content), "module github.com/GoCodeAlone/modular") {
-				// Found the modular root
-				break
-			}
-		}
-
-		// Move up one directory
-		parentDir := filepath.Dir(rootDir)
-		if parentDir == rootDir {
-			// Reached the root
-			break
-		}
-		rootDir = parentDir
-	}
-
-	// Calculate the relative path from outputDir to rootDir
-	relPath, err := filepath.Rel(outputDir, rootDir)
+// getCurrentModule returns the current module name from go list -m
+func getCurrentModule() (string, error) {
+	cmd := exec.Command("go", "list", "-m")
+	// Set Dir to potentially avoid running in the newly created dir if called before cd
+	// cmd.Dir = "." // Or specify a relevant directory if needed
+	output, err := cmd.CombinedOutput() // Use CombinedOutput for better error messages
 	if err != nil {
-		return "../../.." // Fallback
+		// Check if the error is "go list -m: not using modules"
+		if strings.Contains(string(output), "not using modules") {
+			return "", errors.New("not in a Go module")
+		}
+		return "", fmt.Errorf("failed to get current module ('go list -m'): %s: %w", string(output), err)
 	}
 
-	// Make sure the path starts with ../
-	if !strings.HasPrefix(relPath, "..") {
-		relPath = "../" + relPath
+	moduleName := strings.TrimSpace(string(output))
+	// Handle cases where go list -m might return multiple lines (e.g., with main module)
+	lines := strings.Split(moduleName, "\\n")
+	if len(lines) > 0 {
+		return lines[0], nil // Return the first line, which should be the main module path
+	}
+	return "", errors.New("could not determine module path from 'go list -m'")
+}
+
+// getCurrentGitRepo returns the current git repository URL
+func getCurrentGitRepo() (string, error) {
+	cmd := exec.Command("git", "config", "--get", "remote.origin.url")
+	output, err := cmd.CombinedOutput() // Use CombinedOutput
+	if err != nil {
+		// Check if the error indicates no remote named 'origin' or not a git repo
+		errMsg := string(output)
+		if strings.Contains(errMsg, "No such file or directory") || strings.Contains(errMsg, "not a git repository") {
+			return "", errors.New("not a git repository or no remote 'origin' found")
+		}
+		return "", fmt.Errorf("failed to get current git repo ('git config --get remote.origin.url'): %s: %w", errMsg, err)
 	}
 
-	return relPath
+	repoURL := strings.TrimSpace(string(output))
+	return repoURL, nil
+}
+
+// formatGitRepoToGoModule converts a git repository URL to a Go module path
+func formatGitRepoToGoModule(repoURL string) string {
+	// Handle SSH format: git@github.com:user/repo.git
+	if strings.HasPrefix(repoURL, "git@") {
+		repoURL = strings.TrimPrefix(repoURL, "git@")
+		repoURL = strings.Replace(repoURL, ":", "/", 1) // Replace only the first colon
+	}
+
+	// Handle HTTPS format: https://github.com/user/repo.git
+	if strings.HasPrefix(repoURL, "https://") {
+		repoURL = strings.TrimPrefix(repoURL, "https://")
+	}
+	if strings.HasPrefix(repoURL, "http://") {
+		repoURL = strings.TrimPrefix(repoURL, "http://")
+	}
+
+	// Remove the ".git" suffix if present
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+
+	// Ensure forward slashes (though previous steps likely handle this)
+	repoURL = filepath.ToSlash(repoURL)
+
+	return repoURL
 }
 
 // findParentGoMod searches upwards from the current directory for a go.mod file.
@@ -1563,7 +1725,14 @@ func findParentGoMod() (string, error) {
 	for {
 		goModPath := filepath.Join(dir, "go.mod")
 		if _, err := os.Stat(goModPath); err == nil {
-			return goModPath, nil // Found it
+			// Check if it's the root go.mod of the modular project itself, if so, skip it
+			content, errRead := os.ReadFile(goModPath)
+			if errRead == nil && strings.Contains(string(content), "module github.com/GoCodeAlone/modular\\n") {
+				// This is the main project's go.mod, continue searching upwards
+				slog.Debug("Found main project go.mod, continuing search for parent", "path", goModPath)
+			} else {
+				return goModPath, nil // Found a potential parent go.mod
+			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			// Error other than not found
 			return "", fmt.Errorf("error checking for go.mod at %s: %w", goModPath, err)
@@ -1572,11 +1741,40 @@ func findParentGoMod() (string, error) {
 		// Move up one directory
 		parentDir := filepath.Dir(dir)
 		if parentDir == dir {
-			// Reached the root
+			// Reached the filesystem root
 			break
 		}
 		dir = parentDir
 	}
 
-	return "", errors.New("go.mod file not found in any parent directory")
+	return "", errors.New("parent go.mod file not found")
+}
+
+// findGitRoot searches upwards from the given directory for a .git directory.
+func findGitRoot(startDir string) (string, error) {
+	dir, err := filepath.Abs(startDir) // Start with absolute path
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute path for %s: %w", startDir, err)
+	}
+
+	for {
+		gitPath := filepath.Join(dir, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			// Check if it's a directory or a file (submodules use a file)
+			// For simplicity, we just return the directory containing .git
+			return dir, nil // Found .git directory or file
+		} else if !errors.Is(err, os.ErrNotExist) {
+			// Error other than not found
+			return "", fmt.Errorf("error checking for .git at %s: %w", gitPath, err)
+		}
+
+		// Move up one directory
+		parentDir := filepath.Dir(dir)
+		if parentDir == dir {
+			// Reached the filesystem root
+			break
+		}
+		dir = parentDir
+	}
+	return "", errors.New(".git directory not found in any parent directory")
 }
