@@ -2,10 +2,8 @@ module example.com/goldenmodule
 
 go 1.23.5
 
-toolchain go1.24.2
-
 require (
-	github.com/GoCodeAlone/modular v0.0.0
+	github.com/GoCodeAlone/modular v1.2.1
 	github.com/stretchr/testify v1.10.0
 )
 

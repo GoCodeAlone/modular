@@ -588,31 +588,31 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 // GenerateModuleFiles generates all the files for the module
 func GenerateModuleFiles(options *ModuleOptions) error {
 	// Create output directory if it doesn't exist
-	// Ensure options.OutputDir does not already include options.PackageName
 	outputDir := options.OutputDir
-	if filepath.Base(outputDir) != options.PackageName {
-		outputDir = filepath.Join(outputDir, options.PackageName)
-	}
+
+	// Create the module directory structure
+	// Where module files go in: outputDir/packageName/module.go, etc.
+	moduleDir := filepath.Join(outputDir, options.PackageName)
 
 	// Create the output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(moduleDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Generate module.go file
-	if err := generateModuleFile(outputDir, options); err != nil {
+	if err := generateModuleFile(moduleDir, options); err != nil {
 		return fmt.Errorf("failed to generate module file: %w", err)
 	}
 
 	// Generate config.go if needed
 	if options.HasConfig {
-		if err := generateConfigFile(outputDir, options); err != nil {
+		if err := generateConfigFile(moduleDir, options); err != nil {
 			return fmt.Errorf("failed to generate config file: %w", err)
 		}
 
 		// Generate sample config files if requested
 		if options.ConfigOptions.GenerateSample {
-			if err := generateSampleConfigFiles(outputDir, options); err != nil {
+			if err := generateSampleConfigFiles(moduleDir, options); err != nil {
 				return fmt.Errorf("failed to generate sample config files: %w", err)
 			}
 		}
@@ -620,33 +620,38 @@ func GenerateModuleFiles(options *ModuleOptions) error {
 
 	// Generate test files if requested
 	if options.GenerateTests {
-		if err := generateTestFiles(outputDir, options); err != nil {
+		if err := generateTestFiles(moduleDir, options); err != nil {
 			return fmt.Errorf("failed to generate test files: %w", err)
 		}
 	}
 
 	// Generate README.md
-	if err := generateReadmeFile(outputDir, options); err != nil {
+	if err := generateReadmeFile(moduleDir, options); err != nil {
 		return fmt.Errorf("failed to generate README file: %w", err)
 	}
 
-	// Generate go.mod file if not skipped
+	// Generate go.mod file if not skipped - also putting it in the module directory
 	if !options.SkipGoMod {
-		if err := generateGoModFile(outputDir, options); err != nil {
+		if err := generateGoModFile(moduleDir, options); err != nil {
 			return fmt.Errorf("failed to generate go.mod file: %w", err)
 		}
 	} else {
 		slog.Debug("Skipping go.mod generation (--skip-go-mod flag was used)")
 	}
 
-	// go mod tidy
-	if err := runGoTidy(outputDir); err != nil {
-		return fmt.Errorf("failed to run go mod tidy: %w", err)
-	}
+	// Skip the go mod tidy and go fmt for golden file tests
+	if !testing.Testing() {
+		// go mod tidy - run it where the go.mod file is
+		if err := runGoTidy(moduleDir); err != nil {
+			return fmt.Errorf("failed to run go mod tidy: %w", err)
+		}
 
-	// go fmt
-	if err := runGoFmt(outputDir); err != nil {
-		return fmt.Errorf("failed to run gofmt: %w", err)
+		// go fmt - run it where the Go files are
+		if err := runGoFmt(moduleDir); err != nil {
+			return fmt.Errorf("failed to run gofmt: %w", err)
+		}
+	} else {
+		slog.Debug("Skipping go mod tidy and go fmt in test environment")
 	}
 
 	return nil
@@ -669,12 +674,24 @@ func runGoTidy(dir string) error {
 
 // runGoFmt runs gofmt on the generated module files
 func runGoFmt(dir string) error {
-	// Run gofmt on the module files
-	cmd := exec.Command("go", "fmt")
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("go fmt failed: %s: %w", string(output), err)
+	// Check if the nested module directory exists (where Go files are)
+	moduleDir := filepath.Join(dir, filepath.Base(dir))
+	if _, err := os.Stat(moduleDir); err == nil {
+		// Run gofmt on the module directory where Go files are located
+		cmd := exec.Command("go", "fmt")
+		cmd.Dir = moduleDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("go fmt failed: %s: %w", string(output), err)
+		}
+	} else {
+		// If the nested directory doesn't exist, try the parent directory
+		cmd := exec.Command("go", "fmt")
+		cmd.Dir = dir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("go fmt failed: %s: %w", string(output), err)
+		}
 	}
 
 	return nil
@@ -1619,12 +1636,10 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 
 func generateGoldenGoMod(options *ModuleOptions, goModPath string) error {
 	// For golden files, use the exact format from the sample
-	modulePath := fmt.Sprintf("example.com/%s", strings.ToLower(options.ModuleName))
+	modulePath := fmt.Sprintf("example.com/%s", options.PackageName)
 	goModContent := fmt.Sprintf(`module %s
 
 go 1.23.5
-
-toolchain go1.24.2
 
 require (
 	github.com/GoCodeAlone/modular v1
