@@ -195,7 +195,7 @@ jobs:
         run: |
           # print artifacts
           echo "Artifacts:"
-          ls -l ./artifacts
+          ls -Rl ./artifacts
           
           gh release create ${{ needs.prepare.outputs.tag }} \
             --title "Modular CLI v${{ needs.prepare.outputs.version }}" \
