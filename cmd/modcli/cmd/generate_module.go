@@ -1513,22 +1513,40 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 
 		// --- Determine module path relative to parent ---
 		parentModulePath := parentModFile.Module.Mod.Path
-		relPathFromParent, errRelPath := filepath.Rel(parentModDir, outputDir)
-		if errRelPath != nil {
-			return fmt.Errorf("failed to calculate relative path from parent module: %w", errRelPath)
+
+		// Try to determine if the output directory is within the parent module structure
+		// (e.g., could be in a submodule directory like modules/mymodule)
+		absOutputDir, errAbs := filepath.Abs(outputDir)
+		if errAbs != nil {
+			return fmt.Errorf("failed to get absolute path for output directory: %w", errAbs)
 		}
 
-		// Check if the relative path goes *outside* the parent module's hierarchy
-		if strings.HasPrefix(relPathFromParent, "..") {
+		absParentDir, errParentAbs := filepath.Abs(parentModDir)
+		if errParentAbs != nil {
+			return fmt.Errorf("failed to get absolute path for parent directory: %w", errParentAbs)
+		}
+
+		// Check if output directory is within the parent directory structure
+		if strings.HasPrefix(absOutputDir, absParentDir) {
+			// It's within the parent dir structure - use a path relative to the parent module
+			relPath, errRel := filepath.Rel(absParentDir, absOutputDir)
+			if errRel != nil {
+				return fmt.Errorf("failed to calculate relative path from parent dir: %w", errRel)
+			}
+
+			// Construct the full module path by joining the parent module path with the relative path
+			modulePath = filepath.ToSlash(filepath.Join(parentModulePath, relPath))
+			slog.Debug("Determined module path within parent structure",
+				"parent_module", parentModulePath,
+				"rel_path", relPath,
+				"module_path", modulePath)
+		} else {
+			// The output directory is outside the parent module hierarchy
 			slog.Warn("Output directory is outside the parent module's hierarchy. Falling back to Git-based module path.",
 				"parent_dir", parentModDir,
-				"output_dir", outputDir,
-				"relative_path", relPathFromParent)
+				"output_dir", outputDir)
 			useGitPath = true
 			parentModFile = nil // Reset parentModFile so we don't copy replaces later if using git path
-		} else {
-			modulePath = filepath.ToSlash(filepath.Join(parentModulePath, relPathFromParent)) // Use filepath.ToSlash
-			slog.Debug("Determined module path relative to parent", "path", modulePath)
 		}
 	}
 
