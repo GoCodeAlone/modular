@@ -51,6 +51,53 @@ jobs:
         run: npx github-actions-ctrf report.ctrf.json
         if: always()
 
+  test-cli:
+    name: Test CLI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          cd cmd/modcli
+          go mod download
+          go mod verify
+
+      - name: Run CLI tests with coverage
+        run: |
+          cd cmd/modcli
+          go test ./... -v -coverprofile=cli-coverage.txt -covermode=atomic -json >> cli-report.json
+
+      - name: Upload CLI coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: GoCodeAlone/modular
+          directory: cmd/modcli/
+          files: cli-coverage.txt
+          flags: cli
+          
+      - name: CTRF Test Output for CLI
+        run: |
+          go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
+          cd cmd/modcli
+          cat cli-report.json | go-ctrf-json-reporter -o cli-report.ctrf.json
+        if: always()
+
+      - name: Publish CLI CTRF Test Summary Results
+        run: |
+          cd cmd/modcli
+          npx github-actions-ctrf cli-report.ctrf.json
+        if: always()
+
   lint:
     runs-on: ubuntu-latest
     steps:

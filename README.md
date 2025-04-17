@@ -71,7 +71,7 @@ func main() {
     app.RegisterModule(NewAPIModule())
     
     // Run the application (this will block until the application is terminated)
-    if err := app.Run(); err != nil {
+    if err := app.Run(); err != nil) {
         logger.Error("Application error", "error", err)
         os.Exit(1)
     }
@@ -468,6 +468,63 @@ type ConfigValidator interface {
     Validate() error
 }
 ```
+
+## CLI Tool
+
+Modular comes with a command-line tool (`modcli`) to help you create new modules and configurations.
+
+### Installation
+
+You can install the CLI tool using one of the following methods:
+
+#### Using go install (recommended)
+
+```bash
+go install github.com/GoCodeAlone/modular/cmd/modcli@latest
+```
+
+This will download, build, and install the latest version of the CLI tool directly to your GOPATH's bin directory, which should be in your PATH.
+
+#### Download pre-built binaries
+
+Download the latest release from the [GitHub Releases page](https://github.com/GoCodeAlone/modular/releases) and add it to your PATH.
+
+#### Build from source
+
+```bash
+# Clone the repository
+git clone https://github.com/GoCodeAlone/modular.git
+cd modular/cmd/modcli
+
+# Build the CLI tool
+go build -o modcli
+
+# Move to a directory in your PATH
+mv modcli /usr/local/bin/  # Linux/macOS
+# or add the current directory to your PATH
+```
+
+### Usage
+
+Generate a new module:
+
+```bash
+modcli generate module --name MyFeature
+```
+
+Generate a configuration:
+
+```bash
+modcli generate config --name Server
+```
+
+For more details on available commands:
+
+```bash
+modcli --help
+```
+
+Each command includes interactive prompts to guide you through the process of creating modules or configurations with the features you need.
 
 ## License
 
