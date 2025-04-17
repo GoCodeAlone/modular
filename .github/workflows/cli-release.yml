@@ -185,7 +185,7 @@ jobs:
           fi
           
           # Save changelog to a file with version info
-          echo "# Modular CLI v${VERSION}" > changelog.md
+          echo "# Modular CLI ${VERSION}" > changelog.md
           echo "" >> changelog.md
           echo "## Changes" >> changelog.md
           echo "" >> changelog.md
@@ -202,7 +202,7 @@ jobs:
         id: create_release
         run: |
           gh release create ${{ needs.prepare.outputs.tag }} \
-            --title "Modular CLI v${{ needs.prepare.outputs.version }}" \
+            --title "Modular CLI ${{ needs.prepare.outputs.version }}" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
             --latest=false './artifacts/modcli-linux-amd64/modcli#modcli-linux-amd64' \
@@ -219,9 +219,9 @@ jobs:
           VERSION="${{ needs.prepare.outputs.version }}"
           MODULE_NAME="github.com/GoCodeAlone/modular/cmd/modcli"
           
-          GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@v${VERSION}
+          GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
           
-          echo "Announced version ModCLI v${VERSION} to Go proxy"
+          echo "Announced version ModCLI ${VERSION} to Go proxy"
           
       - name: Display Release URL
         run: echo "Released at ${{ steps.create_release.outputs.html_url }}"
