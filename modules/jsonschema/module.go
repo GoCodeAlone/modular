@@ -4,6 +4,8 @@ import (
 	"github.com/GoCodeAlone/modular"
 )
 
+const Name = "modular.jsonschema"
+
 type Module struct {
 	schemaService JSONSchemaService
 }
@@ -15,7 +17,7 @@ func NewModule() *Module {
 }
 
 func (m *Module) Name() string {
-	return "jsonschema"
+	return Name
 }
 
 func (m *Module) Init(app modular.Application) error {

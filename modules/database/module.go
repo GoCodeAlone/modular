@@ -12,6 +12,8 @@ var (
 	ErrDefaultConnectionNotFound = errors.New("default database connection not found in configuration")
 )
 
+const Name = "modular.database"
+
 // Module provides database connectivity for modular applications
 type Module struct {
 	config       *Config
@@ -25,6 +27,11 @@ func NewModule() *Module {
 	return &Module{
 		connections: make(map[string]DatabaseService),
 	}
+}
+
+// Name returns the module name
+func (m *Module) Name() string {
+	return Name
 }
 
 // RegisterConfig registers database configuration
@@ -99,11 +106,6 @@ func (m *Module) Stop(ctx context.Context) error {
 		}
 	}
 	return lastErr
-}
-
-// Name returns the module name
-func (m *Module) Name() string {
-	return "database"
 }
 
 // ProvidesServices returns services provided by this module

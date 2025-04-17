@@ -153,7 +153,7 @@ func (m *YourModule) Name() string {
 }
 
 func (m *YourModule) Dependencies() []string {
-	return nil
+	return []string{jsonschema.Name}
 }
 
 func (m *YourModule) ProvidesServices() []modular.ServiceProvider {

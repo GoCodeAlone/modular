@@ -129,7 +129,7 @@ func (y *YourModule) Name() string {
 }
 
 func (y *YourModule) Dependencies() []string {
-	return []string{"database"}
+	return []string{database.Name}
 }
 
 func (y *YourModule) ProvidesServices() []modular.ServiceProvider {
