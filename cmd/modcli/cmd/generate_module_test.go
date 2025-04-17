@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 
 	"encoding/json"
 
@@ -780,51 +781,63 @@ func TestGenerateModuleCompiles(t *testing.T) {
 	require.NoError(t, err, "Failed to read module.go file")
 	require.NotEmpty(t, content, "module.go file should not be empty")
 
-	// Find the path to the parent modular library by traversing up from current directory
-	parentModularPath := findParentModularPath(t)
-
 	// Create a go.mod file with a replace directive pointing to the parent modular library
 	goModPath := filepath.Join(packageDir, "go.mod")
-	goModContent := fmt.Sprintf(`module example.com/testcompile
+	goModContent := `module example.com/testcompile
 
 go 1.21
 
 require (
-	github.com/GoCodeAlone/modular v0.0.0
+	github.com/GoCodeAlone/modular v1
 )
-
-replace github.com/GoCodeAlone/modular => %s
-`, parentModularPath)
+`
 
 	err = os.WriteFile(goModPath, []byte(goModContent), 0644)
 	require.NoError(t, err, "Failed to create go.mod file")
 
-	// Create a simple main.go that uses the module
-	mainPath := filepath.Join(packageDir, "main.go")
-	mainContent := `package testcompile // Using the same package name as the module
+	mainContent := `package testcompile
 
 import (
 	"fmt"
+	"os"
 	"log"
+	"log/slog"
 
 	"github.com/GoCodeAlone/modular"
 )
 
 // Example function showing how to use the module
-func ExampleUse() {
-	app := modular.NewApplication("test")
+func main() {
+	app := modular.NewStdApplication(
+		modular.NewStdConfigProvider(nil),
+		slog.New(slog.NewTextHandler(
+			os.Stdout,
+			&slog.HandlerOptions{},
+		)),
+	)
+
+	m := New{{.ModuleName}}Module()
+	app.RegisterModule(m)
 	
-	m := NewModule()
-	err := app.RegisterModule(m)
-	if err != nil {
-		log.Fatalf("Failed to register module: %v", err)
+	if err := app.Run(); err != nil {
+		log.Fatalf("Failed to run application: %v", err)
 	}
-	
+
 	fmt.Println("Module registered successfully")
 }
 `
-	err = os.WriteFile(mainPath, []byte(mainContent), 0644)
-	require.NoError(t, err, "Failed to create main.go file")
+	tmpl, err := template.New("module").Parse(mainContent)
+	require.NoError(t, err)
+
+	// Create output file
+	outputFile := filepath.Join(packageDir, "main.go")
+	file, err := os.Create(outputFile)
+	require.NoError(t, err, "Failed to create main file")
+	defer file.Close()
+
+	// Execute template
+	err = tmpl.Execute(file, &struct{ ModuleName string }{moduleName})
+	require.NoError(t, err)
 
 	// Run go mod tidy to update dependencies
 	tidyCmd := exec.Command("go", "mod", "tidy")
@@ -854,38 +867,4 @@ func ExampleUse() {
 	} else {
 		t.Logf("Successfully compiled the generated module")
 	}
-}
-
-// Helper function to find the parent modular library path
-func findParentModularPath(t *testing.T) string {
-	// Start with the current directory of the test
-	dir, err := os.Getwd()
-	require.NoError(t, err, "Failed to get current directory")
-
-	// Try to find the root of the modular project by looking for go.mod
-	for {
-		goModPath := filepath.Join(dir, "go.mod")
-		if fileExists(goModPath) {
-			// Check if this contains the modular module
-			content, err := os.ReadFile(goModPath)
-			require.NoError(t, err, "Failed to read go.mod file at %s", goModPath)
-
-			if strings.Contains(string(content), "module github.com/GoCodeAlone/modular") {
-				// Found it!
-				return dir
-			}
-		}
-
-		// Move up one directory
-		parentDir := filepath.Dir(dir)
-		if parentDir == dir {
-			// We've reached the root without finding the go.mod file
-			break
-		}
-		dir = parentDir
-	}
-
-	// If we couldn't find it, return a relative path that should work in the test environment
-	t.Log("Could not find parent modular path, using default relative path")
-	return "../../../.."
 }

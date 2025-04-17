@@ -41,122 +41,6 @@ type ModuleOptions struct {
 
 // --- Template Definitions ---
 
-// Define the main module template
-// Use ` + "`" + ` within the string to represent backticks for struct tags
-const moduleTmpl = `package {{.PackageName}}
-// ... existing moduleTmpl content ...
-` // End of moduleTmpl
-
-// Define the module test template
-const moduleTestTmpl = `package {{.PackageName}}
-
-import (
-	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}}
-	"testing"
-	{{if or .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}}
-	"github.com/stretchr/testify/assert"
-	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/stretchr/testify/require"{{end}}
-	{{if or .IsTenantAware}}"fmt"{{end}}
-)
-
-func TestNew{{.ModuleName}}Module(t *testing.T) {
-	module := New{{.ModuleName}}Module()
-	assert.NotNil(t, module)
-
-	modImpl, ok := module.(*{{.ModuleName}}Module)
-	require.True(t, ok)
-	assert.Equal(t, "{{.PackageName}}", modImpl.Name())
-	{{if .IsTenantAware}}assert.NotNil(t, modImpl.tenantConfigs){{end}}
-}
-
-{{if .HasConfig}}
-func TestModule_RegisterConfig(t *testing.T) {
-	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	mockApp := NewMockApplication()
-	err := module.RegisterConfig(mockApp)
-	assert.NoError(t, err)
-	assert.NotNil(t, module.config)
-	_, err = mockApp.GetConfigSection(module.Name())
-	assert.NoError(t, err, "Config section should be registered")
-}
-{{end}}
-
-func TestModule_Init(t *testing.T) {
-	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	mockApp := NewMockApplication()
-	{{if .RequiresServices}}
-	{{end}}
-	err := module.Init(mockApp)
-	assert.NoError(t, err)
-}
-
-{{if .HasStartupLogic}}
-func TestModule_Start(t *testing.T) {
-	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	err := module.Start(context.Background())
-	assert.NoError(t, err)
-}
-{{end}}
-
-{{if .HasShutdownLogic}}
-func TestModule_Stop(t *testing.T) {
-	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	err := module.Stop(context.Background())
-	assert.NoError(t, err)
-}
-{{end}}
-
-{{if .IsTenantAware}}
-func TestModule_TenantLifecycle(t *testing.T) {
-	module := New{{.ModuleName}}Module().(*{{.ModuleName}}Module)
-	{{if .HasConfig}}
-	module.config = &Config{}
-	{{end}}
-
-	tenantID := modular.TenantID("test-tenant")
-	module.OnTenantRegistered(tenantID)
-
-	{{if .HasConfig}}
-	mockTenantService := &MockTenantService{
-		Configs: map[modular.TenantID]map[string]modular.ConfigProvider{
-			tenantID: {
-				module.Name(): modular.NewStdConfigProvider(&Config{}),
-			},
-		},
-	}
-	err := module.LoadTenantConfig(mockTenantService, tenantID)
-	assert.NoError(t, err)
-	loadedConfig := module.GetTenantConfig(tenantID)
-	require.NotNil(t, loadedConfig, "Loaded tenant config should not be nil")
-	{{else}}
-	{{end}}
-
-	module.OnTenantRemoved(tenantID)
-	_, exists := module.tenantConfigs[tenantID]
-	assert.False(t, exists, "Tenant config should be removed")
-}
-
-type MockTenantService struct {
-	Configs map[modular.TenantID]map[string]modular.ConfigProvider
-}
-
-func (m *MockTenantService) GetTenantConfig(tid modular.TenantID, section string) (modular.ConfigProvider, error) {
-	if tenantSections, ok := m.Configs[tid]; ok {
-		if provider, ok := tenantSections[section]; ok {
-			return provider, nil
-		}
-	}
-	return nil, fmt.Errorf("mock config not found for tenant %s, section %s", tid, section)
-}
-func (m *MockTenantService) GetTenants() []modular.TenantID { return nil }
-func (m *MockTenantService) RegisterTenant(modular.TenantID, map[string]modular.ConfigProvider) error { return nil }
-func (m *MockTenantService) RemoveTenant(modular.TenantID) error { return nil }
-func (m *MockTenantService) RegisterTenantAwareModule(modular.TenantAwareModule) error { return nil }
-
-{{end}}
-
-` // End of moduleTestTmpl
-
 // Define the mock application template separately
 const mockAppTmpl = `package {{.PackageName}}
 
@@ -704,7 +588,7 @@ func generateModuleFile(outputDir string, options *ModuleOptions) error {
 import (
 	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}} {{/* Conditionally import context */}}
 	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}} {{/* Conditionally import modular */}}
-	{{if .HasConfig}}"log/slog"{{end}} {{/* Conditionally import slog */}}
+	"log/slog"
 	{{if .HasConfig}}"fmt"{{end}} {{/* Conditionally import fmt */}}
 	{{if or .HasConfig .IsTenantAware}}"encoding/json"{{end}} {{/* For config unmarshaling */}}
 )
@@ -773,7 +657,7 @@ func (m *{{.ModuleName}}Module) RegisterConfig(app modular.Application) error {
 
 // Init initializes the module
 func (m *{{.ModuleName}}Module) Init(app modular.Application) error {
-	{{if .HasConfig}}slog.Info("Initializing {{.ModuleName}} module"){{else}}// Add initialization logging if desired{{end}}
+	slog.Info("Initializing {{.ModuleName}} module")
 	{{if .RequiresServices}}
 	// Example: Resolve service dependencies
 	// var myService MyServiceType
@@ -789,7 +673,7 @@ func (m *{{.ModuleName}}Module) Init(app modular.Application) error {
 {{if .HasStartupLogic}}
 // Start performs startup logic for the module
 func (m *{{.ModuleName}}Module) Start(ctx context.Context) error {
-	{{if .HasConfig}}slog.Info("Starting {{.ModuleName}} module"){{else}}// Add startup logging if desired{{end}}
+	slog.Info("Starting {{.ModuleName}} module")
 	// Add module startup logic here
 	return nil
 }
@@ -798,7 +682,7 @@ func (m *{{.ModuleName}}Module) Start(ctx context.Context) error {
 {{if .HasShutdownLogic}}
 // Stop performs shutdown logic for the module
 func (m *{{.ModuleName}}Module) Stop(ctx context.Context) error {
-	{{if .HasConfig}}slog.Info("Stopping {{.ModuleName}} module"){{else}}// Add shutdown logging if desired{{end}}
+	slog.Info("Stopping {{.ModuleName}} module")
 	// Add module shutdown logic here
 	return nil
 }
@@ -848,13 +732,13 @@ func (m *{{.ModuleName}}Module) Constructor() modular.ModuleConstructor {
 {{if .IsTenantAware}}
 // OnTenantRegistered is called when a new tenant is registered
 func (m *{{.ModuleName}}Module) OnTenantRegistered(tenantID modular.TenantID) {
-	{{if .HasConfig}}slog.Info("Tenant registered in {{.ModuleName}} module", "tenantID", tenantID){{else}}// Add tenant registration logging if desired{{end}}
+	slog.Info("Tenant registered in {{.ModuleName}} module", "tenantID", tenantID)
 	// Perform actions when a tenant is added, e.g., initialize tenant-specific resources
 }
 
 // OnTenantRemoved is called when a tenant is removed
 func (m *{{.ModuleName}}Module) OnTenantRemoved(tenantID modular.TenantID) {
-	{{if .HasConfig}}slog.Info("Tenant removed from {{.ModuleName}} module", "tenantID", tenantID){{else}}// Add tenant removal logging if desired{{end}}
+	slog.Info("Tenant removed from {{.ModuleName}} module", "tenantID", tenantID)
 	// Perform cleanup for the removed tenant
 	delete(m.tenantConfigs, tenantID)
 }
@@ -864,7 +748,7 @@ func (m *{{.ModuleName}}Module) LoadTenantConfig(tenantService modular.TenantSer
 	configProvider, err := tenantService.GetTenantConfig(tenantID, m.Name())
 	if err != nil {
 		// Handle cases where config might be optional for a tenant
-		{{if .HasConfig}}slog.Warn("No specific config found for tenant, using defaults/base.", "module", m.Name(), "tenantID", tenantID){{end}}
+		slog.Warn("No specific config found for tenant, using defaults/base.", "module", m.Name(), "tenantID", tenantID)
 		// If config is required, return error:
 		// return fmt.Errorf("failed to get config for tenant %s in module %s: %w", tenantID, m.Name(), err)
 		{{if .HasConfig}}m.tenantConfigs[tenantID] = m.config{{end}} // Use base config as fallback
@@ -884,7 +768,7 @@ func (m *{{.ModuleName}}Module) LoadTenantConfig(tenantService modular.TenantSer
 	}
 
 	m.tenantConfigs[tenantID] = tenantCfg
-	{{if .HasConfig}}slog.Debug("Loaded config for tenant", "module", m.Name(), "tenantID", tenantID){{end}}
+	slog.Debug("Loaded config for tenant", "module", m.Name(), "tenantID", tenantID)
 	return nil
 }
 
