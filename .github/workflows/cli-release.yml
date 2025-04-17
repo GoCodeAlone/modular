@@ -45,42 +45,47 @@ jobs:
           # Determine if we're triggered by tag or manual workflow
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
             # We're triggered by a tag push
-            VERSION="${GITHUB_REF#refs/tags/cli-v}"
+            VERSION="${GITHUB_REF#refs/tags/cmd/modcli/v}"
             echo "Using version from tag: $VERSION"
           else
             # We're triggered by workflow_dispatch, need to calculate version
             # Find the latest tag for the CLI
-            LATEST_TAG=$(git tag -l "cli-v*" | sort -V | tail -n1 || echo "")
+            LATEST_TAG=$(git tag -l "cmd/modcli/v*" | sort -V | tail -n1 || echo "")
             echo "Latest tag: $LATEST_TAG"
             
             if [ -z "$LATEST_TAG" ]; then
               # No existing tag, start with v0.0.0
-              CURRENT_VERSION="0.0.0"
-              echo "No previous version found, starting with 0.0.0"
+              CURRENT_VERSION="v0.0.0"
+              echo "No previous version found, starting with v0.0.0"
             else
-              CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|cli-v||")
+              CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|cmd/modcli/||")
               echo "Current version: $CURRENT_VERSION"
             fi
+          
+            # Remove the 'v' prefix for semver calculations
+            CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
             
             # Extract the parts
-            MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-            MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-            PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+            MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
+            MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
+            PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
             
             # Calculate next version based on release type
             if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
-              VERSION="$((MAJOR + 1)).0.0"
+              VERSION="v$((MAJOR + 1)).0.0"
             elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
-              VERSION="${MAJOR}.$((MINOR + 1)).0"
+              VERSION="v${MAJOR}.$((MINOR + 1)).0"
             else
-              VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+              VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
             fi
             
             # Use manual version if provided
             if [ -n "${{ github.event.inputs.version }}" ]; then
               MANUAL_VERSION="${{ github.event.inputs.version }}"
-              # Remove 'v' prefix if present
-              MANUAL_VERSION=$(echo $MANUAL_VERSION | sed 's/^v//')
+              # Ensure the 'v' prefix
+              if [[ $MANUAL_VERSION != v* ]]; then
+                MANUAL_VERSION="v${MANUAL_VERSION}"
+              fi
               VERSION="${MANUAL_VERSION}"
             fi
             
@@ -89,7 +94,7 @@ jobs:
           
           # Set outputs
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=cli-v${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=cmd/modcli/${VERSION}" >> $GITHUB_OUTPUT
       
       - name: Create tag if needed
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -203,6 +208,9 @@ jobs:
             --latest=false './artifacts/modcli-linux-amd64/modcli#modcli-linux-amd64' \
             './artifacts/modcli-windows-amd64.exe/modcli.exe#modcli-windows-amd64.exe' \
             './artifacts/modcli-darwin-arm64/modcli#modcli-darwin-arm64'
+          
+          git tag modcli/${{ needs.prepare.outputs.version }} $GITHUB_SHA --
+          git push origin modcli/${{ needs.prepare.outputs.version }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
