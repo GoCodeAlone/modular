@@ -193,6 +193,10 @@ jobs:
       - name: Create release
         id: create_release
         run: |
+          # print artifacts
+          echo "Artifacts:"
+          ls -l ./artifacts
+          
           gh release create ${{ needs.prepare.outputs.tag }} \
             --title "Modular CLI v${{ needs.prepare.outputs.version }}" \
             --notes-file changelog.md \
