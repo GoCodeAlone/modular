@@ -201,13 +201,18 @@ jobs:
       - name: Create release
         id: create_release
         run: |
+          # compress the artifacts
+          tar -czf modcli-linux-amd64.tar.gz -C ./artifacts/modcli-linux-amd64 .
+          zip -r modcli-windows-amd64.exe.zip ./artifacts/modcli-windows-amd64.exe
+          tar -czf modcli-darwin-arm64.tar.gz -C ./artifacts/modcli-darwin-arm64 .
+          
           gh release create ${{ needs.prepare.outputs.tag }} \
             --title "Modular CLI ${{ needs.prepare.outputs.version }}" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
-            --latest=false './artifacts/modcli-linux-amd64/modcli#modcli-linux-amd64' \
-            './artifacts/modcli-windows-amd64.exe/modcli.exe#modcli-windows-amd64.exe' \
-            './artifacts/modcli-darwin-arm64/modcli#modcli-darwin-arm64'
+            --latest=false './modcli-linux-amd64.tar.gz#modcli-linux-amd64' \
+            './modcli-windows-amd64.exe.zip#modcli-windows-amd64.exe' \
+            './modcli-darwin-arm64.tar.gz#modcli-darwin-arm64'
           
           git tag modcli/${{ needs.prepare.outputs.version }} $GITHUB_SHA --
           git push origin modcli/${{ needs.prepare.outputs.version }}
