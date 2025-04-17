@@ -1519,21 +1519,27 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 	if useGitPath {
 		gitRoot, errGitRoot := findGitRoot(outputDir)
 		if errGitRoot != nil {
-			return fmt.Errorf("failed to find git root: %w", errGitRoot)
+			slog.Debug("Could not find git root, will use default module path.", "error", errGitRoot)
+			// Set default module path using the package name
+			modulePath = fmt.Sprintf("github.com/yourusername/%s", options.PackageName)
+			slog.Info("Using default module path for standalone project", "path", modulePath)
+		} else {
+			gitRepoURL, errGitRepo := getCurrentGitRepo()
+			if errGitRepo != nil {
+				slog.Debug("Could not get current git repo URL, will use default module path.", "error", errGitRepo)
+				// Set default module path using the package name
+				modulePath = fmt.Sprintf("github.com/yourusername/%s", options.PackageName)
+				slog.Info("Using default module path for standalone project", "path", modulePath)
+			} else {
+				gitModulePrefix := formatGitRepoToGoModule(gitRepoURL)
+				relPathFromGitRoot, errRelPath := filepath.Rel(gitRoot, outputDir)
+				if errRelPath != nil {
+					return fmt.Errorf("failed to calculate relative path from git root: %w", errRelPath)
+				}
+				modulePath = filepath.ToSlash(filepath.Join(gitModulePrefix, relPathFromGitRoot)) // Use filepath.ToSlash for consistency
+				slog.Debug("Determined module path from git repo", "path", modulePath)
+			}
 		}
-		gitRepoURL, errGitRepo := getCurrentGitRepo()
-		if errGitRepo != nil {
-			// Attempt to use parent module path as a fallback if git fails? Or just error out?
-			// For now, error out.
-			return fmt.Errorf("failed to get current git repo URL: %w", errGitRepo)
-		}
-		gitModulePrefix := formatGitRepoToGoModule(gitRepoURL)
-		relPathFromGitRoot, errRelPath := filepath.Rel(gitRoot, outputDir)
-		if errRelPath != nil {
-			return fmt.Errorf("failed to calculate relative path from git root: %w", errRelPath)
-		}
-		modulePath = filepath.ToSlash(filepath.Join(gitModulePrefix, relPathFromGitRoot)) // Use filepath.ToSlash for consistency
-		slog.Debug("Determined module path from git repo", "path", modulePath)
 	}
 
 	// --- Construct the new go.mod file ---
