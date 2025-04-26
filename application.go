@@ -343,15 +343,50 @@ func (app *StdApplication) Run() error {
 func (app *StdApplication) injectServices(module Module) (Module, error) {
 	requiredServices := make(map[string]any)
 	for _, dep := range module.(ServiceAware).RequiresServices() {
-		if service, exists := app.svcRegistry[dep.Name]; exists {
+		var service any
+		var serviceFound bool
+		var serviceName string
+
+		// Interface-based matching case
+		if dep.MatchByInterface && dep.SatisfiesInterface != nil && dep.SatisfiesInterface.Kind() == reflect.Interface {
+			// Find first service that implements the required interface
+			for name, svc := range app.svcRegistry {
+				if svc == nil {
+					continue
+				}
+
+				svcType := reflect.TypeOf(svc)
+				if svcType.Implements(dep.SatisfiesInterface) ||
+					(svcType.Kind() == reflect.Ptr && svcType.Elem().Implements(dep.SatisfiesInterface)) {
+					service = svc
+					serviceFound = true
+					serviceName = name
+					app.logger.Debug("Found service by interface match",
+						"interface", dep.SatisfiesInterface,
+						"service", name,
+						"module", module.Name())
+					break
+				}
+			}
+		} else if dep.Name != "" { // Regular name-based lookup
+			service, serviceFound = app.svcRegistry[dep.Name]
+			serviceName = dep.Name
+		}
+
+		if serviceFound {
 			if valid, err := checkServiceCompatibility(service, dep); !valid {
-				return nil, fmt.Errorf("failed to inject service '%s': %w", dep.Name, err)
+				return nil, fmt.Errorf("failed to inject service '%s': %w", serviceName, err)
 			}
 
-			requiredServices[dep.Name] = service
+			requiredServices[serviceName] = service
 		} else if dep.Required {
-			return nil, fmt.Errorf("%w: %s for %s",
-				ErrRequiredServiceNotFound, dep.Name, module.Name())
+			if dep.MatchByInterface {
+				return nil, fmt.Errorf("%w: no service found implementing interface %v for %s",
+					ErrRequiredServiceNotFound, dep.SatisfiesInterface, module.Name())
+			} else {
+				return nil, fmt.Errorf("%w: %s for %s",
+					ErrRequiredServiceNotFound, dep.Name, module.Name())
+			}
 		}
 	}
 
