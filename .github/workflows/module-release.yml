@@ -10,6 +10,8 @@ on:
         options:
           - database
           - jsonschema
+          - chimux
+          - reverseproxy
       version:
         description: 'Version to release (leave blank for auto-increment)'
         required: false
