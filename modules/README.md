@@ -8,8 +8,10 @@ This directory contains a collection of reusable modules for the [Modular](https
 
 | Module                     | Description                              | Documentation                           |
 |----------------------------|------------------------------------------|-----------------------------------------|
+| [chimux](./chimux)         | Chi router integration for Modular       | [Documentation](./chimux/README.md)     |
 | [database](./database)     | Database connectivity and SQL operations | [Documentation](./database/README.md)   |
 | [jsonschema](./jsonschema) | Provides JSON Schema validation services | [Documentation](./jsonschema/README.md) |
+| [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./reverseproxy/README.md) |
 
 ## Using Modules
 
@@ -48,5 +50,3 @@ If you'd like to contribute a module:
 ## License
 
 All modules are licensed under the [MIT License](../LICENSE).
-
-`

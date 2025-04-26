@@ -28,8 +28,10 @@ Modular comes with a collection of reusable modules that you can incorporate int
 
 | Module                             | Description                              | Documentation                                   |
 |------------------------------------|------------------------------------------|-------------------------------------------------|
+| [chimux](./modules/chimux)         | Chi router integration for Modular       | [Documentation](./modules/chimux/README.md)     |
 | [database](./modules/database)     | Database connectivity and SQL operations | [Documentation](./modules/database/README.md)   |
 | [jsonschema](./modules/jsonschema) | JSON Schema validation services          | [Documentation](./modules/jsonschema/README.md) |
+| [reverseproxy](./modules/reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./modules/reverseproxy/README.md) |
 
 For more information about the available modules, see the [modules directory](./modules).
 
@@ -71,7 +73,7 @@ func main() {
     app.RegisterModule(NewAPIModule())
     
     // Run the application (this will block until the application is terminated)
-    if err := app.Run(); err != nil) {
+    if err := app.Run(); err != nil {
         logger.Error("Application error", "error", err)
         os.Exit(1)
     }
@@ -280,7 +282,7 @@ func main() {
         cfg := &AppConfig{}
         if err := modular.SaveSampleConfig(cfg, format, outputFile); err != nil {
             fmt.Printf("Error generating sample config: %v\n", err)
-            os.Exit(1)
+            os.Exit(0)
         }
         fmt.Printf("Sample config generated at %s\n", outputFile)
         os.Exit(0)

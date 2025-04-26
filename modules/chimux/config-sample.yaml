@@ -1,0 +1,14 @@
+chimux:
+  allowed_origins:
+    - "example string"
+    - "another string"
+  allowed_methods:
+    - "example string"
+    - "another string"
+  allowed_headers:
+    - "example string"
+    - "another string"
+  allow_credentials: false
+  max_age: 300
+  timeout: 60000
+  basepath: "example value"
