@@ -1,4 +1,4 @@
-module github.com/GoCodeAlone/modules/reverseproxy
+module github.com/GoCodeAlone/modular/modules/reverseproxy
 
 go 1.24.2
 
