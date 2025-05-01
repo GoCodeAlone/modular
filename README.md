@@ -66,7 +66,7 @@ func main() {
     configProvider := modular.NewStdConfigProvider(config)
     
     // Create the application
-    app := modular.NewApplication(configProvider, logger)
+    app := modular.NewStdApplication(configProvider, logger)
     
     // Register modules
     app.RegisterModule(NewDatabaseModule())
@@ -93,11 +93,12 @@ func NewDatabaseModule() modular.Module {
 }
 
 // RegisterConfig registers the module's configuration
-func (m *DatabaseModule) RegisterConfig(app *modular.Application) {
+func (m *DatabaseModule) RegisterConfig(app modular.Application) error {
     m.config = &DatabaseConfig{
         DSN: "postgres://user:password@localhost:5432/dbname",
     }
     app.RegisterConfigSection("database", modular.NewStdConfigProvider(m.config))
+    return nil
 }
 
 // Name returns the module's unique name
@@ -111,7 +112,7 @@ func (m *DatabaseModule) Dependencies() []string {
 }
 
 // Init initializes the module
-func (m *DatabaseModule) Init(app *modular.Application) error {
+func (m *DatabaseModule) Init(app modular.Application) error {
     // Initialize database connection
     db, err := sql.Open("postgres", m.config.DSN)
     if (err != nil) {
@@ -167,7 +168,7 @@ func (m *APIModule) RequiresServices() []modular.ServiceDependency {
 
 // Using constructor injection
 func (m *APIModule) Constructor() modular.ModuleConstructor {
-    return func(app *modular.Application, services map[string]any) (modular.Module, error) {
+    return func(app modular.Application, services map[string]any) (modular.Module, error) {
         // Services that were requested in RequiresServices() are available here
         db := services["database"].(*sql.DB)
         
@@ -178,6 +179,40 @@ func (m *APIModule) Constructor() modular.ModuleConstructor {
     }
 }
 ```
+
+### Interface-Based Service Matching
+
+Modular supports finding and injecting services based on interface compatibility, regardless of the service name:
+
+```go
+// Define an interface that services should implement
+type LoggerService interface {
+    Log(level string, message string)
+}
+
+// Require a service that implements a specific interface
+func (m *MyModule) RequiresServices() []modular.ServiceDependency {
+    return []modular.ServiceDependency{
+        {
+            Name:               "logger", // The name you'll use to access it in the Constructor
+            Required:           true,
+            MatchByInterface:   true, // Enable interface-based matching
+            SatisfiesInterface: reflect.TypeOf((*LoggerService)(nil)).Elem(),
+        },
+    }
+}
+
+// Constructor will receive any service implementing LoggerService
+func (m *MyModule) Constructor() modular.ModuleConstructor {
+    return func(app modular.Application, services map[string]any) (modular.Module, error) {
+        // This will work even if the actual registered service name is different
+        logger := services["logger"].(LoggerService)
+        return &MyModule{logger: logger}, nil
+    }
+}
+```
+
+See [DOCUMENTATION.md](DOCUMENTATION.md) for more advanced details about service dependencies and interface matching.
 
 ### Configuration Management
 
@@ -282,7 +317,7 @@ func main() {
         cfg := &AppConfig{}
         if err := modular.SaveSampleConfig(cfg, format, outputFile); err != nil {
             fmt.Printf("Error generating sample config: %v\n", err)
-            os.Exit(0)
+            os.Exit(1)  // Error condition should exit with non-zero code
         }
         fmt.Printf("Sample config generated at %s\n", outputFile)
         os.Exit(0)
