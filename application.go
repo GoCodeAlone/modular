@@ -233,11 +233,9 @@ func (app *StdApplication) initTenantConfigurations() error {
 		}
 
 		// Register tenant-aware modules with the tenant service
-		if standardTenantSvc, ok := tenantSvc.(TenantService); ok {
-			for _, module := range app.moduleRegistry {
-				if tenantAwareModule, ok := module.(TenantAwareModule); ok {
-					standardTenantSvc.RegisterTenantAwareModule(tenantAwareModule)
-				}
+		for _, module := range app.moduleRegistry {
+			if tenantAwareModule, ok := module.(TenantAwareModule); ok {
+				tenantSvc.RegisterTenantAwareModule(tenantAwareModule)
 			}
 		}
 	} else {
