@@ -452,6 +452,11 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 		graph[name] = module.(DependencyAware).Dependencies()
 	}
 
+	// Analyze service dependencies to augment the graph with implicit dependencies
+	if err := app.addImplicitDependencies(graph); err != nil {
+		return nil, err
+	}
+
 	// Topological sort
 	var result []string
 	visited := make(map[string]bool)
@@ -496,6 +501,136 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	app.logger.Debug("Module initialization order", "order", result)
 
 	return result, nil
+}
+
+// addImplicitDependencies analyzes service provider/consumer relationships to find implicit dependencies
+// where modules provide services that other modules require via interface matching.
+func (app *StdApplication) addImplicitDependencies(graph map[string][]string) error {
+	// First, build a map of which modules provide which services
+	serviceProviders := make(map[string]string) // service name -> provider module name
+
+	// Map to store which interfaces are implemented by which services
+	interfaceProviders := make(map[reflect.Type][]string) // interface type -> slice of service names
+
+	for moduleName, module := range app.moduleRegistry {
+		svcAwareModule, ok := module.(ServiceAware)
+		if !ok {
+			continue // Skip modules that don't provide/require services
+		}
+
+		// Register services provided by this module
+		for _, svcProvider := range svcAwareModule.ProvidesServices() {
+			if svcProvider.Instance == nil {
+				continue
+			}
+
+			serviceProviders[svcProvider.Name] = moduleName
+
+			// Determine what interfaces this service implements
+			svcType := reflect.TypeOf(svcProvider.Instance)
+
+			// For each service dependency across all modules, check if this service implements its interface
+			for _, checkModule := range app.moduleRegistry {
+				checkSvcAware, ok := checkModule.(ServiceAware)
+				if !ok {
+					continue
+				}
+
+				for _, svcDep := range checkSvcAware.RequiresServices() {
+					// We're only interested in interface-based dependencies
+					if !svcDep.MatchByInterface || svcDep.SatisfiesInterface == nil ||
+						svcDep.SatisfiesInterface.Kind() != reflect.Interface {
+						continue
+					}
+
+					// Check if this service implements the required interface
+					if svcType.Implements(svcDep.SatisfiesInterface) ||
+						(svcType.Kind() == reflect.Ptr && svcType.Elem().Implements(svcDep.SatisfiesInterface)) {
+						// Add to the map of interface providers
+						interfaceList := interfaceProviders[svcDep.SatisfiesInterface]
+						if interfaceList == nil {
+							interfaceList = make([]string, 0)
+						}
+
+						// Only add if not already in the list
+						if !slices.Contains(interfaceList, svcProvider.Name) {
+							interfaceList = append(interfaceList, svcProvider.Name)
+							interfaceProviders[svcDep.SatisfiesInterface] = interfaceList
+							app.logger.Debug("Found service implementing interface",
+								"service", svcProvider.Name,
+								"interface", svcDep.SatisfiesInterface.String(),
+								"provider", moduleName)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Now analyze each module that requires services
+	for consumerName, module := range app.moduleRegistry {
+		svcAwareModule, ok := module.(ServiceAware)
+		if !ok {
+			continue
+		}
+
+		// For each required service, check if we can identify the provider module
+		for _, svcDep := range svcAwareModule.RequiresServices() {
+			// Skip optional dependencies
+			if !svcDep.Required {
+				continue
+			}
+
+			var providerModuleName string
+
+			// Case 1: Direct service name match
+			if svcDep.Name != "" && !svcDep.MatchByInterface {
+				if provider, ok := serviceProviders[svcDep.Name]; ok {
+					providerModuleName = provider
+				}
+			}
+
+			// Case 2: Interface match
+			if svcDep.MatchByInterface && svcDep.SatisfiesInterface != nil &&
+				svcDep.SatisfiesInterface.Kind() == reflect.Interface {
+
+				// Find services that implement this interface
+				if serviceNames, ok := interfaceProviders[svcDep.SatisfiesInterface]; ok && len(serviceNames) > 0 {
+					// Use the first service that implements the interface
+					serviceName := serviceNames[0]
+					if provider, ok := serviceProviders[serviceName]; ok {
+						providerModuleName = provider
+					}
+				}
+			}
+
+			// If we found a provider and it's not the same module, add the dependency
+			if providerModuleName != "" && providerModuleName != consumerName {
+				// Check if this dependency already exists
+				exists := false
+				for _, existingDep := range graph[consumerName] {
+					if existingDep == providerModuleName {
+						exists = true
+						break
+					}
+				}
+
+				// Add the dependency if it doesn't already exist
+				if !exists {
+					if graph[consumerName] == nil {
+						graph[consumerName] = make([]string, 0)
+					}
+					graph[consumerName] = append(graph[consumerName], providerModuleName)
+					app.logger.Debug("Added implicit dependency due to service requirement",
+						"consumer", consumerName,
+						"provider", providerModuleName,
+						"service", svcDep.Name)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // GetTenantService returns the application's tenant service if available
