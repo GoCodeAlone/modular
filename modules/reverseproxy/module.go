@@ -230,16 +230,19 @@ func (m *ReverseProxyModule) ProvidesServices() []modular.ServiceProvider {
 
 // handleFuncService defines the interface for a service that can register
 // HTTP handlers with URL patterns. This is typically implemented by an HTTP router.
-type handleFuncService interface {
+type HandleFuncService interface {
 	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
 }
+
+// For backward compatibility, keep the unexported interface
+type handleFuncService = HandleFuncService
 
 // RequiresServices returns the services required by this module.
 // The reverseproxy module requires a service that implements the handleFuncService
 // interface to register routes with.
 func (m *ReverseProxyModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
-		{Name: "router", Required: true, MatchByInterface: true, SatisfiesInterface: reflect.TypeOf((*handleFuncService)(nil)).Elem()}, // should describe HandleFunc interface
+		{Name: "router", Required: true, MatchByInterface: true, SatisfiesInterface: reflect.TypeOf((*HandleFuncService)(nil)).Elem()}, // Using exported interface
 	}
 }
 
