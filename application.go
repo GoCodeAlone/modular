@@ -168,7 +168,7 @@ func (app *StdApplication) Init() error {
 		}
 		err := configurableModule.RegisterConfig(app)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to register config for module %s: %w", name, err)
 		}
 		app.logger.Debug("Registering module", "name", name)
 	}
@@ -235,7 +235,9 @@ func (app *StdApplication) initTenantConfigurations() error {
 		// Register tenant-aware modules with the tenant service
 		for _, module := range app.moduleRegistry {
 			if tenantAwareModule, ok := module.(TenantAwareModule); ok {
-				tenantSvc.RegisterTenantAwareModule(tenantAwareModule)
+				if err := tenantSvc.RegisterTenantAwareModule(tenantAwareModule); err != nil {
+					app.logger.Warn("Failed to register tenant-aware module", "module", module.Name(), "error", err)
+				}
 			}
 		}
 	} else {

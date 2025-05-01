@@ -2,6 +2,7 @@ package feeders
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -15,7 +16,7 @@ DB_PASS=secret
 `)
 
 	tempFile := "/tmp/test.env"
-	err := os.WriteFile(tempFile, envContent, 0644)
+	err := os.WriteFile(filepath.Join(tempFile), envContent, 0600)
 	if err != nil {
 		t.Fatalf("Failed to create test .env file: %v", err)
 	}

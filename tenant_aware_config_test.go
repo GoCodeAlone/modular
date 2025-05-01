@@ -155,7 +155,9 @@ func setupTestApp(t *testing.T, tempDir string) (Application, *TenantAwareConfig
 	}
 
 	// Register the tenant-aware module with the tenant service
-	tenantService.RegisterTenantAwareModule(tm)
+	if err := tenantService.RegisterTenantAwareModule(tm); err != nil {
+		t.Fatalf("Failed to register tenant-aware module: %v", err)
+	}
 
 	app.RegisterConfigSection("TestConfig", NewStdConfigProvider(&TestTenantConfig{}))
 

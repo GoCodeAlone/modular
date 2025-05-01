@@ -92,11 +92,11 @@ func TestProcessConfigDefaults(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ProcessConfigDefaults(tc.cfg)
 			if tc.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tc.expected, tc.cfg)
 		})
 	}
@@ -210,7 +210,7 @@ func TestValidateConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidateConfig(tc.cfg)
 			if tc.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
 
@@ -235,7 +235,7 @@ func TestGenerateSampleConfig(t *testing.T) {
 	err = json.Unmarshal(jsonData, &jsonCfg)
 	require.NoError(t, err)
 	assert.Equal(t, "Default Name", jsonCfg["name"])
-	assert.Equal(t, float64(8080), jsonCfg["port"]) // JSON numbers are float64
+	assert.InEpsilon(t, 8080, jsonCfg["port"], 0.0001) // Use InEpsilon for float comparison
 
 	// Test TOML generation
 	tomlData, err := GenerateSampleConfig(cfg, "toml")
@@ -248,7 +248,7 @@ func TestGenerateSampleConfig(t *testing.T) {
 
 	// Test invalid format
 	_, err = GenerateSampleConfig(cfg, "invalid")
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestSaveSampleConfig(t *testing.T) {

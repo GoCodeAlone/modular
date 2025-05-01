@@ -38,9 +38,10 @@ func TestInterfaceMatching(t *testing.T) {
 	providerIdx := -1
 	consumerIdx := -1
 	for i, name := range order {
-		if name == "provider" {
+		switch name {
+		case "provider":
 			providerIdx = i
-		} else if name == "consumer" {
+		case "consumer":
 			consumerIdx = i
 		}
 	}

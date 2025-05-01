@@ -96,18 +96,23 @@ type mockTenantService struct {
 	tenantConfigs map[TenantID]map[string]ConfigProvider
 }
 
+// GetTenantConfig gets config for a specific tenant and section
 func (m *mockTenantService) GetTenantConfig(tid TenantID, section string) (ConfigProvider, error) {
 	if m.tenantConfigs == nil {
-		return nil, fmt.Errorf("mock tenant configs not initialized")
+		return nil, fmt.Errorf("%w", ErrMockTenantConfigsNotInitialized)
 	}
-	if m.tenantConfigs[tid] == nil {
-		return nil, fmt.Errorf("tenant %s not found", tid)
+
+	tenantConfig, found := m.tenantConfigs[tid]
+	if !found {
+		return nil, fmt.Errorf("%w: %s", ErrTenantNotFound, tid)
 	}
-	cp := m.tenantConfigs[tid][section]
-	if cp == nil {
-		return nil, fmt.Errorf("config section %s not found for tenant %s", section, tid)
+
+	cfg, found := tenantConfig[section]
+	if !found {
+		return nil, fmt.Errorf("%w: %s for tenant %s", ErrConfigSectionNotFoundForTenant, section, tid)
 	}
-	return cp, nil
+
+	return cfg, nil
 }
 
 func (m *mockTenantService) GetTenants() []TenantID {

@@ -22,6 +22,16 @@ var (
 	ErrConfigRequiredFieldMissing = errors.New("required field(s) missing in config")
 	ErrConfigValidationFailed     = errors.New("configuration validation failed")
 	ErrConfigInvalidFormat        = errors.New("invalid configuration format")
+	ErrDefaultValueOverflowsInt   = errors.New("default integer value overflows field type")
+	ErrDefaultValueOverflowsUint  = errors.New("default unsigned integer value overflows field type")
+	ErrDefaultValueOverflowsFloat = errors.New("default float value overflows field type")
+	ErrUnsupportedTypeForDefault  = errors.New("unsupported type for default value")
+	ErrUnsupportedFormatType      = errors.New("unsupported format type")
+
+	// Field kind errors
+	ErrInvalidFieldKind      = errors.New("invalid field kind")
+	ErrIncompatibleFieldKind = errors.New("incompatible field kind")
+	ErrUnexpectedFieldKind   = errors.New("unexpected field kind")
 
 	// Service registry errors
 	ErrServiceAlreadyRegistered = errors.New("service already registered")
@@ -41,12 +51,14 @@ var (
 	ErrRequiredServiceNotFound = errors.New("required service not found for module")
 
 	// Tenant errors
-	ErrAppContextNotInitialized = errors.New("application context not initialized")
-	ErrTenantNotFound           = errors.New("tenant not found")
-	ErrTenantConfigNotFound     = errors.New("tenant config section not found")
-	ErrTenantConfigProviderNil  = errors.New("tenant config provider is nil")
-	ErrTenantConfigValueNil     = errors.New("tenant config value is nil")
-	ErrTenantRegisterNilConfig  = errors.New("cannot register nil config for tenant")
+	ErrAppContextNotInitialized        = errors.New("application context not initialized")
+	ErrTenantNotFound                  = errors.New("tenant not found")
+	ErrTenantConfigNotFound            = errors.New("tenant config section not found")
+	ErrTenantConfigProviderNil         = errors.New("tenant config provider is nil")
+	ErrTenantConfigValueNil            = errors.New("tenant config value is nil")
+	ErrTenantRegisterNilConfig         = errors.New("cannot register nil config for tenant")
+	ErrMockTenantConfigsNotInitialized = errors.New("mock tenant configs not initialized")
+	ErrConfigSectionNotFoundForTenant  = errors.New("config section not found for tenant")
 
 	// Test-specific errors
 	ErrSetupFailed   = errors.New("setup error")

@@ -36,14 +36,15 @@ func TestInterfaceDependencies(t *testing.T) {
 		t.Fatalf("Failed to resolve dependencies: %v", err)
 	}
 
-	// Verify order - provider should be initialized before consumer
+	// Verify correct ordering based on implicit dependency
 	providerFound := false
 	consumerFound := false
 
 	for _, moduleName := range order {
-		if moduleName == "router-provider" {
+		switch moduleName {
+		case "router-provider":
 			providerFound = true
-		} else if moduleName == "router-consumer" {
+		case "router-consumer":
 			consumerFound = true
 			// If we find the consumer before the provider, that's an error
 			if !providerFound {

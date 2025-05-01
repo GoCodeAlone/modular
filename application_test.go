@@ -311,7 +311,9 @@ func Test_GetService(t *testing.T) {
 
 	// Register test services
 	mockStorage := &MockStorage{data: map[string]string{"key": "value"}}
-	app.RegisterService("storage", mockStorage)
+	if err := app.RegisterService("storage", mockStorage); err != nil {
+		t.Fatalf("Failed to register storage service: %v", err)
+	}
 
 	// Test retrieving existing service
 	tests := []struct {
@@ -345,7 +347,7 @@ func Test_GetService(t *testing.T) {
 			serviceName: "storage",
 			target:      StorageService(nil),
 			wantErr:     true,
-			errCheck:    func(err error) bool { return err == ErrTargetNotPointer },
+			errCheck:    func(err error) bool { return errors.Is(err, ErrTargetNotPointer) },
 		},
 		{
 			name:        "Incompatible target type",
@@ -614,12 +616,16 @@ func Test_TenantFunctionality(t *testing.T) {
 	}
 
 	// Register tenant service
-	app.RegisterService("tenantService", tenantSvc)
-	app.RegisterService("tenantConfigLoader", NewFileBasedTenantConfigLoader(TenantConfigParams{
+	if err := app.RegisterService("tenantService", tenantSvc); err != nil {
+		t.Fatalf("Failed to register tenant service: %v", err)
+	}
+	if err := app.RegisterService("tenantConfigLoader", NewFileBasedTenantConfigLoader(TenantConfigParams{
 		ConfigNameRegex: regexp.MustCompile(`.*\.json$`),
 		ConfigDir:       "",
 		ConfigFeeders:   nil,
-	}))
+	})); err != nil {
+		t.Fatalf("Failed to register tenant config loader: %v", err)
+	}
 
 	// Test GetTenantService
 	t.Run("GetTenantService", func(t *testing.T) {
