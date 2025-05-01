@@ -264,7 +264,8 @@ func (m *ReverseProxyModule) setupBackendRoutes() error {
 // It creates a handler function that routes requests to the appropriate backend,
 // taking into account tenant-specific configurations.
 func (m *ReverseProxyModule) registerBackendRoute(backendID, route string, defaultProxy *httputil.ReverseProxy, tenantProxies map[modular.TenantID]*httputil.ReverseProxy) {
-	m.backendRoutes[backendID][route] = func(w http.ResponseWriter, r *http.Request) {
+	// Create the handler function
+	handler := func(w http.ResponseWriter, r *http.Request) {
 		proxy := defaultProxy
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = path.Join("/", r.URL.Path)
@@ -287,6 +288,17 @@ func (m *ReverseProxyModule) registerBackendRoute(backendID, route string, defau
 		}
 
 		proxy.ServeHTTP(w, r2)
+	}
+
+	// Store the handler in the backend routes map
+	if _, ok := m.backendRoutes[backendID]; !ok {
+		m.backendRoutes[backendID] = make(map[string]http.HandlerFunc)
+	}
+	m.backendRoutes[backendID][route] = handler
+
+	// Register the handler with the router immediately if router is available
+	if m.router != nil {
+		m.router.HandleFunc(route, handler)
 	}
 }
 

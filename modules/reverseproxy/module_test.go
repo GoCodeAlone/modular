@@ -672,6 +672,7 @@ func TestAddBackendRoute(t *testing.T) {
 	module.httpClient = &http.Client{Timeout: 100 * time.Millisecond}
 	module.backendProxies = make(map[string]*httputil.ReverseProxy)
 	module.backendRoutes = make(map[string]map[string]http.HandlerFunc)
+	module.compositeRoutes = make(map[string]http.HandlerFunc)
 
 	// Initialize tenant maps
 	tenantID := modular.TenantID("test-tenant")
@@ -689,13 +690,14 @@ func TestAddBackendRoute(t *testing.T) {
 	module.AddBackendRoute("twitter", twitterPattern)
 
 	// Verify that the route was registered
-	assert.Contains(t, mockRouter.routes, twitterPattern, "Twitter route pattern should be registered")
+	handler, exists := mockRouter.routes[twitterPattern]
+	assert.True(t, exists, "Twitter route pattern should be registered")
+	require.NotNil(t, handler, "Handler should not be nil")
 
 	// Test the handler with a direct request
 	req := httptest.NewRequest("GET", "http://example.com/api/twitter/users/12345", nil)
 	w := httptest.NewRecorder()
 
-	handler := mockRouter.routes[twitterPattern]
 	handler(w, req)
 
 	// Verify response
@@ -715,35 +717,38 @@ func TestAddBackendRoute(t *testing.T) {
 	module.AddBackendRoute("github", githubPattern)
 
 	// Verify that the route was registered
-	assert.Contains(t, mockRouter.routes, githubPattern, "GitHub route pattern should be registered")
+	githubHandler, githubExists := mockRouter.routes[githubPattern]
+	assert.True(t, githubExists, "GitHub route pattern should be registered")
+	require.NotNil(t, githubHandler, "GitHub handler should not be nil")
 
 	// Test 3: Test with tenant header to verify tenant-specific routing
-	tenantReq := httptest.NewRequest("GET", "http://example.com/api/twitter/users/12345", nil)
-	tenantReq.Header.Set("X-Tenant-ID", string(tenantID))
-	tenantW := httptest.NewRecorder()
+	if handler != nil { // Only proceed if handler exists
+		tenantReq := httptest.NewRequest("GET", "http://example.com/api/twitter/users/12345", nil)
+		tenantReq.Header.Set("X-Tenant-ID", string(tenantID))
+		tenantW := httptest.NewRecorder()
 
-	// Get and call the Twitter route handler with tenant header
-	twitterHandler := mockRouter.routes[twitterPattern]
-	twitterHandler(tenantW, tenantReq)
+		handler(tenantW, tenantReq)
 
-	// Verify tenant response
-	tenantResp := tenantW.Result()
-	assert.Equal(t, http.StatusOK, tenantResp.StatusCode)
-	tenantBody, err := io.ReadAll(tenantResp.Body)
-	require.NoError(t, err)
+		// Verify tenant response
+		tenantResp := tenantW.Result()
+		assert.Equal(t, http.StatusOK, tenantResp.StatusCode)
+		tenantBody, err := io.ReadAll(tenantResp.Body)
+		require.NoError(t, err)
 
-	var tenantResponseData map[string]interface{}
-	err = json.Unmarshal(tenantBody, &tenantResponseData)
-	require.NoError(t, err)
+		var tenantResponseData map[string]interface{}
+		err = json.Unmarshal(tenantBody, &tenantResponseData)
+		require.NoError(t, err)
 
-	// The response should now come from the tenant-specific backend
-	assert.Equal(t, "tenant-backend", tenantResponseData["service"])
+		// The response should now come from the tenant-specific backend
+		assert.Equal(t, "tenant-backend", tenantResponseData["service"])
+	}
 
 	// Test 4: Test with a non-existent backend
 	module.AddBackendRoute("nonexistent", "/api/nonexistent/*")
 
 	// This should log an error but not panic, and no route should be registered
-	assert.NotContains(t, mockRouter.routes, "/api/nonexistent/*")
+	_, nonexistentExists := mockRouter.routes["/api/nonexistent/*"]
+	assert.False(t, nonexistentExists, "No route should be registered for non-existent backend")
 
 	// Test 5: Test with invalid URL
 	invalidConfig := &ReverseProxyConfig{
@@ -755,7 +760,8 @@ func TestAddBackendRoute(t *testing.T) {
 
 	// This should log an error but not panic
 	module.AddBackendRoute("invalid", "/api/invalid/*")
-	assert.NotContains(t, mockRouter.routes, "/api/invalid/*")
+	_, invalidExists := mockRouter.routes["/api/invalid/*"]
+	assert.False(t, invalidExists, "No route should be registered for invalid URL")
 }
 
 // Simple test router implementation for tests
