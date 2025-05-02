@@ -231,7 +231,7 @@ func (m *ReverseProxyModule) ProvidesServices() []modular.ServiceProvider {
 // handleFuncService defines the interface for a service that can register
 // HTTP handlers with URL patterns. This is typically implemented by an HTTP router.
 type handleFuncService interface {
-	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+	HandleFunc(pattern string, handler http.HandlerFunc)
 }
 
 // RequiresServices returns the services required by this module.

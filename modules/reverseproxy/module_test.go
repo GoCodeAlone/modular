@@ -769,6 +769,6 @@ type testRouter struct {
 	routes map[string]http.HandlerFunc
 }
 
-func (r *testRouter) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+func (r *testRouter) HandleFunc(pattern string, handler http.HandlerFunc) {
 	r.routes[pattern] = handler
 }
