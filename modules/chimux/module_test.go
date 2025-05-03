@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/GoCodeAlone/modular"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,19 +28,11 @@ func TestModule_RegisterConfig(t *testing.T) {
 	mockApp := NewMockApplication()
 
 	err := module.RegisterConfig(mockApp)
-	assert.NoError(t, err)
-
-	// Verify config was initialized with default values
-	require.NotNil(t, module.config)
-	assert.Equal(t, []string{"*"}, module.config.AllowedOrigins)
-	assert.Equal(t, []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, module.config.AllowedMethods)
-	assert.False(t, module.config.AllowCredentials)
-	assert.Equal(t, 300, module.config.MaxAge)
-	assert.Equal(t, 60000, module.config.Timeout)
+	require.NoError(t, err)
 
 	// Verify the config section was registered in the app
 	cfg, err := mockApp.GetConfigSection(module.Name())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, cfg)
 }
 
@@ -53,7 +46,15 @@ func TestModule_Init(t *testing.T) {
 
 	// Test Init
 	err = module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+
+	// Verify config was initialized with default values
+	require.NotNil(t, module.config)
+	assert.Equal(t, []string{"*"}, module.config.AllowedOrigins)
+	assert.Equal(t, []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, module.config.AllowedMethods)
+	assert.False(t, module.config.AllowCredentials)
+	assert.Equal(t, 300, module.config.MaxAge)
+	assert.Equal(t, 60000, module.config.Timeout)
 
 	// Verify router was created
 	assert.NotNil(t, module.router, "Router should be initialized")
@@ -79,7 +80,7 @@ func TestModule_RouterFunctionality(t *testing.T) {
 	// Define test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test-response"))
+		_, _ = w.Write([]byte("test-response"))
 	})
 
 	// Register a route
@@ -106,21 +107,21 @@ func TestModule_NestedRoutes(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create nested routes
-	module.Route("/api", func(r Router) {
+	module.Route("/api", func(r chi.Router) {
 		r.Get("/users", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("users-list"))
+			_, _ = w.Write([]byte("users-list"))
 		})
 
-		r.Route("/posts", func(r Router) {
+		r.Route("/posts", func(r chi.Router) {
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("posts-list"))
+				_, _ = w.Write([]byte("posts-list"))
 			})
 
 			r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("post-detail"))
+				_, _ = w.Write([]byte("post-detail"))
 			})
 		})
 	})
@@ -157,7 +158,8 @@ func TestModule_CustomMiddleware(t *testing.T) {
 
 	// Create a middleware provider
 	middlewareProvider := &TestMiddlewareProvider{}
-	mockApp.RegisterService("test.middleware.provider", middlewareProvider)
+	err = mockApp.RegisterService("test.middleware.provider", middlewareProvider)
+	require.NoError(t, err)
 
 	// Initialize the module
 	err = module.Init(mockApp)
@@ -166,7 +168,7 @@ func TestModule_CustomMiddleware(t *testing.T) {
 	// Create a test route
 	module.Get("/secured", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("secured-content"))
+		_, _ = w.Write([]byte("secured-content"))
 	})
 
 	// Test with valid auth header
@@ -196,7 +198,7 @@ func TestModule_InterfaceBasedMatching(t *testing.T) {
 
 	// Verify the module requests middleware providers using interface-based matching
 	deps := module.RequiresServices()
-	require.NotEmpty(t, deps)
+	assert.NotEmpty(t, deps, "Module should require services")
 
 	// Find the middleware.provider dependency
 	var middlewareDep modular.ServiceDependency
@@ -242,7 +244,7 @@ func TestModule_BasePath(t *testing.T) {
 	// Register a route
 	module.Get("/users", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("users-list"))
+		_, _ = w.Write([]byte("users-list"))
 	})
 
 	// Test the route with base path prefix
@@ -290,9 +292,16 @@ func TestModule_TenantLifecycle(t *testing.T) {
 	// Trigger tenant registration
 	module.OnTenantRegistered(tenantID)
 
-	// Verify tenant config is stored
-	storedConfig, exists := module.tenantConfigs[tenantID]
-	assert.True(t, exists, "Tenant config should be stored")
+	// Verify tenant ID is stored (but config not loaded yet)
+	_, exists := module.tenantConfigs[tenantID]
+	assert.True(t, exists, "Tenant ID should be stored")
+	assert.Nil(t, module.tenantConfigs[tenantID], "Tenant config should be nil before loading")
+
+	// Manually load tenant configs (normally done in Start())
+	module.loadTenantConfigs()
+
+	// Now verify tenant config is loaded correctly
+	storedConfig := module.tenantConfigs[tenantID]
 	require.NotNil(t, storedConfig)
 	assert.Equal(t, "/tenant", storedConfig.BasePath)
 	assert.Equal(t, 30000, storedConfig.Timeout)
@@ -323,11 +332,82 @@ func TestModule_Start_Stop(t *testing.T) {
 
 	// Test Start
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test Stop
 	err = module.Stop(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
+}
+
+// TestCORSMiddleware tests that CORS headers are properly applied based on configuration
+func TestCORSMiddleware(t *testing.T) {
+	module := NewChiMuxModule().(*ChiMuxModule)
+	mockApp := NewMockApplication()
+
+	// Setup the module with custom CORS configuration
+	err := module.RegisterConfig(mockApp)
+	require.NoError(t, err)
+
+	// Modify the config with specific CORS settings
+	mockApp.configSections["chimux"] = &mockConfigProvider{
+		config: &ChiMuxConfig{
+			AllowedOrigins:   []string{"https://example.com", "https://test.com"},
+			AllowedMethods:   []string{"GET", "POST", "PUT"},
+			AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Custom-Header"},
+			AllowCredentials: true,
+			MaxAge:           600,
+		},
+	}
+
+	// Initialize the module with the custom config
+	err = module.Init(mockApp)
+	require.NoError(t, err)
+
+	// Define a simple test handler
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("test-response"))
+	})
+
+	// Register the handler
+	module.Get("/cors-test", testHandler)
+
+	// Test 1: Request with a matching origin
+	req1 := httptest.NewRequest("GET", "/cors-test", nil)
+	req1.Header.Set("Origin", "https://example.com")
+	w1 := httptest.NewRecorder()
+	module.ServeHTTP(w1, req1)
+
+	// Verify response and CORS headers
+	assert.Equal(t, http.StatusOK, w1.Code)
+	assert.Equal(t, "test-response", w1.Body.String())
+	assert.Equal(t, "https://example.com", w1.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "GET, POST, PUT", w1.Header().Get("Access-Control-Allow-Methods"))
+	assert.Equal(t, "Content-Type, Authorization, X-Custom-Header", w1.Header().Get("Access-Control-Allow-Headers"))
+	assert.Equal(t, "true", w1.Header().Get("Access-Control-Allow-Credentials"))
+	assert.Equal(t, "600", w1.Header().Get("Access-Control-Max-Age"))
+
+	// Test 2: Request with non-matching origin
+	req2 := httptest.NewRequest("GET", "/cors-test", nil)
+	req2.Header.Set("Origin", "https://unknown-origin.com")
+	w2 := httptest.NewRecorder()
+	module.ServeHTTP(w2, req2)
+
+	// Verify response has no CORS headers for non-matching origin
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.Empty(t, w2.Header().Get("Access-Control-Allow-Origin"))
+
+	// Test 3: Preflight OPTIONS request
+	req3 := httptest.NewRequest("OPTIONS", "/cors-test", nil)
+	req3.Header.Set("Origin", "https://example.com")
+	req3.Header.Set("Access-Control-Request-Method", "POST")
+	w3 := httptest.NewRecorder()
+	module.ServeHTTP(w3, req3)
+
+	// Verify preflight response
+	assert.Equal(t, http.StatusNoContent, w3.Code)
+	assert.Equal(t, "https://example.com", w3.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "GET, POST, PUT", w3.Header().Get("Access-Control-Allow-Methods"))
 }
 
 // TestMiddlewareProvider implements a test middleware provider
@@ -351,4 +431,11 @@ func (p *TestMiddlewareProvider) ProvideMiddleware() []Middleware {
 			})
 		},
 	}
+}
+
+func TestModule_Dependencies(t *testing.T) {
+	module := NewChiMuxModule().(*ChiMuxModule)
+
+	// Verify Dependencies is empty
+	assert.Empty(t, module.Dependencies())
 }
