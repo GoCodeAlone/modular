@@ -172,6 +172,9 @@ func (m *ReverseProxyModule) Constructor() modular.ModuleConstructor {
 // Start sets up all routes for the module and registers them with the router.
 // This includes backend routes, composite routes, and any custom endpoints.
 func (m *ReverseProxyModule) Start(context.Context) error {
+	// Load tenant-specific configurations
+	m.loadTenantConfigs()
+
 	// Setup routes for all backends
 	if err := m.setupBackendRoutes(); err != nil {
 		return err
@@ -195,21 +198,35 @@ func (m *ReverseProxyModule) Stop(context.Context) error {
 }
 
 // OnTenantRegistered is called when a new tenant is registered with the application.
-// It retrieves the tenant's configuration and stores it for use in routing.
+// Instead of immediately querying for tenant configuration, we store the tenant ID
+// and defer configuration loading until the next appropriate phase to avoid deadlocks.
 func (m *ReverseProxyModule) OnTenantRegistered(tenantID modular.TenantID) {
-	cp, err := m.app.GetTenantConfig(tenantID, m.Name())
-	if err != nil {
-		m.app.Logger().Error("failed to get config for tenant", "tenant", tenantID, "module", m.Name(), "error", err)
-		return
-	}
-	cfg, ok := cp.GetConfig().(*ReverseProxyConfig)
-	if !ok {
-		m.app.Logger().Error("failed to cast config for tenant", "tenant", tenantID, "module", m.Name())
-		return
-	}
+	// Store the tenant ID first, defer config loading to avoid deadlock
+	// The actual configuration will be loaded in Start() or when needed
+	m.tenants[tenantID] = nil
 
-	// Initialize tenant-specific routes
-	m.tenants[tenantID] = cfg
+	m.app.Logger().Debug("Tenant registered with reverseproxy module", "tenantID", tenantID)
+}
+
+// loadTenantConfigs loads all tenant-specific configurations.
+// This should be called during Start() or another safe phase after tenant registration.
+func (m *ReverseProxyModule) loadTenantConfigs() {
+	for tenantID := range m.tenants {
+		cp, err := m.app.GetTenantConfig(tenantID, m.Name())
+		if err != nil {
+			m.app.Logger().Error("Failed to get config for tenant", "tenant", tenantID, "module", m.Name(), "error", err)
+			continue
+		}
+
+		cfg, ok := cp.GetConfig().(*ReverseProxyConfig)
+		if !ok {
+			m.app.Logger().Error("Failed to cast config for tenant", "tenant", tenantID, "module", m.Name())
+			continue
+		}
+
+		m.tenants[tenantID] = cfg
+		m.app.Logger().Debug("Loaded tenant config", "tenantID", tenantID)
+	}
 }
 
 // OnTenantRemoved is called when a tenant is removed from the application.
