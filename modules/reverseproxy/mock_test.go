@@ -131,7 +131,8 @@ func (m *mockConfigProvider) GetConfig() interface{} {
 // MockTenantApplication implements modular.TenantApplication for testing
 type MockTenantApplication struct {
 	*MockApplication
-	tenantService *MockTenantService
+	tenantService  *MockTenantService
+	configProvider modular.ConfigProvider
 }
 
 // NewMockTenantApplication creates a new mock tenant application for testing
@@ -141,7 +142,13 @@ func NewMockTenantApplication() *MockTenantApplication {
 		tenantService: &MockTenantService{
 			Configs: make(map[modular.TenantID]map[string]modular.ConfigProvider),
 		},
+		configProvider: &mockConfigProvider{},
 	}
+}
+
+// ConfigProvider returns the configProvider for interface compliance
+func (m *MockTenantApplication) ConfigProvider() modular.ConfigProvider {
+	return m.configProvider
 }
 
 // GetTenantConfig delegates to the tenant service

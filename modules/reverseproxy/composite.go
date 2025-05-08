@@ -5,6 +5,7 @@ package reverseproxy
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -317,4 +318,57 @@ func (h *CompositeHandler) mergeResponses(responses map[string]*http.Response, w
 
 	// Copy the body from the base response.
 	io.Copy(w, baseResp.Body)
+}
+
+// createCompositeHandler creates a handler for a composite route configuration.
+// It returns a handler that fetches responses from multiple backends and combines them.
+// If tenantConfig is provided, it uses that config for backend URLs, otherwise falls back to global config.
+func (m *ReverseProxyModule) createCompositeHandler(routeConfig CompositeRoute, tenantConfig *ReverseProxyConfig) (*CompositeHandler, error) {
+	var backends []*Backend
+
+	// Default response timeout if not specified in config
+	responseTimeout := 30 * time.Second
+
+	for _, backendName := range routeConfig.Backends {
+		var backendURL string
+		// Try to get backend URL from tenant config first
+		if tenantConfig != nil && tenantConfig.BackendServices != nil {
+			if url, ok := tenantConfig.BackendServices[backendName]; ok {
+				backendURL = url
+			}
+		}
+
+		// Fall back to global config if tenant config doesn't have this backend
+		if backendURL == "" {
+			if url, ok := m.config.BackendServices[backendName]; ok {
+				backendURL = url
+			} else {
+				return nil, fmt.Errorf("backend service not found: %s", backendName)
+			}
+		}
+
+		// Add to backends list
+		backends = append(backends, &Backend{
+			ID:     backendName,
+			URL:    backendURL,
+			Client: m.httpClient, // Use the module's HTTP client directly
+		})
+	}
+
+	// Create and configure the handler
+	handler := NewCompositeHandler(backends, true, responseTimeout)
+
+	// Configure circuit breakers
+	if m.circuitBreakers != nil {
+		for backendID, cb := range m.circuitBreakers {
+			handler.circuitBreakers[backendID] = cb
+		}
+	}
+
+	// Set response cache if available
+	if m.responseCache != nil {
+		handler.SetResponseCache(m.responseCache)
+	}
+
+	return handler, nil
 }

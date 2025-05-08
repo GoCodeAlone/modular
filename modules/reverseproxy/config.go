@@ -2,6 +2,10 @@
 // composite responses, and tenant awareness.
 package reverseproxy
 
+import (
+	"net/http"
+)
+
 // ReverseProxyConfig defines the configuration for a reverse proxy module instance.
 type ReverseProxyConfig struct {
 	// BackendServices maps backend IDs to their service URLs.
@@ -36,6 +40,9 @@ type ReverseProxyConfig struct {
 	// BackendCircuitBreakers defines per-backend circuit breaker configurations,
 	// overriding the global settings for specific backends
 	BackendCircuitBreakers map[string]CircuitBreakerConfig `yaml:"backend_circuit_breakers"`
+
+	// PreProxyTransformations defines functions that can modify requests before they are sent to the backend
+	PreProxyTransformations []func(*http.Request) error `yaml:"-"`
 }
 
 // CircuitBreakerConfig holds configuration options for a circuit breaker
