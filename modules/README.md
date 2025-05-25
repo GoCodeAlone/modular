@@ -8,6 +8,7 @@ This directory contains a collection of reusable modules for the [Modular](https
 
 | Module                     | Description                              | Documentation                           |
 |----------------------------|------------------------------------------|-----------------------------------------|
+| [cache](./cache)           | Caching service with multiple backends   | [Documentation](./cache/README.md)      |
 | [chimux](./chimux)         | Chi router integration for Modular       | [Documentation](./chimux/README.md)     |
 | [database](./database)     | Database connectivity and SQL operations | [Documentation](./database/README.md)   |
 | [jsonschema](./jsonschema) | Provides JSON Schema validation services | [Documentation](./jsonschema/README.md) |
