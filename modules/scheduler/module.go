@@ -88,8 +88,9 @@ func (m *SchedulerModule) Init(app modular.Application) error {
 
 	// Load persisted jobs if enabled
 	if m.config.EnablePersistence {
-		// Note: In a real implementation, we would load jobs from a file or database here
-		m.logger.Info("Job persistence is enabled", "file", m.config.PersistenceFile)
+		m.logger.Info("Job persistence is enabled, but loading functionality is not implemented yet", 
+			"file", m.config.PersistenceFile)
+		// TODO: Implement job persistence loading from file
 	}
 
 	m.logger.Info("Scheduler module initialized")
@@ -141,8 +142,9 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 
 	// Save pending jobs if persistence is enabled
 	if m.config.EnablePersistence {
-		// Note: In a real implementation, we would save jobs to a file or database here
-		m.logger.Info("Saving pending jobs")
+		m.logger.Info("Persistence enabled, but saving jobs is not implemented yet",
+			"file", m.config.PersistenceFile)
+		// TODO: Implement job persistence saving to file
 	}
 
 	m.running = false

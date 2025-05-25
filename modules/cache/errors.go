@@ -15,9 +15,6 @@ var (
 	// ErrInvalidValue is returned when the value cannot be stored in the cache
 	ErrInvalidValue = errors.New("invalid cache value")
 
-	// ErrNotFound is returned when a key is not found in the cache
-	ErrNotFound = errors.New("key not found in cache")
-
 	// ErrNotConnected is returned when an operation is attempted on a cache that is not connected
 	ErrNotConnected = errors.New("cache not connected")
 )

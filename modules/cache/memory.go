@@ -29,9 +29,9 @@ func NewMemoryCache(config *CacheConfig) *MemoryCache {
 }
 
 // Connect initializes the memory cache
-func (c *MemoryCache) Connect(_ context.Context) error {
+func (c *MemoryCache) Connect(ctx context.Context) error {
 	// Start cleanup goroutine
-	c.cleanupCtx, c.cancelFunc = context.WithCancel(context.Background())
+	c.cleanupCtx, c.cancelFunc = context.WithCancel(ctx)
 	go c.startCleanupTimer(c.cleanupCtx)
 	return nil
 }
@@ -47,15 +47,18 @@ func (c *MemoryCache) Close(_ context.Context) error {
 // Get retrieves an item from the cache
 func (c *MemoryCache) Get(_ context.Context, key string) (interface{}, bool) {
 	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
 	item, found := c.items[key]
+	c.mutex.RUnlock()
+
 	if !found {
 		return nil, false
 	}
 
 	// Check if the item has expired
 	if !item.expiration.IsZero() && time.Now().After(item.expiration) {
+		c.mutex.Lock()
+		delete(c.items, key)
+		c.mutex.Unlock()
 		return nil, false
 	}
 
@@ -68,8 +71,11 @@ func (c *MemoryCache) Set(_ context.Context, key string, value interface{}, ttl 
 	defer c.mutex.Unlock()
 
 	// If cache is full, reject new items
-	if c.config.MaxItems > 0 && len(c.items) >= c.config.MaxItems && c.items[key].value == nil {
-		return ErrCacheFull
+	if c.config.MaxItems > 0 && len(c.items) >= c.config.MaxItems {
+		_, exists := c.items[key]
+		if !exists {
+			return ErrCacheFull
+		}
 	}
 
 	var exp time.Time
