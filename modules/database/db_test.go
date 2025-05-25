@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build !cgo
 
 package database_test
 
@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
+	_ "modernc.org/sqlite" // Import pure Go SQLite driver
 )
 
 // Define static errors
@@ -24,13 +24,13 @@ var (
 // Package database_test provides tests for the database module
 // use sqlite3 in memory for testing
 
-// Example showing how to use JSONSchemaService in another module
+// Example showing how to use DatabaseService in another module
 func TestExample_dependentModule(t *testing.T) {
 	dbConfigJson := `
 database:
   connections:
     default:
-      driver: sqlite3
+      driver: sqlite
       dsn: ":memory:"
   default: default
 `

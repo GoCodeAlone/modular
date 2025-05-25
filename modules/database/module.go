@@ -15,12 +15,14 @@ const Name = "database"
 type Module struct {
 	config      *Config
 	connections map[string]*sql.DB
+	services    map[string]DatabaseService
 }
 
 // NewModule creates a new database module
 func NewModule() *Module {
 	return &Module{
 		connections: make(map[string]*sql.DB),
+		services:    make(map[string]DatabaseService),
 	}
 }
 
@@ -83,12 +85,16 @@ func (m *Module) Start(ctx context.Context) error {
 
 // Stop stops the database module
 func (m *Module) Stop(ctx context.Context) error {
-	for name, db := range m.connections {
-		if err := db.Close(); err != nil {
-			return fmt.Errorf("failed to close database connection '%s': %w", name, err)
+	// Close all database services
+	for name, service := range m.services {
+		if err := service.Close(); err != nil {
+			return fmt.Errorf("failed to close database service '%s': %w", name, err)
 		}
 	}
+	
+	// Clear the maps
 	m.connections = make(map[string]*sql.DB)
+	m.services = make(map[string]DatabaseService)
 	return nil
 }
 
@@ -99,18 +105,20 @@ func (m *Module) Dependencies() []string {
 
 // ProvidesServices declares services provided by this module
 func (m *Module) ProvidesServices() []modular.ServiceProvider {
-	return []modular.ServiceProvider{
-		{
-			Name:        "database.service",
-			Description: "Default database service",
-			Instance:    m,
-		},
+	providers := []modular.ServiceProvider{
 		{
 			Name:        "database.manager",
 			Description: "Database connection manager",
 			Instance:    m,
 		},
+		{
+			Name:        "database.service",
+			Description: "Default database service",
+			Instance:    m.GetDefaultService(), // This can be nil if no connections are configured
+		},
 	}
+
+	return providers
 }
 
 // RequiresServices declares services required by this module
@@ -153,6 +161,32 @@ func (m *Module) GetConnections() []string {
 	return connections
 }
 
+// GetDefaultService returns the default database service
+func (m *Module) GetDefaultService() DatabaseService {
+	if m.config == nil || m.config.Default == "" {
+		return nil
+	}
+
+	if service, exists := m.services[m.config.Default]; exists {
+		return service
+	}
+
+	// If default connection name doesn't exist, try to return any available service
+	for _, service := range m.services {
+		return service
+	}
+
+	return nil
+}
+
+// GetService returns a database service by name
+func (m *Module) GetService(name string) (DatabaseService, bool) {
+	if service, exists := m.services[name]; exists {
+		return service, true
+	}
+	return nil, false
+}
+
 // initializeConnections initializes the database connections based on the module's configuration
 func (m *Module) initializeConnections() error {
 	// Initialize database connections
@@ -176,6 +210,7 @@ func (m *Module) initializeConnections() error {
 			}
 
 			m.connections[name] = dbService.DB()
+			m.services[name] = dbService
 		}
 	}
 
@@ -184,6 +219,7 @@ func (m *Module) initializeConnections() error {
 
 // registerServices registers the database services with the application
 func (m *Module) registerServices(app modular.Application) error {
-	// Services are already registered in ProvidesServices, this is just a placeholder
+	// Services are registered through ProvidesServices() by the modular framework
+	// This method is kept for any additional service registration logic if needed in the future
 	return nil
 }
