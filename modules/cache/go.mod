@@ -1,11 +1,11 @@
 module github.com/GoCodeAlone/modular/modules/cache
 
-go 1.23.5
+go 1.24.2
 
-toolchain go1.23.9
+toolchain go1.24.3
 
 require (
-	github.com/GoCodeAlone/modular v1.2.4
+	github.com/GoCodeAlone/modular v1.2.5
 	github.com/stretchr/testify v1.10.0
 )
 
