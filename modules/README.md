@@ -11,6 +11,7 @@ This directory contains a collection of reusable modules for the [Modular](https
 | [cache](./cache)           | Caching service with multiple backends   | [Documentation](./cache/README.md)      |
 | [chimux](./chimux)         | Chi router integration for Modular       | [Documentation](./chimux/README.md)     |
 | [database](./database)     | Database connectivity and SQL operations | [Documentation](./database/README.md)   |
+| [eventbus](./eventbus)     | Publish-subscribe messaging system       | [Documentation](./eventbus/README.md)   |
 | [jsonschema](./jsonschema) | Provides JSON Schema validation services | [Documentation](./jsonschema/README.md) |
 | [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./reverseproxy/README.md) |
 | [scheduler](./scheduler)   | Job scheduling with cron support         | [Documentation](./scheduler/README.md)  |
