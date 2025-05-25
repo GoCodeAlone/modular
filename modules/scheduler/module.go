@@ -88,9 +88,11 @@ func (m *SchedulerModule) Init(app modular.Application) error {
 
 	// Load persisted jobs if enabled
 	if m.config.EnablePersistence {
-		m.logger.Info("Job persistence is enabled, but loading functionality is not implemented yet",
-			"file", m.config.PersistenceFile)
-		// TODO: Implement job persistence loading from file
+		err := m.loadPersistedJobs()
+		if err != nil {
+			m.logger.Error("Failed to load persisted jobs", "error", err, "file", m.config.PersistenceFile)
+			// Non-fatal error, continue with initialization
+		}
 	}
 
 	m.logger.Info("Scheduler module initialized")
@@ -142,9 +144,10 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 
 	// Save pending jobs if persistence is enabled
 	if m.config.EnablePersistence {
-		m.logger.Info("Persistence enabled, but saving jobs is not implemented yet",
-			"file", m.config.PersistenceFile)
-		// TODO: Implement job persistence saving to file
+		err := m.savePersistedJobs()
+		if err != nil {
+			m.logger.Error("Failed to save jobs to persistence file", "error", err, "file", m.config.PersistenceFile)
+		}
 	}
 
 	m.running = false
@@ -208,4 +211,70 @@ func (m *SchedulerModule) ListJobs() ([]Job, error) {
 // GetJobHistory returns the execution history for a job
 func (m *SchedulerModule) GetJobHistory(jobID string) ([]JobExecution, error) {
 	return m.scheduler.GetJobHistory(jobID)
+}
+
+// loadPersistedJobs loads jobs from the persistence file
+func (m *SchedulerModule) loadPersistedJobs() error {
+	m.logger.Info("Loading persisted jobs", "file", m.config.PersistenceFile)
+	
+	// Use the job store's persistence methods if available
+	if persistable, ok := m.jobStore.(PersistableJobStore); ok {
+		jobs, err := persistable.LoadFromFile(m.config.PersistenceFile)
+		if err != nil {
+			return fmt.Errorf("failed to load jobs from persistence file: %w", err)
+		}
+		
+		// Re-schedule all loaded jobs
+		for _, job := range jobs {
+			// Skip already completed or cancelled jobs
+			if job.Status == JobStatusCompleted || job.Status == JobStatusCancelled {
+				continue
+			}
+			
+			// For recurring jobs, re-register with the scheduler
+			if job.IsRecurring {
+				_, err = m.scheduler.ResumeRecurringJob(job)
+			} else if time.Until(job.RunAt) > 0 {
+				// Only schedule future one-time jobs
+				_, err = m.scheduler.ResumeJob(job)
+			}
+			
+			if err != nil {
+				m.logger.Warn("Failed to resume job from persistence", 
+					"jobID", job.ID, 
+					"jobName", job.Name, 
+					"error", err)
+			}
+		}
+		
+		m.logger.Info("Loaded persisted jobs", "count", len(jobs))
+		return nil
+	}
+	
+	m.logger.Warn("Job store does not support persistence")
+	return fmt.Errorf("job store does not implement PersistableJobStore interface")
+}
+
+// savePersistedJobs saves jobs to the persistence file
+func (m *SchedulerModule) savePersistedJobs() error {
+	m.logger.Info("Saving jobs to persistence file", "file", m.config.PersistenceFile)
+	
+	// Use the job store's persistence methods if available
+	if persistable, ok := m.jobStore.(PersistableJobStore); ok {
+		jobs, err := m.scheduler.ListJobs()
+		if err != nil {
+			return fmt.Errorf("failed to list jobs for persistence: %w", err)
+		}
+		
+		err = persistable.SaveToFile(jobs, m.config.PersistenceFile)
+		if err != nil {
+			return fmt.Errorf("failed to save jobs to persistence file: %w", err)
+		}
+		
+		m.logger.Info("Saved jobs to persistence file", "count", len(jobs))
+		return nil
+	}
+	
+	m.logger.Warn("Job store does not support persistence")
+	return fmt.Errorf("job store does not implement PersistableJobStore interface")
 }

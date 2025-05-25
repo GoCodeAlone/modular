@@ -496,3 +496,70 @@ func (s *Scheduler) ListJobs() ([]Job, error) {
 func (s *Scheduler) GetJobHistory(jobID string) ([]JobExecution, error) {
 	return s.jobStore.GetJobExecutions(jobID)
 }
+
+// ResumeJob resumes a persisted job
+func (s *Scheduler) ResumeJob(job Job) (string, error) {
+	if job.ID == "" {
+		return "", fmt.Errorf("job ID must be provided when resuming a job")
+	}
+	
+	// Set status to pending
+	job.Status = JobStatusPending
+	job.UpdatedAt = time.Now()
+	
+	// Validate the job has a next run time
+	if job.NextRun == nil {
+		// If no next run is set, use the original RunAt time if it's in the future
+		if !job.RunAt.IsZero() && job.RunAt.After(time.Now()) {
+			job.NextRun = &job.RunAt
+		} else {
+			// Otherwise, job can't be resumed (would run immediately)
+			return "", fmt.Errorf("job has no valid next run time")
+		}
+	}
+	
+	// Store the job
+	err := s.jobStore.UpdateJob(job)
+	if err != nil {
+		return "", err
+	}
+	
+	return job.ID, nil
+}
+
+// ResumeRecurringJob resumes a persisted recurring job, registering it with the cron scheduler
+func (s *Scheduler) ResumeRecurringJob(job Job) (string, error) {
+	if job.ID == "" {
+		return "", fmt.Errorf("job ID must be provided when resuming a recurring job")
+	}
+	
+	if !job.IsRecurring || job.Schedule == "" {
+		return "", fmt.Errorf("job must be recurring and have a schedule")
+	}
+	
+	// Set status to pending
+	job.Status = JobStatusPending
+	job.UpdatedAt = time.Now()
+	
+	// Calculate next run time
+	schedule, err := cron.ParseStandard(job.Schedule)
+	if err != nil {
+		return "", fmt.Errorf("invalid cron expression '%s': %w", job.Schedule, err)
+	}
+	
+	next := schedule.Next(time.Now())
+	job.NextRun = &next
+	
+	// Store the job
+	err = s.jobStore.UpdateJob(job)
+	if err != nil {
+		return "", err
+	}
+	
+	// Register with cron if running
+	if s.isStarted {
+		s.registerWithCron(job)
+	}
+	
+	return job.ID, nil
+}

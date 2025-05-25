@@ -178,6 +178,29 @@ Examples:
 - Each recurring job is registered with a cron scheduler
 - Job executions are tracked for history and reporting
 - The module supports graceful shutdown, completing in-progress jobs
+- Jobs can be persisted to disk and reloaded on application restart
+
+### Job Persistence
+
+When the `enablePersistence` option is set to `true`, the scheduler will:
+
+1. Save all scheduled jobs to the configured `persistenceFile` when the module stops
+2. Load and reschedule jobs from this file when the module initializes
+
+This ensures that scheduled jobs survive application restarts. Note that job functions cannot be persisted, so when loading persisted jobs:
+
+- For one-time jobs: Only future jobs are rescheduled
+- For recurring jobs: Jobs are rescheduled using the stored cron expression
+- Job functions need to be registered through a job registry or handler system
+
+Example configuration with persistence enabled:
+
+```yaml
+scheduler:
+  enablePersistence: true
+  persistenceFile: "/var/lib/myapp/scheduler_jobs.json"
+  # Other configuration options...
+```
 
 ## Testing
 

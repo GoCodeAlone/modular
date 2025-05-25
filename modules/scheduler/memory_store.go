@@ -1,7 +1,9 @@
 package scheduler
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -190,6 +192,102 @@ func (s *MemoryJobStore) CleanupOldExecutions(before time.Time) error {
 			}
 		}
 		s.executions[jobID] = filtered
+	}
+
+	return nil
+}
+
+// LoadFromFile loads jobs from a JSON file
+func (s *MemoryJobStore) LoadFromFile(filePath string) ([]Job, error) {
+	// Make sure the file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, nil // No file exists, but this is not an error
+	}
+
+	// Open and read file
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read jobs file: %w", err)
+	}
+
+	// Empty file case
+	if len(file) == 0 {
+		return nil, nil
+	}
+
+	// Parse the JSON
+	var persistedData struct {
+		Jobs []Job `json:"jobs"`
+	}
+	
+	if err := json.Unmarshal(file, &persistedData); err != nil {
+		return nil, fmt.Errorf("failed to parse jobs file: %w", err)
+	}
+
+	// Load jobs into store
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+
+	for _, job := range persistedData.Jobs {
+		// Skip if job already exists
+		if _, exists := s.jobs[job.ID]; exists {
+			continue
+		}
+		
+		// Clear job function as it can't be persisted
+		// It will be reinitialized when job is resumed
+		job.JobFunc = nil
+		
+		// Add to store
+		s.jobs[job.ID] = job
+	}
+
+	return persistedData.Jobs, nil
+}
+
+// SaveToFile saves jobs to a JSON file
+func (s *MemoryJobStore) SaveToFile(jobs []Job, filePath string) error {
+	// Create data structure for persistence
+	persistedData := struct {
+		Jobs []Job `json:"jobs"`
+	}{
+		Jobs: jobs,
+	}
+
+	// Create directory if it doesn't exist
+	dir := ""
+	lastSlash := -1
+	for i := 0; i < len(filePath); i++ {
+		if filePath[i] == '/' {
+			lastSlash = i
+		}
+	}
+	if lastSlash > 0 {
+		dir = filePath[:lastSlash]
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory for jobs file: %w", err)
+		}
+	}
+	
+	// JobFunc can't be serialized, so we need to create a copy of jobs without it
+	jobsCopy := make([]Job, len(jobs))
+	for i, job := range jobs {
+		jobCopy := job
+		jobCopy.JobFunc = nil
+		jobsCopy[i] = jobCopy 
+	}
+	persistedData.Jobs = jobsCopy
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(persistedData, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal jobs to JSON: %w", err)
+	}
+
+	// Write to file
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write jobs to file: %w", err)
 	}
 
 	return nil
