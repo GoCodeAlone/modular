@@ -26,14 +26,14 @@ type MemoryEventBus struct {
 
 // memorySubscription represents a subscription in the memory event bus
 type memorySubscription struct {
-	id       string
-	topic    string
-	handler  EventHandler
-	isAsync  bool
-	eventCh  chan Event
-	done     chan struct{}
+	id        string
+	topic     string
+	handler   EventHandler
+	isAsync   bool
+	eventCh   chan Event
+	done      chan struct{}
 	cancelled bool
-	mutex    sync.RWMutex
+	mutex     sync.RWMutex
 }
 
 // Topic returns the topic of the subscription
@@ -55,11 +55,11 @@ func (s *memorySubscription) IsAsync() bool {
 func (s *memorySubscription) Cancel() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	
+
 	if s.cancelled {
 		return nil
 	}
-	
+
 	close(s.done)
 	s.cancelled = true
 	return nil
@@ -81,17 +81,17 @@ func (m *MemoryEventBus) Start(ctx context.Context) error {
 	}
 
 	m.ctx, m.cancel = context.WithCancel(ctx)
-	
+
 	// Initialize worker pool for async event handling
 	m.workerPool = make(chan func(), m.config.WorkerCount)
 	for i := 0; i < m.config.WorkerCount; i++ {
 		m.wg.Add(1)
 		go m.worker()
 	}
-	
+
 	// Start retention timer to clean up old events
 	m.startRetentionTimer()
-	
+
 	m.isStarted = true
 	return nil
 }
@@ -106,7 +106,7 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 	if m.cancel != nil {
 		m.cancel()
 	}
-	
+
 	// Stop retention timer
 	if m.retentionTimer != nil {
 		m.retentionTimer.Stop()
@@ -148,13 +148,13 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	// Get subscribers for the topic
 	m.topicMutex.RLock()
 	subsMap, ok := m.subscriptions[event.Topic]
-	
+
 	// If no subscribers, just return
 	if !ok || len(subsMap) == 0 {
 		m.topicMutex.RUnlock()
 		return nil
 	}
-	
+
 	// Make a copy of the subscriptions to avoid holding the lock while publishing
 	subs := make([]*memorySubscription, 0, len(subsMap))
 	for _, sub := range subsMap {
@@ -170,7 +170,7 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 			continue
 		}
 		sub.mutex.RUnlock()
-		
+
 		select {
 		case sub.eventCh <- event:
 			// Event sent to subscriber
@@ -204,12 +204,12 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 
 	// Create a new subscription
 	sub := &memorySubscription{
-		id:       uuid.New().String(),
-		topic:    topic,
-		handler:  handler,
-		isAsync:  isAsync,
-		eventCh:  make(chan Event, m.config.DefaultEventBufferSize),
-		done:     make(chan struct{}),
+		id:        uuid.New().String(),
+		topic:     topic,
+		handler:   handler,
+		isAsync:   isAsync,
+		eventCh:   make(chan Event, m.config.DefaultEventBufferSize),
+		done:      make(chan struct{}),
 		cancelled: false,
 	}
 
@@ -305,14 +305,14 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 				// For sync subscriptions, process the event immediately
 				now := time.Now()
 				event.ProcessingStarted = &now
-				
+
 				// Process the event
 				err := sub.handler(m.ctx, event)
-				
+
 				// Record completion
 				completed := time.Now()
 				event.ProcessingCompleted = &completed
-				
+
 				if err != nil {
 					// Handle error
 				}
@@ -327,14 +327,14 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 	case m.workerPool <- func() {
 		now := time.Now()
 		event.ProcessingStarted = &now
-		
+
 		// Process the event
 		err := sub.handler(m.ctx, event)
-		
+
 		// Record completion
 		completed := time.Now()
 		event.ProcessingCompleted = &completed
-		
+
 		if err != nil {
 			// Handle error
 		}
@@ -377,7 +377,7 @@ func (m *MemoryEventBus) startRetentionTimer() {
 	duration := 24 * time.Hour // Run cleanup once a day
 	m.retentionTimer = time.AfterFunc(duration, func() {
 		m.cleanupOldEvents()
-		
+
 		// Restart timer
 		if m.isStarted {
 			m.startRetentionTimer()
@@ -388,7 +388,7 @@ func (m *MemoryEventBus) startRetentionTimer() {
 // cleanupOldEvents removes events older than retention period
 func (m *MemoryEventBus) cleanupOldEvents() {
 	cutoff := time.Now().AddDate(0, 0, -m.config.RetentionDays)
-	
+
 	m.historyMutex.Lock()
 	defer m.historyMutex.Unlock()
 

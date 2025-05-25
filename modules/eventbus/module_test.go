@@ -109,12 +109,12 @@ func TestEventBusModule(t *testing.T) {
 	services := module.(*EventBusModule).ProvidesServices()
 	assert.Equal(t, 1, len(services))
 	assert.Equal(t, ServiceName, services[0].Name)
-	
+
 	// Test module lifecycle
 	ctx := context.Background()
 	err = module.(*EventBusModule).Start(ctx)
 	require.NoError(t, err)
-	
+
 	err = module.(*EventBusModule).Stop(ctx)
 	require.NoError(t, err)
 }

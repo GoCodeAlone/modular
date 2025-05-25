@@ -115,56 +115,56 @@ func TestCacheModule(t *testing.T) {
 func TestMemoryCacheOperations(t *testing.T) {
 	// Create the module
 	module := NewModule().(*CacheModule)
-	
+
 	// Initialize with mock app
 	app := newMockApp()
 	module.RegisterConfig(app)
 	module.Init(app)
-	
+
 	// Ensure we have a memory cache
 	assert.IsType(t, &MemoryCache{}, module.cacheEngine)
-	
+
 	// Start the module
 	ctx := context.Background()
 	err := module.Start(ctx)
 	require.NoError(t, err)
-	
+
 	// Test basic operations
 	err = module.Set(ctx, "test-key", "test-value", time.Minute)
 	assert.NoError(t, err)
-	
+
 	value, found := module.Get(ctx, "test-key")
 	assert.True(t, found)
 	assert.Equal(t, "test-value", value)
-	
+
 	err = module.Delete(ctx, "test-key")
 	assert.NoError(t, err)
-	
+
 	_, found = module.Get(ctx, "test-key")
 	assert.False(t, found)
-	
+
 	// Test multi operations
 	items := map[string]interface{}{
 		"key1": "value1",
 		"key2": "value2",
 		"key3": "value3",
 	}
-	
+
 	err = module.SetMulti(ctx, items, time.Minute)
 	assert.NoError(t, err)
-	
+
 	results, err := module.GetMulti(ctx, []string{"key1", "key2", "key4"})
 	assert.NoError(t, err)
 	assert.Equal(t, "value1", results["key1"])
 	assert.Equal(t, "value2", results["key2"])
 	assert.NotContains(t, results, "key4")
-	
+
 	err = module.Flush(ctx)
 	assert.NoError(t, err)
-	
+
 	_, found = module.Get(ctx, "key1")
 	assert.False(t, found)
-	
+
 	// Stop the module
 	err = module.Stop(ctx)
 	require.NoError(t, err)
@@ -173,11 +173,11 @@ func TestMemoryCacheOperations(t *testing.T) {
 func TestExpiration(t *testing.T) {
 	// Create the module
 	module := NewModule().(*CacheModule)
-	
+
 	// Initialize with mock app and minimal TTL
 	app := newMockApp()
 	module.RegisterConfig(app)
-	
+
 	// Override config for faster expiration
 	config := &CacheConfig{
 		Engine:          "memory",
@@ -186,25 +186,25 @@ func TestExpiration(t *testing.T) {
 		MaxItems:        100,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
-	
+
 	module.Init(app)
 	ctx := context.Background()
 	module.Start(ctx)
-	
+
 	// Set with short TTL
 	err := module.Set(ctx, "expires-quickly", "value", time.Second)
 	assert.NoError(t, err)
-	
+
 	// Verify it exists
 	_, found := module.Get(ctx, "expires-quickly")
 	assert.True(t, found)
-	
+
 	// Wait for expiration
 	time.Sleep(2 * time.Second)
-	
+
 	// Verify it's gone
 	_, found = module.Get(ctx, "expires-quickly")
 	assert.False(t, found)
-	
+
 	module.Stop(ctx)
 }

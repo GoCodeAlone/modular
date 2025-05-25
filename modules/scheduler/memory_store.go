@@ -105,7 +105,7 @@ func (s *MemoryJobStore) GetDueJobs(before time.Time) ([]Job, error) {
 			job.Status = JobStatusRunning
 			job.UpdatedAt = time.Now()
 			s.jobs[id] = job
-			
+
 			dueJobs = append(dueJobs, job)
 		}
 	}

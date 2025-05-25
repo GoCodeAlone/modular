@@ -88,7 +88,7 @@ func (m *SchedulerModule) Init(app modular.Application) error {
 
 	// Load persisted jobs if enabled
 	if m.config.EnablePersistence {
-		m.logger.Info("Job persistence is enabled, but loading functionality is not implemented yet", 
+		m.logger.Info("Job persistence is enabled, but loading functionality is not implemented yet",
 			"file", m.config.PersistenceFile)
 		// TODO: Implement job persistence loading from file
 	}

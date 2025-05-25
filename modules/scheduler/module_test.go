@@ -109,12 +109,12 @@ func TestSchedulerModule(t *testing.T) {
 	services := module.(*SchedulerModule).ProvidesServices()
 	assert.Equal(t, 1, len(services))
 	assert.Equal(t, ServiceName, services[0].Name)
-	
+
 	// Test module lifecycle
 	ctx := context.Background()
 	err = module.(*SchedulerModule).Start(ctx)
 	require.NoError(t, err)
-	
+
 	err = module.(*SchedulerModule).Stop(ctx)
 	require.NoError(t, err)
 }
