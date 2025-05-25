@@ -13,6 +13,7 @@ This directory contains a collection of reusable modules for the [Modular](https
 | [database](./database)     | Database connectivity and SQL operations | [Documentation](./database/README.md)   |
 | [jsonschema](./jsonschema) | Provides JSON Schema validation services | [Documentation](./jsonschema/README.md) |
 | [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./reverseproxy/README.md) |
+| [scheduler](./scheduler)   | Job scheduling with cron support         | [Documentation](./scheduler/README.md)  |
 
 ## Using Modules
 
