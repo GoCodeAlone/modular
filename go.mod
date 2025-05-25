@@ -1,6 +1,8 @@
 module github.com/GoCodeAlone/modular
 
-go 1.21
+go 1.22
+
+toolchain go1.23.9
 
 require (
 	github.com/BurntSushi/toml v1.5.0
