@@ -5,13 +5,14 @@ package database_test
 import (
 	"context"
 	"fmt"
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/database"
 	"log/slog"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/GoCodeAlone/modular/modules/database"
 
 	_ "modernc.org/sqlite" // Import pure Go SQLite driver
 )

@@ -91,7 +91,7 @@ func (m *Module) Stop(ctx context.Context) error {
 			return fmt.Errorf("failed to close database service '%s': %w", name, err)
 		}
 	}
-	
+
 	// Clear the maps
 	m.connections = make(map[string]*sql.DB)
 	m.services = make(map[string]DatabaseService)
