@@ -4,7 +4,6 @@ go 1.24.2
 
 require (
 	github.com/GoCodeAlone/modular v1.2.5
-	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/stretchr/testify v1.10.0
 	modernc.org/sqlite v1.37.1
 )
