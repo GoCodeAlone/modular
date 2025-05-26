@@ -68,14 +68,14 @@ func (m *MockApplication) GetService(name string, target interface{}) error {
 	if !exists {
 		return modular.ErrServiceNotFound
 	}
-	
+
 	// Just return the service without type checking for the mock
 	// In a real implementation, this would properly handle the type conversion
 	val, ok := target.(*interface{})
 	if ok {
 		*val = service
 	}
-	
+
 	return nil
 }
 

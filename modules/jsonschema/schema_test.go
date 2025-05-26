@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/jsonschema"
 	"log/slog"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/jsonschema"
 )
 
 // Define static error

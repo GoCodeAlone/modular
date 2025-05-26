@@ -327,7 +327,7 @@ func TestSchedulerOperations(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("Job did not execute within timeout")
 		}
-		
+
 		// Wait for job execution to complete
 		select {
 		case <-completedCh:
@@ -392,12 +392,12 @@ func TestSchedulerServiceProvider(t *testing.T) {
 func TestJobPersistence(t *testing.T) {
 	// Create temporary file for job persistence
 	tempFile := fmt.Sprintf("/tmp/job-persistence-test-%d.json", time.Now().UnixNano())
-	
+
 	t.Run("SaveAndLoadJobs", func(t *testing.T) {
 		// Create module with persistence enabled
 		module := NewModule().(*SchedulerModule)
 		app := newMockApp()
-		
+
 		// Override config for persistence and reduce shutdown timeout for test
 		config := &SchedulerConfig{
 			WorkerCount:       2,
@@ -408,17 +408,17 @@ func TestJobPersistence(t *testing.T) {
 			ShutdownTimeout:   1, // Short timeout for test
 		}
 		app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
-		
+
 		err := module.Init(app)
 		require.NoError(t, err)
-		
+
 		// Start with a timeout context
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		err = module.Start(ctx)
 		require.NoError(t, err)
-		
+
 		// Schedule some test jobs
 		job1 := Job{
 			Name:  "persistence-test-1",
@@ -427,7 +427,7 @@ func TestJobPersistence(t *testing.T) {
 				return nil
 			},
 		}
-		
+
 		job2 := Job{
 			Name:        "persistence-test-2",
 			Schedule:    "0 */2 * * *", // Every 2 hours
@@ -436,43 +436,43 @@ func TestJobPersistence(t *testing.T) {
 				return nil
 			},
 		}
-		
+
 		jobID1, err := module.ScheduleJob(job1)
 		require.NoError(t, err)
-		
+
 		jobID2, err := module.ScheduleRecurring(job2.Name, job2.Schedule, job2.JobFunc)
 		require.NoError(t, err)
-		
+
 		// Stop the module (should save jobs)
 		err = module.Stop(ctx)
 		require.NoError(t, err)
-		
+
 		// Verify the file was created
 		_, err = os.Stat(tempFile)
 		require.NoError(t, err, "Persistence file should exist")
-		
+
 		// Create a new module to load the jobs
 		newModule := NewModule().(*SchedulerModule)
 		app = newMockApp()
 		app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
-		
+
 		err = newModule.Init(app)
 		require.NoError(t, err)
-		
+
 		// No need to start the module to verify jobs were loaded
-		
+
 		// Verify jobs were loaded
 		job, err := newModule.GetJob(jobID1)
 		require.NoError(t, err)
 		assert.Equal(t, "persistence-test-1", job.Name)
 		assert.False(t, job.IsRecurring)
-		
+
 		job, err = newModule.GetJob(jobID2)
 		require.NoError(t, err)
 		assert.Equal(t, "persistence-test-2", job.Name)
 		assert.True(t, job.IsRecurring)
 		assert.Equal(t, "0 */2 * * *", job.Schedule)
-		
+
 		// Delete temp file
 		err = os.Remove(tempFile)
 		if err != nil && !os.IsNotExist(err) {

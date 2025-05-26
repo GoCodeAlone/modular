@@ -169,7 +169,7 @@ func (m *DatabaseModule) Name() string {
 	return m.name
 }
 
-func (m *DatabaseModule) Init(app Application) error {
+func (m *DatabaseModule) Init(_ Application) error {
 	m.t.Logf("Initializing DatabaseModule")
 	return nil
 }
@@ -204,7 +204,7 @@ func (m *CacheModule) Name() string {
 	return m.name
 }
 
-func (m *CacheModule) Init(app Application) error {
+func (m *CacheModule) Init(_ Application) error {
 	m.t.Logf("Initializing CacheModule")
 	// Verify that dependencies are satisfied
 	if !m.databaseInjected {
@@ -242,7 +242,7 @@ func (m *CacheModule) RequiresServices() []ServiceDependency {
 }
 
 func (m *CacheModule) Constructor() ModuleConstructor {
-	return func(app Application, services map[string]any) (Module, error) {
+	return func(_ Application, services map[string]any) (Module, error) {
 		if dbService, ok := services["database"].(DatabaseService); ok {
 			m.databaseService = dbService
 			m.databaseInjected = true
@@ -265,7 +265,7 @@ func (m *APIModule) Name() string {
 	return m.name
 }
 
-func (m *APIModule) Init(app Application) error {
+func (m *APIModule) Init(_ Application) error {
 	m.t.Logf("Initializing APIModule")
 	// Verify that dependencies are satisfied
 	if !m.cacheServiceInjected {
@@ -303,7 +303,7 @@ func (m *APIModule) RequiresServices() []ServiceDependency {
 }
 
 func (m *APIModule) Constructor() ModuleConstructor {
-	return func(app Application, services map[string]any) (Module, error) {
+	return func(_ Application, services map[string]any) (Module, error) {
 		if cacheService, ok := services["cache"].(CacheService); ok {
 			m.cacheService = cacheService
 			m.cacheServiceInjected = true
@@ -316,11 +316,11 @@ func (m *APIModule) Constructor() ModuleConstructor {
 	}
 }
 
-func (m *APIModule) Start(ctx context.Context) error {
+func (m *APIModule) Start(_ context.Context) error {
 	return nil
 }
 
-func (m *APIModule) Stop(ctx context.Context) error {
+func (m *APIModule) Stop(_ context.Context) error {
 	return nil
 }
 
@@ -334,7 +334,7 @@ func (m *LoggerModule) Name() string {
 	return m.name
 }
 
-func (m *LoggerModule) Init(app Application) error {
+func (m *LoggerModule) Init(_ Application) error {
 	m.t.Logf("Initializing LoggerModule")
 	return nil
 }
@@ -369,7 +369,7 @@ func (m *AuthModule) Name() string {
 	return m.name
 }
 
-func (m *AuthModule) Init(app Application) error {
+func (m *AuthModule) Init(_ Application) error {
 	m.t.Logf("Initializing AuthModule")
 	// Verify that dependencies are satisfied
 	if !m.loggerServiceInjected {
@@ -398,7 +398,7 @@ func (m *AuthModule) RequiresServices() []ServiceDependency {
 }
 
 func (m *AuthModule) Constructor() ModuleConstructor {
-	return func(app Application, services map[string]any) (Module, error) {
+	return func(_ Application, services map[string]any) (Module, error) {
 		if loggerService, ok := services["logger-service"].(LoggingService); ok {
 			m.loggerService = loggerService
 			m.loggerServiceInjected = true
@@ -407,10 +407,10 @@ func (m *AuthModule) Constructor() ModuleConstructor {
 	}
 }
 
-func (m *AuthModule) Start(ctx context.Context) error {
+func (m *AuthModule) Start(_ context.Context) error {
 	return nil
 }
 
-func (m *AuthModule) Stop(ctx context.Context) error {
+func (m *AuthModule) Stop(_ context.Context) error {
 	return nil
 }

@@ -21,7 +21,11 @@ DB_PASS=secret
 	if err != nil {
 		t.Fatalf("Failed to create test .env file: %v", err)
 	}
-	defer os.Remove(tempFile)
+	defer func() {
+		if removeErr := os.Remove(tempFile); removeErr != nil {
+			t.Logf("Failed to remove temp file: %v", removeErr)
+		}
+	}()
 
 	t.Run("read from .env file", func(t *testing.T) {
 		type Config struct {

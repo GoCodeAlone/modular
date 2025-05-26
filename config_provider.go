@@ -15,27 +15,34 @@ type LoadAppConfigFunc func(*StdApplication) error
 // AppConfigLoader is the default implementation that can be replaced in tests
 var AppConfigLoader LoadAppConfigFunc = loadAppConfig
 
+// ConfigProvider defines the interface for providing configuration objects
 type ConfigProvider interface {
+	// GetConfig returns the configuration object
 	GetConfig() any
 }
 
+// StdConfigProvider provides a standard implementation of ConfigProvider
 type StdConfigProvider struct {
 	cfg any
 }
 
+// GetConfig returns the configuration object
 func (s *StdConfigProvider) GetConfig() any {
 	return s.cfg
 }
 
+// NewStdConfigProvider creates a new standard configuration provider
 func NewStdConfigProvider(cfg any) *StdConfigProvider {
 	return &StdConfigProvider{cfg: cfg}
 }
 
+// Config represents a configuration builder that can combine multiple feeders and structures
 type Config struct {
 	*config.Config
 	StructKeys map[string]interface{}
 }
 
+// NewConfig creates a new configuration builder
 func NewConfig() *Config {
 	return &Config{
 		Config:     config.New(),
@@ -43,6 +50,7 @@ func NewConfig() *Config {
 	}
 }
 
+// AddStructKey adds a structure with a key to the configuration
 func (c *Config) AddStructKey(key string, target interface{}) *Config {
 	c.StructKeys[key] = target
 	return c
@@ -74,7 +82,7 @@ func (c *Config) Feed() error {
 		// Call Setup if implemented
 		if setupable, ok := target.(ConfigSetup); ok {
 			if err := setupable.Setup(); err != nil {
-				return fmt.Errorf("%w for %s", ErrConfigSetupError, key)
+				return fmt.Errorf("config: setup error for %s", key)
 			}
 		}
 	}
@@ -207,7 +215,7 @@ func processSectionConfigs(app *StdApplication, cfgBuilder *Config, tempConfigs 
 func applyConfigUpdates(app *StdApplication, tempConfigs map[string]configInfo) {
 	// Update main config if it exists
 	if mainInfo, exists := tempConfigs[mainConfigSection]; exists {
-		updateConfig(app, &app.cfgProvider, mainInfo)
+		updateConfig(app, app.cfgProvider, mainInfo)
 		app.logger.Debug("Updated main config")
 	}
 
@@ -256,12 +264,13 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	}, nil
 }
 
-func updateConfig(app *StdApplication, provider *ConfigProvider, info configInfo) {
+func updateConfig(app *StdApplication, _ ConfigProvider, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {
 		app.logger.Debug("Creating new provider with updated config (original was non-pointer)")
-		*provider = NewStdConfigProvider(info.tempVal.Elem().Interface())
+		// For non-pointer configs, we need to update the provider reference
+		app.cfgProvider = NewStdConfigProvider(info.tempVal.Elem().Interface())
 	}
 }
 

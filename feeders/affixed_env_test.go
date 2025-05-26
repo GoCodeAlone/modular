@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+const (
+	localhostHost = "localhost"
+)
+
 func TestAffixedEnvFeeder(t *testing.T) {
 	type Config struct {
 		Host     string `env:"HOST"`
@@ -28,7 +32,7 @@ func TestAffixedEnvFeeder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
-		if config.Host != "localhost" {
+		if config.Host != localhostHost {
 			t.Errorf("Expected Host to be 'localhost', got '%s'", config.Host)
 		}
 		if config.Port != 8080 {
@@ -52,7 +56,7 @@ func TestAffixedEnvFeeder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
-		if config.Host != "localhost" {
+		if config.Host != localhostHost {
 			t.Errorf("Expected Host to be 'localhost', got '%s'", config.Host)
 		}
 	})
@@ -67,7 +71,7 @@ func TestAffixedEnvFeeder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
-		if config.Host != "localhost" {
+		if config.Host != localhostHost {
 			t.Errorf("Expected Host to be 'localhost', got '%s'", config.Host)
 		}
 	})

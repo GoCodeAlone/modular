@@ -27,7 +27,7 @@ var (
 
 // Example showing how to use DatabaseService in another module
 func TestExample_dependentModule(t *testing.T) {
-	dbConfigJson := `
+	dbConfigJSON := `
 database:
   connections:
     default:
@@ -40,12 +40,18 @@ database:
 	if err != nil {
 		t.Fatalf("Failed to create config file: %v", err)
 	}
-	defer os.Remove(configFile.Name())
+	defer func() {
+		if err := os.Remove(configFile.Name()); err != nil {
+			t.Logf("Failed to remove temp file: %v", err)
+		}
+	}()
 
-	if _, err = configFile.WriteString(dbConfigJson); err != nil {
+	if _, err = configFile.WriteString(dbConfigJSON); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
-	configFile.Close()
+	if err = configFile.Close(); err != nil {
+		t.Fatalf("Failed to close config file: %v", err)
+	}
 
 	modular.ConfigFeeders = []modular.Feeder{
 		feeders.NewYamlFeeder(configFile.Name()),
@@ -86,7 +92,7 @@ type YourModule struct {
 func (y *YourModule) RegisterConfig(modular.Application) {
 }
 
-func (y *YourModule) Init(app modular.Application) error {
+func (y *YourModule) Init(_ modular.Application) error {
 	_, err := y.dbService.Execute("CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY, name TEXT)")
 	if err != nil {
 		return fmt.Errorf("failed to create test table: %w", err)
@@ -94,7 +100,7 @@ func (y *YourModule) Init(app modular.Application) error {
 	return nil
 }
 
-func (y *YourModule) Start(ctx context.Context) error {
+func (y *YourModule) Start(_ context.Context) error {
 	_, err := y.dbService.Execute("INSERT INTO test (name) VALUES ('test')")
 	if err != nil {
 		return fmt.Errorf("failed to insert test data: %w", err)
@@ -104,12 +110,16 @@ func (y *YourModule) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to query test data: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			y.t.Logf("Failed to close rows: %v", err)
+		}
+	}()
 	for rows.Next() {
 		var id int
 		var name string
-		if err := rows.Scan(&id, &name); err != nil {
-			return fmt.Errorf("failed to scan test data: %w", err)
+		if scanErr := rows.Scan(&id, &name); scanErr != nil {
+			return fmt.Errorf("failed to scan test data: %w", scanErr)
 		}
 		y.t.Logf("Test data: id=%d, name=%s", id, name)
 	}
@@ -121,7 +131,7 @@ func (y *YourModule) Start(ctx context.Context) error {
 	return nil
 }
 
-func (y *YourModule) Stop(ctx context.Context) error {
+func (y *YourModule) Stop(_ context.Context) error {
 	return nil
 }
 

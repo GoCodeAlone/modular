@@ -2,11 +2,12 @@ package modular
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/mock"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
 )
 
 type logger struct {

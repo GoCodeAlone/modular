@@ -219,7 +219,7 @@ func (s *MemoryJobStore) LoadFromFile(filePath string) ([]Job, error) {
 	var persistedData struct {
 		Jobs []Job `json:"jobs"`
 	}
-	
+
 	if err := json.Unmarshal(file, &persistedData); err != nil {
 		return nil, fmt.Errorf("failed to parse jobs file: %w", err)
 	}
@@ -233,11 +233,11 @@ func (s *MemoryJobStore) LoadFromFile(filePath string) ([]Job, error) {
 		if _, exists := s.jobs[job.ID]; exists {
 			continue
 		}
-		
+
 		// Clear job function as it can't be persisted
 		// It will be reinitialized when job is resumed
 		job.JobFunc = nil
-		
+
 		// Add to store
 		s.jobs[job.ID] = job
 	}
@@ -268,13 +268,13 @@ func (s *MemoryJobStore) SaveToFile(jobs []Job, filePath string) error {
 			return fmt.Errorf("failed to create directory for jobs file: %w", err)
 		}
 	}
-	
+
 	// JobFunc can't be serialized, so we need to create a copy of jobs without it
 	jobsCopy := make([]Job, len(jobs))
 	for i, job := range jobs {
 		jobCopy := job
 		jobCopy.JobFunc = nil
-		jobsCopy[i] = jobCopy 
+		jobsCopy[i] = jobCopy
 	}
 	persistedData.Jobs = jobsCopy
 

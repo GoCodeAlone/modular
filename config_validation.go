@@ -149,21 +149,21 @@ func validateRequiredFields(v reflect.Value, prefix string, errors *[]string) {
 		if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
 			if !field.IsNil() {
 				validateRequiredFields(field.Elem(), fieldName, errors)
-			} else if isFieldRequired(fieldType) {
+			} else if isFieldRequired(&fieldType) {
 				*errors = append(*errors, fieldName)
 			}
 			continue
 		}
 
 		// Check required tag
-		if isFieldRequired(fieldType) && isZeroValue(field) {
+		if isFieldRequired(&fieldType) && isZeroValue(field) {
 			*errors = append(*errors, fieldName)
 		}
 	}
 }
 
 // isFieldRequired checks if a field has the required:"true" tag
-func isFieldRequired(field reflect.StructField) bool {
+func isFieldRequired(field *reflect.StructField) bool {
 	required, exists := field.Tag.Lookup(tagRequired)
 	return exists && required == "true"
 }
@@ -190,67 +190,50 @@ func isZeroValue(v reflect.Value) bool {
 	case reflect.Chan, reflect.Func, reflect.Struct, reflect.UnsafePointer:
 		// Can't easily determine zero value for these types
 		return false
+	default:
+		// For any other types not explicitly handled
+		return false
 	}
-	return false
 }
 
 // setDefaultValue sets a default value from a string to the proper field type
 func setDefaultValue(field reflect.Value, defaultVal string) error {
-	switch field.Kind() {
+	kind := field.Kind()
+
+	switch kind {
 	case reflect.String:
 		field.SetString(defaultVal)
+		return nil
 	case reflect.Bool:
-		b, err := strconv.ParseBool(defaultVal)
-		if err != nil {
-			return fmt.Errorf("failed to parse bool value: %w", err)
-		}
-		field.SetBool(b)
+		return setDefaultBool(field, defaultVal)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		i, err := strconv.ParseInt(defaultVal, 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse int value: %w", err)
-		}
-		return setDefaultInt(field, i)
+		return setDefaultIntValue(field, defaultVal)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		u, err := strconv.ParseUint(defaultVal, 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse uint value: %w", err)
-		}
-		return setDefaultUint(field, u)
+		return setDefaultUintValue(field, defaultVal)
 	case reflect.Float32, reflect.Float64:
-		f, err := strconv.ParseFloat(defaultVal, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse float value: %w", err)
-		}
-		return setDefaultFloat(field, f)
+		return setDefaultFloatValue(field, defaultVal)
 	case reflect.Slice:
-		// Attempt to unmarshal JSON array into slice
-		if field.Type().Elem().Kind() == reflect.String {
-			var strs []string
-			if err := json.Unmarshal([]byte(defaultVal), &strs); err != nil {
-				return fmt.Errorf("failed to unmarshal JSON array: %w", err)
-			}
-			sliceVal := reflect.MakeSlice(field.Type(), len(strs), len(strs))
-			for i, s := range strs {
-				sliceVal.Index(i).SetString(s)
-			}
-			field.Set(sliceVal)
-		}
+		return setDefaultSlice(field, defaultVal)
 	case reflect.Map:
-		// Only handle string->string maps for defaults
-		if field.Type().Key().Kind() == reflect.String && field.Type().Elem().Kind() == reflect.String {
-			var m map[string]string
-			if err := json.Unmarshal([]byte(defaultVal), &m); err != nil {
-				return fmt.Errorf("failed to unmarshal JSON map: %w", err)
-			}
-			mapVal := reflect.MakeMap(field.Type())
-			for k, v := range m {
-				mapVal.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
-			}
-			field.Set(mapVal)
-		}
+		return setDefaultMap(field, defaultVal)
+	case reflect.Invalid, reflect.Complex64, reflect.Complex128, reflect.Array,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr, reflect.Struct,
+		reflect.UnsafePointer:
+		return handleUnsupportedDefaultType(kind)
+	default:
+		return handleUnsupportedDefaultType(kind)
+	}
+}
+
+// handleUnsupportedDefaultType returns appropriate errors for unsupported types
+func handleUnsupportedDefaultType(kind reflect.Kind) error {
+	switch kind {
 	case reflect.Invalid:
 		return fmt.Errorf("%w: invalid field", ErrUnsupportedTypeForDefault)
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.String, reflect.Map, reflect.Slice:
+		return fmt.Errorf("%w: %s fields should be handled by setDefaultValue", ErrUnsupportedTypeForDefault, kind)
 	case reflect.Complex64, reflect.Complex128:
 		return fmt.Errorf("%w: complex numbers not supported", ErrUnsupportedTypeForDefault)
 	case reflect.Array:
@@ -268,12 +251,80 @@ func setDefaultValue(field reflect.Value, defaultVal string) error {
 	case reflect.UnsafePointer:
 		return fmt.Errorf("%w: unsafe pointers not supported", ErrUnsupportedTypeForDefault)
 	default:
-		return fmt.Errorf("%w: %s", ErrUnsupportedTypeForDefault, field.Type())
+		return fmt.Errorf("%w: unknown type %s", ErrUnsupportedTypeForDefault, kind)
+	}
+}
+
+func setDefaultBool(field reflect.Value, defaultVal string) error {
+	b, err := strconv.ParseBool(defaultVal)
+	if err != nil {
+		return fmt.Errorf("failed to parse bool value: %w", err)
+	}
+	field.SetBool(b)
+	return nil
+}
+
+// setDefaultIntValue parses and sets an integer default value
+func setDefaultIntValue(field reflect.Value, defaultVal string) error {
+	i, err := strconv.ParseInt(defaultVal, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse int value: %w", err)
+	}
+	return setDefaultInt(field, i)
+}
+
+// setDefaultUintValue parses and sets an unsigned integer default value
+func setDefaultUintValue(field reflect.Value, defaultVal string) error {
+	u, err := strconv.ParseUint(defaultVal, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse uint value: %w", err)
+	}
+	return setDefaultUint(field, u)
+}
+
+// setDefaultFloatValue parses and sets a float default value
+func setDefaultFloatValue(field reflect.Value, defaultVal string) error {
+	f, err := strconv.ParseFloat(defaultVal, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse float value: %w", err)
+	}
+	return setDefaultFloat(field, f)
+}
+
+// setDefaultSlice sets a slice default value from JSON
+func setDefaultSlice(field reflect.Value, defaultVal string) error {
+	// Attempt to unmarshal JSON array into slice
+	if field.Type().Elem().Kind() == reflect.String {
+		var strs []string
+		if err := json.Unmarshal([]byte(defaultVal), &strs); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON array: %w", err)
+		}
+		sliceVal := reflect.MakeSlice(field.Type(), len(strs), len(strs))
+		for i, s := range strs {
+			sliceVal.Index(i).SetString(s)
+		}
+		field.Set(sliceVal)
 	}
 	return nil
 }
 
-// setDefaultInt sets a default int value to a field, checking for overflow
+// setDefaultMap sets a map default value from JSON
+func setDefaultMap(field reflect.Value, defaultVal string) error {
+	// Only handle string->string maps for defaults
+	if field.Type().Key().Kind() == reflect.String && field.Type().Elem().Kind() == reflect.String {
+		var m map[string]string
+		if err := json.Unmarshal([]byte(defaultVal), &m); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON map: %w", err)
+		}
+		mapVal := reflect.MakeMap(field.Type())
+		for k, v := range m {
+			mapVal.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+		}
+		field.Set(mapVal)
+	}
+	return nil
+}
+
 func setDefaultInt(field reflect.Value, i int64) error {
 	switch field.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -282,35 +333,32 @@ func setDefaultInt(field reflect.Value, i int64) error {
 		}
 		field.SetInt(i)
 		return nil
-	case reflect.Invalid:
-		return fmt.Errorf("%w: %s", ErrInvalidFieldKind, field.Kind())
-	case reflect.Bool, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
-		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Ptr, reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
+	case reflect.Invalid, reflect.Bool, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32,
+		reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64,
+		reflect.Complex128, reflect.Array, reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Map, reflect.Ptr, reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
+		return fmt.Errorf("%w: cannot set int value to %s", ErrIncompatibleFieldKind, field.Kind())
+	default:
 		return fmt.Errorf("%w: cannot set int value to %s", ErrIncompatibleFieldKind, field.Kind())
 	}
-	return fmt.Errorf("%w: %s", ErrUnexpectedFieldKind, field.Kind())
 }
 
-// setDefaultUint sets a default uint value to a field, checking for overflow
 func setDefaultUint(field reflect.Value, u uint64) error {
 	switch field.Kind() {
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		if field.OverflowUint(u) {
 			return fmt.Errorf("%w: %d overflows %s", ErrDefaultValueOverflowsUint, u, field.Type())
 		}
 		field.SetUint(u)
 		return nil
-	case reflect.Invalid:
-		return fmt.Errorf("%w: %s", ErrInvalidFieldKind, field.Kind())
-	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
-		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Ptr, reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
+	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Int64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
+		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr,
+		reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
+		return fmt.Errorf("%w: cannot set uint value to %s", ErrIncompatibleFieldKind, field.Kind())
+	default:
 		return fmt.Errorf("%w: cannot set uint value to %s", ErrIncompatibleFieldKind, field.Kind())
 	}
-	return fmt.Errorf("%w: %s", ErrUnexpectedFieldKind, field.Kind())
 }
 
 // setDefaultFloat sets a default float value to a field, checking for overflow
@@ -322,16 +370,15 @@ func setDefaultFloat(field reflect.Value, f float64) error {
 		}
 		field.SetFloat(f)
 		return nil
-	case reflect.Invalid:
-		return fmt.Errorf("%w: %s", ErrInvalidFieldKind, field.Kind())
-	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Complex64, reflect.Complex128, reflect.Array, reflect.Chan, reflect.Func,
-		reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice,
-		reflect.String, reflect.Struct, reflect.UnsafePointer:
+	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Uintptr, reflect.Complex64, reflect.Complex128, reflect.Array, reflect.Chan,
+		reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.String,
+		reflect.Struct, reflect.UnsafePointer:
+		return fmt.Errorf("%w: cannot set float value to %s", ErrIncompatibleFieldKind, field.Kind())
+	default:
 		return fmt.Errorf("%w: cannot set float value to %s", ErrIncompatibleFieldKind, field.Kind())
 	}
-	return fmt.Errorf("%w: %s", ErrUnexpectedFieldKind, field.Kind())
 }
 
 // GenerateSampleConfig generates a sample configuration for a config struct

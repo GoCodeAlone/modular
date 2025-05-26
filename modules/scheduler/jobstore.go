@@ -43,10 +43,10 @@ type JobStore interface {
 // PersistableJobStore extends JobStore with persistence capabilities
 type PersistableJobStore interface {
 	JobStore
-	
+
 	// LoadFromFile loads jobs from a file
 	LoadFromFile(filePath string) ([]Job, error)
-	
+
 	// SaveToFile saves jobs to a file
 	SaveToFile(jobs []Job, filePath string) error
 }
