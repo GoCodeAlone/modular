@@ -9,10 +9,14 @@ on:
         required: true
         type: choice
         options:
-          - database
-          - jsonschema
+          - auth
+          - cache
           - chimux
+          - database
+          - eventbus
+          - jsonschema
           - reverseproxy
+          - scheduler
       version:
         description: 'Version to release (leave blank for auto-increment)'
         required: false
