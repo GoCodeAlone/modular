@@ -118,7 +118,7 @@ func setFieldValue(field reflect.Value, strValue string) error {
 	}
 
 	if !field.CanSet() {
-		return fmt.Errorf("field cannot be set")
+		return fmt.Errorf("field of type %v cannot be set", field.Type())
 	}
 
 	field.Set(reflect.ValueOf(convertedValue))
