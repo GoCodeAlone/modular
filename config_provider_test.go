@@ -229,14 +229,13 @@ func Test_updateConfig(t *testing.T) {
 		mockLogger := new(MockLogger)
 		app := &StdApplication{logger: mockLogger}
 
-		provider := ConfigProvider(NewStdConfigProvider(originalCfg))
 		origInfo := configInfo{
 			originalVal: reflect.ValueOf(originalCfg),
 			tempVal:     reflect.ValueOf(tempCfg),
 			isPtr:       true,
 		}
 
-		updateConfig(app, provider, origInfo)
+		updateConfig(app, origInfo)
 
 		// Check the original config was updated
 		assert.Equal(t, "new", originalCfg.Str)
@@ -257,9 +256,7 @@ func Test_updateConfig(t *testing.T) {
 			cfgProvider: NewStdConfigProvider(originalCfg),
 		}
 
-		provider := app.cfgProvider // Get the provider from the app
-
-		updateConfig(app, provider, origInfo)
+		updateConfig(app, origInfo)
 
 		// Check the updated provider from the app (not the original provider reference)
 		updated := app.cfgProvider.GetConfig()

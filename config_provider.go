@@ -215,7 +215,7 @@ func processSectionConfigs(app *StdApplication, cfgBuilder *Config, tempConfigs 
 func applyConfigUpdates(app *StdApplication, tempConfigs map[string]configInfo) {
 	// Update main config if it exists
 	if mainInfo, exists := tempConfigs[mainConfigSection]; exists {
-		updateConfig(app, app.cfgProvider, mainInfo)
+		updateConfig(app, mainInfo)
 		app.logger.Debug("Updated main config")
 	}
 
@@ -264,7 +264,7 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	}, nil
 }
 
-func updateConfig(app *StdApplication, _ ConfigProvider, info configInfo) {
+func updateConfig(app *StdApplication, info configInfo) {
 	if info.isPtr {
 		info.originalVal.Elem().Set(info.tempVal.Elem())
 	} else {
