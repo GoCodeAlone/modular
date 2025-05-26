@@ -298,7 +298,7 @@ func (m *InterfaceProviderModule) Name() string {
 	return m.name
 }
 
-func (m *InterfaceProviderModule) Init(app Application) error {
+func (m *InterfaceProviderModule) Init(_ Application) error {
 	return nil
 }
 
@@ -321,7 +321,7 @@ func (m *InterfaceProviderModule) RequiresServices() []ServiceDependency {
 }
 
 // HandleFunc implements the HandleFuncService interface
-func (m *InterfaceProviderModule) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+func (m *InterfaceProviderModule) HandleFunc(_ string, _ func(http.ResponseWriter, *http.Request)) {
 	// Just a stub for testing
 }
 
@@ -335,7 +335,7 @@ func (m *InterfaceConsumerModule) Name() string {
 	return m.name
 }
 
-func (m *InterfaceConsumerModule) Init(app Application) error {
+func (m *InterfaceConsumerModule) Init(_ Application) error {
 	return nil
 }
 
@@ -359,7 +359,7 @@ func (m *InterfaceConsumerModule) RequiresServices() []ServiceDependency {
 }
 
 func (m *InterfaceConsumerModule) Constructor() ModuleConstructor {
-	return func(app Application, services map[string]any) (Module, error) {
+	return func(_ Application, services map[string]any) (Module, error) {
 		if router, ok := services["router.service"].(handleFuncService); ok {
 			m.router = router
 		}
@@ -381,7 +381,7 @@ func (m *IncompatibleProvider) Name() string {
 	return m.name
 }
 
-func (m *IncompatibleProvider) Init(app Application) error {
+func (m *IncompatibleProvider) Init(_ Application) error {
 	return nil
 }
 
@@ -404,7 +404,7 @@ func (m *IncompatibleProvider) RequiresServices() []ServiceDependency {
 }
 
 // NotHandleFunc is a method that does NOT match the HandleFuncService interface
-func (m *IncompatibleProvider) NotHandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+func (m *IncompatibleProvider) NotHandleFunc(_ string, _ func(http.ResponseWriter, *http.Request)) {
 	// Just a stub for testing
 }
 
@@ -418,7 +418,7 @@ func (m *CustomNameConsumerModule) Name() string {
 	return m.name
 }
 
-func (m *CustomNameConsumerModule) Init(app Application) error {
+func (m *CustomNameConsumerModule) Init(_ Application) error {
 	return nil
 }
 
@@ -442,7 +442,7 @@ func (m *CustomNameConsumerModule) RequiresServices() []ServiceDependency {
 }
 
 func (m *CustomNameConsumerModule) Constructor() ModuleConstructor {
-	return func(app Application, services map[string]any) (Module, error) {
+	return func(_ Application, services map[string]any) (Module, error) {
 		if router, ok := services["router"].(handleFuncService); ok {
 			m.router = router
 		}

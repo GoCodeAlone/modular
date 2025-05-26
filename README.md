@@ -22,18 +22,31 @@ Modular is a package that provides a structured way to create modular applicatio
 - **Dependency injection**: Inject required services into modules
 - **Multi-tenancy support**: Build applications that serve multiple tenants with isolated configurations
 
-## Available Modules
+## 🧩 Available Modules
 
-Modular comes with a collection of reusable modules that you can incorporate into your applications:
+Modular comes with a rich ecosystem of pre-built modules that you can easily integrate into your applications:
 
-| Module                             | Description                              | Documentation                                   |
-|------------------------------------|------------------------------------------|-------------------------------------------------|
-| [chimux](./modules/chimux)         | Chi router integration for Modular       | [Documentation](./modules/chimux/README.md)     |
-| [database](./modules/database)     | Database connectivity and SQL operations | [Documentation](./modules/database/README.md)   |
-| [jsonschema](./modules/jsonschema) | JSON Schema validation services          | [Documentation](./modules/jsonschema/README.md) |
-| [reverseproxy](./modules/reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./modules/reverseproxy/README.md) |
+### Core Modules
+- **[Auth](modules/auth/README.md)** - Comprehensive authentication with JWT, sessions, password hashing, and OAuth2/OIDC support
+- **[Cache](modules/cache/README.md)** - Multi-backend caching with Redis and in-memory support
+- **[Database](modules/database/README.md)** - Database connectivity and management with multiple driver support
+- **[Event Bus](modules/eventbus/README.md)** - Asynchronous event handling and pub/sub messaging
 
-For more information about the available modules, see the [modules directory](./modules).
+### Network & Communication
+- **[Chi Router (Chimux)](modules/chimux/README.md)** - HTTP routing with Chi router integration and middleware support
+- **[Reverse Proxy](modules/reverseproxy/README.md)** - Advanced reverse proxy with load balancing, circuit breaker, and health checks
+
+### Utilities & Processing
+- **[JSON Schema](modules/jsonschema/README.md)** - JSON schema validation and processing
+- **[Scheduler](modules/scheduler/README.md)** - Job scheduling with cron expressions and worker pools
+
+Each module is designed to be:
+- **Plug-and-play**: Easy integration with minimal configuration
+- **Configurable**: Extensive configuration options via YAML, environment variables, or code
+- **Production-ready**: Built with best practices, proper error handling, and comprehensive testing
+- **Well-documented**: Complete documentation with examples and API references
+
+> 📖 For detailed information about each module, see the [modules directory](modules/README.md) or click on the individual module links above.
 
 ## Installation
 

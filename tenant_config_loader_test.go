@@ -49,13 +49,13 @@ func (m *MockTenantService) RegisterTenant(tenantID TenantID, configs map[string
 	return nil
 }
 
-func (m *MockTenantService) RegisterTenantAwareModule(module TenantAwareModule) error {
+func (m *MockTenantService) RegisterTenantAwareModule(_ TenantAwareModule) error {
 	// No-op for mock
 	return nil
 }
 
 // setupTestDirectory creates a temporary directory with test tenant config files
-func setupTestDirectory(t *testing.T) (string, func()) {
+func setupTestDirectory(t *testing.T) (tempDir string, cleanup func()) {
 	tempDir, err := os.MkdirTemp("", "tenant_config_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
@@ -72,7 +72,7 @@ key = "value4"`)
 	// Invalid file should be skipped
 	createTestFile(t, tempDir, "invalid.txt", `Not a valid config`)
 
-	cleanup := func() {
+	cleanup = func() {
 		err := os.RemoveAll(tempDir)
 		if err != nil {
 			t.Fatalf("Failed to remove temp directory: %v", err)
@@ -198,9 +198,8 @@ func TestLoadTenantConfigurationsEmptyDirectory(t *testing.T) {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
 	defer func(path string) {
-		err := os.RemoveAll(path)
-		if err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
+		if removeErr := os.RemoveAll(path); removeErr != nil {
+			t.Fatalf("Failed to remove temp directory: %v", removeErr)
 		}
 	}(tempDir)
 

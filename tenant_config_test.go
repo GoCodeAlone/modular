@@ -17,7 +17,7 @@ type TestTenantConfig struct {
 }
 
 type AnotherTestConfig struct {
-	ApiKey         string `yaml:"ApiKey"`
+	APIKey         string `yaml:"ApiKey"`
 	MaxConnections int    `yaml:"MaxConnections"`
 	Timeout        int    `yaml:"Timeout"`
 }
@@ -90,13 +90,17 @@ func setupTenantServices(t *testing.T) (Application, *StandardTenantService) {
 // TestFileBasedTenantConfigLoader tests loading tenant configurations from files
 func TestFileBasedTenantConfigLoader(t *testing.T) {
 	tempDir := setupTestConfigFiles(t)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	app, tenantService := setupTenantServices(t)
 
 	// Create a file-based tenant config loader
 	loader := NewFileBasedTenantConfigLoader(TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.(json|yaml)$`),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.(json|yaml)$`),
 		ConfigDir:       tempDir,
 	})
 
@@ -157,8 +161,8 @@ func verifyTenant1Config(t *testing.T, tenantService *StandardTenantService) {
 		return
 	}
 
-	if apiConfig.ApiKey != "tenant1-api-key" {
-		t.Errorf("Expected ApiKey 'tenant1-api-key', got '%s'", apiConfig.ApiKey)
+	if apiConfig.APIKey != "tenant1-api-key" {
+		t.Errorf("Expected ApiKey 'tenant1-api-key', got '%s'", apiConfig.APIKey)
 	}
 	if apiConfig.MaxConnections != 10 {
 		t.Errorf("Expected MaxConnections 10, got %d", apiConfig.MaxConnections)
@@ -199,7 +203,11 @@ func TestLoadTenantConfigsEmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
+			t.Logf("Failed to remove temp directory: %v", removeErr)
+		}
+	}()
 
 	// Create an application and tenant service
 	log := &logger{t}
@@ -208,7 +216,7 @@ func TestLoadTenantConfigsEmptyDirectory(t *testing.T) {
 
 	// Test loading from empty directory
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.json$`),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.json$`),
 		ConfigDir:       tempDir,
 	}
 
@@ -235,7 +243,7 @@ func TestLoadTenantConfigsNonexistentDirectory(t *testing.T) {
 
 	// Test loading from nonexistent directory
 	params := TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.json$`),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.json$`),
 		ConfigDir:       nonExistentDir,
 	}
 

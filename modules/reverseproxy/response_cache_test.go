@@ -91,35 +91,54 @@ func TestCustomTTL(t *testing.T) {
 }
 
 func TestLRUEviction(t *testing.T) {
-	rc := newResponseCache(10*time.Minute, 3, 1*time.Hour) // Very small size for testing
+	rc := newResponseCache(10*time.Minute, 2, 1*time.Hour) // Smaller size for clearer testing
 	defer rc.Close()
 
-	// Fill the cache
+	// Fill the cache to capacity with some time between entries
 	rc.Set("key1", 200, http.Header{}, []byte("data1"), 0)
+	time.Sleep(10 * time.Millisecond) // Ensure different creation times
 	rc.Set("key2", 200, http.Header{}, []byte("data2"), 0)
-	rc.Set("key3", 200, http.Header{}, []byte("data3"), 0)
 
-	// Access key1 to make it most recently used
+	// Wait to ensure different access times
+	time.Sleep(10 * time.Millisecond)
+
+	// Access key1 to make it more recently used than key2
 	rc.Get("key1")
-	time.Sleep(5 * time.Millisecond) // Ensure access times are different
 
-	// Access key2 to make it second most recently used
-	rc.Get("key2")
-	time.Sleep(5 * time.Millisecond) // Ensure access times are different
+	// Wait to ensure the access time is recorded
+	time.Sleep(10 * time.Millisecond)
 
-	// Add a new entry, should evict key3 (least recently used)
-	rc.Set("key4", 200, http.Header{}, []byte("data4"), 0)
+	// Debug: Check cache contents and access times after the Get call
+	rc.mutex.RLock()
+	t.Logf("Before adding key3, cache size: %d", len(rc.cache))
+	var key1Time, key2Time time.Time
+	for k, v := range rc.cache {
+		t.Logf("Key: %s, LastAccessed: %v", k, v.LastAccessed)
+		if k == "key1" {
+			key1Time = v.LastAccessed
+		}
+		if k == "key2" {
+			key2Time = v.LastAccessed
+		}
+	}
+	rc.mutex.RUnlock()
+
+	// Verify that key1 was accessed more recently than key2
+	assert.True(t, key1Time.After(key2Time), "key1 should have been accessed more recently than key2")
+
+	// Add a new entry, should evict key2 (least recently used)
+	rc.Set("key3", 200, http.Header{}, []byte("data3"), 0)
 
 	// Check what's in the cache
 	_, key1Found := rc.Get("key1")
 	_, key2Found := rc.Get("key2")
 	_, key3Found := rc.Get("key3")
-	_, key4Found := rc.Get("key4")
+
+	t.Logf("key1Found: %v, key2Found: %v, key3Found: %v", key1Found, key2Found, key3Found)
 
 	assert.True(t, key1Found, "Most recently used entry should not be evicted")
-	assert.True(t, key2Found, "Second most recently used entry should not be evicted")
-	assert.False(t, key3Found, "Least recently used entry should be evicted")
-	assert.True(t, key4Found, "Newly added entry should be in cache")
+	assert.False(t, key2Found, "Least recently used entry should be evicted")
+	assert.True(t, key3Found, "Newly added entry should be in cache")
 }
 
 func TestCacheableCheck(t *testing.T) {

@@ -9,6 +9,11 @@ import (
 	"testing"
 )
 
+const (
+	testTenant1Name = "Tenant1"
+	testDefaultName = "Default"
+)
+
 // TenantAwareConfigTestModule is a test module that implements TenantAwareModule
 type TenantAwareConfigTestModule struct {
 	name                  string
@@ -93,7 +98,7 @@ func setupTempConfigDir(t *testing.T) string {
 	// Create tenant config files
 	tenant1Config := `{
 		"TestConfig": {
-			"Name": "Tenant1",
+			"Name": "` + testTenant1Name + `",
 			"Environment": "test",
 			"Features": {
 				"feature1": true,
@@ -147,7 +152,7 @@ func setupTestApp(t *testing.T, tempDir string) (Application, *TenantAwareConfig
 
 	// Setup TenantConfigLoader
 	loader := NewFileBasedTenantConfigLoader(TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile(`^tenant[0-9]+\.json$`),
+		ConfigNameRegex: regexp.MustCompile(`^tenant\d+\.json$`),
 		ConfigDir:       tempDir,
 	})
 	if err := app.RegisterService("tenantConfigLoader", loader); err != nil {
@@ -170,7 +175,13 @@ func setupTestApp(t *testing.T, tempDir string) (Application, *TenantAwareConfig
 }
 
 // verifyTenantConfig checks if tenant configs were loaded correctly
-func verifyTenantConfig(t *testing.T, tm *TenantAwareConfigTestModule, tenantID TenantID, expectedName, expectedEnv string, featureKey string, featureValue bool) {
+func verifyTenantConfig(
+	t *testing.T,
+	tm *TenantAwareConfigTestModule,
+	tenantID TenantID,
+	expectedName, expectedEnv, featureKey string,
+	featureValue bool,
+) {
 	t.Helper()
 
 	tenantCfg, exists := tm.tenantConfigs[tenantID]
@@ -238,7 +249,7 @@ func TestTenantAwareConfigModule(t *testing.T) {
 	loadTenantConfigs(t, tm, tenantService, app)
 
 	// Verify tenant configs were loaded correctly
-	verifyTenantConfig(t, tm, TenantID("tenant1"), "Tenant1", "test", "feature1", true)
+	verifyTenantConfig(t, tm, TenantID("tenant1"), testTenant1Name, "test", "feature1", true)
 	verifyTenantConfig(t, tm, TenantID("tenant2"), "Tenant2", "production", "feature1", false)
 
 	// Test tenant removal
@@ -297,8 +308,8 @@ func TestTenantContextWithConfig(t *testing.T) {
 		t.Fatalf("Expected *TestTenantConfig, got %T", configProvider.GetConfig())
 	}
 
-	if cfg.Name != "Tenant1" {
-		t.Errorf("Expected Name 'Tenant1', got '%s'", cfg.Name)
+	if cfg.Name != testTenant1Name {
+		t.Errorf("Expected Name '%s', got '%s'", testTenant1Name, cfg.Name)
 	}
 }
 
@@ -377,7 +388,7 @@ func TestTenantConfigMerging(t *testing.T) {
 
 	// Add a new config section
 	anotherConfig := &AnotherTestConfig{
-		ApiKey:         "test-key",
+		APIKey:         "test-key",
 		MaxConnections: 5,
 		Timeout:        30,
 	}
@@ -403,8 +414,8 @@ func TestTenantConfigMerging(t *testing.T) {
 		t.Fatalf("Expected *AnotherTestConfig, got %T", apiConfigProvider.GetConfig())
 	}
 
-	if apiCfg.ApiKey != "test-key" {
-		t.Errorf("Expected ApiKey 'test-key', got '%s'", apiCfg.ApiKey)
+	if apiCfg.APIKey != "test-key" {
+		t.Errorf("Expected APIKey 'test-key', got '%s'", apiCfg.APIKey)
 	}
 
 	// Original TestConfig section should still exist
@@ -421,7 +432,7 @@ func TestTenantAwareConfig(t *testing.T) {
 
 	// Create default config
 	defaultCfg := &TestTenantConfig{
-		Name:        "Default",
+		Name:        testDefaultName,
 		Environment: "default",
 		Features:    map[string]bool{"default": true},
 	}
@@ -469,8 +480,8 @@ func TestTenantAwareConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected *TestTenantConfig, got %T", config)
 	}
-	if testCfg.Name != "Default" {
-		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	if testCfg.Name != testDefaultName {
+		t.Errorf("Expected Name '%s', got '%s'", testDefaultName, testCfg.Name)
 	}
 
 	// Test 2: GetConfigWithContext with no tenant ID should return default config
@@ -480,8 +491,8 @@ func TestTenantAwareConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected *TestTenantConfig, got %T", config)
 	}
-	if testCfg.Name != "Default" {
-		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	if testCfg.Name != testDefaultName {
+		t.Errorf("Expected Name '%s', got '%s'", testDefaultName, testCfg.Name)
 	}
 
 	// Test 3: GetConfigWithContext with tenant1 ID should return tenant1 config
@@ -525,8 +536,8 @@ func TestTenantAwareConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected *TestTenantConfig, got %T", config)
 	}
-	if testCfg.Name != "Default" {
-		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	if testCfg.Name != testDefaultName {
+		t.Errorf("Expected Name '%s', got '%s'", testDefaultName, testCfg.Name)
 	}
 
 	// Test 6: nil default config provider
@@ -543,7 +554,7 @@ func TestTenantAwareConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected *TestTenantConfig, got %T", config)
 	}
-	if testCfg.Name != "Default" {
+	if testCfg.Name != testDefaultName {
 		t.Errorf("Expected to fall back to default config, got Name '%s'", testCfg.Name)
 	}
 }
@@ -551,7 +562,7 @@ func TestTenantAwareConfig(t *testing.T) {
 // TestTenantAwareConfigNilCases tests edge cases with nil values
 func TestTenantAwareConfigNilCases(t *testing.T) {
 	// Create default config and tenant service
-	defaultCfg := &TestTenantConfig{Name: "Default"}
+	defaultCfg := &TestTenantConfig{Name: testDefaultName}
 	defaultProvider := NewStdConfigProvider(defaultCfg)
 
 	// Test with nil tenant service but valid default config
@@ -563,8 +574,8 @@ func TestTenantAwareConfigNilCases(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected *TestTenantConfig, got %T", config)
 	}
-	if testCfg.Name != "Default" {
-		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	if testCfg.Name != testDefaultName {
+		t.Errorf("Expected Name '%s', got '%s'", testDefaultName, testCfg.Name)
 	}
 
 	// GetConfigWithContext should fall back to default when tenant service is nil
@@ -574,8 +585,8 @@ func TestTenantAwareConfigNilCases(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected *TestTenantConfig, got %T", config)
 	}
-	if testCfg.Name != "Default" {
-		t.Errorf("Expected Name 'Default', got '%s'", testCfg.Name)
+	if testCfg.Name != testDefaultName {
+		t.Errorf("Expected Name '%s', got '%s'", testDefaultName, testCfg.Name)
 	}
 
 	// Test fully nil case

@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	updatedValue = "updated"
+)
+
 type testCfg struct {
 	Str string `yaml:"str"`
 	Num int    `yaml:"num"`
@@ -225,14 +229,13 @@ func Test_updateConfig(t *testing.T) {
 		mockLogger := new(MockLogger)
 		app := &StdApplication{logger: mockLogger}
 
-		provider := ConfigProvider(NewStdConfigProvider(originalCfg))
 		origInfo := configInfo{
 			originalVal: reflect.ValueOf(originalCfg),
 			tempVal:     reflect.ValueOf(tempCfg),
 			isPtr:       true,
 		}
 
-		updateConfig(app, &provider, origInfo)
+		updateConfig(app, origInfo)
 
 		// Check the original config was updated
 		assert.Equal(t, "new", originalCfg.Str)
@@ -248,14 +251,15 @@ func Test_updateConfig(t *testing.T) {
 
 		mockLogger := new(MockLogger)
 		mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
-		app := &StdApplication{logger: mockLogger}
+		app := &StdApplication{
+			logger:      mockLogger,
+			cfgProvider: NewStdConfigProvider(originalCfg),
+		}
 
-		provider := ConfigProvider(NewStdConfigProvider(originalCfg))
+		updateConfig(app, origInfo)
 
-		updateConfig(app, &provider, origInfo)
-
-		// Check a new provider was created with the expected values
-		updated := provider.GetConfig()
+		// Check the updated provider from the app (not the original provider reference)
+		updated := app.cfgProvider.GetConfig()
 		assert.Equal(t, reflect.Struct, reflect.ValueOf(updated).Kind())
 		assert.Equal(t, "new", updated.(testCfg).Str)
 		assert.Equal(t, 42, updated.(testCfg).Num)
@@ -350,7 +354,7 @@ func Test_loadAppConfig(t *testing.T) {
 				// Setup for main config
 				feeder.On("Feed", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 					cfg := args.Get(0).(*testCfg)
-					cfg.Str = "updated"
+					cfg.Str = updatedValue
 					cfg.Num = 42
 				})
 				// Setup for section config
@@ -364,7 +368,7 @@ func Test_loadAppConfig(t *testing.T) {
 			expectError: false,
 			validateResult: func(t *testing.T, app *StdApplication) {
 				mainCfg := app.cfgProvider.GetConfig().(*testCfg)
-				assert.Equal(t, "updated", mainCfg.Str)
+				assert.Equal(t, updatedValue, mainCfg.Str)
 				assert.Equal(t, 42, mainCfg.Num)
 
 				sectionCfg := app.cfgSections["section1"].GetConfig().(*testSectionCfg)
@@ -450,7 +454,7 @@ func Test_loadAppConfig(t *testing.T) {
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 					cfg := args.Get(0).(*testCfg)
-					cfg.Str = "updated"
+					cfg.Str = updatedValue
 					cfg.Num = 42
 				})
 				feeder.On("FeedKey", "section1", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
@@ -463,7 +467,7 @@ func Test_loadAppConfig(t *testing.T) {
 			expectError: false,
 			validateResult: func(t *testing.T, app *StdApplication) {
 				mainCfg := app.cfgProvider.GetConfig()
-				assert.Equal(t, "updated", mainCfg.(testCfg).Str)
+				assert.Equal(t, updatedValue, mainCfg.(testCfg).Str)
 				assert.Equal(t, 42, mainCfg.(testCfg).Num)
 
 				sectionCfg := app.cfgSections["section1"].GetConfig()

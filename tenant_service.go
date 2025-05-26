@@ -1,3 +1,5 @@
+// Package modular provides tenant-aware functionality for multi-tenant applications.
+// This file contains the core tenant service implementation.
 package modular
 
 import (

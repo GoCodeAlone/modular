@@ -2,14 +2,16 @@ package modular
 
 import (
 	"fmt"
-	"github.com/GoCodeAlone/modular/feeders"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
+// TenantConfigParams defines parameters for loading tenant configurations
 type TenantConfigParams struct {
 	// ConfigNameRegex is a regex pattern for the config file names (e.g. "^tenant[0-9]+\\.json$").
 	ConfigNameRegex *regexp.Regexp
@@ -62,7 +64,7 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 		var feederSlice []Feeder
 		switch strings.ToLower(ext) { // Ensure case-insensitive extension matching
 		case ".json":
-			feederSlice = append(feederSlice, feeders.NewJsonFeeder(configPath))
+			feederSlice = append(feederSlice, feeders.NewJSONFeeder(configPath))
 		case ".yaml", ".yml":
 			feederSlice = append(feederSlice, feeders.NewYamlFeeder(configPath))
 		case ".toml":

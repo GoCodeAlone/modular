@@ -1,3 +1,5 @@
+// Package modular provides tenant functionality for multi-tenant applications.
+// This file contains tenant-related types and interfaces.
 package modular
 
 import (
