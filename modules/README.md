@@ -6,12 +6,15 @@ This directory contains a collection of reusable modules for the [Modular](https
 
 ## Available Modules
 
-| Module                     | Description                              | Documentation                           |
-|----------------------------|------------------------------------------|-----------------------------------------|
-| [chimux](./chimux)         | Chi router integration for Modular       | [Documentation](./chimux/README.md)     |
-| [database](./database)     | Database connectivity and SQL operations | [Documentation](./database/README.md)   |
-| [jsonschema](./jsonschema) | Provides JSON Schema validation services | [Documentation](./jsonschema/README.md) |
-| [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./reverseproxy/README.md) |
+| Module                     | Description                              | Configuration                           | Dependencies                           |
+|----------------------------|------------------------------------------|-----------------------------------------|----------------------------------------|
+| [chimux](./chimux)         | Chi router integration for Modular       | [Yes](./chimux/config.go)               | -                                      |
+| [database](./database)     | Database connectivity with SQL operations | [Yes](./database/config.go)            | -                                      |
+| [httpclient](./httpclient) | HTTP client with logging and middleware  | [Yes](./httpclient/config.go)          | -                                      |
+| [httpserver](./httpserver) | HTTP server implementation for Modular   | [Yes](./httpserver/config.go)          | -                                      |
+| [jsonschema](./jsonschema) | Provides JSON Schema validation services | No                                     | -                                      |
+| [letsencrypt](./letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Yes](./letsencrypt/config.go) | [httpserver](./httpserver)             |
+| [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Yes](./reverseproxy/config.go)        | -                                      |
 
 ## Using Modules
 

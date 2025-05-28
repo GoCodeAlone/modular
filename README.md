@@ -30,7 +30,10 @@ Modular comes with a collection of reusable modules that you can incorporate int
 |------------------------------------|------------------------------------------|-------------------------------------------------|
 | [chimux](./modules/chimux)         | Chi router integration for Modular       | [Documentation](./modules/chimux/README.md)     |
 | [database](./modules/database)     | Database connectivity and SQL operations | [Documentation](./modules/database/README.md)   |
+| [httpclient](./modules/httpclient) | HTTP client with logging and middleware  | [Documentation](./modules/httpclient/README.md) |
+| [httpserver](./modules/httpserver) | HTTP server implementation for Modular   | [Documentation](./modules/httpserver/README.md) |
 | [jsonschema](./modules/jsonschema) | JSON Schema validation services          | [Documentation](./modules/jsonschema/README.md) |
+| [letsencrypt](./modules/letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Documentation](./modules/letsencrypt/README.md) |
 | [reverseproxy](./modules/reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./modules/reverseproxy/README.md) |
 
 For more information about the available modules, see the [modules directory](./modules).
