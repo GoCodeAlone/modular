@@ -3,14 +3,13 @@ name: Examples CI
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'examples/**'
-      - '.github/workflows/examples-ci.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'examples/**'
       - '.github/workflows/examples-ci.yml'
+  # Allow manual trigger
+  workflow_dispatch:
 
 env:
   GO_VERSION: '^1.23.5'
@@ -26,6 +25,7 @@ jobs:
           - reverse-proxy
           - http-client
           - advanced-logging
+          - multi-tenant-app
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,7 +98,7 @@ jobs:
             
             kill $PID 2>/dev/null || true
             
-          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ]; then
+          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "multi-tenant-app" ]; then
             # These apps just need to start without immediate errors
             timeout 5s ./example &
             PID=$!

@@ -185,7 +185,7 @@ jobs:
 
   # This job summarizes the results
   modules-summary:
-    needs: [test-modules, verify-modules, lint-modules]
+    needs: [test-modules, verify-modules, lint-modules, detect-modules]
     if: always()
     runs-on: ubuntu-latest
     steps:
