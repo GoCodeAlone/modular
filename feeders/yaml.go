@@ -2,6 +2,7 @@ package feeders
 
 import (
 	"fmt"
+
 	"github.com/golobby/config/v3/pkg/feeder"
 	"gopkg.in/yaml.v3"
 )
@@ -11,6 +12,7 @@ type YamlFeeder struct {
 	feeder.Yaml
 }
 
+// NewYamlFeeder creates a new YamlFeeder that reads from the specified YAML file
 func NewYamlFeeder(filePath string) YamlFeeder {
 	return YamlFeeder{feeder.Yaml{Path: filePath}}
 }
@@ -28,7 +30,6 @@ func (y YamlFeeder) FeedKey(key string, target interface{}) error {
 	// Look for the specific key
 	value, exists := allData[key]
 	if !exists {
-		//return fmt.Errorf("key '%s' not found in YAML data %+v", key, allData)
 		return nil
 	}
 

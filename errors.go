@@ -8,30 +8,28 @@ import (
 var (
 	// Configuration errors
 	ErrConfigSectionNotFound = errors.New("config section not found")
-	ErrConfigFeederError     = errors.New("config: feeder error")
-	ErrConfigSetupError      = errors.New("config: setup error")
-	ErrConfigNilPointer      = errors.New("cannot create temp config: config pointer is nil")
-	ErrConfigNil             = errors.New("cannot create temp config: config is nil")
 	ErrApplicationNil        = errors.New("application is nil")
 	ErrConfigProviderNil     = errors.New("failed to load app config: config provider is nil")
 	ErrConfigSectionError    = errors.New("failed to load app config: error triggered by section")
 
 	// Config validation errors
-	ErrConfigNotPointer           = errors.New("config must be a non-nil pointer")
+	ErrConfigNil                  = errors.New("config is nil")
+	ErrConfigNotPointer           = errors.New("config must be a pointer")
 	ErrConfigNotStruct            = errors.New("config must be a struct")
-	ErrConfigRequiredFieldMissing = errors.New("required field(s) missing in config")
-	ErrConfigValidationFailed     = errors.New("configuration validation failed")
-	ErrConfigInvalidFormat        = errors.New("invalid configuration format")
-	ErrDefaultValueOverflowsInt   = errors.New("default integer value overflows field type")
-	ErrDefaultValueOverflowsUint  = errors.New("default unsigned integer value overflows field type")
-	ErrDefaultValueOverflowsFloat = errors.New("default float value overflows field type")
+	ErrConfigRequiredFieldMissing = errors.New("required field is missing")
+	ErrConfigValidationFailed     = errors.New("config validation failed")
 	ErrUnsupportedTypeForDefault  = errors.New("unsupported type for default value")
+	ErrDefaultValueParseError     = errors.New("failed to parse default value")
+	ErrDefaultValueOverflowsInt   = errors.New("default value overflows int")
+	ErrDefaultValueOverflowsUint  = errors.New("default value overflows uint")
+	ErrDefaultValueOverflowsFloat = errors.New("default value overflows float")
+	ErrInvalidFieldKind           = errors.New("invalid field kind")
+	ErrIncompatibleFieldKind      = errors.New("incompatible field kind")
+	ErrUnexpectedFieldKind        = errors.New("unexpected field kind")
 	ErrUnsupportedFormatType      = errors.New("unsupported format type")
-
-	// Field kind errors
-	ErrInvalidFieldKind      = errors.New("invalid field kind")
-	ErrIncompatibleFieldKind = errors.New("incompatible field kind")
-	ErrUnexpectedFieldKind   = errors.New("unexpected field kind")
+	ErrConfigFeederError          = errors.New("config feeder error")
+	ErrConfigSetupError           = errors.New("config setup error")
+	ErrConfigNilPointer           = errors.New("config is nil pointer")
 
 	// Service registry errors
 	ErrServiceAlreadyRegistered = errors.New("service already registered")

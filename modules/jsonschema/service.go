@@ -3,8 +3,9 @@ package jsonschema
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/santhosh-tekuri/jsonschema/v6"
 	"io"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // Schema represents a compiled JSON schema

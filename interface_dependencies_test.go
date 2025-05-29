@@ -94,7 +94,7 @@ func (m *RouterProviderModule) Name() string {
 	return m.name
 }
 
-func (m *RouterProviderModule) Init(app Application) error {
+func (m *RouterProviderModule) Init(_ Application) error {
 	return nil
 }
 
@@ -128,7 +128,7 @@ func (m *RouterConsumerModule) Name() string {
 	return m.name
 }
 
-func (m *RouterConsumerModule) Init(app Application) error {
+func (m *RouterConsumerModule) Init(_ Application) error {
 	return nil
 }
 
@@ -153,7 +153,7 @@ func (m *RouterConsumerModule) RequiresServices() []ServiceDependency {
 }
 
 func (m *RouterConsumerModule) Constructor() ModuleConstructor {
-	return func(app Application, services map[string]any) (Module, error) {
+	return func(_ Application, services map[string]any) (Module, error) {
 		if router, ok := services["router"].(Router); ok {
 			// Mark that we received the router service
 			m.routerInjected = true
@@ -169,10 +169,10 @@ func (m *RouterConsumerModule) Constructor() ModuleConstructor {
 	}
 }
 
-func (m *RouterConsumerModule) Start(ctx context.Context) error {
+func (m *RouterConsumerModule) Start(_ context.Context) error {
 	return nil
 }
 
-func (m *RouterConsumerModule) Stop(ctx context.Context) error {
+func (m *RouterConsumerModule) Stop(_ context.Context) error {
 	return nil
 }

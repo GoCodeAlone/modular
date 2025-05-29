@@ -38,3 +38,4 @@ go.work.sum
 .idea
 .DS_Store
 *.log
+.vscode/settings.json

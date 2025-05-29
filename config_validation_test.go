@@ -24,7 +24,7 @@ type ValidationTestConfig struct {
 type NestedTestConfig struct {
 	Enabled bool   `yaml:"enabled" default:"true" desc:"Enable the nested feature"`
 	Timeout int    `yaml:"timeout" default:"30" desc:"Timeout in seconds"`
-	ApiKey  string `yaml:"apiKey" required:"true" desc:"API key for authentication"`
+	APIKey  string `yaml:"apiKey" required:"true" desc:"API key for authentication"`
 }
 
 // Implement ConfigValidator
@@ -115,7 +115,7 @@ func TestValidateConfigRequired(t *testing.T) {
 				Port:        8080,
 				Environment: "dev",
 				NestedCfg: &NestedTestConfig{
-					ApiKey: "test-key",
+					APIKey: "test-key",
 				},
 			},
 			wantErr: false,
@@ -125,7 +125,7 @@ func TestValidateConfigRequired(t *testing.T) {
 			cfg: &ValidationTestConfig{
 				Port: 8080,
 				NestedCfg: &NestedTestConfig{
-					ApiKey: "test-key",
+					APIKey: "test-key",
 				},
 			},
 			wantErr:  true,
@@ -139,14 +139,14 @@ func TestValidateConfigRequired(t *testing.T) {
 				NestedCfg:   &NestedTestConfig{},
 			},
 			wantErr:  true,
-			errorMsg: "ApiKey",
+			errorMsg: "APIKey",
 		},
 		{
 			name: "missing port",
 			cfg: &ValidationTestConfig{
 				Environment: "dev",
 				NestedCfg: &NestedTestConfig{
-					ApiKey: "test-key",
+					APIKey: "test-key",
 				},
 			},
 			wantErr:  true,
@@ -180,7 +180,7 @@ func TestValidateConfig(t *testing.T) {
 				Port:        8080,
 				Environment: "dev",
 				NestedCfg: &NestedTestConfig{
-					ApiKey: "test-key",
+					APIKey: "test-key",
 				},
 			},
 			wantErr: false,
@@ -191,7 +191,7 @@ func TestValidateConfig(t *testing.T) {
 				Port:        80, // Low privileged port, custom validation should fail
 				Environment: "dev",
 				NestedCfg: &NestedTestConfig{
-					ApiKey: "test-key",
+					APIKey: "test-key",
 				},
 			},
 			wantErr: true,
@@ -254,7 +254,12 @@ func TestGenerateSampleConfig(t *testing.T) {
 func TestSaveSampleConfig(t *testing.T) {
 	cfg := &ValidationTestConfig{}
 	tempFile := os.TempDir() + "/sample_config.yaml"
-	defer os.Remove(tempFile)
+	defer func() {
+		if err := os.Remove(tempFile); err != nil {
+			// Log error but don't fail the test
+			t.Logf("Failed to remove temp file: %v", err)
+		}
+	}()
 
 	err := SaveSampleConfig(cfg, "yaml", tempFile)
 	require.NoError(t, err)

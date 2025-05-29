@@ -1,10 +1,10 @@
-# Modular Modules
+# Modular Framework - Available Modules
 
-This directory contains a collection of reusable modules for the [Modular](https://github.com/GoCodeAlone/modular) framework. Each module is independently versioned and can be imported separately.
+This directory contains all the pre-built modules available in the Modular framework. Each module is designed to be plug-and-play, well-documented, and production-ready.
 
 [![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
 
-## Available Modules
+## 📋 Module Directory
 
 | Module                     | Description                              | Configuration                           | Dependencies                           |
 |----------------------------|------------------------------------------|-----------------------------------------|----------------------------------------|
@@ -16,40 +16,53 @@ This directory contains a collection of reusable modules for the [Modular](https
 | [letsencrypt](./letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Yes](./letsencrypt/config.go) | [httpserver](./httpserver)             |
 | [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Yes](./reverseproxy/config.go)        | -                                      |
 
-## Using Modules
+### Core Modules
+- **[Auth](auth/README.md)** - Authentication and authorization with JWT, sessions, password hashing, and OAuth2/OIDC support
+- **[Cache](cache/README.md)** - Multi-backend caching solution with Redis and in-memory implementations
+- **[Database](database/README.md)** - Database connectivity and management with support for multiple drivers
+- **[Event Bus](eventbus/README.md)** - Asynchronous event handling and pub/sub messaging system
 
-Each module can be imported and used independently:
+### Network & Communication
+- **[Chi Router (Chimux)](chimux/README.md)** - HTTP routing with Chi router integration and comprehensive middleware support
+- **[Reverse Proxy](reverseproxy/README.md)** - Advanced reverse proxy with load balancing, circuit breaker, and health monitoring
 
-```go
-import (
-    "github.com/GoCodeAlone/modular"
-    "github.com/GoCodeAlone/modular/modules/jsonschema"
-    "github.com/GoCodeAlone/modular/modules/database"
-)
+### Utilities & Processing
+- **[JSON Schema](jsonschema/README.md)** - JSON schema validation and data processing capabilities
+- **[Scheduler](scheduler/README.md)** - Job scheduling system with cron expressions and worker pool management
 
-// Register the modules with your Modular application
-app.RegisterModule(jsonschema.NewModule())
-app.RegisterModule(database.NewModule())
-```
+## 🚀 Quick Start
 
-## Module Structure
+Each module follows the same integration pattern:
 
-All modules in this directory follow a common structure:
+1. **Install the module** (if using as separate dependency)
+2. **Configure** via YAML, environment variables, or programmatically
+3. **Register** with your modular application
+4. **Use** the module's services in your application
 
-- Implement the `modular.Module` interface
-- Provide a `NewModule()` constructor function
-- Include comprehensive tests
-- Include a README.md with usage instructions
+## 📖 Module Structure
 
-## Contributing New Modules
+Every module includes:
+- **README.md** - Complete documentation with examples
+- **config.go** - Configuration structures and validation
+- **module.go** - Module implementation and service registration
+- **service.go** - Core service implementation
+- **Tests** - Comprehensive test coverage
 
-If you'd like to contribute a module:
+## 🔧 Configuration
 
-1. Create a new directory in `modules/` with your module name
-2. Implement the `modular.Module` interface
-3. Include thorough tests and documentation
-4. Submit a pull request
+All modules support multiple configuration sources:
+- YAML configuration files
+- Environment variables
+- Programmatic configuration
+- Tenant-specific overrides
 
-## License
+## 🤝 Contributing
 
-All modules are licensed under the [MIT License](../LICENSE).
+When creating new modules, please follow the established patterns and ensure:
+- Comprehensive documentation
+- Full test coverage
+- Configuration validation
+- Error handling best practices
+- Consistent API design
+
+For more information, see the main [project documentation](../README.md).

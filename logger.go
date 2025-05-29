@@ -1,5 +1,6 @@
 package modular
 
+// Logger defines the interface for application logging
 type Logger interface {
 	Info(msg string, args ...any)
 	Error(msg string, args ...any)

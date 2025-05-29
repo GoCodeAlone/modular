@@ -1,12 +1,13 @@
 package goldenmodule
 
 import (
-	"context" 
+	"context"
+	"fmt"
 	"testing"
-	"github.com/GoCodeAlone/modular" 
+
+	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require" 
-	"fmt" 
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewGoldenModuleModule(t *testing.T) {
@@ -18,7 +19,6 @@ func TestNewGoldenModuleModule(t *testing.T) {
 	assert.Equal(t, "goldenmodule", modImpl.Name())
 	assert.NotNil(t, modImpl.tenantConfigs)
 }
-
 
 func TestModule_RegisterConfig(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
@@ -33,22 +33,20 @@ func TestModule_RegisterConfig(t *testing.T) {
 	assert.NoError(t, err, "Config section should be registered")
 }
 
-
 func TestModule_Init(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
 	// Create a mock application
 	mockApp := NewMockApplication()
-	
+
 	// Register mock services if needed for Init
 	// mockService := &MockMyService{}
 	// mockApp.RegisterService("requiredService", mockService)
-	
+
 	// Test Init
 	err := module.Init(mockApp)
 	assert.NoError(t, err)
 	// Add assertions here to check the state of the module after Init
 }
-
 
 func TestModule_Start(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
@@ -61,8 +59,6 @@ func TestModule_Start(t *testing.T) {
 	assert.NoError(t, err)
 	// Add assertions here to check the state of the module after Start
 }
-
-
 
 func TestModule_Stop(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
@@ -77,14 +73,11 @@ func TestModule_Stop(t *testing.T) {
 	// Add assertions here to check the state of the module after Stop
 }
 
-
-
 func TestModule_TenantLifecycle(t *testing.T) {
 	module := NewGoldenModuleModule().(*GoldenModuleModule)
-	
+
 	// Initialize base config if needed for tenant fallback
 	module.config = &Config{}
-	
 
 	tenantID := modular.TenantID("test-tenant")
 
@@ -127,9 +120,10 @@ func (m *MockTenantService) GetTenantConfig(tid modular.TenantID, section string
 	return nil, fmt.Errorf("mock config not found for tenant %s, section %s", tid, section)
 }
 func (m *MockTenantService) GetTenants() []modular.TenantID { return nil } // Not needed for this test
-func (m *MockTenantService) RegisterTenant(modular.TenantID, map[string]modular.ConfigProvider) error { return nil } // Not needed
-func (m *MockTenantService) RemoveTenant(modular.TenantID) error { return nil } // Not needed
+func (m *MockTenantService) RegisterTenant(modular.TenantID, map[string]modular.ConfigProvider) error {
+	return nil
+}                                                                                      // Not needed
+func (m *MockTenantService) RemoveTenant(modular.TenantID) error                       { return nil } // Not needed
 func (m *MockTenantService) RegisterTenantAwareModule(modular.TenantAwareModule) error { return nil } // Not needed
-
 
 // Add more tests for specific module functionality

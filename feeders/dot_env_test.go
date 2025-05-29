@@ -15,12 +15,17 @@ DB_USER=postgres
 DB_PASS=secret
 `)
 
-	tempFile := "/tmp/test.env"
-	err := os.WriteFile(filepath.Join(tempFile), envContent, 0600)
+	// Use os.TempDir() for OS-agnostic temp directory
+	tempFile := filepath.Join(os.TempDir(), "test.env")
+	err := os.WriteFile(tempFile, envContent, 0600)
 	if err != nil {
 		t.Fatalf("Failed to create test .env file: %v", err)
 	}
-	defer os.Remove(tempFile)
+	defer func() {
+		if removeErr := os.Remove(tempFile); removeErr != nil {
+			t.Logf("Failed to remove temp file: %v", removeErr)
+		}
+	}()
 
 	t.Run("read from .env file", func(t *testing.T) {
 		type Config struct {
@@ -55,7 +60,8 @@ DB_PASS=secret
 
 	t.Run("non-existent .env file", func(t *testing.T) {
 		var config struct{}
-		feeder := NewDotEnvFeeder("/tmp/nonexistent.env")
+		// Also use filepath.Join for the nonexistent file
+		feeder := NewDotEnvFeeder(filepath.Join(os.TempDir(), "nonexistent.env"))
 		err = feeder.Feed(&config)
 
 		if err == nil {

@@ -2,10 +2,11 @@ package router
 
 import (
 	"context"
+	"net/http"
+
 	"github.com/GoCodeAlone/modular"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"net/http"
 )
 
 const configSection = "router"

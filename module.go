@@ -1,3 +1,6 @@
+// Package modular provides a flexible, modular application framework for Go.
+// It supports configuration management, dependency injection, service registration,
+// and multi-tenant functionality.
 package modular
 
 import "context"
@@ -46,8 +49,10 @@ type Constructable interface {
 	Constructor() ModuleConstructor
 }
 
+// ModuleConstructor is a function type that creates module instances with dependency injection
 type ModuleConstructor func(app Application, services map[string]any) (Module, error)
 
+// ModuleWithConstructor defines modules that support constructor-based dependency injection
 type ModuleWithConstructor interface {
 	Module
 	Constructable

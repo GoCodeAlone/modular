@@ -1,5 +1,6 @@
 package feeders
 
+// TenantAffixedEnvFeeder is a feeder that reads environment variables with tenant-specific prefixes and suffixes
 type TenantAffixedEnvFeeder struct {
 	*AffixedEnvFeeder
 	SetPrefixFunc func(string)

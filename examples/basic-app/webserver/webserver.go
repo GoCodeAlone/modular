@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/GoCodeAlone/modular"
 	"net/http"
 	"reflect"
 	"time"
+
+	"github.com/GoCodeAlone/modular"
 )
 
 const configSection = "webserver"

@@ -1,16 +1,21 @@
+// Package feeders provides configuration feeders for reading data from various sources
+// including environment variables, JSON, YAML, TOML files, and .env files.
 package feeders
 
 import (
 	"errors"
 	"fmt"
-	"github.com/golobby/cast"
 	"os"
 	"reflect"
 	"strings"
-	"unsafe"
+
+	"github.com/golobby/cast"
 )
 
+// ErrEnvInvalidStructure indicates that the provided structure is not valid for environment variable processing
 var ErrEnvInvalidStructure = errors.New("env: invalid structure")
+
+// ErrEnvEmptyPrefixAndSuffix indicates that both prefix and suffix cannot be empty
 var ErrEnvEmptyPrefixAndSuffix = errors.New("env: prefix or suffix cannot be empty")
 
 // AffixedEnvFeeder is a feeder that reads environment variables with a prefix and/or suffix
@@ -19,10 +24,12 @@ type AffixedEnvFeeder struct {
 	Suffix string
 }
 
+// NewAffixedEnvFeeder creates a new AffixedEnvFeeder with the specified prefix and suffix
 func NewAffixedEnvFeeder(prefix, suffix string) AffixedEnvFeeder {
 	return AffixedEnvFeeder{Prefix: prefix, Suffix: suffix}
 }
 
+// Feed reads environment variables and populates the provided structure
 func (f AffixedEnvFeeder) Feed(structure interface{}) error {
 	inputType := reflect.TypeOf(structure)
 	if inputType != nil {
@@ -54,7 +61,7 @@ func processStructFields(rv reflect.Value, prefix, suffix string) error {
 		field := rv.Field(i)
 		fieldType := rv.Type().Field(i)
 
-		if err := processField(field, fieldType, prefix, suffix); err != nil {
+		if err := processField(field, &fieldType, prefix, suffix); err != nil {
 			return fmt.Errorf("error in field '%s': %w", fieldType.Name, err)
 		}
 	}
@@ -62,7 +69,7 @@ func processStructFields(rv reflect.Value, prefix, suffix string) error {
 }
 
 // processField handles a single struct field
-func processField(field reflect.Value, fieldType reflect.StructField, prefix, suffix string) error {
+func processField(field reflect.Value, fieldType *reflect.StructField, prefix, suffix string) error {
 	// Handle nested structs
 	switch field.Kind() {
 	case reflect.Struct:
@@ -110,7 +117,10 @@ func setFieldValue(field reflect.Value, strValue string) error {
 		return fmt.Errorf("cannot convert value to type %v: %w", field.Type(), err)
 	}
 
-	ptr := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
-	ptr.Set(reflect.ValueOf(convertedValue))
+	if !field.CanSet() {
+		return fmt.Errorf("field of type %v cannot be set", field.Type())
+	}
+
+	field.Set(reflect.ValueOf(convertedValue))
 	return nil
 }

@@ -82,7 +82,7 @@ func TestGetTenantIDFromContext(t *testing.T) {
 
 // TestTenantInterfaces verifies that the interfaces in tenant.go are defined correctly
 // This test doesn't actually test functionality but ensures the interfaces have the expected methods
-func TestTenantInterfaces(t *testing.T) {
+func TestTenantInterfaces(_ *testing.T) {
 	// Verify TenantService interface methods
 	var _ TenantService = &mockTenantService{}
 
@@ -123,7 +123,7 @@ func (m *mockTenantService) RegisterTenant(TenantID, map[string]ConfigProvider) 
 	return nil
 }
 
-func (m *mockTenantService) RegisterTenantAwareModule(module TenantAwareModule) error {
+func (m *mockTenantService) RegisterTenantAwareModule(_ TenantAwareModule) error {
 	return nil
 }
 
