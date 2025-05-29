@@ -56,16 +56,14 @@ func (h *CompositeHandler) ConfigureCircuitBreakers(globalConfig CircuitBreakerC
 		if backendConfig, exists := backendConfigs[backend.ID]; exists {
 			// Use backend-specific configuration if it exists
 			if backendConfig.Enabled {
-				resetTimeout := time.Duration(backendConfig.ResetTimeoutSeconds) * time.Second
-				h.circuitBreakers[backend.ID] = NewCircuitBreaker(backendConfig.FailureThreshold, resetTimeout)
+				h.circuitBreakers[backend.ID] = NewCircuitBreaker(backend.ID, nil)
 			} else {
 				// Circuit breaker is explicitly disabled for this backend
 				h.circuitBreakers[backend.ID] = nil
 			}
 		} else if globalConfig.Enabled {
 			// Use global configuration
-			resetTimeout := time.Duration(globalConfig.ResetTimeoutSeconds) * time.Second
-			h.circuitBreakers[backend.ID] = NewCircuitBreaker(globalConfig.FailureThreshold, resetTimeout)
+			h.circuitBreakers[backend.ID] = NewCircuitBreaker(backend.ID, nil)
 		} else {
 			// Circuit breaker is disabled globally
 			h.circuitBreakers[backend.ID] = nil

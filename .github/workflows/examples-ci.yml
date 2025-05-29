@@ -1,0 +1,174 @@
+name: Examples CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'examples/**'
+      - '.github/workflows/examples-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'examples/**'
+      - '.github/workflows/examples-ci.yml'
+
+env:
+  GO_VERSION: '^1.23.5'
+
+jobs:
+  validate-examples:
+    name: Validate Examples
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: 
+          - basic-app
+          - reverse-proxy
+          - http-client
+          - advanced-logging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Validate example structure
+        run: |
+          cd examples/${{ matrix.example }}
+          
+          # Check required files exist
+          if [ ! -f "go.mod" ]; then
+            echo "❌ Missing go.mod in ${{ matrix.example }}"
+            exit 1
+          fi
+          
+          if [ ! -f "config.yaml" ]; then
+            echo "❌ Missing config.yaml in ${{ matrix.example }}"
+            exit 1
+          fi
+          
+          if [ ! -f "main.go" ] && [ ! -f "$(basename $(pwd)).go" ]; then
+            echo "❌ Missing main Go file in ${{ matrix.example }}"
+            exit 1
+          fi
+          
+          echo "✅ Required files found in ${{ matrix.example }}"
+
+      - name: Build example
+        run: |
+          cd examples/${{ matrix.example }}
+          
+          # Use GOWORK=off to treat each example as independent
+          echo "🔨 Building ${{ matrix.example }}..."
+          GOWORK=off go mod download
+          GOWORK=off go mod verify
+          GOWORK=off go build -v .
+          
+          echo "✅ ${{ matrix.example }} builds successfully"
+
+      - name: Test example startup
+        run: |
+          cd examples/${{ matrix.example }}
+          
+          echo "🚀 Testing ${{ matrix.example }} startup..."
+          
+          # Build the example first
+          GOWORK=off go build -o example .
+          
+          # Start the example in background and test it can start
+          if [ "${{ matrix.example }}" = "basic-app" ]; then
+            # Basic app just needs to start and respond to health check
+            timeout 10s ./example &
+            PID=$!
+            sleep 3
+            
+            # Test health endpoint
+            if curl -f http://localhost:8080/health; then
+              echo "✅ basic-app health check passed"
+            else
+              echo "❌ basic-app health check failed"
+              kill $PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            kill $PID 2>/dev/null || true
+            
+          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ]; then
+            # These apps just need to start without immediate errors
+            timeout 5s ./example &
+            PID=$!
+            sleep 3
+            
+            # Check if process is still running (no immediate crash)
+            if kill -0 $PID 2>/dev/null; then
+              echo "✅ ${{ matrix.example }} started successfully"
+              kill $PID 2>/dev/null || true
+            else
+              echo "❌ ${{ matrix.example }} failed to start or crashed immediately"
+              exit 1
+            fi
+          fi
+          
+          echo "✅ ${{ matrix.example }} startup test passed"
+
+      - name: Verify go.mod configuration
+        run: |
+          cd examples/${{ matrix.example }}
+          
+          echo "🔍 Verifying go.mod configuration for ${{ matrix.example }}..."
+          
+          # Check that replace directives point to correct paths
+          if ! grep -q "replace.*=> ../../" go.mod; then
+            echo "❌ Missing or incorrect replace directive in ${{ matrix.example }}/go.mod"
+            echo "Expected: replace github.com/GoCodeAlone/modular => ../../"
+            cat go.mod
+            exit 1
+          fi
+          
+          # Verify module name matches directory
+          MODULE_NAME=$(grep "^module " go.mod | awk '{print $2}')
+          EXPECTED_NAME="${{ matrix.example }}"
+          
+          if [ "$MODULE_NAME" != "$EXPECTED_NAME" ]; then
+            echo "❌ Module name mismatch in ${{ matrix.example }}"
+            echo "Expected: $EXPECTED_NAME"
+            echo "Found: $MODULE_NAME"
+            exit 1
+          fi
+          
+          echo "✅ go.mod configuration verified for ${{ matrix.example }}"
+
+  examples-overview:
+    name: Examples Overview
+    runs-on: ubuntu-latest
+    needs: validate-examples
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate examples summary
+        run: |
+          echo "# 📋 Examples Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All examples have been validated successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 Validated Examples" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          cd examples
+          for example in */; do
+            example=${example%/}
+            echo "- **$example**: ✅ Build and startup tests passed" >> $GITHUB_STEP_SUMMARY
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🧪 Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- Structure validation: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Build verification: ✅" >> $GITHUB_STEP_SUMMARY  
+          echo "- Startup testing: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Configuration validation: ✅" >> $GITHUB_STEP_SUMMARY

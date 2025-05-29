@@ -1,0 +1,57 @@
+# HTTP Client Example Configuration
+
+# ChiMux router configuration
+chimux:
+  basepath: ""
+  allowed_origins:
+    - "*"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+  allow_credentials: false
+  max_age: 300
+
+# HTTP Client configuration with advanced features
+httpclient:
+  # Connection pooling settings
+  max_idle_conns: 100
+  max_idle_conns_per_host: 10
+  idle_conn_timeout: 90
+  
+  # Timeout settings
+  request_timeout: 30
+  tls_timeout: 10
+  
+  # Other settings
+  disable_compression: false
+  disable_keep_alives: false
+  verbose: true
+  
+  # Verbose logging options
+  verbose_options:
+    log_headers: false
+    log_body: false
+    max_body_log_size: 1024
+
+# HTTP Server configuration  
+httpserver:
+  host: "localhost"
+  port: 8080
+  read_timeout: 30
+  write_timeout: 30
+  idle_timeout: 120
+
+# Reverse proxy configuration with httpclient integration
+reverseproxy:
+  backend_services:
+    httpbin: "https://httpbin.org"
+  routes:
+    "/proxy/httpbin": "httpbin"
+    "/proxy/httpbin/*": "httpbin"
+  default_backend: "httpbin"

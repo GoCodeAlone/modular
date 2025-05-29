@@ -62,9 +62,18 @@ func TestModule_Init(t *testing.T) {
 
 	// Verify module provides the router service
 	services := module.ProvidesServices()
-	assert.Len(t, services, 1)
-	assert.Equal(t, ServiceName, services[0].Name)
-	assert.Equal(t, module, services[0].Instance)
+	assert.GreaterOrEqual(t, len(services), 1, "Should provide at least one service")
+
+	// Check that the main service is provided
+	var mainServiceFound bool
+	for _, service := range services {
+		if service.Name == ServiceName {
+			mainServiceFound = true
+			assert.Equal(t, module, service.Instance)
+			break
+		}
+	}
+	assert.True(t, mainServiceFound, "Main service should be provided")
 }
 
 func TestModule_RouterFunctionality(t *testing.T) {

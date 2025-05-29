@@ -175,6 +175,16 @@ func (m *ChiMuxModule) ProvidesServices() []modular.ServiceProvider {
 			Description: "Chi router service for HTTP routing",
 			Instance:    m,
 		},
+		{
+			Name:        "router",
+			Description: "Basic router service interface",
+			Instance:    m,
+		},
+		{
+			Name:        "chi.router",
+			Description: "Full Chi router with Route/Group support",
+			Instance:    m,
+		},
 	}
 }
 
@@ -283,19 +293,14 @@ func (m *ChiMuxModule) Options(pattern string, handler http.HandlerFunc) {
 	m.router.Options(pattern, handler)
 }
 
-// Route creates a new sub-router for the given pattern
-func (m *ChiMuxModule) Route(pattern string, fn func(r chi.Router)) {
-	m.router.Route(pattern, fn)
-}
-
 // Mount attaches another http.Handler at the given pattern
 func (m *ChiMuxModule) Mount(pattern string, handler http.Handler) {
 	m.router.Mount(pattern, handler)
 }
 
 // Use appends middleware to the chain
-func (m *ChiMuxModule) Use(middleware ...func(http.Handler) http.Handler) {
-	m.router.Use(middleware...)
+func (m *ChiMuxModule) Use(middlewares ...func(http.Handler) http.Handler) {
+	m.router.Use(middlewares...)
 }
 
 // Handle registers a handler for a specific pattern
@@ -334,6 +339,56 @@ func (m *ChiMuxModule) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// If no base path, serve the request directly
 	m.router.ServeHTTP(w, r)
+}
+
+// Chi Router methods - delegate to the underlying router
+func (m *ChiMuxModule) Route(pattern string, fn func(chi.Router)) chi.Router {
+	return m.router.Route(pattern, fn)
+}
+
+func (m *ChiMuxModule) Group(fn func(chi.Router)) chi.Router {
+	return m.router.Group(fn)
+}
+
+func (m *ChiMuxModule) With(middlewares ...func(http.Handler) http.Handler) chi.Router {
+	return m.router.With(middlewares...)
+}
+
+func (m *ChiMuxModule) Method(method, pattern string, h http.Handler) {
+	m.router.Method(method, pattern, h)
+}
+
+func (m *ChiMuxModule) MethodFunc(method, pattern string, h http.HandlerFunc) {
+	m.router.MethodFunc(method, pattern, h)
+}
+
+func (m *ChiMuxModule) Connect(pattern string, h http.HandlerFunc) {
+	m.router.Connect(pattern, h)
+}
+
+func (m *ChiMuxModule) Trace(pattern string, h http.HandlerFunc) {
+	m.router.Trace(pattern, h)
+}
+
+func (m *ChiMuxModule) NotFound(h http.HandlerFunc) {
+	m.router.NotFound(h)
+}
+
+func (m *ChiMuxModule) MethodNotAllowed(h http.HandlerFunc) {
+	m.router.MethodNotAllowed(h)
+}
+
+// Routes returns the router's route information (part of chi.Routes interface)
+func (m *ChiMuxModule) Routes() []chi.Route {
+	return m.router.Routes()
+}
+
+func (m *ChiMuxModule) Middlewares() chi.Middlewares {
+	return m.router.Middlewares()
+}
+
+func (m *ChiMuxModule) Match(rctx *chi.Context, method, path string) bool {
+	return m.router.Match(rctx, method, path)
 }
 
 // corsMiddleware creates a CORS middleware handler using the module's configuration

@@ -211,11 +211,17 @@ func TestTenantAwareRouting(t *testing.T) {
 	}
 
 	// Setup tenant-specific proxy
-	tenantProxies := make(map[modular.TenantID]*httputil.ReverseProxy)
+	module.tenantBackendProxies = make(map[modular.TenantID]map[string]*httputil.ReverseProxy)
 	backendURL, err := url.Parse(api2Server.URL)
 	require.NoError(t, err)
-	tenantProxies[tenantID] = httputil.NewSingleHostReverseProxy(backendURL)
-	module.tenantBackendProxies["api1"] = tenantProxies
+
+	// Create map for this tenant if it doesn't exist
+	if _, exists := module.tenantBackendProxies[tenantID]; !exists {
+		module.tenantBackendProxies[tenantID] = make(map[string]*httputil.ReverseProxy)
+	}
+
+	// Add the tenant-specific proxy
+	module.tenantBackendProxies[tenantID]["api1"] = httputil.NewSingleHostReverseProxy(backendURL)
 
 	// Register a handler for the default path that handles tenant awareness
 	module.backendRoutes["api1"] = make(map[string]http.HandlerFunc)
@@ -373,12 +379,17 @@ func TestTenantAwareCompositeRouting(t *testing.T) {
 	}
 
 	// Setup tenant-specific proxies
-	tenantProxies := make(map[modular.TenantID]*httputil.ReverseProxy)
+	module.tenantBackendProxies = make(map[modular.TenantID]map[string]*httputil.ReverseProxy)
 	backendURL, err := url.Parse(api2Server.URL)
 	require.NoError(t, err)
-	tenantProxies[tenantID] = httputil.NewSingleHostReverseProxy(backendURL)
-	module.tenantBackendProxies = make(map[string]map[modular.TenantID]*httputil.ReverseProxy)
-	module.tenantBackendProxies["api1"] = tenantProxies
+
+	// Create map for this tenant if it doesn't exist
+	if _, exists := module.tenantBackendProxies[tenantID]; !exists {
+		module.tenantBackendProxies[tenantID] = make(map[string]*httputil.ReverseProxy)
+	}
+
+	// Add the tenant-specific proxy
+	module.tenantBackendProxies[tenantID]["api1"] = httputil.NewSingleHostReverseProxy(backendURL)
 
 	// Start the module to set up routes
 	err = module.Start(context.Background())
@@ -448,11 +459,17 @@ func TestCustomTenantHeader(t *testing.T) {
 	}
 
 	// Setup tenant-specific proxy
-	tenantProxies := make(map[modular.TenantID]*httputil.ReverseProxy)
+	module.tenantBackendProxies = make(map[modular.TenantID]map[string]*httputil.ReverseProxy)
 	backendURL, err := url.Parse(api2Server.URL)
 	require.NoError(t, err)
-	tenantProxies[tenantID] = httputil.NewSingleHostReverseProxy(backendURL)
-	module.tenantBackendProxies["api1"] = tenantProxies
+
+	// Create map for this tenant if it doesn't exist
+	if _, exists := module.tenantBackendProxies[tenantID]; !exists {
+		module.tenantBackendProxies[tenantID] = make(map[string]*httputil.ReverseProxy)
+	}
+
+	// Add the tenant-specific proxy
+	module.tenantBackendProxies[tenantID]["api1"] = httputil.NewSingleHostReverseProxy(backendURL)
 
 	// Register a handler for the default path that handles tenant awareness
 	module.backendRoutes["api1"] = make(map[string]http.HandlerFunc)

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"example/api"
-	"example/router"
-	"example/webserver"
+	"basic-app/api"
+	"basic-app/router"
+	"basic-app/webserver"
 	"fmt"
 	"log/slog"
 	"os"

@@ -1,115 +1,76 @@
-// Package reverseproxy provides a flexible reverse proxy module with support for multiple backends,
-// composite responses, and tenant awareness.
+// Package reverseproxy provides configuration structures for the reverse proxy module.
 package reverseproxy
 
-import (
-	"net/http"
-)
+import "time"
 
-// ReverseProxyConfig defines the configuration for a reverse proxy module instance.
+// ReverseProxyConfig provides configuration options for the ReverseProxyModule.
 type ReverseProxyConfig struct {
-	// BackendServices maps backend IDs to their service URLs.
-	BackendServices map[string]string `yaml:"backend_services"`
-
-	// DefaultBackend is the ID of the default backend to use.
-	DefaultBackend string `yaml:"default_backend"`
-
-	// Routes maps URL patterns to backend IDs.
-	// These are used for direct proxying to a single backend.
-	Routes map[string]string `yaml:"routes"`
-
-	// CompositeRoutes maps URL patterns to composite route configurations.
-	// These are used for routes that combine responses from multiple backends.
-	CompositeRoutes map[string]CompositeRoute `yaml:"composite_routes"`
-
-	// TenantIDHeader is the name of the HTTP header containing the tenant ID.
-	TenantIDHeader string `yaml:"tenant_id_header"`
-
-	// RequireTenantID indicates if requests must include a tenant ID.
-	RequireTenantID bool `yaml:"require_tenant_id"`
-
-	// CacheEnabled enables HTTP response caching for composite routes
-	CacheEnabled bool `yaml:"cache_enabled"`
-
-	// CacheTTL defines how long cached responses remain valid (in seconds)
-	CacheTTL int `yaml:"cache_ttl"`
-
-	// CircuitBreakerConfig holds the global circuit breaker configuration
-	CircuitBreakerConfig CircuitBreakerConfig `yaml:"circuit_breaker"`
-
-	// BackendCircuitBreakers defines per-backend circuit breaker configurations,
-	// overriding the global settings for specific backends
-	BackendCircuitBreakers map[string]CircuitBreakerConfig `yaml:"backend_circuit_breakers"`
-
-	// PreProxyTransformations defines functions that can modify requests before they are sent to the backend
-	PreProxyTransformations []func(*http.Request) error `yaml:"-"`
+	BackendServices        map[string]string               `json:"backend_services" yaml:"backend_services"`
+	Routes                 map[string]string               `json:"routes" yaml:"routes"`
+	DefaultBackend         string                          `json:"default_backend" yaml:"default_backend"`
+	CircuitBreakerConfig   CircuitBreakerConfig            `json:"circuit_breaker" yaml:"circuit_breaker"`
+	BackendCircuitBreakers map[string]CircuitBreakerConfig `json:"backend_circuit_breakers" yaml:"backend_circuit_breakers"`
+	CompositeRoutes        map[string]CompositeRoute       `json:"composite_routes" yaml:"composite_routes"`
+	TenantIDHeader         string                          `json:"tenant_id_header" yaml:"tenant_id_header"`
+	RequireTenantID        bool                            `json:"require_tenant_id" yaml:"require_tenant_id"`
+	CacheEnabled           bool                            `json:"cache_enabled" yaml:"cache_enabled"`
+	CacheTTL               time.Duration                   `json:"cache_ttl" yaml:"cache_ttl"`
+	RequestTimeout         time.Duration                   `json:"request_timeout" yaml:"request_timeout"`
+	MetricsEnabled         bool                            `json:"metrics_enabled" yaml:"metrics_enabled"`
+	MetricsPath            string                          `json:"metrics_path" yaml:"metrics_path"`
+	MetricsEndpoint        string                          `json:"metrics_endpoint" yaml:"metrics_endpoint"`
 }
 
-// CircuitBreakerConfig holds configuration options for a circuit breaker
-type CircuitBreakerConfig struct {
-	// Enabled indicates if the circuit breaker is active
-	Enabled bool `yaml:"enabled"`
-
-	// FailureThreshold is the number of failures before opening the circuit
-	FailureThreshold int `yaml:"failure_threshold"`
-
-	// ResetTimeoutSeconds is the number of seconds to wait before trying a request
-	// when the circuit is open
-	ResetTimeoutSeconds int `yaml:"reset_timeout_seconds"`
-}
-
-// CompositeRoute represents a route that combines responses from multiple backends.
-// This allows for creating composite APIs that aggregate data from multiple sources.
+// CompositeRoute defines a route that combines responses from multiple backends.
 type CompositeRoute struct {
-	// Pattern is the URL path pattern to match.
-	// This uses the router's pattern matching syntax (typically chi router syntax).
-	Pattern string `json:"pattern" yaml:"pattern"`
-
-	// Backends is a list of backend identifiers to route to.
-	// These should correspond to keys in the BackendServices map.
+	Pattern  string   `json:"pattern" yaml:"pattern"`
 	Backends []string `json:"backends" yaml:"backends"`
-
-	// Strategy determines how to combine responses from multiple backends.
-	// Supported values include:
-	// - "merge" - Merge JSON responses at the top level
-	// - "select" - Select a specific backend's response
-	// - "compare" - Compare responses from multiple backends
-	// - "custom" - Use a custom response transformer
-	Strategy string `json:"strategy" yaml:"strategy"`
+	Strategy string   `json:"strategy" yaml:"strategy"`
 }
 
-// Validate implements the modular.ConfigValidator interface to ensure the
-// configuration is valid before the module is initialized.
-func (c *ReverseProxyConfig) Validate() error {
-	// Initialize maps if they're nil
-	if c.BackendServices == nil {
-		c.BackendServices = make(map[string]string)
-	}
+// Config provides configuration options for the ReverseProxyModule.
+// This is the original Config struct which is being phased out in favor of ReverseProxyConfig.
+type Config struct {
+	Backends       map[string]BackendConfig `json:"backends" yaml:"backends"`
+	PrefixMapping  map[string]string        `json:"prefix_mapping" yaml:"prefix_mapping"`
+	ExactMapping   map[string]string        `json:"exact_mapping" yaml:"exact_mapping"`
+	MetricsEnabled bool                     `json:"metrics_enabled" yaml:"metrics_enabled"`
+	MetricsPath    string                   `json:"metrics_path" yaml:"metrics_path"`
+	CircuitBreaker CircuitBreakerConfig     `json:"circuit_breaker" yaml:"circuit_breaker"`
+	Retry          RetryConfig              `json:"retry" yaml:"retry"`
+}
 
-	// Make sure default backend is valid
-	if c.DefaultBackend == "" && len(c.BackendServices) > 0 {
-		// Set first available backend as default
-		for backendID := range c.BackendServices {
-			c.DefaultBackend = backendID
-			break
-		}
-	}
+// BackendConfig provides configuration for a backend server.
+type BackendConfig struct {
+	URL                 string                `json:"url" yaml:"url"`
+	Timeout             time.Duration         `json:"timeout" yaml:"timeout"`
+	MaxIdleConns        int                   `json:"max_idle_conns" yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost int                   `json:"max_idle_conns_per_host" yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost     int                   `json:"max_conns_per_host" yaml:"max_conns_per_host"`
+	IdleConnTimeout     time.Duration         `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
+	TLSSkipVerify       bool                  `json:"tls_skip_verify" yaml:"tls_skip_verify"`
+	CircuitBreaker      *CircuitBreakerConfig `json:"circuit_breaker" yaml:"circuit_breaker"`
+	Retry               *RetryConfig          `json:"retry" yaml:"retry"`
+}
 
-	// Set defaults for global circuit breaker config if not specified
-	if c.CircuitBreakerConfig.FailureThreshold == 0 {
-		c.CircuitBreakerConfig.FailureThreshold = 5 // Default 5 failures
-	}
-	if c.CircuitBreakerConfig.ResetTimeoutSeconds == 0 {
-		c.CircuitBreakerConfig.ResetTimeoutSeconds = 30 // Default 30 seconds
-	}
-	if !c.CircuitBreakerConfig.Enabled {
-		c.CircuitBreakerConfig.Enabled = true // Enabled by default
-	}
+// CircuitBreakerConfig provides configuration for the circuit breaker.
+type CircuitBreakerConfig struct {
+	Enabled                 bool          `json:"enabled" yaml:"enabled"`
+	FailureThreshold        int           `json:"failure_threshold" yaml:"failure_threshold"`
+	SuccessThreshold        int           `json:"success_threshold" yaml:"success_threshold"`
+	OpenTimeout             time.Duration `json:"open_timeout" yaml:"open_timeout"`
+	HalfOpenAllowedRequests int           `json:"half_open_allowed_requests" yaml:"half_open_allowed_requests"`
+	WindowSize              int           `json:"window_size" yaml:"window_size"`
+	SuccessRateThreshold    float64       `json:"success_rate_threshold" yaml:"success_rate_threshold"`
+}
 
-	// Initialize backend circuit breakers map if nil
-	if c.BackendCircuitBreakers == nil {
-		c.BackendCircuitBreakers = make(map[string]CircuitBreakerConfig)
-	}
-
-	return nil
+// RetryConfig provides configuration for the retry policy.
+type RetryConfig struct {
+	Enabled              bool          `json:"enabled" yaml:"enabled"`
+	MaxRetries           int           `json:"max_retries" yaml:"max_retries"`
+	BaseDelay            time.Duration `json:"base_delay" yaml:"base_delay"`
+	MaxDelay             time.Duration `json:"max_delay" yaml:"max_delay"`
+	Jitter               float64       `json:"jitter" yaml:"jitter"`
+	Timeout              time.Duration `json:"timeout" yaml:"timeout"`
+	RetryableStatusCodes []int         `json:"retryable_status_codes" yaml:"retryable_status_codes"`
 }

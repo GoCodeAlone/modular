@@ -597,7 +597,13 @@ func TestRegisterCustomEndpoint(t *testing.T) {
 	tenantURL, err := url.Parse(tenantService.URL)
 	require.NoError(t, err)
 	tenantProxies[tenantID] = httputil.NewSingleHostReverseProxy(tenantURL)
-	module.tenantBackendProxies["service1"] = tenantProxies
+	module.tenantBackendProxies = make(map[modular.TenantID]map[string]*httputil.ReverseProxy)
+
+	// Initialize tenant proxies
+	if _, exists := module.tenantBackendProxies[tenantID]; !exists {
+		module.tenantBackendProxies[tenantID] = make(map[string]*httputil.ReverseProxy)
+	}
+	module.tenantBackendProxies[tenantID]["service1"] = httputil.NewSingleHostReverseProxy(tenantURL)
 
 	// Reset tracking variables for tenant test
 	transformerCallCount = 0
@@ -685,14 +691,19 @@ func TestAddBackendRoute(t *testing.T) {
 	}
 	module.tenants = make(map[modular.TenantID]*ReverseProxyConfig)
 	module.tenants[tenantID] = tenantConfig
-	module.tenantBackendProxies = make(map[string]map[modular.TenantID]*httputil.ReverseProxy)
+	module.tenantBackendProxies = make(map[modular.TenantID]map[string]*httputil.ReverseProxy)
 
 	// Initialize tenant proxies
 	tenantTwitterURL, err := url.Parse(tenantBackendServer.URL)
 	require.NoError(t, err)
-	tenantProxies := make(map[modular.TenantID]*httputil.ReverseProxy)
-	tenantProxies[tenantID] = httputil.NewSingleHostReverseProxy(tenantTwitterURL)
-	module.tenantBackendProxies["twitter"] = tenantProxies
+
+	// Create map for this tenant if it doesn't exist
+	if _, exists := module.tenantBackendProxies[tenantID]; !exists {
+		module.tenantBackendProxies[tenantID] = make(map[string]*httputil.ReverseProxy)
+	}
+
+	// Add the tenant-specific proxy
+	module.tenantBackendProxies[tenantID]["twitter"] = httputil.NewSingleHostReverseProxy(tenantTwitterURL)
 
 	// Test 1: Add a route for the Twitter backend
 	twitterPattern := "/api/twitter/*"
@@ -788,7 +799,7 @@ func TestTenantConfigMerging(t *testing.T) {
 		TenantIDHeader:  "X-Tenant-ID",
 		RequireTenantID: false,
 		CacheEnabled:    true,
-		CacheTTL:        120,
+		CacheTTL:        120 * time.Second,
 	}
 
 	// Create mock app with global config
@@ -841,7 +852,7 @@ func TestTenantConfigMerging(t *testing.T) {
 	assert.Equal(t, "X-Tenant-ID", tenantCfg.TenantIDHeader, "TenantIDHeader should be inherited")
 	assert.False(t, tenantCfg.RequireTenantID, "RequireTenantID should be inherited")
 	assert.True(t, tenantCfg.CacheEnabled, "CacheEnabled should be inherited")
-	assert.Equal(t, 120, tenantCfg.CacheTTL, "CacheTTL should be inherited")
+	assert.Equal(t, 120*time.Second, tenantCfg.CacheTTL, "CacheTTL should be inherited")
 
 	// Test with a second tenant that has more comprehensive overrides
 	tenant2ID := modular.TenantID("tenant2")
@@ -853,7 +864,7 @@ func TestTenantConfigMerging(t *testing.T) {
 		TenantIDHeader:  "X-Custom-Tenant-Header", // Override header
 		RequireTenantID: true,                     // Override requirement
 		CacheEnabled:    true,                     // Same as global but explicitly set
-		CacheTTL:        60,                       // Override TTL
+		CacheTTL:        60 * time.Second,         // Override TTL
 	}
 
 	// Register second tenant
@@ -879,7 +890,7 @@ func TestTenantConfigMerging(t *testing.T) {
 	// Check that overridden settings were applied
 	assert.Equal(t, "X-Custom-Tenant-Header", tenant2Cfg.TenantIDHeader)
 	assert.True(t, tenant2Cfg.RequireTenantID)
-	assert.Equal(t, 60, tenant2Cfg.CacheTTL, "CacheTTL should be overridden to 60")
+	assert.Equal(t, 60*time.Second, tenant2Cfg.CacheTTL, "CacheTTL should be overridden to 60")
 
 	// Skip the proxy testing part which causes network errors in the test environment
 	// This part of the test was just to validate that the configuration is properly used,
@@ -891,6 +902,30 @@ type testRouter struct {
 	routes map[string]http.HandlerFunc
 }
 
-func (r *testRouter) HandleFunc(pattern string, handler http.HandlerFunc) {
-	r.routes[pattern] = handler
+func (tr *testRouter) Handle(pattern string, handler http.Handler) {
+	tr.routes[pattern] = handler.ServeHTTP
+}
+
+func (tr *testRouter) HandleFunc(pattern string, handler http.HandlerFunc) {
+	tr.routes[pattern] = handler
+}
+
+func (tr *testRouter) Mount(pattern string, h http.Handler) {
+	tr.routes[pattern] = h.ServeHTTP
+}
+
+func (tr *testRouter) Use(middlewares ...func(http.Handler) http.Handler) {
+	// No-op for test router
+}
+
+func (tr *testRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if handler, ok := tr.routes[r.URL.Path]; ok {
+		handler(w, r)
+		return
+	}
+	if handler, ok := tr.routes["/*"]; ok {
+		handler(w, r)
+		return
+	}
+	http.NotFound(w, r)
 }

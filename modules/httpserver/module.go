@@ -1,0 +1,380 @@
+// Package httpserver provides an HTTP server module for the modular framework.
+package httpserver
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"math/big"
+	"net"
+	"net/http"
+	"os"
+	"reflect"
+	"time"
+
+	"github.com/GoCodeAlone/modular"
+)
+
+// ModuleName is the name of this module
+const ModuleName = "httpserver"
+
+// Error definitions
+var (
+	// ErrServerNotStarted is returned when attempting to stop a server that hasn't been started
+	ErrServerNotStarted = errors.New("server not started")
+
+	// ErrNoHandler is returned when no HTTP handler is available
+	ErrNoHandler = errors.New("no HTTP handler available")
+)
+
+// HTTPServerModule represents the HTTP server module
+type HTTPServerModule struct {
+	config             *HTTPServerConfig
+	server             *http.Server
+	app                modular.Application
+	logger             modular.Logger
+	handler            http.Handler
+	started            bool
+	certificateService CertificateService
+}
+
+// Make sure the HTTPServerModule implements the Module interface
+var _ modular.Module = (*HTTPServerModule)(nil)
+
+// NewHTTPServerModule creates a new instance of the HTTP server module
+func NewHTTPServerModule() modular.Module {
+	return &HTTPServerModule{}
+}
+
+// Name returns the name of the module
+func (m *HTTPServerModule) Name() string {
+	return ModuleName
+}
+
+// RegisterConfig registers the module's configuration structure
+func (m *HTTPServerModule) RegisterConfig(app modular.Application) error {
+	// Register the configuration with default values
+	defaultConfig := &HTTPServerConfig{
+		Host:            "0.0.0.0",
+		Port:            8080,
+		ReadTimeout:     15,
+		WriteTimeout:    15,
+		IdleTimeout:     60,
+		ShutdownTimeout: 30,
+	}
+
+	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(defaultConfig))
+	return nil
+}
+
+// Init initializes the module with the provided application
+func (m *HTTPServerModule) Init(app modular.Application) error {
+	m.app = app
+	m.logger = app.Logger()
+	m.logger.Info("Initializing HTTP server module")
+
+	// Get the config section
+	cfg, err := app.GetConfigSection(m.Name())
+	if err != nil {
+		return fmt.Errorf("failed to get config section '%s': %w", m.Name(), err)
+	}
+	m.config = cfg.GetConfig().(*HTTPServerConfig)
+
+	return nil
+}
+
+// Constructor returns a dependency injection function that initializes the module with
+// required services
+func (m *HTTPServerModule) Constructor() modular.ModuleConstructor {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
+		// Get the router service (which implements http.Handler)
+		handler, ok := services["router"].(http.Handler)
+		if !ok {
+			return nil, fmt.Errorf("service %s does not implement http.Handler", "router")
+		}
+
+		// Store the handler for use in Start
+		m.handler = handler
+
+		// Check if a certificate service is available, but it's optional
+		if certService, ok := services["certificate"].(CertificateService); ok {
+			m.logger.Info("Found certificate service, will use for TLS")
+			m.certificateService = certService
+		}
+
+		return m, nil
+	}
+}
+
+// Start starts the HTTP server
+func (m *HTTPServerModule) Start(ctx context.Context) error {
+	if m.handler == nil {
+		return ErrNoHandler
+	}
+
+	// Create address string from host and port
+	addr := fmt.Sprintf("%s:%d", m.config.Host, m.config.Port)
+
+	// Create server with configured timeouts
+	m.server = &http.Server{
+		Addr:         addr,
+		Handler:      m.handler,
+		ReadTimeout:  m.config.GetTimeout(m.config.ReadTimeout),
+		WriteTimeout: m.config.GetTimeout(m.config.WriteTimeout),
+		IdleTimeout:  m.config.GetTimeout(m.config.IdleTimeout),
+	}
+
+	// Start the server in a goroutine
+	go func() {
+		m.logger.Info("Starting HTTP server", "address", addr)
+		var err error
+
+		// Start server with or without TLS based on configuration
+		if m.config.TLS != nil && m.config.TLS.Enabled {
+			// Configure TLS
+			tlsConfig := &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			}
+
+			// UseService flag takes precedence
+			if m.config.TLS.UseService {
+				if m.certificateService != nil {
+					m.logger.Info("Using certificate service for TLS")
+					tlsConfig.GetCertificate = m.certificateService.GetCertificate
+				} else {
+					// Fall back to auto-generated certificates if UseService is true but no service is available
+					m.logger.Warn("No certificate service available, falling back to auto-generated certificates")
+					if len(m.config.TLS.Domains) == 0 {
+						// If no domains specified, use localhost
+						m.config.TLS.Domains = []string{"localhost"}
+					}
+					cert, key, err := m.generateSelfSignedCertificate(m.config.TLS.Domains)
+					if err != nil {
+						m.logger.Error("Failed to generate self-signed certificate", "error", err)
+						err = m.server.ListenAndServe() // Fall back to HTTP
+					} else {
+						m.server.TLSConfig = tlsConfig
+						err = m.server.ListenAndServeTLS(cert, key)
+					}
+				}
+			} else if m.config.TLS.AutoGenerate {
+				// Auto-generate self-signed certificates
+				m.logger.Info("Auto-generating self-signed certificates", "domains", m.config.TLS.Domains)
+				cert, key, err := m.generateSelfSignedCertificate(m.config.TLS.Domains)
+				if err != nil {
+					m.logger.Error("Failed to generate self-signed certificate", "error", err)
+					err = m.server.ListenAndServe() // Fall back to HTTP
+				} else {
+					m.server.TLSConfig = tlsConfig
+					err = m.server.ListenAndServeTLS(cert, key)
+				}
+			} else {
+				// Use provided certificate files
+				m.logger.Info("Using TLS configuration", "cert", m.config.TLS.CertFile, "key", m.config.TLS.KeyFile)
+				err = m.server.ListenAndServeTLS(m.config.TLS.CertFile, m.config.TLS.KeyFile)
+			}
+		} else {
+			err = m.server.ListenAndServe()
+		}
+
+		// If server was shut down gracefully, err will be http.ErrServerClosed
+		if err != nil && err != http.ErrServerClosed {
+			m.logger.Error("HTTP server error", "error", err)
+		}
+	}()
+
+	// Test that server is actually listening
+	timeout := time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = time.Until(deadline)
+	}
+
+	checkCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	check := func() error {
+		var dialer net.Dialer
+		conn, err := dialer.DialContext(checkCtx, "tcp", addr)
+		if err != nil {
+			return err
+		}
+		conn.Close()
+		return nil
+	}
+
+	// Try to connect to the server with retries
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	startTime := time.Now()
+	for {
+		err := check()
+		if err == nil {
+			break // Successfully connected
+		}
+
+		// Check if the timeout has expired
+		if time.Since(startTime) > timeout {
+			return fmt.Errorf("failed to start HTTP server within timeout: %w", err)
+		}
+
+		// Wait before retrying
+		select {
+		case <-checkCtx.Done():
+			return fmt.Errorf("context cancelled while waiting for server to start")
+		case <-ticker.C:
+		}
+	}
+
+	m.started = true
+	m.logger.Info("HTTP server started successfully", "address", addr)
+	return nil
+}
+
+// Stop stops the HTTP server
+func (m *HTTPServerModule) Stop(ctx context.Context) error {
+	if m.server == nil || !m.started {
+		return ErrServerNotStarted
+	}
+
+	m.logger.Info("Stopping HTTP server", "timeout", m.config.ShutdownTimeout)
+
+	// Create a context with timeout for shutdown
+	shutdownCtx, cancel := context.WithTimeout(
+		ctx,
+		m.config.GetTimeout(m.config.ShutdownTimeout),
+	)
+	defer cancel()
+
+	// Shutdown the server gracefully
+	err := m.server.Shutdown(shutdownCtx)
+	if err != nil {
+		return fmt.Errorf("error shutting down HTTP server: %w", err)
+	}
+
+	m.started = false
+	m.logger.Info("HTTP server stopped successfully")
+	return nil
+}
+
+// ProvidesServices returns the services provided by this module
+func (m *HTTPServerModule) ProvidesServices() []modular.ServiceProvider {
+	// This module doesn't provide any services
+	return nil
+}
+
+// RequiresServices returns the services required by this module
+func (m *HTTPServerModule) RequiresServices() []modular.ServiceDependency {
+	deps := []modular.ServiceDependency{
+		{
+			Name:               "router",
+			Required:           true,
+			MatchByInterface:   true,
+			SatisfiesInterface: reflect.TypeOf((*http.Handler)(nil)).Elem(),
+		},
+	}
+
+	// Add optional certificate service dependency
+	deps = append(deps, modular.ServiceDependency{
+		Name:               "certificate",
+		Required:           false, // Optional dependency
+		MatchByInterface:   true,
+		SatisfiesInterface: reflect.TypeOf((*CertificateService)(nil)).Elem(),
+	})
+
+	return deps
+}
+
+// generateSelfSignedCertificate generates a self-signed certificate for the given domains.
+// Returns the paths to the generated certificate and key files.
+func (m *HTTPServerModule) generateSelfSignedCertificate(domains []string) (string, string, error) {
+	// Generate a new private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Create certificate template
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Self-Signed Certificate"},
+			CommonName:   domains[0], // Use the first domain as the common name
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Add all domains as SANs
+	for _, domain := range domains {
+		if ip := net.ParseIP(domain); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, domain)
+		}
+	}
+
+	// Add localhost and 127.0.0.1 to allow local testing
+	template.DNSNames = append(template.DNSNames, "localhost")
+	template.IPAddresses = append(template.IPAddresses, net.ParseIP("127.0.0.1"))
+	template.IPAddresses = append(template.IPAddresses, net.ParseIP("::1"))
+
+	// Create certificate from template and sign it with the private key
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	// Convert DER certificate to PEM format
+	certPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER}))
+
+	// Convert private key to PEM format
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal private key: %w", err)
+	}
+	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes}))
+
+	// Create temporary files for certificate and key
+	certFile, err := m.createTempFile("cert*.pem", certPEM)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create certificate file: %w", err)
+	}
+
+	keyFile, err := m.createTempFile("key*.pem", keyPEM)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create key file: %w", err)
+	}
+
+	return certFile, keyFile, nil
+}
+
+// createTempFile creates a temporary file with the given content
+func (m *HTTPServerModule) createTempFile(pattern, content string) (string, error) {
+	tmpFile, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return "", err
+	}
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		return "", err
+	}
+
+	return tmpFile.Name(), nil
+}

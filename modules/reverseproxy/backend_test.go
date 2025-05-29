@@ -102,7 +102,7 @@ func TestDefaultBackendRouting(t *testing.T) {
 	module.httpClient = &http.Client{}
 	module.backendProxies = make(map[string]*httputil.ReverseProxy)
 	module.backendRoutes = make(map[string]map[string]http.HandlerFunc)
-	module.tenantBackendProxies = make(map[string]map[modular.TenantID]*httputil.ReverseProxy)
+	module.tenantBackendProxies = make(map[modular.TenantID]map[string]*httputil.ReverseProxy)
 	module.tenants = make(map[modular.TenantID]*ReverseProxyConfig)
 	module.compositeRoutes = make(map[string]http.HandlerFunc)
 	module.circuitBreakers = make(map[string]*CircuitBreaker)
@@ -114,9 +114,15 @@ func TestDefaultBackendRouting(t *testing.T) {
 		proxy := httputil.NewSingleHostReverseProxy(backendURL)
 		module.backendProxies[backend] = proxy
 
-		// Initialize tenant maps for each backend
-		module.tenantBackendProxies[backend] = make(map[modular.TenantID]*httputil.ReverseProxy)
+		// Initialize route map for this backend
 		module.backendRoutes[backend] = make(map[string]http.HandlerFunc)
+
+		// Create a test tenant ID for tenant-specific proxies
+		tenantID := modular.TenantID("test-tenant")
+		if _, exists := module.tenantBackendProxies[tenantID]; !exists {
+			module.tenantBackendProxies[tenantID] = make(map[string]*httputil.ReverseProxy)
+		}
+		module.tenantBackendProxies[tenantID][backend] = proxy
 
 		// Register the default route handler for each backend
 		handler := func(w http.ResponseWriter, r *http.Request) {

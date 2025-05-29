@@ -7,6 +7,7 @@ Modular Go
 [![Dependabot Updates](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates)
 [![CI](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml)
 [![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
+[![Examples CI](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
 [![codecov](https://codecov.io/gh/GoCodeAlone/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/GoCodeAlone/modular)
 
@@ -30,13 +31,43 @@ Modular comes with a collection of reusable modules that you can incorporate int
 |------------------------------------|------------------------------------------|-------------------------------------------------|
 | [chimux](./modules/chimux)         | Chi router integration for Modular       | [Documentation](./modules/chimux/README.md)     |
 | [database](./modules/database)     | Database connectivity and SQL operations | [Documentation](./modules/database/README.md)   |
-| [httpclient](./modules/httpclient) | HTTP client with logging and middleware  | [Documentation](./modules/httpclient/README.md) |
-| [httpserver](./modules/httpserver) | HTTP server implementation for Modular   | [Documentation](./modules/httpserver/README.md) |
+| [httpclient](./modules/httpclient) | Configurable HTTP client with connection pooling, timeouts, and verbose logging | [Documentation](./modules/httpclient/README.md) |
+| [httpserver](./modules/httpserver) | HTTP/HTTPS server with TLS support, graceful shutdown, and configurable timeouts | [Documentation](./modules/httpserver/README.md) |
 | [jsonschema](./modules/jsonschema) | JSON Schema validation services          | [Documentation](./modules/jsonschema/README.md) |
 | [letsencrypt](./modules/letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Documentation](./modules/letsencrypt/README.md) |
 | [reverseproxy](./modules/reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./modules/reverseproxy/README.md) |
 
 For more information about the available modules, see the [modules directory](./modules).
+
+## Examples
+
+The `examples/` directory contains complete, working examples that demonstrate how to use Modular with different patterns and module combinations:
+
+| Example | Description | Features |
+|---------|-------------|----------|
+| [**basic-app**](./examples/basic-app/) | Simple modular application | HTTP server, routing, configuration |
+| [**reverse-proxy**](./examples/reverse-proxy/) | HTTP reverse proxy server | Load balancing, backend routing, CORS |
+| [**http-client**](./examples/http-client/) | HTTP client with proxy backend | HTTP client integration, request routing |
+| [**advanced-logging**](./examples/advanced-logging/) | Advanced HTTP client logging | Verbose logging, file output, request/response inspection |
+
+### Quick Start with Examples
+
+Each example is a complete, standalone application that you can run immediately:
+
+```bash
+cd examples/basic-app
+GOWORK=off go build
+./basic-app
+```
+
+Visit the [examples directory](./examples/) for detailed documentation, configuration guides, and step-by-step instructions for each example.
+
+### Learning Path
+
+- **Start with [basic-app](./examples/basic-app/)** to understand core modular patterns
+- **Try [reverse-proxy](./examples/reverse-proxy/)** to see advanced routing and CORS configuration
+- **Explore [http-client](./examples/http-client/)** for HTTP client integration patterns
+- **Study [advanced-logging](./examples/advanced-logging/)** for debugging and monitoring techniques
 
 ## Installation
 
