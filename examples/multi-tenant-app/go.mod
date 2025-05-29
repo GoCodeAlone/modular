@@ -1,8 +1,8 @@
-module example_tenants
+module multi-tenant-app
 
 go 1.24.2
 
-replace github.com/GoCodeAlone/modular => ../
+replace github.com/GoCodeAlone/modular => ../../
 
 require github.com/GoCodeAlone/modular v1.2.0
 
