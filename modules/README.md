@@ -6,29 +6,19 @@ This directory contains all the pre-built modules available in the Modular frame
 
 ## 📋 Module Directory
 
-| Module                     | Description                              | Configuration                           | Dependencies                           |
-|----------------------------|------------------------------------------|-----------------------------------------|----------------------------------------|
-| [chimux](./chimux)         | Chi router integration for Modular       | [Yes](./chimux/config.go)               | -                                      |
-| [database](./database)     | Database connectivity with SQL operations | [Yes](./database/config.go)            | -                                      |
-| [httpclient](./httpclient) | Configurable HTTP client with connection pooling, timeouts, and verbose logging | [Yes](./httpclient/config.go)          | -                                      |
-| [httpserver](./httpserver) | HTTP/HTTPS server with TLS support, graceful shutdown, and configurable timeouts | [Yes](./httpserver/config.go)          | -                                      |
-| [jsonschema](./jsonschema) | Provides JSON Schema validation services | No                                     | -                                      |
-| [letsencrypt](./letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Yes](./letsencrypt/config.go) | [httpserver](./httpserver)             |
-| [reverseproxy](./reverseproxy) | Reverse proxy with routing capabilities | [Yes](./reverseproxy/config.go)        | -                                      |
-
-### Core Modules
-- **[Auth](auth/README.md)** - Authentication and authorization with JWT, sessions, password hashing, and OAuth2/OIDC support
-- **[Cache](cache/README.md)** - Multi-backend caching solution with Redis and in-memory implementations
-- **[Database](database/README.md)** - Database connectivity and management with support for multiple drivers
-- **[Event Bus](eventbus/README.md)** - Asynchronous event handling and pub/sub messaging system
-
-### Network & Communication
-- **[Chi Router (Chimux)](chimux/README.md)** - HTTP routing with Chi router integration and comprehensive middleware support
-- **[Reverse Proxy](reverseproxy/README.md)** - Advanced reverse proxy with load balancing, circuit breaker, and health monitoring
-
-### Utilities & Processing
-- **[JSON Schema](jsonschema/README.md)** - JSON schema validation and data processing capabilities
-- **[Scheduler](scheduler/README.md)** - Job scheduling system with cron expressions and worker pool management
+| Module                     | Description                              | Configuration | Dependencies                           |
+|----------------------------|------------------------------------------|---------------|----------------------------------------|
+| [auth](./auth)             | Authentication and authorization with JWT, sessions, password hashing, and OAuth2/OIDC support | [Yes](./auth/config.go) | - |
+| [cache](./cache)           | Multi-backend caching with Redis and in-memory support | [Yes](./cache/config.go) | - |
+| [chimux](./chimux)         | Chi router integration with middleware support | [Yes](./chimux/config.go) | - |
+| [database](./database)     | Database connectivity and SQL operations with multiple driver support | [Yes](./database/config.go) | - |
+| [eventbus](./eventbus)     | Asynchronous event handling and pub/sub messaging | [Yes](./eventbus/config.go) | - |
+| [httpclient](./httpclient) | Configurable HTTP client with connection pooling, timeouts, and verbose logging | [Yes](./httpclient/config.go) | - |
+| [httpserver](./httpserver) | HTTP/HTTPS server with TLS support, graceful shutdown, and configurable timeouts | [Yes](./httpserver/config.go) | - |
+| [jsonschema](./jsonschema) | JSON Schema validation services | No | - |
+| [letsencrypt](./letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Yes](./letsencrypt/config.go) | Works with httpserver |
+| [reverseproxy](./reverseproxy) | Reverse proxy with load balancing, circuit breaker, and health monitoring | [Yes](./reverseproxy/config.go) | - |
+| [scheduler](./scheduler)   | Job scheduling with cron expressions and worker pools | [Yes](./scheduler/config.go) | - |
 
 ## 🚀 Quick Start
 

@@ -3,7 +3,7 @@ module http-client
 go 1.24.2
 
 require (
-	github.com/GoCodeAlone/modular v1.2.5
+	github.com/GoCodeAlone/modular v1.2.6
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0
 	github.com/GoCodeAlone/modular/modules/httpclient v0.0.0
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0

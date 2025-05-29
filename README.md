@@ -27,29 +27,19 @@ Modular is a package that provides a structured way to create modular applicatio
 
 Modular comes with a rich ecosystem of pre-built modules that you can easily integrate into your applications:
 
-| Module                             | Description                              | Documentation                                   |
-|------------------------------------|------------------------------------------|-------------------------------------------------|
-| [chimux](./modules/chimux)         | Chi router integration for Modular       | [Documentation](./modules/chimux/README.md)     |
-| [database](./modules/database)     | Database connectivity and SQL operations | [Documentation](./modules/database/README.md)   |
-| [httpclient](./modules/httpclient) | Configurable HTTP client with connection pooling, timeouts, and verbose logging | [Documentation](./modules/httpclient/README.md) |
-| [httpserver](./modules/httpserver) | HTTP/HTTPS server with TLS support, graceful shutdown, and configurable timeouts | [Documentation](./modules/httpserver/README.md) |
-| [jsonschema](./modules/jsonschema) | JSON Schema validation services          | [Documentation](./modules/jsonschema/README.md) |
-| [letsencrypt](./modules/letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | [Documentation](./modules/letsencrypt/README.md) |
-| [reverseproxy](./modules/reverseproxy) | Reverse proxy with routing capabilities | [Documentation](./modules/reverseproxy/README.md) |
-
-### Core Modules
-- **[Auth](modules/auth/README.md)** - Comprehensive authentication with JWT, sessions, password hashing, and OAuth2/OIDC support
-- **[Cache](modules/cache/README.md)** - Multi-backend caching with Redis and in-memory support
-- **[Database](modules/database/README.md)** - Database connectivity and management with multiple driver support
-- **[Event Bus](modules/eventbus/README.md)** - Asynchronous event handling and pub/sub messaging
-
-### Network & Communication
-- **[Chi Router (Chimux)](modules/chimux/README.md)** - HTTP routing with Chi router integration and middleware support
-- **[Reverse Proxy](modules/reverseproxy/README.md)** - Advanced reverse proxy with load balancing, circuit breaker, and health checks
-
-### Utilities & Processing
-- **[JSON Schema](modules/jsonschema/README.md)** - JSON schema validation and processing
-- **[Scheduler](modules/scheduler/README.md)** - Job scheduling with cron expressions and worker pools
+| Module                             | Description                              | Configuration | Documentation                                   |
+|------------------------------------|------------------------------------------|---------------|-----------------------------------------------|
+| [auth](./modules/auth)             | Authentication and authorization with JWT, sessions, password hashing, and OAuth2/OIDC support | Yes | [Documentation](./modules/auth/README.md) |
+| [cache](./modules/cache)           | Multi-backend caching with Redis and in-memory support | Yes | [Documentation](./modules/cache/README.md) |
+| [chimux](./modules/chimux)         | Chi router integration with middleware support | Yes | [Documentation](./modules/chimux/README.md) |
+| [database](./modules/database)     | Database connectivity and SQL operations with multiple driver support | Yes | [Documentation](./modules/database/README.md) |
+| [eventbus](./modules/eventbus)     | Asynchronous event handling and pub/sub messaging | Yes | [Documentation](./modules/eventbus/README.md) |
+| [httpclient](./modules/httpclient) | Configurable HTTP client with connection pooling, timeouts, and verbose logging | Yes | [Documentation](./modules/httpclient/README.md) |
+| [httpserver](./modules/httpserver) | HTTP/HTTPS server with TLS support, graceful shutdown, and configurable timeouts | Yes | [Documentation](./modules/httpserver/README.md) |
+| [jsonschema](./modules/jsonschema) | JSON Schema validation services          | No | [Documentation](./modules/jsonschema/README.md) |
+| [letsencrypt](./modules/letsencrypt) | SSL/TLS certificate automation with Let's Encrypt | Yes | [Documentation](./modules/letsencrypt/README.md) |
+| [reverseproxy](./modules/reverseproxy) | Reverse proxy with load balancing, circuit breaker, and health monitoring | Yes | [Documentation](./modules/reverseproxy/README.md) |
+| [scheduler](./modules/scheduler)   | Job scheduling with cron expressions and worker pools | Yes | [Documentation](./modules/scheduler/README.md) |
 
 Each module is designed to be:
 - **Plug-and-play**: Easy integration with minimal configuration
