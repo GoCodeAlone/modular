@@ -71,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register the modules
+	// Register the modules in dependency order
 	app.RegisterModule(chimux.NewChiMuxModule())
 	app.RegisterModule(reverseproxy.NewModule())
 	app.RegisterModule(httpserver.NewHTTPServerModule())
