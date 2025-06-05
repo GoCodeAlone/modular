@@ -500,7 +500,9 @@ func (m *LetsEncryptModule) configureCloudflare() error {
 	if err != nil {
 		return err
 	}
-	m.client.Challenge.SetDNS01Provider(provider)
+	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
+		return fmt.Errorf("failed to set DNS01 provider: %w", err)
+	}
 	return nil
 }
 
@@ -510,7 +512,9 @@ func (m *LetsEncryptModule) configureRoute53() error {
 	if err != nil {
 		return err
 	}
-	m.client.Challenge.SetDNS01Provider(provider)
+	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
+		return fmt.Errorf("failed to set DNS01 provider: %w", err)
+	}
 	return nil
 }
 
@@ -520,7 +524,9 @@ func (m *LetsEncryptModule) configureDigitalOcean() error {
 	if err != nil {
 		return err
 	}
-	m.client.Challenge.SetDNS01Provider(provider)
+	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
+		return fmt.Errorf("failed to set DNS01 provider: %w", err)
+	}
 	return nil
 }
 
@@ -590,9 +596,15 @@ func (m *LetsEncryptModule) configureNamecheap() error {
 	}
 
 	// Use environment variables as that's the most reliable way across lego versions
-	os.Setenv("NAMECHEAP_API_USER", apiUser)
-	os.Setenv("NAMECHEAP_API_KEY", apiKey)
-	os.Setenv("NAMECHEAP_USERNAME", username)
+	if err := os.Setenv("NAMECHEAP_API_USER", apiUser); err != nil {
+		return fmt.Errorf("failed to set NAMECHEAP_API_USER: %w", err)
+	}
+	if err := os.Setenv("NAMECHEAP_API_KEY", apiKey); err != nil {
+		return fmt.Errorf("failed to set NAMECHEAP_API_KEY: %w", err)
+	}
+	if err := os.Setenv("NAMECHEAP_USERNAME", username); err != nil {
+		return fmt.Errorf("failed to set NAMECHEAP_USERNAME: %w", err)
+	}
 
 	// Set sandbox mode if specified
 	if m.config.DNSConfig["sandbox"] == "true" {

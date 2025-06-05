@@ -118,15 +118,17 @@ func TestMemoryCacheOperations(t *testing.T) {
 
 	// Initialize with mock app
 	app := newMockApp()
-	module.RegisterConfig(app)
-	module.Init(app)
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+	err = module.Init(app)
+	require.NoError(t, err)
 
 	// Ensure we have a memory cache
 	assert.IsType(t, &MemoryCache{}, module.cacheEngine)
 
 	// Start the module
 	ctx := context.Background()
-	err := module.Start(ctx)
+	err = module.Start(ctx)
 	require.NoError(t, err)
 
 	// Test basic operations
@@ -176,7 +178,8 @@ func TestExpiration(t *testing.T) {
 
 	// Initialize with mock app and minimal TTL
 	app := newMockApp()
-	module.RegisterConfig(app)
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
 
 	// Override config for faster expiration
 	config := &CacheConfig{
@@ -187,12 +190,14 @@ func TestExpiration(t *testing.T) {
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
 
-	module.Init(app)
+	err = module.Init(app)
+	require.NoError(t, err)
 	ctx := context.Background()
-	module.Start(ctx)
+	err = module.Start(ctx)
+	require.NoError(t, err)
 
 	// Set with short TTL
-	err := module.Set(ctx, "expires-quickly", "value", time.Second)
+	err = module.Set(ctx, "expires-quickly", "value", time.Second)
 	assert.NoError(t, err)
 
 	// Verify it exists
@@ -206,5 +211,6 @@ func TestExpiration(t *testing.T) {
 	_, found = module.Get(ctx, "expires-quickly")
 	assert.False(t, found)
 
-	module.Stop(ctx)
+	err = module.Stop(ctx)
+	require.NoError(t, err)
 }

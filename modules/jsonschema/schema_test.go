@@ -33,12 +33,18 @@ func TestJSONSchemaService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			t.Logf("Failed to remove temp file: %v", removeErr)
+		}
+	}()
 
 	if _, err := tmpFile.WriteString(schemaJSON); err != nil {
 		t.Fatal(err)
 	}
-	tmpFile.Close()
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		t.Fatalf("Failed to close temp file: %v", closeErr)
+	}
 
 	// Create the schema service
 	service := jsonschema.NewJSONSchemaService()
@@ -114,12 +120,18 @@ func (m *YourModule) Init(app modular.Application) error {
 	if err != nil {
 		m.t.Fatal(err)
 	}
-	m.shutdown = append(m.shutdown, func() { os.Remove(tmpFile.Name()) })
+	m.shutdown = append(m.shutdown, func() {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			m.t.Logf("Failed to remove temp file: %v", removeErr)
+		}
+	})
 
 	if _, err = tmpFile.WriteString(schemaJSON); err != nil {
 		m.t.Fatal(err)
 	}
-	tmpFile.Close()
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		m.t.Fatalf("Failed to close temp file: %v", closeErr)
+	}
 
 	schema, err := m.schemaService.CompileSchema(tmpFile.Name())
 	if err != nil {

@@ -185,7 +185,11 @@ func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareMod
 }
 
 // RegisterTenantConfigSection registers a configuration section for a specific tenant
-func (ts *StandardTenantService) RegisterTenantConfigSection(tenantID TenantID, section string, provider ConfigProvider) error {
+func (ts *StandardTenantService) RegisterTenantConfigSection(
+	tenantID TenantID,
+	section string,
+	provider ConfigProvider,
+) error {
 	ts.mutex.Lock()
 	defer ts.mutex.Unlock()
 

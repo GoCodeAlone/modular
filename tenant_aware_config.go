@@ -12,7 +12,11 @@ type TenantAwareConfig struct {
 }
 
 // NewTenantAwareConfig creates a new tenant-aware configuration provider
-func NewTenantAwareConfig(defaultConfig ConfigProvider, tenantService TenantService, configSection string) *TenantAwareConfig {
+func NewTenantAwareConfig(
+	defaultConfig ConfigProvider,
+	tenantService TenantService,
+	configSection string,
+) *TenantAwareConfig {
 	return &TenantAwareConfig{
 		defaultConfig: defaultConfig,
 		tenantService: tenantService,

@@ -9,7 +9,8 @@ import (
 )
 
 // Test configuration structs
-// YAML expects lowercase names as defaults for keys when unmarshalling, so we need tags to explicitly support upppercase
+// YAML expects lowercase names as defaults for keys when unmarshalling,
+// so we need tags to explicitly support uppercase
 type TestTenantConfig struct {
 	Name        string          `yaml:"Name"`
 	Environment string          `yaml:"Environment"`

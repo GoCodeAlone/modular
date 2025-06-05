@@ -235,7 +235,11 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if removeErr := os.RemoveAll(tmpDir); removeErr != nil {
+			t.Logf("Failed to remove temp directory: %v", removeErr)
+		}
+	}()
 
 	fileLogger, err := NewFileLogger(tmpDir, mockLogger)
 	assert.NoError(t, err)
@@ -244,7 +248,9 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, world!"))
+		if _, err := w.Write([]byte("Hello, world!")); err != nil {
+			t.Logf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -280,8 +286,12 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 	mockLogger.AssertExpectations(t)
 
 	// Cleanup
-	resp.Body.Close()
-	fileLogger.Close()
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		t.Logf("Failed to close response body: %v", closeErr)
+	}
+	if closeErr := fileLogger.Close(); closeErr != nil {
+		t.Logf("Failed to close file logger: %v", closeErr)
+	}
 }
 
 // TestHTTPClientModule_IntegrationWithServer tests the HTTP client talking to a test server
@@ -294,7 +304,9 @@ func TestHTTPClientModule_IntegrationWithServer(t *testing.T) {
 		// Return a response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"success": true}`))
+		if _, err := w.Write([]byte(`{"success": true}`)); err != nil {
+			t.Logf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -321,5 +333,7 @@ func TestHTTPClientModule_IntegrationWithServer(t *testing.T) {
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"), "Content-Type should be application/json")
 
 	// Cleanup
-	resp.Body.Close()
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		t.Logf("Failed to close response body: %v", closeErr)
+	}
 }

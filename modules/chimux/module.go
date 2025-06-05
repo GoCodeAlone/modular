@@ -68,13 +68,41 @@ func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 
 // Init initializes the module
 func (m *ChiMuxModule) Init(app modular.Application) error {
+	if err := m.initApplication(app); err != nil {
+		return err
+	}
+
+	if err := m.initConfig(app); err != nil {
+		return err
+	}
+
+	if err := m.initRouter(); err != nil {
+		return err
+	}
+
+	if err := m.setupMiddleware(app); err != nil {
+		return err
+	}
+
+	m.logger.Info("Chimux module initialized")
+	return nil
+}
+
+// initApplication initializes the application context
+func (m *ChiMuxModule) initApplication(app modular.Application) error {
 	var ok bool
 	m.app, ok = app.(modular.TenantApplication)
 	if !ok {
 		return fmt.Errorf("%w", ErrRequiresTenantApplication)
 	}
 
-	// Retrieve the registered config section for access
+	m.logger = m.app.Logger()
+	m.logger.Info("Initializing chimux module")
+	return nil
+}
+
+// initConfig initializes the module configuration
+func (m *ChiMuxModule) initConfig(app modular.Application) error {
 	cfg, err := app.GetConfigSection(m.name)
 	if err != nil {
 		return fmt.Errorf("failed to get config section '%s': %w", m.name, err)
@@ -82,10 +110,11 @@ func (m *ChiMuxModule) Init(app modular.Application) error {
 
 	m.config = cfg.GetConfig().(*ChiMuxConfig)
 
-	m.logger = m.app.Logger()
-	m.logger.Info("Initializing chimux module")
+	return nil
+}
 
-	// Create the chi router instance
+// initRouter initializes the chi router with default middleware
+func (m *ChiMuxModule) initRouter() error {
 	m.router = chi.NewRouter()
 	m.logger.Debug("Created chi router instance", "module", m.Name())
 
@@ -111,6 +140,11 @@ func (m *ChiMuxModule) Init(app modular.Application) error {
 		"allowCredentials", m.config.AllowCredentials,
 		"maxAge", m.config.MaxAge)
 
+	return nil
+}
+
+// setupMiddleware finds and applies middleware from service providers
+func (m *ChiMuxModule) setupMiddleware(app modular.Application) error {
 	// Find middleware providers using interface-based matching
 	var middlewareProviders []MiddlewareProvider
 
@@ -139,10 +173,6 @@ func (m *ChiMuxModule) Init(app modular.Application) error {
 		}
 	}
 
-	// NOTE: BasePath handling is now managed in the ServeHTTP method to properly
-	// handle all routes regardless of when they're registered
-
-	m.logger.Info("Chimux module initialized")
 	return nil
 }
 

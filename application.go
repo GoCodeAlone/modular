@@ -378,7 +378,10 @@ func (app *StdApplication) injectServices(module Module) (Module, error) {
 }
 
 // resolveServiceDependencies resolves all service dependencies for a module
-func (app *StdApplication) resolveServiceDependencies(dependencies []ServiceDependency, moduleName string) (map[string]any, error) {
+func (app *StdApplication) resolveServiceDependencies(
+	dependencies []ServiceDependency,
+	moduleName string,
+) (map[string]any, error) {
 	requiredServices := make(map[string]any)
 
 	// First, handle all name-based dependencies
@@ -459,7 +462,10 @@ func (app *StdApplication) findServiceByInterface(dep ServiceDependency) (servic
 }
 
 // constructModuleWithServices constructs a module using constructor injection
-func (app *StdApplication) constructModuleWithServices(withConstructor Constructable, requiredServices map[string]any) (Module, error) {
+func (app *StdApplication) constructModuleWithServices(
+	withConstructor Constructable,
+	requiredServices map[string]any,
+) (Module, error) {
 	constructor := withConstructor.Constructor()
 
 	if err := app.validateConstructor(constructor); err != nil {
@@ -484,7 +490,10 @@ func (app *StdApplication) validateConstructor(constructor any) error {
 }
 
 // prepareConstructorArguments prepares arguments for constructor call
-func (app *StdApplication) prepareConstructorArguments(constructor any, requiredServices map[string]any) ([]reflect.Value, error) {
+func (app *StdApplication) prepareConstructorArguments(
+	constructor any,
+	requiredServices map[string]any,
+) ([]reflect.Value, error) {
 	constructorType := reflect.TypeOf(constructor)
 	args := make([]reflect.Value, constructorType.NumIn())
 
@@ -731,7 +740,11 @@ func (app *StdApplication) isInterfaceBasedDependency(svcDep ServiceDependency) 
 }
 
 // collectServiceProviders registers services provided by a module
-func (app *StdApplication) collectServiceProviders(moduleName string, svcAwareModule ServiceAware, serviceProviders map[string]string) {
+func (app *StdApplication) collectServiceProviders(
+	moduleName string,
+	svcAwareModule ServiceAware,
+	serviceProviders map[string]string,
+) {
 	for _, svcProvider := range svcAwareModule.ProvidesServices() {
 		if svcProvider.Name != "" && svcProvider.Instance != nil {
 			serviceProviders[svcProvider.Name] = moduleName
@@ -740,7 +753,9 @@ func (app *StdApplication) collectServiceProviders(moduleName string, svcAwareMo
 }
 
 // findInterfaceImplementations finds which modules provide services that implement required interfaces
-func (app *StdApplication) findInterfaceImplementations(requiredInterfaces map[string][]interfaceRequirement) map[string][]string {
+func (app *StdApplication) findInterfaceImplementations(
+	requiredInterfaces map[string][]interfaceRequirement,
+) map[string][]string {
 	interfaceImplementations := make(map[string][]string)
 
 	for moduleName, module := range app.moduleRegistry {
@@ -782,7 +797,9 @@ func (app *StdApplication) matchServiceToInterfaces(
 ) {
 	for reqServiceName, interfaceRecords := range requiredInterfaces {
 		for _, record := range interfaceRecords {
-			if app.serviceImplementsInterface(providerModule, record, svcType, svcProvider, reqServiceName, interfaceImplementations) {
+			if app.serviceImplementsInterface(
+				providerModule, record, svcType, svcProvider, reqServiceName, interfaceImplementations,
+			) {
 				break // Found a match, no need to check other records for this service
 			}
 		}

@@ -182,8 +182,10 @@ func TestModule_Services(t *testing.T) {
 	}
 	app.RegisterConfigSection("database", &MockConfigProvider{config: config})
 
-	module.RegisterConfig(app)
-	module.Init(app)
+	err := module.RegisterConfig(app)
+	assert.NoError(t, err)
+	err = module.Init(app)
+	assert.NoError(t, err)
 
 	provided := module.ProvidesServices()
 	assert.Len(t, provided, 2)
@@ -271,7 +273,11 @@ func TestDatabaseService_Operations(t *testing.T) {
 	// Connect to the database first
 	err = service.Connect()
 	require.NoError(t, err)
-	defer service.Close()
+	defer func() {
+		if closeErr := service.Close(); closeErr != nil {
+			t.Logf("Failed to close service: %v", closeErr)
+		}
+	}()
 
 	t.Run("Ping", func(t *testing.T) {
 		ctx := context.Background()
@@ -303,13 +309,17 @@ func TestDatabaseService_Operations(t *testing.T) {
 		rows, err := service.Query("SELECT * FROM test_table")
 		assert.NoError(t, err)
 		assert.NotNil(t, rows)
-		rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			t.Logf("Failed to close rows: %v", closeErr)
+		}
 
 		ctx := context.Background()
 		rows, err = service.QueryContext(ctx, "SELECT * FROM test_table WHERE name = ?", "test")
 		assert.NoError(t, err)
 		assert.NotNil(t, rows)
-		rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			t.Logf("Failed to close rows: %v", closeErr)
+		}
 	})
 
 	t.Run("QueryRow", func(t *testing.T) {
@@ -325,13 +335,17 @@ func TestDatabaseService_Operations(t *testing.T) {
 		tx, err := service.Begin()
 		assert.NoError(t, err)
 		assert.NotNil(t, tx)
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			t.Logf("Failed to rollback transaction: %v", rollbackErr)
+		}
 
 		ctx := context.Background()
 		tx, err = service.BeginTx(ctx, nil)
 		assert.NoError(t, err)
 		assert.NotNil(t, tx)
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			t.Logf("Failed to rollback transaction: %v", rollbackErr)
+		}
 	})
 }
 
@@ -438,7 +452,9 @@ func TestModule_ConnectionManagement_SQLite(t *testing.T) {
 	})
 
 	// Clean up
-	module.Stop(context.Background())
+	if stopErr := module.Stop(context.Background()); stopErr != nil {
+		t.Logf("Failed to stop module: %v", stopErr)
+	}
 }
 
 func TestModule_ConfigErrors(t *testing.T) {
@@ -499,7 +515,9 @@ func BenchmarkDatabaseService_Connect(b *testing.B) {
 			b.Skipf("Skipping benchmark - SQLite3 requires CGO: %v", err)
 			return
 		}
-		service.Close()
+		if closeErr := service.Close(); closeErr != nil {
+			b.Logf("Failed to close service: %v", closeErr)
+		}
 	}
 }
 
@@ -520,7 +538,11 @@ func BenchmarkDatabaseService_Query(b *testing.B) {
 		b.Skipf("Skipping benchmark - SQLite3 requires CGO: %v", err)
 		return
 	}
-	defer service.Close()
+	defer func() {
+		if closeErr := service.Close(); closeErr != nil {
+			b.Logf("Failed to close service: %v", closeErr)
+		}
+	}()
 
 	ctx := context.Background()
 	db := service.DB()
@@ -560,6 +582,8 @@ func BenchmarkDatabaseService_Query(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
-		rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			b.Logf("Failed to close rows: %v", closeErr)
+		}
 	}
 }

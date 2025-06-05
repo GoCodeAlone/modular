@@ -74,7 +74,12 @@ func (f *FileLogger) LogTransactionToFile(id string, reqData, respData []byte, d
 	if err != nil {
 		return fmt.Errorf("failed to create transaction log file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			// Log error but don't fail the operation
+			fmt.Printf("Failed to close transaction log file: %v\n", closeErr)
+		}
+	}()
 
 	// Write transaction metadata
 	if _, err := fmt.Fprintf(file, "Transaction ID: %s\n", id); err != nil {

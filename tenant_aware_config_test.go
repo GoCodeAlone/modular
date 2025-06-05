@@ -204,13 +204,18 @@ func verifyTenantConfig(
 }
 
 // loadTenantConfigs loads tenant configs in the module
-func loadTenantConfigs(t *testing.T, tm *TenantAwareConfigTestModule, tenantService *StandardTenantService, app Application) {
+func loadTenantConfigs(
+	t *testing.T,
+	tm *TenantAwareConfigTestModule,
+	tenantService *StandardTenantService,
+	app Application,
+) {
 	t.Helper()
 
 	tenants := tenantService.GetTenants()
 	for _, tenantID := range tenants {
 		cp, err := tenantService.GetTenantConfig(tenantID, "TestConfig")
-		if err != nil {
+		if err != nil { //nolint:gocritic // sequential error checking is clearer here
 			t.Errorf("Failed to get tenant config for tenant %s: %v", tenantID, err)
 		} else if cp == nil {
 			t.Errorf("Expected non-nil config provider for tenant %s", tenantID)

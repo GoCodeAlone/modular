@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -238,7 +239,7 @@ func TestService_RefreshToken(t *testing.T) {
 		Permissions: []string{"read"},
 		Active:      true,
 	}
-	err := userStore.CreateUser(nil, user)
+	err := userStore.CreateUser(context.Background(), user)
 	require.NoError(t, err)
 
 	// Generate initial token pair

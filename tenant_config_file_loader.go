@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,11 @@ import (
 	"strings"
 
 	"github.com/GoCodeAlone/modular/feeders"
+)
+
+// Static errors for better error handling
+var (
+	ErrUnsupportedExtension = errors.New("unsupported file extension")
 )
 
 // TenantConfigParams defines parameters for loading tenant configurations
@@ -21,14 +27,14 @@ type TenantConfigParams struct {
 	ConfigFeeders []Feeder
 }
 
-// LoadTenantConfigs scans the given directory for config files. Each file should be named with the tenant ID (e.g. "tenant123.json").
-// For each file, it unmarshals the configuration and registers it with the provided TenantService for the given section.
+// LoadTenantConfigs scans the given directory for config files.
+// Each file should be named with the tenant ID (e.g. "tenant123.json").
+// For each file, it unmarshals the configuration and registers it
+// with the provided TenantService for the given section.
 // The configNameRegex is a regex pattern for the config file names (e.g. "^tenant[0-9]+\\.json$").
 func LoadTenantConfigs(app Application, tenantService TenantService, params TenantConfigParams) error {
-	// Check if directory exists, and throw a error if it doesn't
-	if _, err := os.Stat(params.ConfigDir); os.IsNotExist(err) {
-		app.Logger().Error("Tenant config directory does not exist", "directory", params.ConfigDir)
-		return fmt.Errorf("tenant config directory does not exist: %w", err)
+	if err := validateTenantConfigDirectory(app, params.ConfigDir); err != nil {
+		return err
 	}
 
 	files, err := os.ReadDir(params.ConfigDir)
@@ -41,6 +47,23 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 		return nil
 	}
 
+	return processConfigFiles(app, tenantService, params, files)
+}
+
+func validateTenantConfigDirectory(app Application, configDir string) error {
+	if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		app.Logger().Error("Tenant config directory does not exist", "directory", configDir)
+		return fmt.Errorf("tenant config directory does not exist: %w", err)
+	}
+	return nil
+}
+
+func processConfigFiles(
+	app Application,
+	tenantService TenantService,
+	params TenantConfigParams,
+	files []os.DirEntry,
+) error {
 	loadedTenants := 0
 	for _, file := range files {
 		if file.IsDir() {
@@ -52,46 +75,78 @@ func LoadTenantConfigs(app Application, tenantService TenantService, params Tena
 			continue
 		}
 
-		// Strip the extension to get the tenant ID
-		ext := filepath.Ext(file.Name())
-		name := strings.TrimSuffix(file.Name(), ext)
-
-		tenantID := TenantID(name)
-		configPath := filepath.Join(params.ConfigDir, file.Name())
-
-		app.Logger().Debug("Loading tenant config file", "tenantID", tenantID, "file", configPath)
-
-		var feederSlice []Feeder
-		switch strings.ToLower(ext) { // Ensure case-insensitive extension matching
-		case ".json":
-			feederSlice = append(feederSlice, feeders.NewJSONFeeder(configPath))
-		case ".yaml", ".yml":
-			feederSlice = append(feederSlice, feeders.NewYamlFeeder(configPath))
-		case ".toml":
-			feederSlice = append(feederSlice, feeders.NewTomlFeeder(configPath))
-		default:
-			app.Logger().Warn("Unsupported config file extension", "file", file.Name(), "extension", ext)
-			continue // Skip but don't fail
-		}
-
-		// Add any additional feeders from params
-		feederSlice = append(feederSlice, params.ConfigFeeders...)
-
-		tenantCfgs, err := loadTenantConfig(app, feederSlice)
-		if err != nil {
-			app.Logger().Error("Failed to load tenant config", "tenantID", tenantID, "error", err)
-			continue // Skip this tenant but continue with others
-		}
-
-		// Register the tenant even with empty configs
-		if err = tenantService.RegisterTenant(tenantID, tenantCfgs); err != nil {
-			return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
+		tenantID, configPath := extractTenantInfo(file.Name(), params.ConfigDir)
+		if err := loadAndRegisterTenant(app, tenantService, params, tenantID, configPath, file.Name()); err != nil {
+			// Check if it's an unsupported extension error - log but continue
+			if errors.Is(err, ErrUnsupportedExtension) {
+				app.Logger().Debug("Skipping file with unsupported extension", "file", file.Name(), "error", err)
+				continue
+			}
+			// For other errors, log and continue to be resilient
+			app.Logger().Warn("Failed to load tenant config, skipping", "file", file.Name(), "error", err)
+			continue
 		}
 		loadedTenants++
 	}
 
 	app.Logger().Info("Tenant configuration loading complete", "loadedTenants", loadedTenants)
 	return nil
+}
+
+func extractTenantInfo(fileName, configDir string) (TenantID, string) {
+	ext := filepath.Ext(fileName)
+	name := strings.TrimSuffix(fileName, ext)
+	tenantID := TenantID(name)
+	configPath := filepath.Join(configDir, fileName)
+	return tenantID, configPath
+}
+
+func loadAndRegisterTenant(
+	app Application,
+	tenantService TenantService,
+	params TenantConfigParams,
+	tenantID TenantID,
+	configPath, fileName string,
+) error {
+	app.Logger().Debug("Loading tenant config file", "tenantID", tenantID, "file", configPath)
+
+	feederSlice, err := createFeederSlice(fileName, configPath, params.ConfigFeeders)
+	if err != nil {
+		app.Logger().Warn("Unsupported config file extension", "file", fileName, "error", err)
+		return err
+	}
+
+	tenantCfgs, err := loadTenantConfig(app, feederSlice)
+	if err != nil {
+		app.Logger().Error("Failed to load tenant config", "tenantID", tenantID, "error", err)
+		return fmt.Errorf("failed to load tenant config for %s: %w", tenantID, err)
+	}
+
+	// Register the tenant even with empty configs
+	if err = tenantService.RegisterTenant(tenantID, tenantCfgs); err != nil {
+		return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
+	}
+	return nil
+}
+
+func createFeederSlice(fileName, configPath string, additionalFeeders []Feeder) ([]Feeder, error) {
+	ext := filepath.Ext(fileName)
+	var feederSlice []Feeder
+
+	switch strings.ToLower(ext) { // Ensure case-insensitive extension matching
+	case ".json":
+		feederSlice = append(feederSlice, feeders.NewJSONFeeder(configPath))
+	case ".yaml", ".yml":
+		feederSlice = append(feederSlice, feeders.NewYamlFeeder(configPath))
+	case ".toml":
+		feederSlice = append(feederSlice, feeders.NewTomlFeeder(configPath))
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedExtension, ext)
+	}
+
+	// Add any additional feeders from params
+	feederSlice = append(feederSlice, additionalFeeders...)
+	return feederSlice, nil
 }
 
 func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]ConfigProvider, error) {
@@ -283,8 +338,7 @@ func copyStructFields(dst, src interface{}) error {
 	}
 
 	// Handle different source types
-	//nolint:exhaustive
-	switch srcVal.Kind() {
+	switch srcVal.Kind() { //nolint:exhaustive // only handling specific cases we support
 	case reflect.Map:
 		return copyMapToStruct(dstVal, srcVal)
 	case reflect.Struct:

@@ -8,7 +8,7 @@ import (
 // RedisCache implements CacheEngine using Redis
 type RedisCache struct {
 	config *CacheConfig
-	client interface{} // Placeholder for a Redis client; will be initialized in Connect
+	client interface{} `json:"-"` // Placeholder for a Redis client; will be initialized in Connect
 }
 
 // NewRedisCache creates a new Redis cache engine

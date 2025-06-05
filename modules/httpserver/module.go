@@ -93,7 +93,7 @@ func (m *HTTPServerModule) Init(app modular.Application) error {
 // Constructor returns a dependency injection function that initializes the module with
 // required services
 func (m *HTTPServerModule) Constructor() modular.ModuleConstructor {
-	return func(app modular.Application, services map[string]any) (modular.Module, error) {
+	return func(_ modular.Application, services map[string]any) (modular.Module, error) {
 		// Get the router service (which implements http.Handler)
 		handler, ok := services["router"].(http.Handler)
 		if !ok {
@@ -158,10 +158,14 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 					cert, key, err := m.generateSelfSignedCertificate(m.config.TLS.Domains)
 					if err != nil {
 						m.logger.Error("Failed to generate self-signed certificate", "error", err)
-						err = m.server.ListenAndServe() // Fall back to HTTP
+						if listenErr := m.server.ListenAndServe(); listenErr != nil {
+							m.logger.Error("Failed to start HTTP server as fallback", "error", listenErr)
+						}
 					} else {
 						m.server.TLSConfig = tlsConfig
-						err = m.server.ListenAndServeTLS(cert, key)
+						if listenErr := m.server.ListenAndServeTLS(cert, key); listenErr != nil {
+							m.logger.Error("Failed to start HTTPS server", "error", listenErr)
+						}
 					}
 				}
 			} else if m.config.TLS.AutoGenerate {
@@ -170,10 +174,14 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 				cert, key, err := m.generateSelfSignedCertificate(m.config.TLS.Domains)
 				if err != nil {
 					m.logger.Error("Failed to generate self-signed certificate", "error", err)
-					err = m.server.ListenAndServe() // Fall back to HTTP
+					if listenErr := m.server.ListenAndServe(); listenErr != nil {
+						m.logger.Error("Failed to start HTTP server as fallback", "error", listenErr)
+					}
 				} else {
 					m.server.TLSConfig = tlsConfig
-					err = m.server.ListenAndServeTLS(cert, key)
+					if listenErr := m.server.ListenAndServeTLS(cert, key); listenErr != nil {
+						m.logger.Error("Failed to start HTTPS server", "error", listenErr)
+					}
 				}
 			} else {
 				// Use provided certificate files
@@ -205,7 +213,9 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			m.logger.Warn("Failed to close connection", "error", closeErr)
+		}
 		return nil
 	}
 
@@ -370,7 +380,11 @@ func (m *HTTPServerModule) createTempFile(pattern, content string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer tmpFile.Close()
+	defer func() {
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			m.logger.Warn("Failed to close temp file", "error", closeErr)
+		}
+	}()
 
 	if _, err := tmpFile.WriteString(content); err != nil {
 		return "", err

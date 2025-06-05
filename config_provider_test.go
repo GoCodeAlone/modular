@@ -250,7 +250,9 @@ func Test_updateConfig(t *testing.T) {
 		tempCfgPtr.(*testCfg).Num = 42
 
 		mockLogger := new(MockLogger)
-		mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
+		mockLogger.On("Debug",
+			"Creating new provider with updated config (original was non-pointer)",
+			[]interface{}(nil)).Return()
 		app := &StdApplication{
 			logger:      mockLogger,
 			cfgProvider: NewStdConfigProvider(originalCfg),
@@ -435,7 +437,9 @@ func Test_loadAppConfig(t *testing.T) {
 			name: "non-pointer configs",
 			setupApp: func() *StdApplication {
 				mockLogger := new(MockLogger)
-				mockLogger.On("Debug", "Creating new provider with updated config (original was non-pointer)", []interface{}(nil)).Return()
+				mockLogger.On("Debug",
+					"Creating new provider with updated config (original was non-pointer)",
+					[]interface{}(nil)).Return()
 				mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "section1"}).Return()
 				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
 				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()

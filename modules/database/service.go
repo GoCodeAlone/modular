@@ -102,7 +102,9 @@ func (s *databaseServiceImpl) Connect() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return fmt.Errorf("failed to ping database and close connection: %w (close error: %v)", err, closeErr)
+		}
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 

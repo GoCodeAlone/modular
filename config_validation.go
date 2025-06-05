@@ -450,11 +450,16 @@ func mapStructFieldsForJSON(cfg interface{}) map[string]interface{} {
 		}
 
 		// Convert nested structs recursively
-		if field.Kind() == reflect.Struct {
+		switch field.Kind() { //nolint:exhaustive // only handling specific cases we care about
+		case reflect.Struct:
 			result[fieldName] = mapStructFieldsForJSON(field.Interface())
-		} else if field.Kind() == reflect.Ptr && !field.IsNil() && field.Elem().Kind() == reflect.Struct {
-			result[fieldName] = mapStructFieldsForJSON(field.Interface())
-		} else {
+		case reflect.Ptr:
+			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
+				result[fieldName] = mapStructFieldsForJSON(field.Interface())
+			} else {
+				result[fieldName] = field.Interface()
+			}
+		default:
 			// Handle primitive types and other values
 			result[fieldName] = field.Interface()
 		}

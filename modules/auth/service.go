@@ -350,7 +350,7 @@ func (s *Service) GetSession(sessionID string) (*Session, error) {
 	}
 
 	if time.Now().After(session.ExpiresAt) {
-		s.sessionStore.Delete(context.Background(), sessionID)
+		_ = s.sessionStore.Delete(context.Background(), sessionID) // Ignore error for expired session cleanup
 		return nil, ErrSessionExpired
 	}
 

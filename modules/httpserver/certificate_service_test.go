@@ -82,7 +82,7 @@ func (m *SimpleMockApplication) SvcRegistry() modular.ServiceRegistry {
 	return nil // Not needed for these tests
 }
 
-func (m *SimpleMockApplication) RegisterModule(module modular.Module) {
+func (m *SimpleMockApplication) RegisterModule(_ modular.Module) {
 	// No-op for these tests
 }
 
@@ -90,11 +90,11 @@ func (m *SimpleMockApplication) ConfigSections() map[string]modular.ConfigProvid
 	return m.config
 }
 
-func (m *SimpleMockApplication) RegisterService(name string, service interface{}) error {
+func (m *SimpleMockApplication) RegisterService(_ string, _ interface{}) error {
 	return nil // No-op for these tests
 }
 
-func (m *SimpleMockApplication) GetService(name string, target interface{}) error {
+func (m *SimpleMockApplication) GetService(_ string, _ interface{}) error {
 	return nil // No-op for these tests
 }
 
@@ -121,18 +121,21 @@ func NewSimpleMockLogger() *SimpleMockLogger {
 	return &SimpleMockLogger{}
 }
 
-func (l *SimpleMockLogger) Info(msg string, args ...interface{})  {}
-func (l *SimpleMockLogger) Error(msg string, args ...interface{}) {}
-func (l *SimpleMockLogger) Debug(msg string, args ...interface{}) {}
-func (l *SimpleMockLogger) Warn(msg string, args ...interface{})  {}
-func (l *SimpleMockLogger) Fatal(msg string, args ...interface{}) {}
+func (l *SimpleMockLogger) Info(_ string, _ ...interface{})  {}
+func (l *SimpleMockLogger) Error(_ string, _ ...interface{}) {}
+func (l *SimpleMockLogger) Debug(_ string, _ ...interface{}) {}
+func (l *SimpleMockLogger) Warn(_ string, _ ...interface{})  {}
+func (l *SimpleMockLogger) Fatal(_ string, _ ...interface{}) {}
 
 // SimpleMockHandler is a simple HTTP handler for certificate service tests
 type SimpleMockHandler struct{}
 
-func (h *SimpleMockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *SimpleMockHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Hello, world!"))
+	if _, err := w.Write([]byte("Hello, world!")); err != nil {
+		// Log error but don't fail
+		fmt.Printf("Failed to write response: %v\n", err)
+	}
 }
 
 func TestHTTPServerWithCertificateService(t *testing.T) {

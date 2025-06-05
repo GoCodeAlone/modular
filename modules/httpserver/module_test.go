@@ -9,7 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -142,9 +142,12 @@ type MockHandler struct {
 	ResponseBody   string
 }
 
-func (h *MockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *MockHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(h.ResponseStatus)
-	w.Write([]byte(h.ResponseBody))
+	if _, err := w.Write([]byte(h.ResponseBody)); err != nil {
+		// Log error but don't fail the test
+		fmt.Printf("Failed to write response: %v\n", err)
+	}
 }
 
 func TestModuleName(t *testing.T) {
@@ -270,9 +273,13 @@ func TestStartStop(t *testing.T) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
 	assert.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Logf("Failed to close response body: %v", closeErr)
+		}
+	}()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "Hello, World!", string(body))
@@ -333,11 +340,15 @@ func TestProvidesServices(t *testing.T) {
 
 func TestTLSSupport(t *testing.T) {
 	// Skip this test if we can't create temp files
-	tempDir, err := ioutil.TempDir("", "httpserver-test")
+	tempDir, err := os.MkdirTemp("", "httpserver-test")
 	if err != nil {
 		t.Skip("Could not create temporary directory:", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
+			t.Logf("Failed to remove temp directory: %v", removeErr)
+		}
+	}()
 
 	// Create self-signed certificate for testing
 	certFile := filepath.Join(tempDir, "cert.pem")
@@ -404,9 +415,13 @@ func TestTLSSupport(t *testing.T) {
 
 	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d", port))
 	assert.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Logf("Failed to close response body: %v", closeErr)
+		}
+	}()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "TLS OK", string(body))
@@ -480,7 +495,11 @@ func generateTestCertificate(certFile, keyFile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", certFile, err)
 	}
-	defer certOut.Close()
+	defer func() {
+		if err := certOut.Close(); err != nil {
+			fmt.Printf("Warning: failed to close cert file: %v\n", err)
+		}
+	}()
 
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
 		return fmt.Errorf("failed to write data to %s: %w", certFile, err)
@@ -491,7 +510,11 @@ func generateTestCertificate(certFile, keyFile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", keyFile, err)
 	}
-	defer keyOut.Close()
+	defer func() {
+		if err := keyOut.Close(); err != nil {
+			fmt.Printf("Warning: failed to close key file: %v\n", err)
+		}
+	}()
 
 	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
 	if err != nil {

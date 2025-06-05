@@ -3,6 +3,7 @@ package eventbus
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -314,7 +315,8 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 				event.ProcessingCompleted = &completed
 
 				if err != nil {
-					// Handle error
+					// Log error but continue processing
+					slog.Error("Event handler failed", "error", err, "topic", event.Topic)
 				}
 			}
 		}
@@ -336,7 +338,8 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 		event.ProcessingCompleted = &completed
 
 		if err != nil {
-			// Handle error
+			// Log error but continue processing
+			slog.Error("Event handler failed", "error", err, "topic", event.Topic)
 		}
 	}:
 		// Successfully queued

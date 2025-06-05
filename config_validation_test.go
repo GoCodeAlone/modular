@@ -17,7 +17,7 @@ type ValidationTestConfig struct {
 	Debug       bool              `yaml:"debug" default:"false" desc:"Enable debug mode"`
 	Tags        []string          `yaml:"tags" default:"[\"tag1\", \"tag2\"]" desc:"List of tags"`
 	Environment string            `yaml:"environment" required:"true" desc:"Environment (dev, test, prod)"`
-	Options     map[string]string `yaml:"options" default:"{\"key1\":\"value1\", \"key2\":\"value2\"}" desc:"Configuration options"`
+	Options     map[string]string `yaml:"options" default:"{\"key1\":\"value1\", \"key2\":\"value2\"}" desc:"Options"`
 	NestedCfg   *NestedTestConfig `yaml:"nested" desc:"Nested configuration"`
 }
 
@@ -265,7 +265,7 @@ func TestSaveSampleConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify file exists and contains expected content
-	fileData, err := os.ReadFile(tempFile)
+	fileData, err := os.ReadFile(tempFile) // #nosec G304 -- reading test-created temp file
 	require.NoError(t, err)
 	assert.Contains(t, string(fileData), "name: Default Name")
 	assert.Contains(t, string(fileData), "port: 8080")

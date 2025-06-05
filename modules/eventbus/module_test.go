@@ -125,12 +125,14 @@ func TestEventBusOperations(t *testing.T) {
 
 	// Initialize with mock app
 	app := newMockApp()
-	module.RegisterConfig(app)
-	module.Init(app)
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+	err = module.Init(app)
+	require.NoError(t, err)
 
 	// Start the module
 	ctx := context.Background()
-	err := module.Start(ctx)
+	err = module.Start(ctx)
 	require.NoError(t, err)
 
 	// Test event publishing and subscribing
@@ -146,7 +148,11 @@ func TestEventBusOperations(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
-		defer subscription.Cancel()
+		defer func() {
+			if cancelErr := subscription.Cancel(); cancelErr != nil {
+				t.Logf("Failed to cancel subscription: %v", cancelErr)
+			}
+		}()
 
 		// Publish an event
 		err = module.Publish(ctx, "test.event", testData)
@@ -172,14 +178,22 @@ func TestEventBusOperations(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
-		defer subscription1.Cancel()
+		defer func() {
+			if cancelErr := subscription1.Cancel(); cancelErr != nil {
+				t.Logf("Failed to cancel subscription1: %v", cancelErr)
+			}
+		}()
 
 		subscription2, err := module.Subscribe(ctx, "multi.event", func(ctx context.Context, event Event) error {
 			received2 <- true
 			return nil
 		})
 		require.NoError(t, err)
-		defer subscription2.Cancel()
+		defer func() {
+			if cancelErr := subscription2.Cancel(); cancelErr != nil {
+				t.Logf("Failed to cancel subscription2: %v", cancelErr)
+			}
+		}()
 
 		// Publish event
 		err = module.Publish(ctx, "multi.event", testData)
@@ -238,7 +252,11 @@ func TestEventBusOperations(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
-		defer subscription.Cancel()
+		defer func() {
+			if cancelErr := subscription.Cancel(); cancelErr != nil {
+				t.Logf("Failed to cancel subscription: %v", cancelErr)
+			}
+		}()
 
 		// Publish an event
 		err = module.Publish(ctx, "async.event", testData)
@@ -280,8 +298,10 @@ func TestEventBusServiceProvider(t *testing.T) {
 	module := NewModule().(*EventBusModule)
 	app := newMockApp()
 
-	module.RegisterConfig(app)
-	module.Init(app)
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+	err = module.Init(app)
+	require.NoError(t, err)
 
 	// Test service provides
 	services := module.ProvidesServices()

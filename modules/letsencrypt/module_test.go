@@ -25,7 +25,11 @@ func TestLetsEncryptGetCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test directory: %v", err)
 	}
-	defer os.RemoveAll(testDir)
+	defer func() {
+		if err := os.RemoveAll(testDir); err != nil {
+			t.Logf("Warning: failed to remove test directory: %v", err)
+		}
+	}()
 
 	// Create a test module
 	config := &LetsEncryptConfig{

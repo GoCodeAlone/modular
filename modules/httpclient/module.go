@@ -153,7 +153,9 @@ func (m *HTTPClientModule) Stop(context.Context) error {
 
 	// Close the file logger if it exists
 	if m.fileLogger != nil {
-		m.fileLogger.Close()
+		if closeErr := m.fileLogger.Close(); closeErr != nil {
+			m.logger.Warn("Failed to close file logger", "error", closeErr)
+		}
 	}
 
 	return nil
