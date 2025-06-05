@@ -295,12 +295,12 @@ func TestDatabaseService_Operations(t *testing.T) {
 		assert.NotNil(t, stats)
 	})
 
-	t.Run("Execute", func(t *testing.T) {
-		_, err := service.Execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)")
+	t.Run("Exec", func(t *testing.T) {
+		_, err := service.Exec("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)")
 		assert.NoError(t, err)
 
 		ctx := context.Background()
-		result, err := service.ExecuteContext(ctx, "INSERT INTO test_table (name) VALUES (?)", "test")
+		result, err := service.ExecContext(ctx, "INSERT INTO test_table (name) VALUES (?)", "test")
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 	})
@@ -365,7 +365,7 @@ func TestDatabaseService_ErrorHandling(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, ErrDatabaseNotConnected, err)
 
-		_, err = service.ExecuteContext(ctx, "SELECT 1")
+		_, err = service.ExecContext(ctx, "SELECT 1")
 		assert.Error(t, err)
 		assert.Equal(t, ErrDatabaseNotConnected, err)
 

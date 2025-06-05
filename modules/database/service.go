@@ -32,11 +32,17 @@ type DatabaseService interface {
 	// Stats returns database statistics
 	Stats() sql.DBStats
 
-	// ExecuteContext executes a query without returning any rows
-	ExecuteContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	// ExecContext executes a query without returning any rows
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 
-	// Execute executes a query without returning any rows (using default context)
-	Execute(query string, args ...interface{}) (sql.Result, error)
+	// Exec executes a query without returning any rows (using default context)
+	Exec(query string, args ...interface{}) (sql.Result, error)
+
+	// PrepareContext prepares a statement for execution
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
+
+	// Prepare prepares a statement for execution (using default context)
+	Prepare(query string) (*sql.Stmt, error)
 
 	// QueryContext executes a query that returns rows
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
@@ -144,7 +150,7 @@ func (s *databaseServiceImpl) Stats() sql.DBStats {
 	return s.db.Stats()
 }
 
-func (s *databaseServiceImpl) ExecuteContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (s *databaseServiceImpl) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if s.db == nil {
 		return nil, ErrDatabaseNotConnected
 	}
@@ -155,8 +161,8 @@ func (s *databaseServiceImpl) ExecuteContext(ctx context.Context, query string, 
 	return result, nil
 }
 
-func (s *databaseServiceImpl) Execute(query string, args ...interface{}) (sql.Result, error) {
-	return s.ExecuteContext(context.Background(), query, args...)
+func (s *databaseServiceImpl) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return s.ExecContext(context.Background(), query, args...)
 }
 
 func (s *databaseServiceImpl) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
@@ -205,4 +211,19 @@ func (s *databaseServiceImpl) Begin() (*sql.Tx, error) {
 		return nil, fmt.Errorf("beginning database transaction: %w", err)
 	}
 	return tx, nil
+}
+
+func (s *databaseServiceImpl) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	if s.db == nil {
+		return nil, ErrDatabaseNotConnected
+	}
+	stmt, err := s.db.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement: %w", err)
+	}
+	return stmt, nil
+}
+
+func (s *databaseServiceImpl) Prepare(query string) (*sql.Stmt, error) {
+	return s.PrepareContext(context.Background(), query)
 }
