@@ -145,7 +145,7 @@ func (s *databaseServiceImpl) Connect() error {
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			return fmt.Errorf("failed to ping database and close connection: %w (close error: %v)", err, closeErr)
+			return fmt.Errorf("failed to ping database and close connection: %w", err)
 		}
 		return fmt.Errorf("failed to ping database: %w", err)
 	}

@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/GoCodeAlone/modular"
@@ -17,6 +18,12 @@ type Module struct {
 	connections map[string]*sql.DB
 	services    map[string]DatabaseService
 }
+
+var (
+	ErrInvalidConfigType = errors.New("invalid config type for database module")
+	ErrMissingDriver     = errors.New("database connection missing driver")
+	ErrMissingDSN        = errors.New("database connection missing DSN")
+)
 
 // NewModule creates a new database module
 func NewModule() *Module {
@@ -54,7 +61,7 @@ func (m *Module) Init(app modular.Application) error {
 	// Get the actual config
 	cfg, ok := provider.GetConfig().(*Config)
 	if !ok {
-		return fmt.Errorf("invalid config type for database module")
+		return ErrInvalidConfigType
 	}
 
 	m.config = cfg
@@ -193,10 +200,10 @@ func (m *Module) initializeConnections() error {
 	if len(m.config.Connections) > 0 {
 		for name, connConfig := range m.config.Connections {
 			if connConfig.Driver == "" {
-				return fmt.Errorf("database connection '%s' missing driver", name)
+				return ErrMissingDriver
 			}
 			if connConfig.DSN == "" {
-				return fmt.Errorf("database connection '%s' missing DSN", name)
+				return ErrMissingDSN
 			}
 
 			// Create the database service and connect

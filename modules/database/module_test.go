@@ -104,7 +104,7 @@ func TestModule_Init_WithNoConfig(t *testing.T) {
 
 	// Test initialization without config section - should return error
 	err := module.Init(app)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get config section")
 
 	// When no config is provided, the module should not initialize any database services
@@ -160,7 +160,7 @@ func TestModule_Lifecycle(t *testing.T) {
 	// Test Start
 	ctx := context.Background()
 	err = module.Start(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test Stop
 	err = module.Stop(ctx)
@@ -183,9 +183,9 @@ func TestModule_Services(t *testing.T) {
 	app.RegisterConfigSection("database", &MockConfigProvider{config: config})
 
 	err := module.RegisterConfig(app)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = module.Init(app)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	provided := module.ProvidesServices()
 	assert.Len(t, provided, 2)
@@ -248,11 +248,11 @@ func TestDatabaseServiceFactory(t *testing.T) {
 
 			service, err := NewDatabaseService(config)
 			if tt.shouldSucceed {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, service)
 				assert.Implements(t, (*DatabaseService)(nil), service)
 			} else {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, service)
 			}
 		})
@@ -262,8 +262,9 @@ func TestDatabaseServiceFactory(t *testing.T) {
 func TestDatabaseService_Operations(t *testing.T) {
 	// Test with SQLite in-memory database
 	config := ConnectionConfig{
-		Driver: "sqlite",
-		DSN:    ":memory:",
+		Driver:             "sqlite",
+		DSN:                ":memory:",
+		MaxOpenConnections: 5, // Allow multiple connections for parallel subtests
 	}
 
 	service, err := NewDatabaseService(config)
@@ -296,56 +297,71 @@ func TestDatabaseService_Operations(t *testing.T) {
 	})
 
 	t.Run("Exec", func(t *testing.T) {
-		_, err := service.Exec("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)")
-		assert.NoError(t, err)
+		_, err := service.Exec("CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)")
+		require.NoError(t, err)
 
 		ctx := context.Background()
 		result, err := service.ExecContext(ctx, "INSERT INTO test_table (name) VALUES (?)", "test")
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
+		require.NoError(t, err)
+		require.NotNil(t, result)
 	})
 
 	t.Run("Query", func(t *testing.T) {
-		rows, err := service.Query("SELECT * FROM test_table")
-		assert.NoError(t, err)
-		assert.NotNil(t, rows)
-		if closeErr := rows.Close(); closeErr != nil {
-			t.Logf("Failed to close rows: %v", closeErr)
-		}
+		// Ensure table exists for this test
+		_, err := service.Exec("CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)")
+		require.NoError(t, err)
+
+		// Insert some test data
+		_, err = service.Exec("INSERT OR IGNORE INTO test_table (name) VALUES ('test')")
+		require.NoError(t, err)
+
+		rows1, err := service.Query("SELECT * FROM test_table")
+		require.NoError(t, err)
+		assert.NotNil(t, rows1)
+		require.NoError(t, rows1.Err())
+		rows1.Close() // nolint:sqlclosecheck // Close explicitly before next query to avoid connection pool deadlock
 
 		ctx := context.Background()
-		rows, err = service.QueryContext(ctx, "SELECT * FROM test_table WHERE name = ?", "test")
-		assert.NoError(t, err)
-		assert.NotNil(t, rows)
-		if closeErr := rows.Close(); closeErr != nil {
-			t.Logf("Failed to close rows: %v", closeErr)
-		}
+		rows2, err := service.QueryContext(ctx, "SELECT * FROM test_table WHERE name = ?", "test")
+		require.NoError(t, err)
+		require.NotNil(t, rows2)
+		require.NoError(t, rows2.Err())
+		defer rows2.Close()
 	})
 
 	t.Run("QueryRow", func(t *testing.T) {
+		// Ensure table exists for this test
+		_, err := service.Exec("CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)")
+		require.NoError(t, err)
+
+		// First QueryRow - consume the result to release connection
 		row := service.QueryRow("SELECT COUNT(*) FROM test_table")
 		assert.NotNil(t, row)
+		var count int
+		err = row.Scan(&count)
+		require.NoError(t, err)
 
+		// Second QueryRow - now safe to execute
 		ctx := context.Background()
 		row = service.QueryRowContext(ctx, "SELECT name FROM test_table WHERE id = ?", 1)
 		assert.NotNil(t, row)
 	})
 
 	t.Run("Transactions", func(t *testing.T) {
-		tx, err := service.Begin()
-		assert.NoError(t, err)
-		assert.NotNil(t, tx)
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			t.Logf("Failed to rollback transaction: %v", rollbackErr)
-		}
+		// Test Begin() - ensure transaction is rolled back before next test
+		tx1, err := service.Begin()
+		require.NoError(t, err)
+		require.NotNil(t, tx1)
+		rollbackErr := tx1.Rollback()
+		require.NoError(t, rollbackErr) // Ensure rollback succeeds to free connection
 
+		// Test BeginTx() - now safe to start second transaction
 		ctx := context.Background()
-		tx, err = service.BeginTx(ctx, nil)
-		assert.NoError(t, err)
-		assert.NotNil(t, tx)
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			t.Logf("Failed to rollback transaction: %v", rollbackErr)
-		}
+		tx2, err := service.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, tx2)
+		rollbackErr = tx2.Rollback()
+		require.NoError(t, rollbackErr) // Ensure rollback succeeds
 	})
 }
 
@@ -362,24 +378,39 @@ func TestDatabaseService_ErrorHandling(t *testing.T) {
 
 		// Test operations without connecting first
 		err = service.Ping(ctx)
-		assert.Error(t, err)
-		assert.Equal(t, ErrDatabaseNotConnected, err)
-
+		require.Error(t, err)
+		require.Equal(t, ErrDatabaseNotConnected, err)
 		_, err = service.ExecContext(ctx, "SELECT 1")
-		assert.Error(t, err)
-		assert.Equal(t, ErrDatabaseNotConnected, err)
+		require.Error(t, err)
+		require.Equal(t, ErrDatabaseNotConnected, err)
 
-		_, err = service.QueryContext(ctx, "SELECT 1")
-		assert.Error(t, err)
-		assert.Equal(t, ErrDatabaseNotConnected, err)
+		// Test QueryContext without connection
+		rows, err := service.QueryContext(ctx, "SELECT 1")
+		require.Error(t, err)
+		require.Equal(t, ErrDatabaseNotConnected, err)
+		if rows != nil {
+			defer rows.Close()
+			if rows.Err() != nil {
+				t.Errorf("rows error: %v", rows.Err())
+			}
+		}
 
+		// Test that we can check rows errors - this should also fail since not connected
+		rows2, err := service.QueryContext(ctx, "SELECT 1")
+		require.Error(t, err)
+		require.Equal(t, ErrDatabaseNotConnected, err)
+		if rows2 != nil {
+			defer rows2.Close()
+			if rows2.Err() != nil {
+				t.Errorf("rows error: %v", rows2.Err())
+			}
+		}
 		_, err = service.BeginTx(ctx, nil)
-		assert.Error(t, err)
-		assert.Equal(t, ErrDatabaseNotConnected, err)
-
+		require.Error(t, err)
+		require.Equal(t, ErrDatabaseNotConnected, err)
 		_, err = service.Begin()
-		assert.Error(t, err)
-		assert.Equal(t, ErrDatabaseNotConnected, err)
+		require.Error(t, err)
+		require.Equal(t, ErrDatabaseNotConnected, err)
 	})
 
 	t.Run("InvalidDriver", func(t *testing.T) {
@@ -394,7 +425,7 @@ func TestDatabaseService_ErrorHandling(t *testing.T) {
 
 		// But connection should fail
 		err = service.Connect()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unknown driver")
 	})
 }
@@ -464,7 +495,7 @@ func TestModule_ConfigErrors(t *testing.T) {
 
 		// Don't register config section
 		err := module.Init(app)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get config section")
 	})
 
@@ -491,7 +522,7 @@ func TestModule_ConfigErrors(t *testing.T) {
 		app.RegisterConfigSection("database", &MockConfigProvider{config: config})
 
 		err = module.Init(app)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to connect to database")
 	})
 }
@@ -573,6 +604,11 @@ func BenchmarkDatabaseService_Query(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				b.Logf("Failed to close rows: %v", closeErr)
+			}
+		}()
 
 		for rows.Next() {
 			var id int
@@ -582,8 +618,9 @@ func BenchmarkDatabaseService_Query(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
-		if closeErr := rows.Close(); closeErr != nil {
-			b.Logf("Failed to close rows: %v", closeErr)
+
+		if rows.Err() != nil {
+			b.Fatal(rows.Err())
 		}
 	}
 }
