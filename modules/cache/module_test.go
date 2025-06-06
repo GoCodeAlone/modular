@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/GoCodeAlone/modular"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -339,4 +340,224 @@ func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 	// Test DeleteMulti with empty keys - should succeed (no connection needed)
 	err = cache.DeleteMulti(ctx, []string{})
 	assert.NoError(t, err)
+}
+
+// TestRedisConnectWithPassword tests connection configuration with password
+func TestRedisConnectWithPassword(t *testing.T) {
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://localhost:6379",
+		RedisPassword:    "test-password",
+		RedisDB:          1,
+		ConnectionMaxAge: 120,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Test connection with password and different DB - this will fail since no Redis server
+	// but will exercise the connection configuration code paths
+	err := cache.Connect(ctx)
+	assert.Error(t, err) // Expected to fail without Redis server
+
+	// Test Close when client is nil initially
+	err = cache.Close(ctx)
+	assert.NoError(t, err)
+}
+
+// TestRedisJSONMarshaling tests JSON marshaling error scenarios
+func TestRedisJSONMarshaling(t *testing.T) {
+	// Start a test Redis server
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://" + s.Addr(),
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Connect to the test Redis server
+	err := cache.Connect(ctx)
+	require.NoError(t, err)
+	defer cache.Close(ctx)
+
+	// Test Set with invalid JSON value (function cannot be marshaled)
+	err = cache.Set(ctx, "test-key", func() {}, time.Minute)
+	assert.Equal(t, ErrInvalidValue, err)
+
+	// Test SetMulti with values that cause JSON marshaling errors
+	invalidItems := map[string]interface{}{
+		"valid-key":   "valid-value",
+		"invalid-key": func() {}, // Functions cannot be marshaled to JSON
+	}
+
+	err = cache.SetMulti(ctx, invalidItems, time.Minute)
+	assert.Equal(t, ErrInvalidValue, err)
+}
+
+// TestRedisFullOperations tests Redis operations with a test server
+func TestRedisFullOperations(t *testing.T) {
+	// Start a test Redis server
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://" + s.Addr(),
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Test Connect
+	err := cache.Connect(ctx)
+	require.NoError(t, err)
+
+	// Test Set and Get
+	err = cache.Set(ctx, "test-key", "test-value", time.Minute)
+	assert.NoError(t, err)
+
+	value, found := cache.Get(ctx, "test-key")
+	assert.True(t, found)
+	assert.Equal(t, "test-value", value)
+
+	// Test Delete
+	err = cache.Delete(ctx, "test-key")
+	assert.NoError(t, err)
+
+	_, found = cache.Get(ctx, "test-key")
+	assert.False(t, found)
+
+	// Test SetMulti and GetMulti
+	items := map[string]interface{}{
+		"key1": "value1",
+		"key2": 42,
+		"key3": map[string]string{"nested": "value"},
+	}
+
+	err = cache.SetMulti(ctx, items, time.Minute)
+	assert.NoError(t, err)
+
+	results, err := cache.GetMulti(ctx, []string{"key1", "key2", "key3", "nonexistent"})
+	assert.NoError(t, err)
+	assert.Equal(t, "value1", results["key1"])
+	assert.Equal(t, float64(42), results["key2"]) // JSON unmarshaling returns numbers as float64
+	assert.Equal(t, map[string]interface{}{"nested": "value"}, results["key3"])
+	assert.NotContains(t, results, "nonexistent")
+
+	// Test DeleteMulti
+	err = cache.DeleteMulti(ctx, []string{"key1", "key2"})
+	assert.NoError(t, err)
+
+	// Verify deletions
+	_, found = cache.Get(ctx, "key1")
+	assert.False(t, found)
+	_, found = cache.Get(ctx, "key2")
+	assert.False(t, found)
+	value, found = cache.Get(ctx, "key3")
+	assert.True(t, found)
+	assert.Equal(t, map[string]interface{}{"nested": "value"}, value)
+
+	// Test Flush
+	err = cache.Flush(ctx)
+	assert.NoError(t, err)
+
+	_, found = cache.Get(ctx, "key3")
+	assert.False(t, found)
+
+	// Test Close
+	err = cache.Close(ctx)
+	assert.NoError(t, err)
+}
+
+// TestRedisGetJSONUnmarshalError tests JSON unmarshaling errors in Get
+func TestRedisGetJSONUnmarshalError(t *testing.T) {
+	// Start a test Redis server
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://" + s.Addr(),
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Connect to the test Redis server
+	err := cache.Connect(ctx)
+	require.NoError(t, err)
+	defer cache.Close(ctx)
+
+	// Manually insert invalid JSON into Redis
+	s.Set("invalid-json", "this is not valid JSON {")
+
+	// Try to get the invalid JSON value
+	value, found := cache.Get(ctx, "invalid-json")
+	assert.False(t, found)
+	assert.Nil(t, value)
+}
+
+// TestRedisGetWithServerError tests Get with server errors
+func TestRedisGetWithServerError(t *testing.T) {
+	// Start a test Redis server
+	s := miniredis.RunT(t)
+
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://" + s.Addr(),
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Connect to the test Redis server
+	err := cache.Connect(ctx)
+	require.NoError(t, err)
+
+	// Close the server to simulate connection error
+	s.Close()
+
+	// Try to get a value when server is down
+	value, found := cache.Get(ctx, "test-key")
+	assert.False(t, found)
+	assert.Nil(t, value)
+
+	// Try GetMulti when server is down
+	results, err := cache.GetMulti(ctx, []string{"key1", "key2"})
+	assert.Error(t, err)
+	assert.Nil(t, results)
+
+	// Close cache
+	cache.Close(ctx)
 }

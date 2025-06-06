@@ -27,16 +27,16 @@ func (c *RedisCache) Connect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if c.config.RedisPassword != "" {
 		opts.Password = c.config.RedisPassword
 	}
-	
+
 	opts.DB = c.config.RedisDB
 	opts.ConnMaxLifetime = time.Duration(c.config.ConnectionMaxAge) * time.Second
-	
+
 	c.client = redis.NewClient(opts)
-	
+
 	// Test the connection
 	return c.client.Ping(ctx).Err()
 }
@@ -54,7 +54,7 @@ func (c *RedisCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	if c.client == nil {
 		return nil, false
 	}
-	
+
 	val, err := c.client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -62,12 +62,12 @@ func (c *RedisCache) Get(ctx context.Context, key string) (interface{}, bool) {
 		}
 		return nil, false
 	}
-	
+
 	var result interface{}
 	if err := json.Unmarshal([]byte(val), &result); err != nil {
 		return nil, false
 	}
-	
+
 	return result, true
 }
 
@@ -76,12 +76,12 @@ func (c *RedisCache) Set(ctx context.Context, key string, value interface{}, ttl
 	if c.client == nil {
 		return ErrNotConnected
 	}
-	
+
 	data, err := json.Marshal(value)
 	if err != nil {
 		return ErrInvalidValue
 	}
-	
+
 	return c.client.Set(ctx, key, data, ttl).Err()
 }
 
@@ -90,7 +90,7 @@ func (c *RedisCache) Delete(ctx context.Context, key string) error {
 	if c.client == nil {
 		return ErrNotConnected
 	}
-	
+
 	return c.client.Del(ctx, key).Err()
 }
 
@@ -99,7 +99,7 @@ func (c *RedisCache) Flush(ctx context.Context) error {
 	if c.client == nil {
 		return ErrNotConnected
 	}
-	
+
 	return c.client.FlushDB(ctx).Err()
 }
 
@@ -108,16 +108,16 @@ func (c *RedisCache) GetMulti(ctx context.Context, keys []string) (map[string]in
 	if len(keys) == 0 {
 		return make(map[string]interface{}), nil
 	}
-	
+
 	if c.client == nil {
 		return nil, ErrNotConnected
 	}
-	
+
 	vals, err := c.client.MGet(ctx, keys...).Result()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	result := make(map[string]interface{}, len(keys))
 	for i, val := range vals {
 		if val != nil {
@@ -129,7 +129,7 @@ func (c *RedisCache) GetMulti(ctx context.Context, keys []string) (map[string]in
 			}
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -138,11 +138,11 @@ func (c *RedisCache) SetMulti(ctx context.Context, items map[string]interface{},
 	if len(items) == 0 {
 		return nil
 	}
-	
+
 	if c.client == nil {
 		return ErrNotConnected
 	}
-	
+
 	pipe := c.client.Pipeline()
 	for key, value := range items {
 		data, err := json.Marshal(value)
@@ -151,7 +151,7 @@ func (c *RedisCache) SetMulti(ctx context.Context, items map[string]interface{},
 		}
 		pipe.Set(ctx, key, data, ttl)
 	}
-	
+
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -161,10 +161,10 @@ func (c *RedisCache) DeleteMulti(ctx context.Context, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}
-	
+
 	if c.client == nil {
 		return ErrNotConnected
 	}
-	
+
 	return c.client.Del(ctx, keys...).Err()
 }
