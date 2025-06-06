@@ -1,0 +1,234 @@
+package database
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+)
+
+// AWSIAMTokenProvider manages AWS IAM authentication tokens for RDS
+type AWSIAMTokenProvider struct {
+	config         *AWSIAMAuthConfig
+	awsConfig      aws.Config
+	currentToken   string
+	tokenExpiry    time.Time
+	mutex          sync.RWMutex
+	stopChan       chan struct{}
+	refreshDone    chan struct{}
+	refreshStarted bool
+}
+
+// NewAWSIAMTokenProvider creates a new AWS IAM token provider
+func NewAWSIAMTokenProvider(authConfig *AWSIAMAuthConfig) (*AWSIAMTokenProvider, error) {
+	if authConfig == nil || !authConfig.Enabled {
+		return nil, fmt.Errorf("AWS IAM auth not enabled")
+	}
+
+	if authConfig.Region == "" {
+		return nil, fmt.Errorf("AWS region is required for IAM authentication")
+	}
+
+	if authConfig.DBUser == "" {
+		return nil, fmt.Errorf("database user is required for IAM authentication")
+	}
+
+	// Set default token refresh interval if not specified
+	if authConfig.TokenRefreshInterval <= 0 {
+		authConfig.TokenRefreshInterval = 600 // 10 minutes
+	}
+
+	// Load AWS configuration
+	ctx := context.Background()
+	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(authConfig.Region))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	provider := &AWSIAMTokenProvider{
+		config:      authConfig,
+		awsConfig:   awsConfig,
+		stopChan:    make(chan struct{}),
+		refreshDone: make(chan struct{}),
+	}
+
+	return provider, nil
+}
+
+// GetToken returns the current valid IAM token, refreshing if necessary
+func (p *AWSIAMTokenProvider) GetToken(ctx context.Context, endpoint string) (string, error) {
+	p.mutex.RLock()
+	if p.currentToken != "" && time.Now().Before(p.tokenExpiry) {
+		token := p.currentToken
+		p.mutex.RUnlock()
+		return token, nil
+	}
+	p.mutex.RUnlock()
+
+	return p.refreshToken(ctx, endpoint)
+}
+
+// refreshToken generates a new IAM authentication token
+func (p *AWSIAMTokenProvider) refreshToken(ctx context.Context, endpoint string) (string, error) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	// Double-check in case another goroutine already refreshed the token
+	if p.currentToken != "" && time.Now().Before(p.tokenExpiry) {
+		return p.currentToken, nil
+	}
+
+	// Generate new token
+	token, err := auth.BuildAuthToken(ctx, endpoint, p.config.Region, p.config.DBUser, p.awsConfig.Credentials)
+	if err != nil {
+		return "", fmt.Errorf("failed to build AWS IAM auth token: %w", err)
+	}
+
+	p.currentToken = token
+	// Tokens are valid for 15 minutes, we refresh earlier to avoid expiry
+	p.tokenExpiry = time.Now().Add(time.Duration(p.config.TokenRefreshInterval) * time.Second)
+
+	return token, nil
+}
+
+// StartTokenRefresh starts a background goroutine to refresh tokens periodically
+func (p *AWSIAMTokenProvider) StartTokenRefresh(ctx context.Context, endpoint string) {
+	p.mutex.Lock()
+	if p.refreshStarted {
+		p.mutex.Unlock()
+		return
+	}
+	p.refreshStarted = true
+	p.mutex.Unlock()
+
+	go p.tokenRefreshLoop(ctx, endpoint)
+}
+
+// StopTokenRefresh stops the background token refresh
+func (p *AWSIAMTokenProvider) StopTokenRefresh() {
+	p.mutex.Lock()
+	if !p.refreshStarted {
+		p.mutex.Unlock()
+		return
+	}
+	p.mutex.Unlock()
+
+	close(p.stopChan)
+	<-p.refreshDone
+}
+
+// tokenRefreshLoop runs in the background to refresh tokens
+func (p *AWSIAMTokenProvider) tokenRefreshLoop(ctx context.Context, endpoint string) {
+	defer close(p.refreshDone)
+
+	ticker := time.NewTicker(time.Duration(p.config.TokenRefreshInterval) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case <-ticker.C:
+			_, err := p.refreshToken(ctx, endpoint)
+			if err != nil {
+				// Log error but continue trying to refresh
+				// In a real implementation, you might want to use the module's logger
+				fmt.Printf("Failed to refresh AWS IAM token: %v\n", err)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// BuildDSNWithIAMToken takes a DSN and replaces the password with the IAM token
+func (p *AWSIAMTokenProvider) BuildDSNWithIAMToken(ctx context.Context, originalDSN string) (string, error) {
+	endpoint, err := extractEndpointFromDSN(originalDSN)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract endpoint from DSN: %w", err)
+	}
+
+	token, err := p.GetToken(ctx, endpoint)
+	if err != nil {
+		return "", fmt.Errorf("failed to get IAM token: %w", err)
+	}
+
+	return replaceDSNPassword(originalDSN, token)
+}
+
+// extractEndpointFromDSN extracts the database endpoint from a DSN
+func extractEndpointFromDSN(dsn string) (string, error) {
+	// Handle different DSN formats
+	if strings.Contains(dsn, "://") {
+		// URL-style DSN (e.g., postgres://user:password@host:port/database)
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse DSN URL: %w", err)
+		}
+		return u.Host, nil
+	}
+
+	// Key-value style DSN (e.g., host=localhost port=5432 user=postgres)
+	parts := strings.Fields(dsn)
+	for _, part := range parts {
+		if strings.HasPrefix(part, "host=") {
+			host := strings.TrimPrefix(part, "host=")
+			// Look for port in the same DSN
+			for _, p := range parts {
+				if strings.HasPrefix(p, "port=") {
+					port := strings.TrimPrefix(p, "port=")
+					return host + ":" + port, nil
+				}
+			}
+			return host + ":5432", nil // Default PostgreSQL port
+		}
+	}
+
+	return "", fmt.Errorf("could not extract endpoint from DSN")
+}
+
+// replaceDSNPassword replaces the password in a DSN with the provided token
+func replaceDSNPassword(dsn, token string) (string, error) {
+	if strings.Contains(dsn, "://") {
+		// URL-style DSN
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse DSN URL: %w", err)
+		}
+
+		if u.User != nil {
+			username := u.User.Username()
+			u.User = url.UserPassword(username, token)
+		} else {
+			return "", fmt.Errorf("no user information in DSN to replace password")
+		}
+
+		return u.String(), nil
+	}
+
+	// Key-value style DSN
+	parts := strings.Fields(dsn)
+	var result []string
+	passwordReplaced := false
+
+	for _, part := range parts {
+		if strings.HasPrefix(part, "password=") {
+			result = append(result, "password="+token)
+			passwordReplaced = true
+		} else {
+			result = append(result, part)
+		}
+	}
+
+	if !passwordReplaced {
+		result = append(result, "password="+token)
+	}
+
+	return strings.Join(result, " "), nil
+}

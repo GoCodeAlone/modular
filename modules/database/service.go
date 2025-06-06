@@ -65,8 +65,11 @@ type DatabaseService interface {
 
 // databaseServiceImpl implements the DatabaseService interface
 type databaseServiceImpl struct {
-	config ConnectionConfig
-	db     *sql.DB
+	config           ConnectionConfig
+	db               *sql.DB
+	awsTokenProvider *AWSIAMTokenProvider
+	ctx              context.Context
+	cancel           context.CancelFunc
 }
 
 // NewDatabaseService creates a new database service from configuration
@@ -79,13 +82,46 @@ func NewDatabaseService(config ConnectionConfig) (DatabaseService, error) {
 		return nil, ErrEmptyDSN
 	}
 
-	return &databaseServiceImpl{
+	ctx, cancel := context.WithCancel(context.Background())
+	service := &databaseServiceImpl{
 		config: config,
-	}, nil
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	// Initialize AWS IAM token provider if enabled
+	if config.AWSIAMAuth != nil && config.AWSIAMAuth.Enabled {
+		tokenProvider, err := NewAWSIAMTokenProvider(config.AWSIAMAuth)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to create AWS IAM token provider: %w", err)
+		}
+		service.awsTokenProvider = tokenProvider
+	}
+
+	return service, nil
 }
 
 func (s *databaseServiceImpl) Connect() error {
-	db, err := sql.Open(s.config.Driver, s.config.DSN)
+	dsn := s.config.DSN
+
+	// If AWS IAM authentication is enabled, get the token and update the DSN
+	if s.awsTokenProvider != nil {
+		var err error
+		dsn, err = s.awsTokenProvider.BuildDSNWithIAMToken(s.ctx, s.config.DSN)
+		if err != nil {
+			return fmt.Errorf("failed to build DSN with IAM token: %w", err)
+		}
+
+		// Start background token refresh
+		endpoint, err := extractEndpointFromDSN(s.config.DSN)
+		if err != nil {
+			return fmt.Errorf("failed to extract endpoint for token refresh: %w", err)
+		}
+		s.awsTokenProvider.StartTokenRefresh(s.ctx, endpoint)
+	}
+
+	db, err := sql.Open(s.config.Driver, dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
@@ -119,6 +155,17 @@ func (s *databaseServiceImpl) Connect() error {
 }
 
 func (s *databaseServiceImpl) Close() error {
+	// Stop AWS token refresh if running
+	if s.awsTokenProvider != nil {
+		s.awsTokenProvider.StopTokenRefresh()
+	}
+
+	// Cancel context
+	if s.cancel != nil {
+		s.cancel()
+	}
+
+	// Close database connection
 	if s.db != nil {
 		err := s.db.Close()
 		if err != nil {

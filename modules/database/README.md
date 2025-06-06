@@ -105,6 +105,100 @@ database:
       connection_max_lifetime: 600  # seconds
 ```
 
+### AWS IAM Authentication
+
+The database module supports AWS IAM authentication for RDS databases. When enabled, the module will automatically obtain and refresh IAM authentication tokens from AWS, using them as database passwords.
+
+#### Configuration with AWS IAM Auth
+
+```yaml
+database:
+  default: "postgres_rds"
+  connections:
+    postgres_rds:
+      driver: "postgres"
+      # DSN without password - IAM token will be used as password
+      dsn: "postgres://iamuser@mydb.cluster-xyz.us-east-1.rds.amazonaws.com:5432/mydb?sslmode=require"
+      max_open_connections: 25
+      max_idle_connections: 5
+      connection_max_lifetime: 300  # seconds
+      connection_max_idle_time: 60  # seconds
+      aws_iam_auth:
+        enabled: true
+        region: "us-east-1"                    # AWS region where RDS instance is located
+        db_user: "iamuser"                     # Database username for IAM authentication
+        token_refresh_interval: 600            # Token refresh interval in seconds (default: 600)
+```
+
+#### AWS IAM Auth Configuration Options
+
+- `enabled`: Boolean flag to enable AWS IAM authentication
+- `region`: AWS region where the RDS instance is located (required)
+- `db_user`: Database username configured for IAM authentication (required)
+- `token_refresh_interval`: How often to refresh the IAM token in seconds (default: 600 seconds / 10 minutes)
+
+#### Prerequisites for AWS IAM Authentication
+
+1. **RDS Instance Configuration**: Your RDS instance must have IAM database authentication enabled.
+
+2. **IAM Policy**: The application must have IAM permissions to connect to RDS:
+   ```json
+   {
+       "Version": "2012-10-17",
+       "Statement": [
+           {
+               "Effect": "Allow",
+               "Action": [
+                   "rds-db:connect"
+               ],
+               "Resource": [
+                   "arn:aws:rds-db:us-east-1:123456789012:dbuser:db-instance-id/iamuser"
+               ]
+           }
+       ]
+   }
+   ```
+
+3. **Database User**: Create a database user and grant the `rds_iam` role:
+   ```sql
+   -- For PostgreSQL
+   CREATE USER iamuser;
+   GRANT rds_iam TO iamuser;
+   GRANT CONNECT ON DATABASE mydb TO iamuser;
+   GRANT USAGE ON SCHEMA public TO iamuser;
+   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO iamuser;
+   
+   -- For MySQL
+   CREATE USER iamuser IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+   GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO iamuser;
+   ```
+
+4. **AWS Credentials**: The application must have AWS credentials available through one of:
+   - Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+   - IAM instance profile (for EC2 instances)
+   - AWS credentials file
+   - IAM roles for service accounts (for EKS)
+
+#### How It Works
+
+1. When the database module starts, it checks if AWS IAM authentication is enabled for each connection.
+2. If enabled, it creates an AWS IAM token provider using the specified region and database user.
+3. The token provider generates an initial IAM authentication token using the AWS SDK.
+4. The original DSN is modified to use this token as the password.
+5. A background goroutine refreshes the token at the specified interval (default: 10 minutes).
+6. Tokens are automatically refreshed before they expire (RDS IAM tokens are valid for 15 minutes).
+
+#### Dependencies
+
+AWS IAM authentication requires these additional dependencies:
+```bash
+go get github.com/aws/aws-sdk-go-v2/aws
+go get github.com/aws/aws-sdk-go-v2/config
+go get github.com/aws/aws-sdk-go-v2/feature/rds/auth
+```
+
+These are automatically added when you use the database module with AWS IAM authentication enabled.
+
 ### Using the Database Service
 
 ```go

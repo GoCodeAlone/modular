@@ -28,4 +28,23 @@ type ConnectionConfig struct {
 
 	// ConnectionMaxIdleTime sets the maximum amount of time a connection may be idle (in seconds)
 	ConnectionMaxIdleTime int `json:"connection_max_idle_time" yaml:"connection_max_idle_time"`
+
+	// AWSIAMAuth contains AWS IAM authentication configuration
+	AWSIAMAuth *AWSIAMAuthConfig `json:"aws_iam_auth,omitempty" yaml:"aws_iam_auth,omitempty"`
+}
+
+// AWSIAMAuthConfig represents AWS IAM authentication configuration
+type AWSIAMAuthConfig struct {
+	// Enabled indicates whether AWS IAM authentication is enabled
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// Region specifies the AWS region for the RDS instance
+	Region string `json:"region" yaml:"region"`
+
+	// DBUser specifies the database username for IAM authentication
+	DBUser string `json:"db_user" yaml:"db_user"`
+
+	// TokenRefreshInterval specifies how often to refresh the IAM token (in seconds)
+	// Default is 10 minutes (600 seconds), tokens expire after 15 minutes
+	TokenRefreshInterval int `json:"token_refresh_interval" yaml:"token_refresh_interval"`
 }
