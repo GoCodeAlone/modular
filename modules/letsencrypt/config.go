@@ -103,12 +103,12 @@ type HTTPProviderConfig struct {
 func (c *LetsEncryptConfig) Validate() error {
 	// Email address is required
 	if c.Email == "" {
-		return fmt.Errorf("email address is required for Let's Encrypt registration")
+		return ErrEmailRequired
 	}
 
 	// At least one domain is required
 	if len(c.Domains) == 0 {
-		return fmt.Errorf("at least one domain is required")
+		return ErrDomainsRequired
 	}
 
 	// Set default storage path if not specified
@@ -139,7 +139,7 @@ func (c *LetsEncryptConfig) Validate() error {
 
 	// If both HTTP and DNS providers are specified, that's ambiguous
 	if c.HTTPProvider != nil && c.DNSProvider != nil {
-		return fmt.Errorf("cannot specify both HTTP and DNS challenge providers")
+		return ErrConflictingProviders
 	}
 
 	// If no provider is specified, default to HTTP with built-in server
