@@ -214,3 +214,129 @@ func TestExpiration(t *testing.T) {
 	err = module.Stop(ctx)
 	require.NoError(t, err)
 }
+
+// TestRedisConfiguration tests Redis configuration handling without actual Redis connection
+func TestRedisConfiguration(t *testing.T) {
+	// Create the module
+	module := NewModule().(*CacheModule)
+
+	// Initialize with Redis config
+	app := newMockApp()
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+
+	// Override config for Redis
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://localhost:6379",
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
+
+	err = module.Init(app)
+	require.NoError(t, err)
+
+	// Ensure we have a Redis cache
+	assert.IsType(t, &RedisCache{}, module.cacheEngine)
+
+	// Note: We don't start the module here as it would require an actual Redis connection
+}
+
+// TestRedisOperationsWithMockBehavior tests Redis cache operations that don't require a real connection
+func TestRedisOperationsWithMockBehavior(t *testing.T) {
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://localhost:6379",
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Test operations without connection (should return appropriate errors)
+	_, found := cache.Get(ctx, "test-key")
+	assert.False(t, found)
+
+	err := cache.Set(ctx, "test-key", "test-value", time.Minute)
+	assert.Equal(t, ErrNotConnected, err)
+
+	err = cache.Delete(ctx, "test-key")
+	assert.Equal(t, ErrNotConnected, err)
+
+	err = cache.Flush(ctx)
+	assert.Equal(t, ErrNotConnected, err)
+
+	_, err = cache.GetMulti(ctx, []string{"key1", "key2"})
+	assert.Equal(t, ErrNotConnected, err)
+
+	err = cache.SetMulti(ctx, map[string]interface{}{"key1": "value1"}, time.Minute)
+	assert.Equal(t, ErrNotConnected, err)
+
+	err = cache.DeleteMulti(ctx, []string{"key1", "key2"})
+	assert.Equal(t, ErrNotConnected, err)
+
+	// Test close without connection
+	err = cache.Close(ctx)
+	assert.NoError(t, err)
+}
+
+// TestRedisConfigurationEdgeCases tests edge cases in Redis configuration
+func TestRedisConfigurationEdgeCases(t *testing.T) {
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "invalid-url",
+		RedisPassword:    "test-password",
+		RedisDB:          1,
+		ConnectionMaxAge: 120,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Test connection with invalid URL
+	err := cache.Connect(ctx)
+	assert.Error(t, err)
+}
+
+// TestRedisMultiOperationsEmptyInputs tests multi operations with empty inputs
+func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
+	config := &CacheConfig{
+		Engine:           "redis",
+		DefaultTTL:       300,
+		CleanupInterval:  60,
+		MaxItems:         10000,
+		RedisURL:         "redis://localhost:6379",
+		RedisPassword:    "",
+		RedisDB:          0,
+		ConnectionMaxAge: 60,
+	}
+
+	cache := NewRedisCache(config)
+	ctx := context.Background()
+
+	// Test GetMulti with empty keys - should return empty map (no connection needed)
+	results, err := cache.GetMulti(ctx, []string{})
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{}, results)
+
+	// Test SetMulti with empty items - should succeed (no connection needed)
+	err = cache.SetMulti(ctx, map[string]interface{}{}, time.Minute)
+	assert.NoError(t, err)
+
+	// Test DeleteMulti with empty keys - should succeed (no connection needed)
+	err = cache.DeleteMulti(ctx, []string{})
+	assert.NoError(t, err)
+}
