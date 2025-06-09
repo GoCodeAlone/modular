@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -180,6 +181,7 @@ func (app *StdApplication) GetService(name string, target any) error {
 
 // Init initializes the application with the provided modules
 func (app *StdApplication) Init() error {
+	errs := make([]error, 0)
 	for name, module := range app.moduleRegistry {
 		configurableModule, ok := module.(Configurable)
 		if !ok {
@@ -188,19 +190,20 @@ func (app *StdApplication) Init() error {
 		}
 		err := configurableModule.RegisterConfig(app)
 		if err != nil {
-			return fmt.Errorf("failed to register config for module %s: %w", name, err)
+			errs = append(errs, fmt.Errorf("module %s failed to register config: %w", name, err))
+			continue
 		}
 		app.logger.Debug("Registering module", "name", name)
 	}
 
 	if err := AppConfigLoader(app); err != nil {
-		return fmt.Errorf("failed to load app config: %w", err)
+		errs = append(errs, fmt.Errorf("failed to load app config: %w", err))
 	}
 
 	// Build dependency graph
 	moduleOrder, err := app.resolveDependencies()
 	if err != nil {
-		return fmt.Errorf("failed to resolve dependencies: %w", err)
+		errs = append(errs, fmt.Errorf("failed to resolve module dependencies: %w", err))
 	}
 
 	// Initialize modules in order
@@ -209,19 +212,22 @@ func (app *StdApplication) Init() error {
 			// Inject required services
 			app.moduleRegistry[moduleName], err = app.injectServices(app.moduleRegistry[moduleName])
 			if err != nil {
-				return fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err)
+				errs = append(errs, fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err))
+				continue
 			}
 		}
 
 		if err = app.moduleRegistry[moduleName].Init(app); err != nil {
-			return fmt.Errorf("failed to initialize module '%s': %w", moduleName, err)
+			errs = append(errs, fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err))
+			continue
 		}
 
 		if _, ok := app.moduleRegistry[moduleName].(ServiceAware); ok {
 			// Register services provided by modules
 			for _, svc := range app.moduleRegistry[moduleName].(ServiceAware).ProvidesServices() {
 				if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
-					return fmt.Errorf("module '%s' failed to register service: %w", moduleName, err)
+					errs = append(errs, fmt.Errorf("module '%s' failed to register service '%s': %w", svc.Name, moduleName, err))
+					continue
 				}
 			}
 		}
@@ -231,10 +237,10 @@ func (app *StdApplication) Init() error {
 
 	// Initialize tenant configuration after modules have registered their configurations
 	if err = app.initTenantConfigurations(); err != nil {
-		return fmt.Errorf("failed to initialize tenant configurations: %w", err)
+		errs = append(errs, fmt.Errorf("failed to initialize tenant configurations: %w", err))
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // initTenantConfigurations initializes tenant configurations after modules have registered their configs
