@@ -369,6 +369,8 @@ func (app *StdApplication) injectServices(module Module) (Module, error) {
 		return nil, err
 	}
 
+	app.logger.Debug("Injecting dependencies", "dependencies", dependencies, "module", module.Name())
+
 	// If module supports constructor injection, use it
 	if withConstructor, ok := module.(Constructable); ok {
 		return app.constructModuleWithServices(withConstructor, requiredServices)
