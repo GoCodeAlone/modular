@@ -437,10 +437,23 @@ func (app *StdApplication) resolveInterfaceBasedDependencies(
 ) error {
 	for _, dep := range dependencies {
 		// Skip if not interface-based or already satisfied
-		if !dep.MatchByInterface || dep.SatisfiesInterface == nil ||
-			dep.SatisfiesInterface.Kind() != reflect.Interface ||
-			requiredServices[dep.Name] != nil {
+		if !dep.MatchByInterface || requiredServices[dep.Name] != nil {
 			continue
+		}
+
+		// Check for invalid interface configuration
+		if dep.SatisfiesInterface == nil {
+			if dep.Required {
+				return fmt.Errorf("invalid interface configuration for required service '%s' in module '%s': SatisfiesInterface is nil (hint: use reflect.TypeOf((*InterfaceName)(nil)).Elem())", dep.Name, moduleName)
+			}
+			continue // Skip optional services with invalid interface config
+		}
+
+		if dep.SatisfiesInterface.Kind() != reflect.Interface {
+			if dep.Required {
+				return fmt.Errorf("invalid interface configuration for required service '%s' in module '%s': SatisfiesInterface is not an interface type", dep.Name, moduleName)
+			}
+			continue // Skip optional services with invalid interface config
 		}
 
 		matchedService, matchedServiceName := app.findServiceByInterface(dep)
