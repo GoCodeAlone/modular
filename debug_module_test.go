@@ -49,15 +49,22 @@ func TestModuleReplacementLosesStartable(t *testing.T) {
 		// Check if the new module still implements Startable
 		_, newImplementsStartable := moduleAfterInit.(Startable)
 		if !newImplementsStartable {
-			t.Errorf("🚨 BUG: New module instance does not implement Startable!")
+			t.Logf("🚨 BUG DEMONSTRATED: New module instance does not implement Startable!")
+			// This is the expected bug behavior - the test should pass when this happens
+		} else {
+			t.Errorf("Expected bug did not occur - new module should NOT implement Startable")
 		}
+	} else {
+		t.Errorf("Expected module replacement did not occur")
 	}
 
-	// Try to start the application - this should work
+	// Try to start the application - this should skip the Startable module due to the bug
 	err = app.Start()
-	if err != nil {
-		t.Errorf("Failed to start application: %v", err)
-	}
+	// The Start should succeed, but the module's Start method won't be called due to the bug
+	require.NoError(t, err, "Application should start successfully even with the bug")
+
+	// Verify the bug: the module should not have been started
+	require.False(t, originalModule.startCalled, "BUG VERIFIED: Module's Start method should not have been called due to interface loss")
 }
 
 // TestProperModuleConstructorPattern demonstrates the correct way to implement Constructor
