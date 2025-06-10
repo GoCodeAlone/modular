@@ -39,6 +39,10 @@
   - [Tenant-Aware Configuration](#tenant-aware-configuration)
   - [Tenant Configuration Loading](#tenant-configuration-loading)
 - [Error Handling](#error-handling)
+- [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+  - [Module Interface Debugging](#module-interface-debugging)
+  - [Common Issues](#common-issues)
+  - [Diagnostic Tools](#diagnostic-tools)
   - [Common Error Types](#common-error-types)
   - [Error Wrapping](#error-wrapping)
 - [Testing Modules](#testing-modules)
@@ -717,48 +721,196 @@ if err := doSomething(); err != nil {
 
 This allows for error inspection using `errors.Is` and `errors.As`.
 
-## Testing Modules
+## Debugging and Troubleshooting
 
-### Mock Application
+The Modular framework provides several debugging utilities to help diagnose common issues with module lifecycle, interface implementation, and service injection.
 
-Modular facilitates testing with mock implementations:
+### Module Interface Debugging
 
-```go
-// Create a mock application
-mockApp := &MockApplication{
-    configSections: make(map[string]modular.ConfigProvider),
-    services: make(map[string]any),
-}
+#### DebugModuleInterfaces
 
-// Register test services
-mockApp.RegisterService("database", &MockDatabase{})
-
-// Test your module
-module := NewMyModule()
-err := module.Init(mockApp)
-assert.NoError(t, err)
-```
-
-### Testing Services
-
-Test service implementations to ensure they meet interface requirements:
+Use `DebugModuleInterfaces` to check which interfaces a specific module implements:
 
 ```go
-func TestDatabaseService(t *testing.T) {
-    // Create mock DB
-    db := &MockDB{}
+import "github.com/GoCodeAlone/modular"
+
+// Debug a specific module
+modular.DebugModuleInterfaces(app, "your-module-name")
+```
+
+**Output example:**
+```
+🔍 Debugging module 'web-server' (type: *webserver.Module)
+   Memory address: 0x14000026840
+   ✅ Module
+   ✅ Configurable
+   ❌ DependencyAware
+   ✅ ServiceAware
+   ✅ Startable
+   ✅ Stoppable
+   ❌ Constructable
+   📦 Provides 1 services, Requires 0 services
+```
+
+#### DebugAllModuleInterfaces
+
+Debug all registered modules at once:
+
+```go
+// Debug all modules in the application
+modular.DebugAllModuleInterfaces(app)
+```
+
+#### CompareModuleInstances
+
+Compare module instances before and after initialization to detect if modules are being replaced:
+
+```go
+// Store reference before initialization
+originalModule := app.moduleRegistry["module-name"]
+
+// After initialization
+currentModule := app.moduleRegistry["module-name"]
+
+modular.CompareModuleInstances(originalModule, currentModule, "module-name")
+```
+
+### Common Issues
+
+#### 1. "Module does not implement Startable, skipping"
+
+**Symptoms:** Module has a `Start` method but is reported as not implementing `Startable`.
+
+**Common Causes:**
+
+1. **Incorrect method signature** - Most common issue:
+   ```go
+   // ❌ WRONG - missing context parameter
+   func (m *MyModule) Start() error { return nil }
+   
+   // ✅ CORRECT
+   func (m *MyModule) Start(ctx context.Context) error { return nil }
+   ```
+
+2. **Wrong context import:**
+   ```go
+   // ❌ WRONG - old context package
+   import "golang.org/x/net/context"
+   
+   // ✅ CORRECT - standard library
+   import "context"
+   ```
+
+3. **Constructor returns module without Startable interface:**
+   ```go
+   // ❌ PROBLEMATIC - returns different type
+   func (m *MyModule) Constructor() ModuleConstructor {
+       return func(app Application, services map[string]any) (Module, error) {
+           return &DifferentModuleType{}, nil // Lost Startable!
+       }
+   }
+   
+   // ✅ CORRECT - preserves all interfaces
+   func (m *MyModule) Constructor() ModuleConstructor {
+       return func(app Application, services map[string]any) (Module, error) {
+           return m, nil // Or create new instance with all interfaces
+       }
+   }
+   ```
+
+#### 2. Service Injection Failures
+
+**Symptoms:** `"failed to inject services for module"` errors.
+
+**Debugging steps:**
+1. Verify service names match exactly
+2. Check that required services are provided by other modules
+3. Ensure dependency order is correct
+4. Use interface-based matching for flexibility
+
+#### 3. Module Replacement Issues
+
+**Symptoms:** Module works before `Init()` but fails after.
+
+**Cause:** Constructor-based injection replaces the original module instance.
+
+**Solution:** Ensure your Constructor returns a module that implements all the same interfaces.
+
+### Diagnostic Tools
+
+#### CheckModuleStartableImplementation
+
+For detailed analysis of why a module doesn't implement Startable:
+
+```go
+import "github.com/GoCodeAlone/modular"
+
+// Check specific module
+modular.CheckModuleStartableImplementation(yourModule)
+```
+
+**Output includes:**
+- Method signature analysis
+- Expected vs actual parameter types
+- Interface compatibility check
+
+#### Example Debugging Workflow
+
+When troubleshooting module issues:
+
+```go
+func debugModuleIssues(app *modular.StdApplication) {
+    // 1. Check all modules before initialization
+    fmt.Println("=== BEFORE INIT ===")
+    modular.DebugAllModuleInterfaces(app)
     
-    // Verify it implements the interface
-    var _ DatabaseService = db
+    // 2. Store references to original modules
+    originalModules := make(map[string]modular.Module)
+    for name, module := range app.SvcRegistry() {
+        originalModules[name] = module
+    }
     
-    // Test specific methods
-    err := db.Connect()
-    assert.NoError(t, err)
+    // 3. Initialize
+    err := app.Init()
+    if err != nil {
+        fmt.Printf("Init error: %v\n", err)
+    }
     
-    result, err := db.Query("SELECT 1")
-    assert.NoError(t, err)
-    assert.NotNil(t, result)
+    // 4. Check modules after initialization
+    fmt.Println("=== AFTER INIT ===")
+    modular.DebugAllModuleInterfaces(app)
+    
+    // 5. Compare instances
+    for name, original := range originalModules {
+        if current, exists := app.SvcRegistry()[name]; exists {
+            modular.CompareModuleInstances(original, current, name)
+        }
+    }
+    
+    // 6. Check specific problematic modules
+    if problematicModule, exists := app.SvcRegistry()["problematic-module"]; exists {
+        modular.CheckModuleStartableImplementation(problematicModule)
+    }
 }
 ```
 
-By using dependency injection and interfaces, Modular makes it easy to test modules in isolation.
+#### Best Practices for Debugging
+
+1. **Add debugging early:** Use debugging utilities during development, not just when issues occur.
+
+2. **Check before and after Init():** Many issues occur during the initialization phase when modules are replaced via constructors.
+
+3. **Verify method signatures:** Double-check that your Start/Stop methods match the expected interface signatures exactly.
+
+4. **Use specific error messages:** The debugging tools provide detailed information about why interfaces aren't implemented.
+
+5. **Test interface implementations:** Add compile-time checks to ensure your modules implement expected interfaces:
+   ```go
+   // Compile-time interface check
+   var _ modular.Startable = (*MyModule)(nil)
+   var _ modular.Stoppable = (*MyModule)(nil)
+   ```
+
+6. **Check memory addresses:** If memory addresses differ before and after Init(), your module was replaced by a constructor.
+
+By using these debugging tools and following these practices, you can quickly identify and resolve module interface and lifecycle issues in your Modular applications.

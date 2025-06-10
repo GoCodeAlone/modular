@@ -607,6 +607,25 @@ modcli --help
 
 Each command includes interactive prompts to guide you through the process of creating modules or configurations with the features you need.
 
+## 📚 Additional Resources
+
+- **[Detailed Documentation](DOCUMENTATION.md)** - Comprehensive guide covering advanced topics, best practices, and in-depth examples
+- **[Debugging and Troubleshooting](DOCUMENTATION.md#debugging-and-troubleshooting)** - Diagnostic tools and solutions for common issues
+- **[Available Modules](modules/README.md)** - Complete list of pre-built modules with documentation
+- **[Examples](examples/)** - Working example applications demonstrating various features
+
+### Having Issues?
+
+If you're experiencing problems with module interfaces (e.g., "Module does not implement Startable"), check out the [debugging section](DOCUMENTATION.md#debugging-and-troubleshooting) which includes diagnostic tools like:
+
+```go
+// Debug module interface implementations
+modular.DebugModuleInterfaces(app, "your-module-name")
+
+// Check all modules at once
+modular.DebugAllModuleInterfaces(app)
+```
+
 ## License
 
 [MIT License](LICENSE)
