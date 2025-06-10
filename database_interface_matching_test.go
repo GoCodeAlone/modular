@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite" // Import pure Go SQLite driver for testing
 )
 
 // DatabaseExecutor matches the user's interface from the problem description
@@ -23,43 +21,69 @@ type DatabaseExecutor interface {
 // Ensure that *sql.DB implements our interface
 var _ DatabaseExecutor = (*sql.DB)(nil)
 
+// mockDatabaseExecutor is a mock implementation for testing
+type mockDatabaseExecutor struct{}
+
+func (m *mockDatabaseExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return &mockResult{}, nil
+}
+
+func (m *mockDatabaseExecutor) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return nil, nil
+}
+
+func (m *mockDatabaseExecutor) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return &sql.Row{}
+}
+
+func (m *mockDatabaseExecutor) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return nil, nil
+}
+
+func (m *mockDatabaseExecutor) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return nil, nil
+}
+
+// mockResult implements sql.Result for testing
+type mockResult struct{}
+
+func (m *mockResult) LastInsertId() (int64, error) { return 0, nil }
+func (m *mockResult) RowsAffected() (int64, error) { return 0, nil }
+
+// Ensure our mock implements the interface
+var _ DatabaseExecutor = (*mockDatabaseExecutor)(nil)
+
 // MockDatabaseService simulates what the database module provides
 type MockDatabaseService interface {
-	DB() *sql.DB
+	DB() DatabaseExecutor
 	Close() error
 }
 
 // mockDatabaseServiceImpl simulates the lazy wrapper that the database module uses
 type mockDatabaseServiceImpl struct {
-	db *sql.DB
+	executor DatabaseExecutor
 }
 
-func (m *mockDatabaseServiceImpl) DB() *sql.DB {
-	return m.db
+func (m *mockDatabaseServiceImpl) DB() DatabaseExecutor {
+	return m.executor
 }
 
 func (m *mockDatabaseServiceImpl) Close() error {
-	if m.db != nil {
-		return m.db.Close()
-	}
 	return nil
 }
 
 // TestInterfaceMatchingCore demonstrates the core issue with interface matching
 func TestInterfaceMatchingCore(t *testing.T) {
 	// Create a mock database service (simulating what the database module provides)
-	db, err := sql.Open("sqlite", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+	mockExecutor := &mockDatabaseExecutor{}
+	mockService := &mockDatabaseServiceImpl{executor: mockExecutor}
 
-	mockService := &mockDatabaseServiceImpl{db: db}
-
-	// Test 1: Check if *sql.DB implements DatabaseExecutor (it should)
+	// Test 1: Check if mockDatabaseExecutor implements DatabaseExecutor (it should)
 	expectedType := reflect.TypeOf((*DatabaseExecutor)(nil)).Elem()
-	sqlDBType := reflect.TypeOf((*sql.DB)(nil))
+	mockExecutorType := reflect.TypeOf((*mockDatabaseExecutor)(nil))
 
-	assert.True(t, sqlDBType.Implements(expectedType),
-		"*sql.DB should implement DatabaseExecutor interface")
+	assert.True(t, mockExecutorType.Implements(expectedType),
+		"mockDatabaseExecutor should implement DatabaseExecutor interface")
 
 	// Test 2: Check if mockDatabaseServiceImpl implements DatabaseExecutor (it should NOT)
 	mockServiceType := reflect.TypeOf((*mockDatabaseServiceImpl)(nil))
@@ -71,16 +95,16 @@ func TestInterfaceMatchingCore(t *testing.T) {
 	assert.True(t, mockServiceType.Implements(mockDBServiceType),
 		"mockDatabaseServiceImpl should implement MockDatabaseService interface")
 
-	// Test 4: Demonstrate the workaround - extract the *sql.DB from the service
+	// Test 4: Demonstrate the workaround - extract the DatabaseExecutor from the service
 	actualDB := mockService.DB()
 	actualDBType := reflect.TypeOf(actualDB)
 	assert.True(t, actualDBType.Implements(expectedType),
-		"The *sql.DB extracted from the service should implement DatabaseExecutor")
+		"The DatabaseExecutor returned by the service should implement DatabaseExecutor")
 
 	t.Log("✅ Core issue demonstrated:")
-	t.Log("   - *sql.DB implements DatabaseExecutor ✓")
+	t.Log("   - mockDatabaseExecutor implements DatabaseExecutor ✓")
 	t.Log("   - Database service wrapper does NOT implement DatabaseExecutor ✗")
-	t.Log("   - But wrapper.DB() returns *sql.DB which does implement DatabaseExecutor ✓")
+	t.Log("   - But wrapper.DB() returns DatabaseExecutor which does implement DatabaseExecutor ✓")
 }
 
 // TestServiceDependencyMatching simulates the service dependency resolution
@@ -134,15 +158,15 @@ func (m *MockDatabaseModule) Dependencies() []string {
 }
 
 func (m *MockDatabaseModule) ProvidesServices() []ServiceProvider {
-	// Create a dummy *sql.DB for testing
-	db, _ := sql.Open("sqlite", ":memory:")
-	wrapper := &mockDatabaseServiceImpl{db: db}
+	// Create a dummy mock executor for testing
+	mockExecutor := &mockDatabaseExecutor{}
+	wrapper := &mockDatabaseServiceImpl{executor: mockExecutor}
 
 	return []ServiceProvider{
 		{
 			Name:        "database.service",
 			Description: "Database service wrapper",
-			Instance:    wrapper, // Provide wrapper, not *sql.DB directly
+			Instance:    wrapper, // Provide wrapper, not direct executor
 		},
 	}
 }
@@ -154,7 +178,6 @@ func (m *MockDatabaseModule) RequiresServices() []ServiceDependency {
 // FailingTestModule tries to use MatchByInterface=true (will fail)
 type FailingTestModule struct {
 	name string
-	db   DatabaseExecutor
 }
 
 func (m *FailingTestModule) Name() string {
