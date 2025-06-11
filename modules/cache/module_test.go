@@ -43,6 +43,10 @@ func (a *mockApp) Logger() modular.Logger {
 	return a.logger
 }
 
+func (a *mockApp) SetLogger(logger modular.Logger) {
+	a.logger = logger
+}
+
 func (a *mockApp) ConfigProvider() modular.ConfigProvider {
 	return a.configProvider
 }

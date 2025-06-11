@@ -274,6 +274,17 @@ func (m testModule) RegisterConfig(Application) error      { return nil }
 func (m testModule) ProvidesServices() []ServiceProvider   { return nil }
 func (m testModule) RequiresServices() []ServiceDependency { return nil }
 
+// loggerUsingModule is a test module that uses the application logger
+type loggerUsingModule struct {
+	testModule
+}
+
+func (m *loggerUsingModule) Init(app Application) error {
+	// This module uses the logger during initialization
+	app.Logger().Debug("Logger using module initialized", "module", m.Name())
+	return nil
+}
+
 // Test_RegisterService tests service registration scenarios
 func Test_RegisterService(t *testing.T) {
 	app := &StdApplication{
@@ -741,6 +752,100 @@ func ErrorIs(err, target error) bool {
 			return false
 		}
 	}
+}
+
+// Test_ApplicationSetLogger tests the SetLogger functionality
+func Test_ApplicationSetLogger(t *testing.T) {
+	// Create initial logger
+	initialLogger := &logger{t}
+
+	// Create application with initial logger
+	app := NewStdApplication(
+		NewStdConfigProvider(testCfg{Str: "test"}),
+		initialLogger,
+	)
+
+	// Verify initial logger is set
+	if app.Logger() != initialLogger {
+		t.Error("Initial logger not set correctly")
+	}
+
+	// Create a new logger
+	newLogger := &logger{t}
+
+	// Set the new logger
+	app.SetLogger(newLogger)
+
+	// Verify the logger was changed
+	if app.Logger() != newLogger {
+		t.Error("SetLogger did not update the logger correctly")
+	}
+
+	// Verify the old logger is no longer referenced
+	if app.Logger() == initialLogger {
+		t.Error("SetLogger did not replace the old logger")
+	}
+}
+
+// Test_ApplicationSetLoggerWithNilLogger tests SetLogger with nil logger
+func Test_ApplicationSetLoggerWithNilLogger(t *testing.T) {
+	// Create initial logger
+	initialLogger := &logger{t}
+
+	// Create application with initial logger
+	app := NewStdApplication(
+		NewStdConfigProvider(testCfg{Str: "test"}),
+		initialLogger,
+	)
+
+	// Set logger to nil
+	app.SetLogger(nil)
+
+	// Verify logger is now nil
+	if app.Logger() != nil {
+		t.Error("SetLogger did not set logger to nil correctly")
+	}
+}
+
+// Test_ApplicationSetLoggerRuntimeUsage tests runtime logger switching with actual usage
+func Test_ApplicationSetLoggerRuntimeUsage(t *testing.T) {
+	// Create initial logger
+	initialLogger := &logger{t}
+
+	// Create application with initial logger
+	app := NewStdApplication(
+		NewStdConfigProvider(testCfg{Str: "test"}),
+		initialLogger,
+	)
+
+	// Verify initial logger is set
+	if app.Logger() != initialLogger {
+		t.Error("Initial logger not set correctly")
+	}
+
+	// Create a new mock logger to switch to
+	newMockLogger := &MockLogger{}
+	// Set up a simple expectation that might be called later
+	newMockLogger.On("Debug", "Test message", []interface{}{"key", "value"}).Return().Maybe()
+
+	// Switch to the new logger
+	app.SetLogger(newMockLogger)
+
+	// Verify the logger was switched
+	if app.Logger() != newMockLogger {
+		t.Error("Logger was not switched correctly")
+	}
+
+	// Verify the old logger is no longer referenced
+	if app.Logger() == initialLogger {
+		t.Error("SetLogger did not replace the old logger")
+	}
+
+	// Test that the new logger is actually used when the application logs something
+	app.Logger().Debug("Test message", "key", "value")
+
+	// Verify mock expectations were met (if any were called)
+	newMockLogger.AssertExpectations(t)
 }
 
 // Placeholder errors for tests

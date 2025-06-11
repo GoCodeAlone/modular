@@ -258,6 +258,46 @@ func (m *MyModule) Constructor() modular.ModuleConstructor {
 
 See [DOCUMENTATION.md](DOCUMENTATION.md) for more advanced details about service dependencies and interface matching.
 
+### Logger Management
+
+The framework provides methods to get and set the application logger, allowing for dynamic logger configuration at runtime:
+
+```go
+// Get the current logger
+currentLogger := app.Logger()
+
+// Switch to a different logger (e.g., for different log levels or output destinations)
+newLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+}))
+app.SetLogger(newLogger)
+
+// The new logger is now used by the application and all modules
+app.Logger().Info("Logger has been switched to JSON format with debug level")
+```
+
+This is useful for scenarios such as:
+- **Dynamic log level changes**: Switch between debug and production logging based on runtime conditions
+- **Configuration-driven logging**: Update logger configuration based on config file changes
+- **Environment-specific loggers**: Use different loggers for development vs production
+- **Log rotation**: Switch to new log files without restarting the application
+
+**Example: Dynamic log level switching**
+
+```go
+// Switch to debug logging when needed
+debugLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+}))
+app.SetLogger(debugLogger)
+
+// Later, switch back to info level
+infoLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelInfo,
+}))
+app.SetLogger(infoLogger)
+```
+
 ### Configuration Management
 
 ```go

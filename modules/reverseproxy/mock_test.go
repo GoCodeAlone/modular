@@ -11,7 +11,7 @@ import (
 type MockApplication struct {
 	configSections map[string]modular.ConfigProvider
 	services       map[string]interface{}
-	logger         *MockLogger
+	logger         modular.Logger
 }
 
 // NewMockApplication creates a new mock application for testing
@@ -115,6 +115,11 @@ func (m *MockApplication) Logger() modular.Logger {
 	return m.logger
 }
 
+// SetLogger sets the mock logger
+func (m *MockApplication) SetLogger(logger modular.Logger) {
+	m.logger = logger
+}
+
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider
 func NewStdConfigProvider(config interface{}) modular.ConfigProvider {
 	return &mockConfigProvider{config: config}
@@ -179,6 +184,11 @@ func (m *MockTenantApplication) RegisterTenantAwareModule(module modular.TenantA
 // Add a Logger method to MockTenantApplication to ensure it correctly implements modular.TenantApplication
 func (m *MockTenantApplication) Logger() modular.Logger {
 	return m.MockApplication.Logger()
+}
+
+// SetLogger sets the logger by delegating to MockApplication
+func (m *MockTenantApplication) SetLogger(logger modular.Logger) {
+	m.MockApplication.SetLogger(logger)
 }
 
 // GetTenantService returns the tenant service

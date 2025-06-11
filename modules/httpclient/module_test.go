@@ -32,6 +32,10 @@ func (m *MockApplication) Logger() modular.Logger {
 	return args.Get(0).(modular.Logger)
 }
 
+func (m *MockApplication) SetLogger(logger modular.Logger) {
+	m.Called(logger)
+}
+
 func (m *MockApplication) ConfigProvider() modular.ConfigProvider {
 	args := m.Called()
 	return args.Get(0).(modular.ConfigProvider)

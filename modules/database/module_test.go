@@ -13,7 +13,7 @@ import (
 // Mock implementations for testing
 type MockApplication struct {
 	configSections map[string]interface{}
-	logger         *MockLogger
+	logger         modular.Logger
 	services       map[string]any
 }
 
@@ -49,6 +49,7 @@ func (a *MockApplication) ConfigSections() map[string]modular.ConfigProvider {
 	return result
 }
 func (a *MockApplication) Logger() modular.Logger               { return a.logger }
+func (a *MockApplication) SetLogger(logger modular.Logger)      { a.logger = logger }
 func (a *MockApplication) SvcRegistry() modular.ServiceRegistry { return a.services }
 func (a *MockApplication) RegisterModule(module modular.Module) {}
 func (a *MockApplication) RegisterService(name string, service any) error {

@@ -46,6 +46,8 @@ type Application interface {
 	Run() error
 	// Logger retrieves the application's logger
 	Logger() Logger
+	// SetLogger sets the application's logger
+	SetLogger(logger Logger)
 }
 
 // TenantApplication extends Application with multi-tenant functionality
@@ -618,6 +620,11 @@ func checkServiceCompatibility(service any, dep ServiceDependency) (bool, error)
 // Logger represents a logger
 func (app *StdApplication) Logger() Logger {
 	return app.logger
+}
+
+// SetLogger sets the application's logger
+func (app *StdApplication) SetLogger(logger Logger) {
+	app.logger = logger
 }
 
 // resolveDependencies returns modules in initialization order
