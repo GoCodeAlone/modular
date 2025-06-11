@@ -446,14 +446,14 @@ func (app *StdApplication) resolveInterfaceBasedDependencies(
 		// Check for invalid interface configuration
 		if dep.SatisfiesInterface == nil {
 			if dep.Required {
-				return fmt.Errorf("invalid interface configuration for required service '%s' in module '%s': SatisfiesInterface is nil (hint: use reflect.TypeOf((*InterfaceName)(nil)).Elem())", dep.Name, moduleName)
+				return fmt.Errorf("%w in module '%s': %w (hint: use reflect.TypeOf((*InterfaceName)(nil)).Elem())", ErrInvalidInterfaceConfiguration, moduleName, ErrInterfaceConfigurationNil)
 			}
 			continue // Skip optional services with invalid interface config
 		}
 
 		if dep.SatisfiesInterface.Kind() != reflect.Interface {
 			if dep.Required {
-				return fmt.Errorf("invalid interface configuration for required service '%s' in module '%s': SatisfiesInterface is not an interface type", dep.Name, moduleName)
+				return fmt.Errorf("%w in module '%s': %w", ErrInvalidInterfaceConfiguration, moduleName, ErrInterfaceConfigurationNotInterface)
 			}
 			continue // Skip optional services with invalid interface config
 		}
@@ -507,7 +507,7 @@ func (app *StdApplication) constructModuleWithServices(
 func (app *StdApplication) validateConstructor(constructor any) error {
 	constructorType := reflect.TypeOf(constructor)
 	if constructorType.Kind() != reflect.Func {
-		return fmt.Errorf("constructor must be a function")
+		return ErrConstructorNotFunction
 	}
 	return nil
 }
@@ -551,7 +551,7 @@ func (app *StdApplication) resolveConstructorParameter(
 	// Find matching service by type from the services map
 	matchedService := app.findServiceByType(paramType, requiredServices)
 	if matchedService == nil {
-		return reflect.Value{}, fmt.Errorf("no service found for constructor parameter %d of type %v", paramIndex, paramType)
+		return reflect.Value{}, fmt.Errorf("%w %d of type %v", ErrConstructorParameterServiceNotFound, paramIndex, paramType)
 	}
 
 	return reflect.ValueOf(matchedService), nil
@@ -585,7 +585,7 @@ func (app *StdApplication) findServiceByType(paramType reflect.Type, requiredSer
 func (app *StdApplication) callConstructor(constructor any, args []reflect.Value) (Module, error) {
 	results := reflect.ValueOf(constructor).Call(args)
 	if len(results) != 2 {
-		return nil, fmt.Errorf("constructor must return exactly two values (Module, error)")
+		return nil, ErrConstructorInvalidReturnCount
 	}
 
 	// Check for error
@@ -595,7 +595,7 @@ func (app *StdApplication) callConstructor(constructor any, args []reflect.Value
 
 	newModule, ok := results[0].Interface().(Module)
 	if !ok {
-		return nil, fmt.Errorf("constructor must return a Module as first value")
+		return nil, ErrConstructorInvalidReturnType
 	}
 
 	return newModule, nil
@@ -609,7 +609,7 @@ func checkServiceCompatibility(service any, dep ServiceDependency) (bool, error)
 	if dep.SatisfiesInterface != nil {
 		if dep.SatisfiesInterface.Kind() == reflect.Interface {
 			if !serviceType.Implements(dep.SatisfiesInterface) {
-				return false, fmt.Errorf("service does not implement required interface %v", dep.SatisfiesInterface)
+				return false, fmt.Errorf("%w: %v", ErrServiceInterfaceIncompatible, dep.SatisfiesInterface)
 			}
 		}
 	}

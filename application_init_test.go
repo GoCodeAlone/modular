@@ -157,7 +157,7 @@ func Test_Application_Init_ErrorCollection(t *testing.T) {
 				// We expect at least the specified error count
 				assert.GreaterOrEqual(t, len(unwrappedErrors), 1, "Should contain multiple errors")
 			} else {
-				assert.NoError(t, err, "Expected no errors")
+				require.NoError(t, err, "Expected no errors")
 			}
 
 			// Verify partial initialization if expected
@@ -214,8 +214,8 @@ func Test_Application_Init_TenantConfigurationFailure(t *testing.T) {
 
 	// Register a failing tenant config loader service
 	failingTenantConfigLoader := &initTestFailingTenantConfigLoader{}
-	app.RegisterService("tenantService", &initTestMockTenantService{})
-	app.RegisterService("tenantConfigLoader", failingTenantConfigLoader)
+	_ = app.RegisterService("tenantService", &initTestMockTenantService{})
+	_ = app.RegisterService("tenantConfigLoader", failingTenantConfigLoader)
 
 	// Setup mock AppConfigLoader
 	originalLoader := AppConfigLoader
@@ -342,7 +342,7 @@ func Test_Application_Init_NoModules(t *testing.T) {
 	AppConfigLoader = func(app *StdApplication) error { return nil }
 
 	err := app.Init()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, app.moduleRegistry)
 }
 

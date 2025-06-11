@@ -173,7 +173,7 @@ func TestConfig_Feed(t *testing.T) {
 				return cfg, feeder
 			},
 			expectFeedErr:  true,
-			expectedErrMsg: "config: setup error for test",
+			expectedErrMsg: "config setup error for test",
 		},
 	}
 

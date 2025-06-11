@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // DatabaseExecutor matches the user's interface from the problem description
@@ -130,7 +131,7 @@ func TestServiceDependencyMatching(t *testing.T) {
 
 	// This should fail with MatchByInterface=true due to the incorrect reflect.TypeOf pattern
 	err := app.Init()
-	assert.Error(t, err, "Should fail when using incorrect reflect.TypeOf pattern")
+	require.Error(t, err, "Should fail when using incorrect reflect.TypeOf pattern")
 	if err != nil {
 		t.Logf("Expected failure: %v", err)
 		// The error should be about invalid interface configuration due to nil SatisfiesInterface

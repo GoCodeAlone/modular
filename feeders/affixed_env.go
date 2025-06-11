@@ -15,6 +15,9 @@ import (
 // ErrEnvInvalidStructure indicates that the provided structure is not valid for environment variable processing
 var ErrEnvInvalidStructure = errors.New("env: invalid structure")
 
+// ErrFieldCannotBeSet indicates that a field cannot be set
+var ErrFieldCannotBeSet = errors.New("field cannot be set")
+
 // ErrEnvEmptyPrefixAndSuffix indicates that both prefix and suffix cannot be empty
 var ErrEnvEmptyPrefixAndSuffix = errors.New("env: prefix or suffix cannot be empty")
 
@@ -118,7 +121,7 @@ func setFieldValue(field reflect.Value, strValue string) error {
 	}
 
 	if !field.CanSet() {
-		return fmt.Errorf("field of type %v cannot be set", field.Type())
+		return fmt.Errorf("%w of type %v", ErrFieldCannotBeSet, field.Type())
 	}
 
 	field.Set(reflect.ValueOf(convertedValue))

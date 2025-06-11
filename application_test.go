@@ -274,17 +274,6 @@ func (m testModule) RegisterConfig(Application) error      { return nil }
 func (m testModule) ProvidesServices() []ServiceProvider   { return nil }
 func (m testModule) RequiresServices() []ServiceDependency { return nil }
 
-// loggerUsingModule is a test module that uses the application logger
-type loggerUsingModule struct {
-	testModule
-}
-
-func (m *loggerUsingModule) Init(app Application) error {
-	// This module uses the logger during initialization
-	app.Logger().Debug("Logger using module initialized", "module", m.Name())
-	return nil
-}
-
 // Test_RegisterService tests service registration scenarios
 func Test_RegisterService(t *testing.T) {
 	app := &StdApplication{
