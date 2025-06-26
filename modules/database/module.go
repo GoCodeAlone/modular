@@ -171,7 +171,13 @@ func (m *Module) RegisterConfig(app modular.Application) error {
 		Connections: make(map[string]ConnectionConfig),
 	}
 
-	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(defaultConfig))
+	// Create instance-aware config provider with database-specific prefix
+	instancePrefixFunc := func(instanceKey string) string {
+		return "DB_" + instanceKey + "_"
+	}
+	
+	configProvider := modular.NewInstanceAwareConfigProvider(defaultConfig, instancePrefixFunc)
+	app.RegisterConfigSection(m.Name(), configProvider)
 	return nil
 }
 

@@ -12,26 +12,26 @@ const DefaultTimeoutSeconds = 15
 // HTTPServerConfig defines the configuration for the HTTP server module.
 type HTTPServerConfig struct {
 	// Host is the hostname or IP address to bind to.
-	Host string `yaml:"host" json:"host"`
+	Host string `yaml:"host" json:"host" env:"HOST"`
 
 	// Port is the port number to listen on.
-	Port int `yaml:"port" json:"port"`
+	Port int `yaml:"port" json:"port" env:"PORT"`
 
 	// ReadTimeout is the maximum duration for reading the entire request,
 	// including the body, in seconds.
-	ReadTimeout int `yaml:"read_timeout" json:"read_timeout"`
+	ReadTimeout int `yaml:"read_timeout" json:"read_timeout" env:"READ_TIMEOUT"`
 
 	// WriteTimeout is the maximum duration before timing out writes of the response,
 	// in seconds.
-	WriteTimeout int `yaml:"write_timeout" json:"write_timeout"`
+	WriteTimeout int `yaml:"write_timeout" json:"write_timeout" env:"WRITE_TIMEOUT"`
 
 	// IdleTimeout is the maximum amount of time to wait for the next request,
 	// in seconds.
-	IdleTimeout int `yaml:"idle_timeout" json:"idle_timeout"`
+	IdleTimeout int `yaml:"idle_timeout" json:"idle_timeout" env:"IDLE_TIMEOUT"`
 
 	// ShutdownTimeout is the maximum amount of time to wait during graceful
 	// shutdown, in seconds.
-	ShutdownTimeout int `yaml:"shutdown_timeout" json:"shutdown_timeout"`
+	ShutdownTimeout int `yaml:"shutdown_timeout" json:"shutdown_timeout" env:"SHUTDOWN_TIMEOUT"`
 
 	// TLS configuration if HTTPS is enabled
 	TLS *TLSConfig `yaml:"tls" json:"tls"`
@@ -40,24 +40,24 @@ type HTTPServerConfig struct {
 // TLSConfig holds the TLS configuration for HTTPS support
 type TLSConfig struct {
 	// Enabled indicates if HTTPS should be used instead of HTTP
-	Enabled bool `yaml:"enabled" json:"enabled"`
+	Enabled bool `yaml:"enabled" json:"enabled" env:"TLS_ENABLED"`
 
 	// CertFile is the path to the certificate file
-	CertFile string `yaml:"cert_file" json:"cert_file"`
+	CertFile string `yaml:"cert_file" json:"cert_file" env:"TLS_CERT_FILE"`
 
 	// KeyFile is the path to the private key file
-	KeyFile string `yaml:"key_file" json:"key_file"`
+	KeyFile string `yaml:"key_file" json:"key_file" env:"TLS_KEY_FILE"`
 
 	// UseService indicates whether to use a certificate service instead of files
 	// When true, the module will look for a CertificateService in its dependencies
-	UseService bool `yaml:"use_service" json:"use_service"`
+	UseService bool `yaml:"use_service" json:"use_service" env:"TLS_USE_SERVICE"`
 
 	// AutoGenerate indicates whether to automatically generate self-signed certificates
 	// if no certificate service is provided and file paths are not specified
-	AutoGenerate bool `yaml:"auto_generate" json:"auto_generate"`
+	AutoGenerate bool `yaml:"auto_generate" json:"auto_generate" env:"TLS_AUTO_GENERATE"`
 
 	// Domains is a list of domain names to generate certificates for (when AutoGenerate is true)
-	Domains []string `yaml:"domains" json:"domains"`
+	Domains []string `yaml:"domains" json:"domains" env:"TLS_DOMAINS"`
 }
 
 // Validate checks if the configuration is valid and sets default values

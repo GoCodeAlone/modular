@@ -17,16 +17,16 @@ func TestDatabaseModuleWithInstanceAwareConfiguration(t *testing.T) {
 	// Clear environment
 	clearTestEnvVars(t)
 
-	// Set up environment variables for multiple database connections
+	// Set up environment variables for multiple database connections using the DB_ prefix pattern
 	envVars := map[string]string{
-		"MAIN_DRIVER": "sqlite",
-		"MAIN_DSN":    ":memory:",
+		"DB_MAIN_DRIVER": "sqlite",
+		"DB_MAIN_DSN":    ":memory:",
 
-		"READONLY_DRIVER": "sqlite", 
-		"READONLY_DSN":    ":memory:",
+		"DB_READONLY_DRIVER": "sqlite", 
+		"DB_READONLY_DSN":    ":memory:",
 
-		"CACHE_DRIVER": "sqlite",
-		"CACHE_DSN":    ":memory:",
+		"DB_CACHE_DRIVER": "sqlite",
+		"DB_CACHE_DSN":    ":memory:",
 	}
 
 	for key, value := range envVars {
@@ -49,27 +49,43 @@ func TestDatabaseModuleWithInstanceAwareConfiguration(t *testing.T) {
 	err := module.RegisterConfig(app)
 	require.NoError(t, err)
 
-	// Register instance-aware feeder for database connections
+	// Get the configuration and set up connections that should be fed from environment variables
 	configProvider, err := app.GetConfigSection(module.Name())
 	require.NoError(t, err)
 
 	config, ok := configProvider.GetConfig().(*Config)
 	require.True(t, ok, "Config should be of type *Config")
 
-	// Set up connections manually for test
+	// Set up empty connections - these should be populated by the instance-aware feeder
 	config.Connections = map[string]ConnectionConfig{
 		"main":     {},
 		"readonly": {},
 		"cache":    {},
 	}
 
-	// Apply instance-aware environment variable feeding
-	feeder := modular.NewInstanceAwareEnvFeeder(func(instanceKey string) string {
-		return instanceKey + "_"
-	})
+	// Test the instance-aware configuration manually 
+	// (In real usage, this would be done automatically during app.LoadConfig())
+	iaProvider, ok := configProvider.(*modular.InstanceAwareConfigProvider)
+	require.True(t, ok, "Should be instance-aware config provider")
 
-	err = feeder.FeedInstances(config.Connections)
-	require.NoError(t, err)
+	prefixFunc := iaProvider.GetInstancePrefixFunc()
+	require.NotNil(t, prefixFunc, "Should have prefix function")
+
+	feeder := modular.NewInstanceAwareEnvFeeder(prefixFunc)
+	instanceConfigs := config.GetInstanceConfigs()
+	
+	// Feed each instance
+	for instanceKey, instanceConfig := range instanceConfigs {
+		err = feeder.FeedKey(instanceKey, instanceConfig)
+		require.NoError(t, err)
+	}
+
+	// Update the original config with the fed instances
+	for name, instance := range instanceConfigs {
+		if connPtr, ok := instance.(*ConnectionConfig); ok {
+			config.Connections[name] = *connPtr
+		}
+	}
 
 	// Verify connections were configured from environment variables
 	assert.Equal(t, "sqlite", config.Connections["main"].Driver)

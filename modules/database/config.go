@@ -9,6 +9,17 @@ type Config struct {
 	Default string `json:"default" yaml:"default"`
 }
 
+// GetInstanceConfigs returns the connections map for instance-aware configuration
+func (c *Config) GetInstanceConfigs() map[string]interface{} {
+	instances := make(map[string]interface{})
+	for name, connection := range c.Connections {
+		// Create a copy to avoid modifying the original
+		connCopy := connection
+		instances[name] = &connCopy
+	}
+	return instances
+}
+
 // ConnectionConfig represents configuration for a single database connection
 type ConnectionConfig struct {
 	// Driver specifies the database driver to use (e.g., "postgres", "mysql")
