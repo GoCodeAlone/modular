@@ -188,8 +188,10 @@ func TestInstanceAwareEnvFeederErrors(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "valid_struct_pointer",
-			input:       &struct{ Field string `env:"FIELD"` }{},
+			name: "valid_struct_pointer",
+			input: &struct {
+				Field string `env:"FIELD"`
+			}{},
 			expectError: false,
 		},
 	}

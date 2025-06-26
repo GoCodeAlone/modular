@@ -23,7 +23,7 @@ func TestEnvMappingForModules(t *testing.T) {
 		}
 
 		// Clear environment
-		envVars := []string{"ENGINE", "DEFAULT_TTL", "CLEANUP_INTERVAL", "MAX_ITEMS", 
+		envVars := []string{"ENGINE", "DEFAULT_TTL", "CLEANUP_INTERVAL", "MAX_ITEMS",
 			"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB"}
 		for _, env := range envVars {
 			os.Unsetenv(env)
@@ -135,7 +135,7 @@ func TestEnvMappingForModules(t *testing.T) {
 		testEnvVars := map[string]string{
 			"API_HOST":   "api.example.com",
 			"API_PORT":   "8080",
-			"ADMIN_HOST": "admin.example.com", 
+			"ADMIN_HOST": "admin.example.com",
 			"ADMIN_PORT": "9090",
 		}
 

@@ -1,11 +1,15 @@
 package feeders
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
+)
+
+// Static errors for err113 compliance
+var (
+	ErrInstancesMustBeMap = fmt.Errorf("instances must be a map")
 )
 
 // InstancePrefixFunc is a function that generates a prefix for an instance key
@@ -78,7 +82,7 @@ func (f *InstanceAwareEnvFeeder) FeedKey(instanceKey string, structure interface
 func (f *InstanceAwareEnvFeeder) FeedInstances(instances interface{}) error {
 	instancesValue := reflect.ValueOf(instances)
 	if instancesValue.Kind() != reflect.Map {
-		return errors.New("instances must be a map")
+		return ErrInstancesMustBeMap
 	}
 
 	// Iterate through map entries
