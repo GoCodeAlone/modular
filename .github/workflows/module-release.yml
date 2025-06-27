@@ -65,7 +65,7 @@ jobs:
           MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | jq -R . | jq -s .)
           {
             echo "modules<<EOF"
-            echo "$MODULES_JSON"
+            echo "$MODULES"
             echo "EOF"
           } >> $GITHUB_OUTPUT
           echo "Available modules: $MODULES"
@@ -175,15 +175,15 @@ jobs:
             --title "${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
-            --latest=false --
+            --latest=false
           
-          git tag ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }} $GITHUB_SHA --
-          git push origin ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }}
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
           
           # Get all assets of the release and delete each one
-          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' -- | while read asset; do
+          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' | while read asset; do
             echo "Deleting asset: $asset"
-            gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y --
+            gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
           done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
