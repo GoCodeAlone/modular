@@ -9,50 +9,50 @@ import (
 // Config defines the configuration for the HTTP client module.
 type Config struct {
 	// MaxIdleConns controls the maximum number of idle (keep-alive) connections across all hosts.
-	MaxIdleConns int `yaml:"max_idle_conns" json:"max_idle_conns"`
+	MaxIdleConns int `yaml:"max_idle_conns" json:"max_idle_conns" env:"MAX_IDLE_CONNS"`
 
 	// MaxIdleConnsPerHost controls the maximum idle (keep-alive) connections to keep per-host.
-	MaxIdleConnsPerHost int `yaml:"max_idle_conns_per_host" json:"max_idle_conns_per_host"`
+	MaxIdleConnsPerHost int `yaml:"max_idle_conns_per_host" json:"max_idle_conns_per_host" env:"MAX_IDLE_CONNS_PER_HOST"`
 
 	// IdleConnTimeout is the maximum amount of time an idle connection will remain idle before
 	// closing itself, in seconds.
-	IdleConnTimeout int `yaml:"idle_conn_timeout" json:"idle_conn_timeout"`
+	IdleConnTimeout int `yaml:"idle_conn_timeout" json:"idle_conn_timeout" env:"IDLE_CONN_TIMEOUT"`
 
 	// RequestTimeout is the maximum time for a request to complete, in seconds.
-	RequestTimeout int `yaml:"request_timeout" json:"request_timeout"`
+	RequestTimeout int `yaml:"request_timeout" json:"request_timeout" env:"REQUEST_TIMEOUT"`
 
 	// TLSTimeout is the maximum time waiting for TLS handshake, in seconds.
-	TLSTimeout int `yaml:"tls_timeout" json:"tls_timeout"`
+	TLSTimeout int `yaml:"tls_timeout" json:"tls_timeout" env:"TLS_TIMEOUT"`
 
 	// DisableCompression disables decompressing response bodies.
-	DisableCompression bool `yaml:"disable_compression" json:"disable_compression"`
+	DisableCompression bool `yaml:"disable_compression" json:"disable_compression" env:"DISABLE_COMPRESSION"`
 
 	// DisableKeepAlives disables HTTP keep-alive and will only use connections for a single request.
-	DisableKeepAlives bool `yaml:"disable_keep_alives" json:"disable_keep_alives"`
+	DisableKeepAlives bool `yaml:"disable_keep_alives" json:"disable_keep_alives" env:"DISABLE_KEEP_ALIVES"`
 
 	// Verbose enables detailed logging of HTTP requests and responses.
-	Verbose bool `yaml:"verbose" json:"verbose"`
+	Verbose bool `yaml:"verbose" json:"verbose" env:"VERBOSE"`
 
 	// VerboseOptions configures the behavior when Verbose is enabled.
-	VerboseOptions *VerboseOptions `yaml:"verbose_options" json:"verbose_options"`
+	VerboseOptions *VerboseOptions `yaml:"verbose_options" json:"verbose_options" env:"VERBOSE_OPTIONS"`
 }
 
 // VerboseOptions configures the behavior of verbose logging.
 type VerboseOptions struct {
 	// LogHeaders enables logging of request and response headers.
-	LogHeaders bool `yaml:"log_headers" json:"log_headers"`
+	LogHeaders bool `yaml:"log_headers" json:"log_headers" env:"LOG_HEADERS"`
 
 	// LogBody enables logging of request and response bodies.
-	LogBody bool `yaml:"log_body" json:"log_body"`
+	LogBody bool `yaml:"log_body" json:"log_body" env:"LOG_BODY"`
 
 	// MaxBodyLogSize limits the size of logged request and response bodies.
-	MaxBodyLogSize int `yaml:"max_body_log_size" json:"max_body_log_size"`
+	MaxBodyLogSize int `yaml:"max_body_log_size" json:"max_body_log_size" env:"MAX_BODY_LOG_SIZE"`
 
 	// LogToFile enables logging to files instead of just the logger.
-	LogToFile bool `yaml:"log_to_file" json:"log_to_file"`
+	LogToFile bool `yaml:"log_to_file" json:"log_to_file" env:"LOG_TO_FILE"`
 
 	// LogFilePath is the directory where log files will be written.
-	LogFilePath string `yaml:"log_file_path" json:"log_file_path"`
+	LogFilePath string `yaml:"log_file_path" json:"log_file_path" env:"LOG_FILE_PATH"`
 }
 
 // Validate checks the configuration values and sets sensible defaults.

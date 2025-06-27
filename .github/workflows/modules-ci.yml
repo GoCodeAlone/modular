@@ -68,8 +68,8 @@ jobs:
             fi
           fi
           
-          # Format for matrix
-          MODULES_JSON=$(echo "$MODIFIED_MODULES" | tr ' ' '\n' | jq -R . | jq -s .)
+          # Format for matrix - filter out empty entries
+          MODULES_JSON=$(echo "$MODIFIED_MODULES" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
           {
             echo "matrix<<EOF"
             echo "{\"module\":$MODULES_JSON}"

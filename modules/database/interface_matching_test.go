@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -138,7 +139,7 @@ func (m *RealisticConsumer) Init(app modular.Application) error {
 	var db DatabaseExecutor
 	err := app.GetService("database.service", &db)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get database service: %w", err)
 	}
 	m.db = db
 	return nil
