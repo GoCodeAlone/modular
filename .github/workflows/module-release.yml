@@ -33,6 +33,20 @@ on:
           - minor
           - major
         default: 'patch'
+  workflow_call:
+    inputs:
+      module:
+        description: 'Module to release'
+        required: true
+        type: string
+      version:
+        description: 'Version to release (leave blank for auto-increment)'
+        required: false
+        type: string
+      releaseType:
+        description: 'Release type'
+        required: true
+        type: string
 
 jobs:
   prepare-release:
