@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,15 +68,15 @@ func TestAWSIAMAuthConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			provider, err := NewAWSIAMTokenProvider(tt.config)
 			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Nil(t, provider)
+				require.Error(t, err)
+				require.Nil(t, provider)
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, provider)
+				require.NoError(t, err)
+				require.NotNil(t, provider)
 
 				// Check that default token refresh interval is set
 				if tt.config.TokenRefreshInterval <= 0 {
-					assert.Equal(t, 600, tt.config.TokenRefreshInterval)
+					require.Equal(t, 600, tt.config.TokenRefreshInterval)
 				}
 			}
 		})
@@ -126,10 +125,10 @@ func TestExtractEndpointFromDSN(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint, err := extractEndpointFromDSN(tt.dsn)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, endpoint)
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, endpoint)
 			}
 		})
 	}
@@ -179,10 +178,10 @@ func TestReplaceDSNPassword(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := replaceDSNPassword(tt.dsn, token)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
 			}
 		})
 	}
@@ -223,7 +222,7 @@ func TestDatabaseServiceWithAWSIAMAuth(t *testing.T) {
 
 	// Clean up - this should not hang
 	err = service.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestDatabaseServiceWithoutAWSIAMAuth(t *testing.T) {
@@ -246,7 +245,7 @@ func TestDatabaseServiceWithoutAWSIAMAuth(t *testing.T) {
 
 	// Clean up
 	err = service.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestAWSIAMTokenProvider_NoDeadlockOnClose(t *testing.T) {

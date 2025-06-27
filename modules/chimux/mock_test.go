@@ -136,6 +136,11 @@ func (m *MockApplication) Logger() modular.Logger {
 	return m.logger
 }
 
+// SetLogger sets the mock logger
+func (m *MockApplication) SetLogger(logger modular.Logger) {
+	m.logger = logger
+}
+
 // TenantApplication interface methods
 // GetTenantService returns the application's tenant service
 func (m *MockApplication) GetTenantService() (modular.TenantService, error) {

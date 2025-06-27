@@ -82,7 +82,7 @@ func (c *Config) Feed() error {
 		// Call Setup if implemented
 		if setupable, ok := target.(ConfigSetup); ok {
 			if err := setupable.Setup(); err != nil {
-				return fmt.Errorf("config: setup error for %s", key)
+				return fmt.Errorf("%w for %s: %w", ErrConfigSetupError, key, err)
 			}
 		}
 	}

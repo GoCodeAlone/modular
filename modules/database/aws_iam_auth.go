@@ -8,9 +8,19 @@ import (
 	"sync"
 	"time"
 
+	"errors"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+)
+
+var (
+	ErrIAMAuthNotEnabled     = errors.New("AWS IAM auth not enabled")
+	ErrIAMRegionRequired     = errors.New("AWS region is required for IAM authentication")
+	ErrIAMDBUserRequired     = errors.New("database user is required for IAM authentication")
+	ErrExtractEndpointFailed = errors.New("could not extract endpoint from DSN")
+	ErrNoUserInfoInDSN       = errors.New("no user information in DSN to replace password")
 )
 
 // AWSIAMTokenProvider manages AWS IAM authentication tokens for RDS
@@ -28,15 +38,15 @@ type AWSIAMTokenProvider struct {
 // NewAWSIAMTokenProvider creates a new AWS IAM token provider
 func NewAWSIAMTokenProvider(authConfig *AWSIAMAuthConfig) (*AWSIAMTokenProvider, error) {
 	if authConfig == nil || !authConfig.Enabled {
-		return nil, fmt.Errorf("AWS IAM auth not enabled")
+		return nil, ErrIAMAuthNotEnabled
 	}
 
 	if authConfig.Region == "" {
-		return nil, fmt.Errorf("AWS region is required for IAM authentication")
+		return nil, ErrIAMRegionRequired
 	}
 
 	if authConfig.DBUser == "" {
-		return nil, fmt.Errorf("database user is required for IAM authentication")
+		return nil, ErrIAMDBUserRequired
 	}
 
 	// Set default token refresh interval if not specified
@@ -190,7 +200,7 @@ func extractEndpointFromDSN(dsn string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("could not extract endpoint from DSN")
+	return "", ErrExtractEndpointFailed
 }
 
 // replaceDSNPassword replaces the password in a DSN with the provided token
@@ -206,7 +216,7 @@ func replaceDSNPassword(dsn, token string) (string, error) {
 			username := u.User.Username()
 			u.User = url.UserPassword(username, token)
 		} else {
-			return "", fmt.Errorf("no user information in DSN to replace password")
+			return "", ErrNoUserInfoInDSN
 		}
 
 		return u.String(), nil

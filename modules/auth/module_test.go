@@ -14,7 +14,7 @@ import (
 type MockApplication struct {
 	configSections map[string]modular.ConfigProvider
 	services       map[string]interface{}
-	logger         MockLogger
+	logger         modular.Logger
 }
 
 // NewMockApplication creates a new mock application
@@ -83,6 +83,11 @@ func (m *MockApplication) GetService(name string, target interface{}) error {
 // Logger returns the mock logger
 func (m *MockApplication) Logger() modular.Logger {
 	return m.logger
+}
+
+// SetLogger sets the mock logger
+func (m *MockApplication) SetLogger(logger modular.Logger) {
+	m.logger = logger
 }
 
 // Init mocks application initialization

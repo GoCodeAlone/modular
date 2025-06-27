@@ -73,6 +73,10 @@ func (m *SimpleMockApplication) Logger() modular.Logger {
 	return m.logger
 }
 
+func (m *SimpleMockApplication) SetLogger(logger modular.Logger) {
+	m.logger = logger
+}
+
 // Implement additional required methods for modular.Application interface
 func (m *SimpleMockApplication) ConfigProvider() modular.ConfigProvider {
 	return m.defaultCfg

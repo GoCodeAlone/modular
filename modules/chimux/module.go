@@ -213,7 +213,7 @@ func (m *ChiMuxModule) ProvidesServices() []modular.ServiceProvider {
 		{
 			Name:        "chi.router",
 			Description: "Full Chi router with Route/Group support",
-			Instance:    m,
+			Instance:    m.ChiRouter(),
 		},
 	}
 }

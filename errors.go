@@ -30,6 +30,7 @@ var (
 	ErrConfigFeederError          = errors.New("config feeder error")
 	ErrConfigSetupError           = errors.New("config setup error")
 	ErrConfigNilPointer           = errors.New("config is nil pointer")
+	ErrFieldCannotBeSet           = errors.New("field cannot be set")
 
 	// Service registry errors
 	ErrServiceAlreadyRegistered = errors.New("service already registered")
@@ -47,6 +48,16 @@ var (
 	ErrCircularDependency      = errors.New("circular dependency detected")
 	ErrModuleDependencyMissing = errors.New("module depends on non-existent module")
 	ErrRequiredServiceNotFound = errors.New("required service not found for module")
+
+	// Constructor errors
+	ErrConstructorNotFunction              = errors.New("constructor must be a function")
+	ErrConstructorInvalidReturnCount       = errors.New("constructor must return exactly two values (Module, error)")
+	ErrConstructorInvalidReturnType        = errors.New("constructor must return a Module as first value")
+	ErrConstructorParameterServiceNotFound = errors.New("no service found for constructor parameter")
+	ErrInvalidInterfaceConfiguration       = errors.New("invalid interface configuration for required service")
+	ErrInterfaceConfigurationNil           = errors.New("SatisfiesInterface is nil")
+	ErrInterfaceConfigurationNotInterface  = errors.New("SatisfiesInterface is not an interface type")
+	ErrServiceInterfaceIncompatible        = errors.New("service does not implement required interface")
 
 	// Tenant errors
 	ErrAppContextNotInitialized        = errors.New("application context not initialized")

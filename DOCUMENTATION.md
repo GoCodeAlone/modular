@@ -32,6 +32,7 @@
   - [Required Fields](#required-fields)
   - [Custom Validation Logic](#custom-validation-logic)
   - [Configuration Feeders](#configuration-feeders)
+  - [Instance-Aware Configuration](#instance-aware-configuration)
 - [Multi-tenancy Support](#multi-tenancy-support)
   - [Tenant Context](#tenant-context)
   - [Tenant Service](#tenant-service)
@@ -39,6 +40,10 @@
   - [Tenant-Aware Configuration](#tenant-aware-configuration)
   - [Tenant Configuration Loading](#tenant-configuration-loading)
 - [Error Handling](#error-handling)
+- [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+  - [Module Interface Debugging](#module-interface-debugging)
+  - [Common Issues](#common-issues)
+  - [Diagnostic Tools](#diagnostic-tools)
   - [Common Error Types](#common-error-types)
   - [Error Wrapping](#error-wrapping)
 - [Testing Modules](#testing-modules)
@@ -580,6 +585,310 @@ if err != nil {
 
 Multiple feeders can be chained, with later feeders overriding values from earlier ones.
 
+### Instance-Aware Configuration
+
+Instance-aware configuration is a powerful feature that allows you to manage multiple instances of the same configuration type using environment variables with instance-specific prefixes. This is particularly useful for scenarios like multiple database connections, cache instances, or service endpoints where each instance needs separate configuration.
+
+#### Overview
+
+Traditional configuration approaches often struggle with multiple instances because they rely on fixed environment variable names. For example, if you need multiple database connections, both would compete for the same `DSN` environment variable:
+
+```yaml
+database:
+  connections:
+    primary: {}    # Would use DSN env var
+    secondary: {}  # Would also use DSN env var - conflict!
+```
+
+Instance-aware configuration solves this by using instance-specific prefixes:
+
+```bash
+# Single instance (backward compatible)
+DRIVER=postgres
+DSN=postgres://localhost/db
+
+# Multiple instances with prefixes  
+DB_PRIMARY_DRIVER=postgres
+DB_PRIMARY_DSN=postgres://localhost/primary
+DB_SECONDARY_DRIVER=mysql
+DB_SECONDARY_DSN=mysql://localhost/secondary
+```
+
+#### InstanceAwareEnvFeeder
+
+The `InstanceAwareEnvFeeder` is the core component that handles environment variable feeding for multiple instances:
+
+```go
+// Create an instance-aware feeder with a prefix function
+feeder := modular.NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+    return "DB_" + strings.ToUpper(instanceKey) + "_"
+})
+
+// Feed a single instance with instance-specific environment variables
+config := &database.ConnectionConfig{}
+err := feeder.FeedKey("primary", config)
+// This will look for DB_PRIMARY_DRIVER, DB_PRIMARY_DSN, etc.
+```
+
+The `InstanceAwareEnvFeeder` implements three interfaces:
+
+1. **Basic Feeder**: `Feed(interface{}) error` - For backward compatibility
+2. **ComplexFeeder**: `FeedKey(string, interface{}) error` - For instance-specific feeding
+3. **InstanceAwareFeeder**: `FeedInstances(interface{}) error` - For feeding multiple instances at once
+
+#### InstanceAwareConfigProvider
+
+The `InstanceAwareConfigProvider` wraps configuration objects and associates them with instance prefix functions:
+
+```go
+// Create instance-aware config provider
+prefixFunc := func(instanceKey string) string {
+    return "DB_" + strings.ToUpper(instanceKey) + "_"
+}
+
+config := &database.Config{
+    Connections: map[string]database.ConnectionConfig{
+        "primary":   {},
+        "secondary": {},
+    },
+}
+
+provider := modular.NewInstanceAwareConfigProvider(config, prefixFunc)
+app.RegisterConfigSection("database", provider)
+```
+
+#### Module Integration
+
+Modules can implement the `InstanceAwareConfigSupport` interface to enable automatic instance-aware configuration:
+
+```go
+// InstanceAwareConfigSupport indicates support for instance-aware feeding
+type InstanceAwareConfigSupport interface {
+    // GetInstanceConfigs returns a map of instance configurations
+    GetInstanceConfigs() map[string]interface{}
+}
+```
+
+Example implementation in the database module:
+
+```go
+// GetInstanceConfigs returns the connections map for instance-aware configuration
+func (c *Config) GetInstanceConfigs() map[string]interface{} {
+    instances := make(map[string]interface{})
+    for name, connection := range c.Connections {
+        // Create a copy to avoid modifying the original
+        connCopy := connection
+        instances[name] = &connCopy
+    }
+    return instances
+}
+```
+
+#### Environment Variable Patterns
+
+Instance-aware configuration supports consistent naming patterns:
+
+```bash
+# Pattern: <PREFIX><INSTANCE_KEY>_<FIELD_NAME>
+
+# Database connections
+DB_PRIMARY_DRIVER=postgres
+DB_PRIMARY_DSN=postgres://user:pass@localhost/primary
+DB_PRIMARY_MAX_OPEN_CONNECTIONS=25
+
+DB_SECONDARY_DRIVER=mysql  
+DB_SECONDARY_DSN=mysql://user:pass@localhost/secondary
+DB_SECONDARY_MAX_OPEN_CONNECTIONS=10
+
+# Cache instances
+CACHE_SESSION_DRIVER=redis
+CACHE_SESSION_ADDR=localhost:6379
+CACHE_SESSION_DB=0
+
+CACHE_OBJECTS_DRIVER=redis
+CACHE_OBJECTS_ADDR=localhost:6379
+CACHE_OBJECTS_DB=1
+
+# HTTP servers
+HTTP_API_PORT=8080
+HTTP_API_HOST=0.0.0.0
+
+HTTP_ADMIN_PORT=8081
+HTTP_ADMIN_HOST=127.0.0.1
+```
+
+#### Configuration Struct Requirements
+
+For instance-aware configuration to work, configuration structs must have `env` struct tags:
+
+```go
+type ConnectionConfig struct {
+    Driver string `json:"driver" yaml:"driver" env:"DRIVER"`
+    DSN    string `json:"dsn" yaml:"dsn" env:"DSN"`
+    MaxOpenConnections int `json:"max_open_connections" yaml:"max_open_connections" env:"MAX_OPEN_CONNECTIONS"`
+    MaxIdleConnections int `json:"max_idle_connections" yaml:"max_idle_connections" env:"MAX_IDLE_CONNECTIONS"`
+}
+```
+
+The `env` tag specifies the environment variable name that will be combined with the instance prefix.
+
+#### Complete Example
+
+Here's a complete example showing how to use instance-aware configuration for multiple database connections:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/database"
+)
+
+func main() {
+    // Set up environment variables for multiple database connections
+    os.Setenv("DB_PRIMARY_DRIVER", "postgres")
+    os.Setenv("DB_PRIMARY_DSN", "postgres://localhost/primary")
+    os.Setenv("DB_SECONDARY_DRIVER", "mysql")
+    os.Setenv("DB_SECONDARY_DSN", "mysql://localhost/secondary")
+    os.Setenv("DB_CACHE_DRIVER", "sqlite")
+    os.Setenv("DB_CACHE_DSN", ":memory:")
+
+    // Create application
+    app := modular.NewStdApplication(
+        modular.NewStdConfigProvider(&AppConfig{}),
+        logger,
+    )
+
+    // Register database module (it automatically sets up instance-aware config)
+    app.RegisterModule(database.NewModule())
+
+    // Initialize application
+    err := app.Init()
+    if err != nil {
+        panic(err)
+    }
+
+    // Get database manager
+    var dbManager *database.Module
+    app.GetService("database.manager", &dbManager)
+
+    // Access different database connections
+    primaryDB, _ := dbManager.GetConnection("primary")   // Uses DB_PRIMARY_*
+    secondaryDB, _ := dbManager.GetConnection("secondary") // Uses DB_SECONDARY_*
+    cacheDB, _ := dbManager.GetConnection("cache")       // Uses DB_CACHE_*
+}
+```
+
+#### Manual Instance Configuration
+
+You can also manually configure instances without automatic module support:
+
+```go
+// Define configuration with instances
+type MyConfig struct {
+    Services map[string]ServiceConfig `json:"services" yaml:"services"`
+}
+
+type ServiceConfig struct {
+    URL     string `json:"url" yaml:"url" env:"URL"`
+    Timeout int    `json:"timeout" yaml:"timeout" env:"TIMEOUT"`
+    APIKey  string `json:"api_key" yaml:"api_key" env:"API_KEY"`
+}
+
+// Set up environment variables
+os.Setenv("SVC_AUTH_URL", "https://auth.example.com")
+os.Setenv("SVC_AUTH_TIMEOUT", "30")
+os.Setenv("SVC_AUTH_API_KEY", "auth-key-123")
+
+os.Setenv("SVC_PAYMENT_URL", "https://payment.example.com")
+os.Setenv("SVC_PAYMENT_TIMEOUT", "60")
+os.Setenv("SVC_PAYMENT_API_KEY", "payment-key-456")
+
+// Create instance-aware feeder
+feeder := modular.NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+    return "SVC_" + strings.ToUpper(instanceKey) + "_"
+})
+
+// Configure each service instance
+config := &MyConfig{
+    Services: map[string]ServiceConfig{
+        "auth":    {},
+        "payment": {},
+    },
+}
+
+// Feed each instance
+for name, serviceConfig := range config.Services {
+    configPtr := &serviceConfig
+    if err := feeder.FeedKey(name, configPtr); err != nil {
+        return fmt.Errorf("failed to configure service %s: %w", name, err)
+    }
+    config.Services[name] = *configPtr
+}
+```
+
+#### Best Practices
+
+1. **Consistent Naming**: Use consistent prefix patterns across your application
+   ```bash
+   DB_<INSTANCE>_<FIELD>     # Database connections
+   CACHE_<INSTANCE>_<FIELD>  # Cache instances  
+   HTTP_<INSTANCE>_<FIELD>   # HTTP servers
+   ```
+
+2. **Uppercase Instance Keys**: Convert instance keys to uppercase for environment variables
+   ```go
+   prefixFunc := func(instanceKey string) string {
+       return "DB_" + strings.ToUpper(instanceKey) + "_"
+   }
+   ```
+
+3. **Environment Variable Documentation**: Document expected environment variables
+   ```bash
+   # Required environment variables:
+   DB_PRIMARY_DRIVER=postgres
+   DB_PRIMARY_DSN=postgres://...
+   DB_READONLY_DRIVER=postgres
+   DB_READONLY_DSN=postgres://...
+   ```
+
+4. **Graceful Defaults**: Provide sensible defaults for non-critical configuration
+   ```go
+   type ConnectionConfig struct {
+       Driver string `env:"DRIVER"`
+       DSN    string `env:"DSN"`
+       MaxOpenConnections int `env:"MAX_OPEN_CONNECTIONS" default:"25"`
+   }
+   ```
+
+5. **Validation**: Implement validation for instance configurations
+   ```go
+   func (c *ConnectionConfig) Validate() error {
+       if c.Driver == "" {
+           return errors.New("driver is required")
+       }
+       if c.DSN == "" {
+           return errors.New("DSN is required")
+       }
+       return nil
+   }
+   ```
+
+#### Benefits
+
+Instance-aware configuration provides several key benefits:
+
+- **🔄 Backward Compatibility**: All existing functionality is preserved
+- **🏗️ Extensible Design**: Easy to add to any module configuration
+- **🔧 Multiple Patterns**: Supports both single and multi-instance configurations
+- **📦 Module Support**: Enhanced support across database, cache, and HTTP server modules
+- **✅ No Conflicts**: Different instances don't interfere with each other
+- **🎯 Consistent Naming**: Predictable environment variable patterns
+- **⚙️ Automatic Configuration**: Modules handle instance-aware configuration automatically
+
 ## Multi-tenancy Support
 
 ### Tenant Context
@@ -717,48 +1026,196 @@ if err := doSomething(); err != nil {
 
 This allows for error inspection using `errors.Is` and `errors.As`.
 
-## Testing Modules
+## Debugging and Troubleshooting
 
-### Mock Application
+The Modular framework provides several debugging utilities to help diagnose common issues with module lifecycle, interface implementation, and service injection.
 
-Modular facilitates testing with mock implementations:
+### Module Interface Debugging
 
-```go
-// Create a mock application
-mockApp := &MockApplication{
-    configSections: make(map[string]modular.ConfigProvider),
-    services: make(map[string]any),
-}
+#### DebugModuleInterfaces
 
-// Register test services
-mockApp.RegisterService("database", &MockDatabase{})
-
-// Test your module
-module := NewMyModule()
-err := module.Init(mockApp)
-assert.NoError(t, err)
-```
-
-### Testing Services
-
-Test service implementations to ensure they meet interface requirements:
+Use `DebugModuleInterfaces` to check which interfaces a specific module implements:
 
 ```go
-func TestDatabaseService(t *testing.T) {
-    // Create mock DB
-    db := &MockDB{}
+import "github.com/GoCodeAlone/modular"
+
+// Debug a specific module
+modular.DebugModuleInterfaces(app, "your-module-name")
+```
+
+**Output example:**
+```
+🔍 Debugging module 'web-server' (type: *webserver.Module)
+   Memory address: 0x14000026840
+   ✅ Module
+   ✅ Configurable
+   ❌ DependencyAware
+   ✅ ServiceAware
+   ✅ Startable
+   ✅ Stoppable
+   ❌ Constructable
+   📦 Provides 1 services, Requires 0 services
+```
+
+#### DebugAllModuleInterfaces
+
+Debug all registered modules at once:
+
+```go
+// Debug all modules in the application
+modular.DebugAllModuleInterfaces(app)
+```
+
+#### CompareModuleInstances
+
+Compare module instances before and after initialization to detect if modules are being replaced:
+
+```go
+// Store reference before initialization
+originalModule := app.moduleRegistry["module-name"]
+
+// After initialization
+currentModule := app.moduleRegistry["module-name"]
+
+modular.CompareModuleInstances(originalModule, currentModule, "module-name")
+```
+
+### Common Issues
+
+#### 1. "Module does not implement Startable, skipping"
+
+**Symptoms:** Module has a `Start` method but is reported as not implementing `Startable`.
+
+**Common Causes:**
+
+1. **Incorrect method signature** - Most common issue:
+   ```go
+   // ❌ WRONG - missing context parameter
+   func (m *MyModule) Start() error { return nil }
+   
+   // ✅ CORRECT
+   func (m *MyModule) Start(ctx context.Context) error { return nil }
+   ```
+
+2. **Wrong context import:**
+   ```go
+   // ❌ WRONG - old context package
+   import "golang.org/x/net/context"
+   
+   // ✅ CORRECT - standard library
+   import "context"
+   ```
+
+3. **Constructor returns module without Startable interface:**
+   ```go
+   // ❌ PROBLEMATIC - returns different type
+   func (m *MyModule) Constructor() ModuleConstructor {
+       return func(app Application, services map[string]any) (Module, error) {
+           return &DifferentModuleType{}, nil // Lost Startable!
+       }
+   }
+   
+   // ✅ CORRECT - preserves all interfaces
+   func (m *MyModule) Constructor() ModuleConstructor {
+       return func(app Application, services map[string]any) (Module, error) {
+           return m, nil // Or create new instance with all interfaces
+       }
+   }
+   ```
+
+#### 2. Service Injection Failures
+
+**Symptoms:** `"failed to inject services for module"` errors.
+
+**Debugging steps:**
+1. Verify service names match exactly
+2. Check that required services are provided by other modules
+3. Ensure dependency order is correct
+4. Use interface-based matching for flexibility
+
+#### 3. Module Replacement Issues
+
+**Symptoms:** Module works before `Init()` but fails after.
+
+**Cause:** Constructor-based injection replaces the original module instance.
+
+**Solution:** Ensure your Constructor returns a module that implements all the same interfaces.
+
+### Diagnostic Tools
+
+#### CheckModuleStartableImplementation
+
+For detailed analysis of why a module doesn't implement Startable:
+
+```go
+import "github.com/GoCodeAlone/modular"
+
+// Check specific module
+modular.CheckModuleStartableImplementation(yourModule)
+```
+
+**Output includes:**
+- Method signature analysis
+- Expected vs actual parameter types
+- Interface compatibility check
+
+#### Example Debugging Workflow
+
+When troubleshooting module issues:
+
+```go
+func debugModuleIssues(app *modular.StdApplication) {
+    // 1. Check all modules before initialization
+    fmt.Println("=== BEFORE INIT ===")
+    modular.DebugAllModuleInterfaces(app)
     
-    // Verify it implements the interface
-    var _ DatabaseService = db
+    // 2. Store references to original modules
+    originalModules := make(map[string]modular.Module)
+    for name, module := range app.SvcRegistry() {
+        originalModules[name] = module
+    }
     
-    // Test specific methods
-    err := db.Connect()
-    assert.NoError(t, err)
+    // 3. Initialize
+    err := app.Init()
+    if err != nil {
+        fmt.Printf("Init error: %v\n", err)
+    }
     
-    result, err := db.Query("SELECT 1")
-    assert.NoError(t, err)
-    assert.NotNil(t, result)
+    // 4. Check modules after initialization
+    fmt.Println("=== AFTER INIT ===")
+    modular.DebugAllModuleInterfaces(app)
+    
+    // 5. Compare instances
+    for name, original := range originalModules {
+        if current, exists := app.SvcRegistry()[name]; exists {
+            modular.CompareModuleInstances(original, current, name)
+        }
+    }
+    
+    // 6. Check specific problematic modules
+    if problematicModule, exists := app.SvcRegistry()["problematic-module"]; exists {
+        modular.CheckModuleStartableImplementation(problematicModule)
+    }
 }
 ```
 
-By using dependency injection and interfaces, Modular makes it easy to test modules in isolation.
+#### Best Practices for Debugging
+
+1. **Add debugging early:** Use debugging utilities during development, not just when issues occur.
+
+2. **Check before and after Init():** Many issues occur during the initialization phase when modules are replaced via constructors.
+
+3. **Verify method signatures:** Double-check that your Start/Stop methods match the expected interface signatures exactly.
+
+4. **Use specific error messages:** The debugging tools provide detailed information about why interfaces aren't implemented.
+
+5. **Test interface implementations:** Add compile-time checks to ensure your modules implement expected interfaces:
+   ```go
+   // Compile-time interface check
+   var _ modular.Startable = (*MyModule)(nil)
+   var _ modular.Stoppable = (*MyModule)(nil)
+   ```
+
+6. **Check memory addresses:** If memory addresses differ before and after Init(), your module was replaced by a constructor.
+
+By using these debugging tools and following these practices, you can quickly identify and resolve module interface and lifecycle issues in your Modular applications.

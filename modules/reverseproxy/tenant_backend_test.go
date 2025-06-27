@@ -357,6 +357,10 @@ func (m *mockTenantApplication) Logger() modular.Logger {
 	return args.Get(0).(modular.Logger)
 }
 
+func (m *mockTenantApplication) SetLogger(logger modular.Logger) {
+	m.Called(logger)
+}
+
 func (m *mockTenantApplication) GetTenantConfig(tenantID modular.TenantID, moduleName string) (modular.ConfigProvider, error) {
 	args := m.Called(tenantID, moduleName)
 	return args.Get(0).(modular.ConfigProvider), args.Error(1)

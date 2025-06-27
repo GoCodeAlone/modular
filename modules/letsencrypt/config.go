@@ -12,38 +12,38 @@ import (
 // LetsEncryptConfig defines the configuration for the Let's Encrypt module.
 type LetsEncryptConfig struct {
 	// Email is the email address to use for registration with Let's Encrypt
-	Email string `yaml:"email" json:"email"`
+	Email string `yaml:"email" json:"email" env:"EMAIL"`
 
 	// Domains is a list of domain names to obtain certificates for
-	Domains []string `yaml:"domains" json:"domains"`
+	Domains []string `yaml:"domains" json:"domains" env:"DOMAINS"`
 
 	// UseStaging determines whether to use Let's Encrypt's staging environment
 	// Set to true for testing to avoid rate limits
-	UseStaging bool `yaml:"use_staging" json:"use_staging"`
+	UseStaging bool `yaml:"use_staging" json:"use_staging" env:"USE_STAGING"`
 
 	// UseProduction is the opposite of UseStaging, for clarity in configuration
-	UseProduction bool `yaml:"use_production" json:"use_production"`
+	UseProduction bool `yaml:"use_production" json:"use_production" env:"USE_PRODUCTION"`
 
 	// StoragePath is the directory where certificates and account information will be stored
-	StoragePath string `yaml:"storage_path" json:"storage_path"`
+	StoragePath string `yaml:"storage_path" json:"storage_path" env:"STORAGE_PATH"`
 
 	// RenewBefore sets how long before expiry certificates should be renewed (in days)
-	RenewBefore int `yaml:"renew_before" json:"renew_before"`
+	RenewBefore int `yaml:"renew_before" json:"renew_before" env:"RENEW_BEFORE"`
 
 	// RenewBeforeDays is an alias for RenewBefore for backward compatibility
-	RenewBeforeDays int `yaml:"renew_before_days" json:"renew_before_days"`
+	RenewBeforeDays int `yaml:"renew_before_days" json:"renew_before_days" env:"RENEW_BEFORE_DAYS"`
 
 	// AutoRenew enables automatic certificate renewal
-	AutoRenew bool `yaml:"auto_renew" json:"auto_renew"`
+	AutoRenew bool `yaml:"auto_renew" json:"auto_renew" env:"AUTO_RENEW"`
 
 	// UseDNS indicates whether to use DNS challenges instead of HTTP
-	UseDNS bool `yaml:"use_dns" json:"use_dns"`
+	UseDNS bool `yaml:"use_dns" json:"use_dns" env:"USE_DNS"`
 
 	// DNSProvider configuration for DNS challenges
 	DNSProvider *DNSProviderConfig `yaml:"dns_provider,omitempty" json:"dns_provider,omitempty"`
 
 	// DNSConfig is a map of DNS provider specific configuration parameters
-	DNSConfig map[string]string `yaml:"dns_config,omitempty" json:"dns_config,omitempty"`
+	DNSConfig map[string]string `yaml:"dns_config,omitempty" json:"dns_config,omitempty" env:"DNS_CONFIG"`
 
 	// HTTPProvider configuration for HTTP challenges
 	HTTPProvider *HTTPProviderConfig `yaml:"http_provider,omitempty" json:"http_provider,omitempty"`
@@ -58,10 +58,10 @@ type LetsEncryptConfig struct {
 // DNSProviderConfig defines the configuration for DNS challenge providers
 type DNSProviderConfig struct {
 	// Provider is the name of the DNS provider (e.g., "cloudflare", "route53", etc.)
-	Provider string `yaml:"provider" json:"provider"`
+	Provider string `yaml:"provider" json:"provider" env:"PROVIDER"`
 
 	// Parameters is a map of provider-specific configuration parameters
-	Parameters map[string]string `yaml:"parameters" json:"parameters"`
+	Parameters map[string]string `yaml:"parameters" json:"parameters" env:"PARAMETERS"`
 
 	// Provider-specific configurations
 	Cloudflare   *CloudflareConfig   `yaml:"cloudflare,omitempty" json:"cloudflare,omitempty"`
@@ -71,31 +71,31 @@ type DNSProviderConfig struct {
 
 // CloudflareConfig holds the configuration for Cloudflare DNS API
 type CloudflareConfig struct {
-	Email    string `yaml:"email" json:"email"`
-	APIKey   string `yaml:"api_key" json:"api_key"`
-	APIToken string `yaml:"api_token" json:"api_token"`
+	Email    string `yaml:"email" json:"email" env:"EMAIL"`
+	APIKey   string `yaml:"api_key" json:"api_key" env:"API_KEY"`
+	APIToken string `yaml:"api_token" json:"api_token" env:"API_TOKEN"`
 }
 
 // Route53Config holds the configuration for AWS Route53 DNS API
 type Route53Config struct {
-	AccessKeyID     string `yaml:"access_key_id" json:"access_key_id"`
-	SecretAccessKey string `yaml:"secret_access_key" json:"secret_access_key"`
-	Region          string `yaml:"region" json:"region"`
-	HostedZoneID    string `yaml:"hosted_zone_id" json:"hosted_zone_id"`
+	AccessKeyID     string `yaml:"access_key_id" json:"access_key_id" env:"ACCESS_KEY_ID"`
+	SecretAccessKey string `yaml:"secret_access_key" json:"secret_access_key" env:"SECRET_ACCESS_KEY"`
+	Region          string `yaml:"region" json:"region" env:"REGION"`
+	HostedZoneID    string `yaml:"hosted_zone_id" json:"hosted_zone_id" env:"HOSTED_ZONE_ID"`
 }
 
 // DigitalOceanConfig holds the configuration for DigitalOcean DNS API
 type DigitalOceanConfig struct {
-	AuthToken string `yaml:"auth_token" json:"auth_token"`
+	AuthToken string `yaml:"auth_token" json:"auth_token" env:"AUTH_TOKEN"`
 }
 
 // HTTPProviderConfig defines the configuration for HTTP challenge providers
 type HTTPProviderConfig struct {
 	// Use the built-in HTTP server for challenges
-	UseBuiltIn bool `yaml:"use_built_in" json:"use_built_in"`
+	UseBuiltIn bool `yaml:"use_built_in" json:"use_built_in" env:"USE_BUILT_IN"`
 
 	// Port to use for the HTTP challenge server (default: 80)
-	Port int `yaml:"port" json:"port"`
+	Port int `yaml:"port" json:"port" env:"PORT"`
 }
 
 // Validate checks if the configuration is valid and sets default values
@@ -103,12 +103,12 @@ type HTTPProviderConfig struct {
 func (c *LetsEncryptConfig) Validate() error {
 	// Email address is required
 	if c.Email == "" {
-		return fmt.Errorf("email address is required for Let's Encrypt registration")
+		return ErrEmailRequired
 	}
 
 	// At least one domain is required
 	if len(c.Domains) == 0 {
-		return fmt.Errorf("at least one domain is required")
+		return ErrDomainsRequired
 	}
 
 	// Set default storage path if not specified
@@ -139,7 +139,7 @@ func (c *LetsEncryptConfig) Validate() error {
 
 	// If both HTTP and DNS providers are specified, that's ambiguous
 	if c.HTTPProvider != nil && c.DNSProvider != nil {
-		return fmt.Errorf("cannot specify both HTTP and DNS challenge providers")
+		return ErrConflictingProviders
 	}
 
 	// If no provider is specified, default to HTTP with built-in server

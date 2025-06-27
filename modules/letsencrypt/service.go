@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,25 +42,25 @@ func (s *certificateStorage) SaveCertificate(domain string, cert *certificate.Re
 	}
 
 	// Save certificate
-	if err := ioutil.WriteFile(filepath.Join(domainDir, "cert.pem"), cert.Certificate, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(domainDir, "cert.pem"), cert.Certificate, 0600); err != nil {
 		return fmt.Errorf("failed to save certificate: %w", err)
 	}
 
 	// Save private key
-	if err := ioutil.WriteFile(filepath.Join(domainDir, "key.pem"), cert.PrivateKey, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(domainDir, "key.pem"), cert.PrivateKey, 0600); err != nil {
 		return fmt.Errorf("failed to save private key: %w", err)
 	}
 
 	// Save certificate chain if available
 	if len(cert.IssuerCertificate) > 0 {
-		if err := ioutil.WriteFile(filepath.Join(domainDir, "chain.pem"), cert.IssuerCertificate, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(domainDir, "chain.pem"), cert.IssuerCertificate, 0600); err != nil {
 			return fmt.Errorf("failed to save certificate chain: %w", err)
 		}
 	}
 
 	// Save metadata
 	metaData := fmt.Sprintf("Domain: %s\nObtained: %s\n", domain, time.Now().Format(time.RFC3339))
-	if err := ioutil.WriteFile(filepath.Join(domainDir, "metadata.txt"), []byte(metaData), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(domainDir, "metadata.txt"), []byte(metaData), 0600); err != nil {
 		return fmt.Errorf("failed to save metadata: %w", err)
 	}
 
@@ -74,7 +73,7 @@ func (s *certificateStorage) LoadCertificate(domain string) (*tls.Certificate, e
 
 	// Check if domain directory exists
 	if _, err := os.Stat(domainDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("no certificate found for domain: %s", domain)
+		return nil, fmt.Errorf("%w: %s", ErrNoCertificateFound, domain)
 	}
 
 	// Load certificate and key files
@@ -83,10 +82,10 @@ func (s *certificateStorage) LoadCertificate(domain string) (*tls.Certificate, e
 
 	// Check if files exist
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
-		return nil, fmt.Errorf("certificate file not found: %s", certFile)
+		return nil, fmt.Errorf("%w: %s", ErrCertificateFileNotFound, certFile)
 	}
 	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
-		return nil, fmt.Errorf("key file not found: %s", keyFile)
+		return nil, fmt.Errorf("%w: %s", ErrKeyFileNotFound, keyFile)
 	}
 
 	// Load and parse certificate
@@ -103,7 +102,7 @@ func (s *certificateStorage) ListCertificates() ([]string, error) {
 	var domains []string
 
 	// Get all subdirectories
-	files, err := ioutil.ReadDir(s.basePath)
+	files, err := os.ReadDir(s.basePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list certificate directories: %w", err)
 	}
@@ -127,7 +126,7 @@ func (s *certificateStorage) IsCertificateExpiringSoon(domain string, days int) 
 	certPath := filepath.Join(domainDir, "cert.pem")
 
 	// Read certificate
-	certPEMBlock, err := ioutil.ReadFile(certPath)
+	certPEMBlock, err := os.ReadFile(certPath)
 	if err != nil {
 		return false, fmt.Errorf("failed to read certificate: %w", err)
 	}
@@ -135,7 +134,7 @@ func (s *certificateStorage) IsCertificateExpiringSoon(domain string, days int) 
 	// Parse PEM block
 	block, _ := pem.Decode(certPEMBlock)
 	if block == nil || block.Type != "CERTIFICATE" {
-		return false, fmt.Errorf("failed to decode PEM block containing certificate")
+		return false, ErrPEMDecodeFailure
 	}
 
 	// Parse certificate

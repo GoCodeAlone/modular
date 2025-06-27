@@ -143,7 +143,7 @@ func (m *LetsEncryptModule) Stop(ctx context.Context) error {
 // to be used with tls.Config.GetCertificate
 func (m *LetsEncryptModule) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if clientHello == nil || clientHello.ServerName == "" {
-		return nil, fmt.Errorf("server name is empty")
+		return nil, ErrServerNameEmpty
 	}
 
 	return m.GetCertificateForDomain(clientHello.ServerName)
@@ -163,7 +163,7 @@ func (m *LetsEncryptModule) GetCertificateForDomain(domain string) (*tls.Certifi
 		m.certMutex.RUnlock()
 
 		if !ok {
-			return nil, fmt.Errorf("no certificate found for domain: %s", domain)
+			return nil, fmt.Errorf("%w: %s", ErrNoCertificateFound, domain)
 		}
 	}
 
@@ -188,7 +188,7 @@ func (m *LetsEncryptModule) initUser() (*User, error) {
 	// Generate a new private key for the user
 	privateKey, err := certcrypto.GeneratePrivateKey(certcrypto.RSA2048)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
 
 	return &User{
@@ -206,7 +206,7 @@ func (m *LetsEncryptModule) initClient() error {
 
 	// Create ACME user
 	if err := m.createUser(); err != nil {
-		return err
+		return fmt.Errorf("failed to create ACME user: %w", err)
 	}
 
 	// Configure client based on the module configuration
@@ -223,7 +223,8 @@ func (m *LetsEncryptModule) initClient() error {
 	if len(m.config.CustomCACertificate) > 0 {
 		config.HTTPClient.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{
-				RootCAs: m.rootCAs,
+				RootCAs:    m.rootCAs,
+				MinVersion: tls.VersionTLS12,
 			},
 		}
 	}
@@ -231,7 +232,7 @@ func (m *LetsEncryptModule) initClient() error {
 	// Create client
 	client, err := lego.NewClient(config)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create ACME client: %w", err)
 	}
 
 	// Configure challenge type
@@ -281,7 +282,7 @@ func (m *LetsEncryptModule) refreshCertificates() error {
 
 	certificates, err := m.client.Certificate.Obtain(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to obtain certificate: %w", err)
 	}
 
 	// Parse and store the certificates
@@ -360,7 +361,7 @@ func (m *LetsEncryptModule) renewCertificateForDomain(domain string) error {
 
 	certificates, err := m.client.Certificate.Obtain(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to obtain certificate for domain %s: %w", domain, err)
 	}
 
 	// Parse and store the new certificate
@@ -383,7 +384,7 @@ func (m *LetsEncryptModule) RevokeCertificate(domain string) error {
 	m.certMutex.RUnlock()
 
 	if !exists || cert == nil {
-		return fmt.Errorf("no certificate found for domain %s", domain)
+		return fmt.Errorf("%w: %s", ErrNoCertificateFound, domain)
 	}
 
 	// Parse the certificate to get the raw X509 certificate
@@ -409,26 +410,34 @@ func (m *LetsEncryptModule) RevokeCertificate(domain string) error {
 // createCloudflareProvider creates a Cloudflare DNS provider from the module configuration
 func (m *LetsEncryptModule) createCloudflareProvider() (challenge.Provider, error) {
 	if m.config.DNSProvider == nil || m.config.DNSProvider.Cloudflare == nil {
-		return nil, fmt.Errorf("cloudflare provider configuration is missing")
+		return nil, ErrCloudflareConfigMissing
 	}
 
 	cfg := m.config.DNSProvider.Cloudflare
 
 	// Use API Token if provided (preferred)
 	if cfg.APIToken != "" {
-		return cloudflare.NewDNSProviderConfig(&cloudflare.Config{
+		provider, err := cloudflare.NewDNSProviderConfig(&cloudflare.Config{
 			AuthToken: cfg.APIToken,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Cloudflare DNS provider with token: %w", err)
+		}
+		return provider, nil
 	}
 
 	// Fall back to environment variables
-	return cloudflare.NewDNSProvider()
+	provider, err := cloudflare.NewDNSProvider()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Cloudflare DNS provider: %w", err)
+	}
+	return provider, nil
 }
 
 // createRoute53Provider creates an AWS Route53 DNS provider from the module configuration
 func (m *LetsEncryptModule) createRoute53Provider() (challenge.Provider, error) {
 	if m.config.DNSProvider == nil || m.config.DNSProvider.Route53 == nil {
-		return nil, fmt.Errorf("route53 provider configuration is missing")
+		return nil, ErrRoute53ConfigMissing
 	}
 
 	cfg := m.config.DNSProvider.Route53
@@ -450,30 +459,38 @@ func (m *LetsEncryptModule) createRoute53Provider() (challenge.Provider, error) 
 		config.HostedZoneID = cfg.HostedZoneID
 	}
 
-	return route53.NewDNSProviderConfig(config)
+	provider, err := route53.NewDNSProviderConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Route53 provider: %w", err)
+	}
+	return provider, nil
 }
 
 // createDigitalOceanProvider creates a DigitalOcean DNS provider from the module configuration
 func (m *LetsEncryptModule) createDigitalOceanProvider() (challenge.Provider, error) {
 	if m.config.DNSProvider == nil || m.config.DNSProvider.DigitalOcean == nil {
-		return nil, fmt.Errorf("digitalocean provider configuration is missing")
+		return nil, ErrDigitalOceanConfigMissing
 	}
 
 	cfg := m.config.DNSProvider.DigitalOcean
 
 	if cfg.AuthToken != "" {
-		return digitalocean.NewDNSProviderConfig(&digitalocean.Config{
+		provider, err := digitalocean.NewDNSProviderConfig(&digitalocean.Config{
 			AuthToken: cfg.AuthToken,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DigitalOcean DNS provider: %w", err)
+		}
+		return provider, nil
 	}
 
-	return nil, fmt.Errorf("digitalocean auth token is required")
+	return nil, ErrDigitalOceanTokenRequired
 }
 
 // configureDNSProvider configures the DNS provider for ACME DNS challenges
 func (m *LetsEncryptModule) configureDNSProvider() error {
 	if m.config.DNSProvider == nil || m.config.DNSProvider.Provider == "" {
-		return fmt.Errorf("DNS provider configuration is missing or invalid")
+		return ErrDNSConfigMissing
 	}
 
 	switch m.config.DNSProvider.Provider {
@@ -490,15 +507,13 @@ func (m *LetsEncryptModule) configureDNSProvider() error {
 	case "namecheap":
 		return m.configureNamecheap()
 	default:
-		return fmt.Errorf("unsupported DNS provider: %s", m.config.DNSProvider.Provider)
+		return fmt.Errorf("%w: %s", ErrUnsupportedDNSProvider, m.config.DNSProvider.Provider)
 	}
-}
-
-// configureCloudflare configures the Cloudflare DNS provider
+} // configureCloudflare configures the Cloudflare DNS provider
 func (m *LetsEncryptModule) configureCloudflare() error {
 	provider, err := m.createCloudflareProvider()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create Cloudflare provider: %w", err)
 	}
 	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
 		return fmt.Errorf("failed to set DNS01 provider: %w", err)
@@ -510,7 +525,7 @@ func (m *LetsEncryptModule) configureCloudflare() error {
 func (m *LetsEncryptModule) configureRoute53() error {
 	provider, err := m.createRoute53Provider()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create Route53 provider: %w", err)
 	}
 	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
 		return fmt.Errorf("failed to set DNS01 provider: %w", err)
@@ -522,7 +537,7 @@ func (m *LetsEncryptModule) configureRoute53() error {
 func (m *LetsEncryptModule) configureDigitalOcean() error {
 	provider, err := m.createDigitalOceanProvider()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create DigitalOcean provider: %w", err)
 	}
 	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
 		return fmt.Errorf("failed to set DNS01 provider: %w", err)
@@ -534,7 +549,7 @@ func (m *LetsEncryptModule) configureDigitalOcean() error {
 func (m *LetsEncryptModule) configureGoogleCloudDNS() error {
 	project := m.config.DNSConfig["project_id"]
 	if project == "" {
-		return fmt.Errorf("Google Cloud DNS project ID is required")
+		return ErrGoogleCloudProjectRequired
 	}
 
 	var provider challenge.Provider
@@ -553,7 +568,9 @@ func (m *LetsEncryptModule) configureGoogleCloudDNS() error {
 		return fmt.Errorf("failed to initialize Google Cloud DNS provider: %w", err)
 	}
 
-	m.client.Challenge.SetDNS01Provider(provider)
+	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
+		return fmt.Errorf("failed to set Google Cloud DNS provider: %w", err)
+	}
 	return nil
 }
 
@@ -567,7 +584,7 @@ func (m *LetsEncryptModule) configureAzureDNS() error {
 
 	if clientID == "" || clientSecret == "" || subscriptionID == "" ||
 		tenantID == "" || resourceGroup == "" {
-		return fmt.Errorf("Azure DNS provider requires client_id, client_secret, subscription_id, tenant_id, and resource_group")
+		return ErrAzureDNSConfigIncomplete
 	}
 
 	provider, err := azuredns.NewDNSProviderConfig(&azuredns.Config{
@@ -581,7 +598,9 @@ func (m *LetsEncryptModule) configureAzureDNS() error {
 		return fmt.Errorf("failed to initialize Azure DNS provider: %w", err)
 	}
 
-	m.client.Challenge.SetDNS01Provider(provider)
+	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
+		return fmt.Errorf("failed to set Azure DNS provider: %w", err)
+	}
 	return nil
 }
 
@@ -592,7 +611,7 @@ func (m *LetsEncryptModule) configureNamecheap() error {
 	username := m.config.DNSConfig["username"]
 
 	if apiUser == "" || apiKey == "" || username == "" {
-		return fmt.Errorf("Namecheap DNS provider requires api_user, api_key, and username")
+		return ErrNamecheapConfigIncomplete
 	}
 
 	// Use environment variables as that's the most reliable way across lego versions
@@ -616,7 +635,9 @@ func (m *LetsEncryptModule) configureNamecheap() error {
 		return fmt.Errorf("failed to initialize Namecheap DNS provider: %w", err)
 	}
 
-	m.client.Challenge.SetDNS01Provider(provider)
+	if err := m.client.Challenge.SetDNS01Provider(provider); err != nil {
+		return fmt.Errorf("failed to set Namecheap DNS provider: %w", err)
+	}
 	return nil
 }
 
@@ -628,15 +649,17 @@ type letsEncryptHTTPProvider struct {
 // Present makes the challenge token available
 func (p *letsEncryptHTTPProvider) Present(domain, token, keyAuth string) error {
 	if p.handler == nil {
-		return fmt.Errorf("HTTP challenge handler not configured")
+		return ErrHTTPChallengeNotConfigured
 	}
 
 	// If the handler implements our custom interface, use that
 	if customHandler, ok := p.handler.(ChallengeHandler); ok {
-		return customHandler.PresentChallenge(domain, token, keyAuth)
+		if err := customHandler.PresentChallenge(domain, token, keyAuth); err != nil {
+			return fmt.Errorf("failed to present challenge: %w", err)
+		}
+		return nil
 	}
 
-	// Otherwise, assume it's a standard handler that knows how to serve challenges
 	return nil
 }
 
@@ -648,9 +671,11 @@ func (p *letsEncryptHTTPProvider) CleanUp(domain, token, keyAuth string) error {
 
 	// If the handler implements our custom interface, use that
 	if customHandler, ok := p.handler.(ChallengeHandler); ok {
-		return customHandler.CleanupChallenge(domain, token, keyAuth)
+		if err := customHandler.CleanupChallenge(domain, token, keyAuth); err != nil {
+			return fmt.Errorf("failed to clean up challenge: %w", err)
+		}
+		return nil
 	}
 
-	// Otherwise, assume it's a standard handler that knows how to clean up challenges
 	return nil
 }
