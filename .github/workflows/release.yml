@@ -17,6 +17,16 @@ on:
           - minor
           - major
         default: 'patch'
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to release (leave blank for auto-increment)'
+        required: false
+        type: string
+      releaseType:
+        description: 'Release type'
+        required: true
+        type: string
 
 jobs:
   release:

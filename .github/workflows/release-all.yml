@@ -1,9 +1,9 @@
 # Release workflow that automatically detects and releases all components with changes
 # This workflow will:
-# 1. Check for changes in the main Modular library (excluding modules/)
-# 2. If changes exist, release a new version of the main library
-# 3. Check each module for changes since its last release
-# 4. Release new versions for any modules that have changes
+# 1. Check for changes in the main Modular library (excluding modules/ and non-code files)
+# 2. If changes exist, trigger the existing release.yml workflow
+# 3. Check each module for changes since its last release (excluding tests and docs)
+# 4. Trigger module-release.yml workflow for any modules that have changes
 # 
 # Use this workflow when you want to release everything that has changed.
 # Use individual workflows (release.yml, module-release.yml) for specific releases.
@@ -12,7 +12,7 @@ name: Release All Components with Changes
 run-name: Release All Components with Changes
 permissions:
   contents: write
-  pull-requests: write
+  actions: write
 
 on:
   workflow_dispatch:
@@ -28,135 +28,95 @@ on:
         default: 'patch'
 
 jobs:
-  detect-and-release-main:
+  detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      main_released: ${{ steps.release_main.outputs.released }}
-      main_version: ${{ steps.release_main.outputs.version }}
+      main_has_changes: ${{ steps.check_main.outputs.has_changes }}
+      modules_with_changes: ${{ steps.check_modules.outputs.modules_with_changes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '^1.23.5'
-          check-latest: true
 
-      - name: Check for main library changes and release if needed
-        id: release_main
+      - name: Check for main library changes
+        id: check_main
         run: |
           # Find the latest tag for the main library (excluding module tags)
           LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
           echo "Latest main library tag: $LATEST_TAG"
           
-          # Check for changes in main library (excluding modules/ directory)
+          # Define patterns for files that should trigger a release
+          # Include: .go files (except tests), go.mod, go.sum
+          # Exclude: *_test.go, *.md, .github/*, examples/, cmd/ (if they don't contain logic)
+          INCLUDE_PATTERNS="*.go go.mod go.sum"
+          EXCLUDE_PATTERNS="*_test.go *.md .github/* examples/* docs/*"
+          
           if [ -z "$LATEST_TAG" ]; then
-            echo "No previous main library release found, will create initial release"
-            HAS_CHANGES=true
-            CURRENT_VERSION="v0.0.0"
-          else
-            echo "Checking for changes since $LATEST_TAG in main library"
-            CHANGES=$(git log --pretty=format:"%h" ${LATEST_TAG}..HEAD -- . ':!modules' | wc -l)
-            echo "Number of commits affecting main library since $LATEST_TAG: $CHANGES"
-            
-            if [ "$CHANGES" -gt 0 ]; then
-              echo "Found changes in main library since last release"
+            echo "No previous main library release found, checking if any relevant files exist"
+            # Check if there are any .go files or go.mod in the root (excluding modules/)
+            RELEVANT_FILES=$(find . -maxdepth 1 -name "*.go" -o -name "go.mod" -o -name "go.sum" | grep -v test | head -1)
+            if [ -n "$RELEVANT_FILES" ]; then
               HAS_CHANGES=true
-              CURRENT_VERSION=$LATEST_TAG
             else
-              echo "No changes found in main library since last release"
+              HAS_CHANGES=false
+            fi
+          else
+            echo "Checking for relevant changes since $LATEST_TAG in main library"
+            
+            # Get all changed files since the last tag, excluding modules/ directory
+            CHANGED_FILES=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v "^modules/" || true)
+            echo "Files changed since $LATEST_TAG (excluding modules/):"
+            echo "$CHANGED_FILES"
+            
+            # Filter for files that should trigger a release
+            RELEVANT_CHANGES=""
+            if [ -n "$CHANGED_FILES" ]; then
+              for file in $CHANGED_FILES; do
+                # Skip test files
+                if [[ $file == *_test.go ]]; then
+                  continue
+                fi
+                # Skip documentation files
+                if [[ $file == *.md ]]; then
+                  continue
+                fi
+                # Skip github workflows
+                if [[ $file == .github/* ]]; then
+                  continue
+                fi
+                # Skip example files (unless they contain important logic)
+                if [[ $file == examples/* ]]; then
+                  continue
+                fi
+                # Include .go files, go.mod, go.sum
+                if [[ $file == *.go ]] || [[ $file == go.mod ]] || [[ $file == go.sum ]]; then
+                  RELEVANT_CHANGES="$RELEVANT_CHANGES $file"
+                fi
+              done
+            fi
+            
+            if [ -n "$RELEVANT_CHANGES" ]; then
+              echo "Found relevant changes in main library:"
+              echo "$RELEVANT_CHANGES"
+              HAS_CHANGES=true
+            else
+              echo "No relevant changes found in main library (only tests, docs, or workflows changed)"
               HAS_CHANGES=false
             fi
           fi
           
-          if [ "$HAS_CHANGES" = "true" ]; then
-            echo "Proceeding with main library release..."
-            
-            # Calculate next version
-            CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
-            MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
-            MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
-            PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
-            
-            if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
-              NEXT_VERSION="v$((MAJOR + 1)).0.0"
-            elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
-              NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
-            else
-              NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-            fi
-            
-            echo "Next version will be: $NEXT_VERSION"
-            
-            # Run tests
-            echo "Running tests for main library..."
-            go test -v ./...
-            
-            # Generate changelog
-            if [ -z "$LATEST_TAG" ]; then
-              echo "Generating initial changelog"
-              CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- . ':!modules')
-            else
-              echo "Generating changelog from $LATEST_TAG to HEAD"
-              CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD -- . ':!modules')
-            fi
-            
-            if [ -z "$CHANGELOG" ]; then
-              CHANGELOG="- No specific changes to the main library since last release"
-            fi
-            
-            # Create release
-            echo "# Release ${NEXT_VERSION}" > changelog.md
-            echo "" >> changelog.md
-            echo "## Changes" >> changelog.md
-            echo "" >> changelog.md
-            echo "$CHANGELOG" >> changelog.md
-            
-            gh release create $NEXT_VERSION \
-              --title "Modular $NEXT_VERSION" \
-              --notes-file changelog.md \
-              --repo ${{ github.repository }} \
-              --latest
-            
-            # Announce to Go proxy
-            GOPROXY=proxy.golang.org go list -m github.com/GoCodeAlone/modular@${NEXT_VERSION}
-            
-            echo "Released main library version $NEXT_VERSION"
-            echo "released=true" >> $GITHUB_OUTPUT
-            echo "version=$NEXT_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "No release needed for main library"
-            echo "released=false" >> $GITHUB_OUTPUT
-            echo "version=" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+          echo "Main library has changes: $HAS_CHANGES"
 
-  detect-and-release-modules:
-    runs-on: ubuntu-latest
-    needs: detect-and-release-main
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '^1.23.5'
-          check-latest: true
-
-      - name: Detect and release modules with changes
+      - name: Check for module changes
+        id: check_modules
         run: |
           # Get list of all modules
-          MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | grep -v README)
+          MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | grep -v "README" || true)
           echo "Found modules: $MODULES"
           
-          RELEASED_MODULES=""
+          MODULES_WITH_CHANGES=""
           
           for MODULE in $MODULES; do
             echo "================================================"
@@ -166,98 +126,123 @@ jobs:
             LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
             echo "Latest tag for $MODULE: $LATEST_TAG"
             
-            # Check for changes in this module
             if [ -z "$LATEST_TAG" ]; then
-              echo "No previous release found for $MODULE, will create initial release"
-              HAS_CHANGES=true
-              CURRENT_VERSION="v0.0.0"
-            else
-              echo "Checking for changes since $LATEST_TAG in modules/$MODULE"
-              CHANGES=$(git log --pretty=format:"%h" ${LATEST_TAG}..HEAD -- "modules/${MODULE}" | wc -l)
-              echo "Number of commits affecting $MODULE since $LATEST_TAG: $CHANGES"
-              
-              if [ "$CHANGES" -gt 0 ]; then
-                echo "Found changes in $MODULE since last release"
+              echo "No previous release found for $MODULE, checking if module has relevant files"
+              # Check if module has any .go files or go.mod
+              RELEVANT_FILES=$(find "modules/${MODULE}" -name "*.go" -o -name "go.mod" -o -name "go.sum" | grep -v test | head -1)
+              if [ -n "$RELEVANT_FILES" ]; then
                 HAS_CHANGES=true
-                CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|modules/${MODULE}/||")
               else
-                echo "No changes found in $MODULE since last release"
+                HAS_CHANGES=false
+              fi
+            else
+              echo "Checking for relevant changes since $LATEST_TAG in modules/$MODULE"
+              
+              # Get all changed files in this module since the last tag
+              CHANGED_FILES=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${MODULE}" || true)
+              echo "Files changed in $MODULE since $LATEST_TAG:"
+              echo "$CHANGED_FILES"
+              
+              # Filter for files that should trigger a release
+              RELEVANT_CHANGES=""
+              if [ -n "$CHANGED_FILES" ]; then
+                for file in $CHANGED_FILES; do
+                  # Skip test files
+                  if [[ $file == *_test.go ]]; then
+                    continue
+                  fi
+                  # Skip documentation files
+                  if [[ $file == *.md ]]; then
+                    continue
+                  fi
+                  # Include .go files, go.mod, go.sum
+                  if [[ $file == *.go ]] || [[ $file == go.mod ]] || [[ $file == go.sum ]]; then
+                    RELEVANT_CHANGES="$RELEVANT_CHANGES $file"
+                  fi
+                done
+              fi
+              
+              if [ -n "$RELEVANT_CHANGES" ]; then
+                echo "Found relevant changes in $MODULE:"
+                echo "$RELEVANT_CHANGES"
+                HAS_CHANGES=true
+              else
+                echo "No relevant changes found in $MODULE (only tests or docs changed)"
                 HAS_CHANGES=false
               fi
             fi
             
             if [ "$HAS_CHANGES" = "true" ]; then
-              echo "Proceeding with $MODULE release..."
-              
-              # Calculate next version
-              CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
-              MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
-              MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
-              PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
-              
-              if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
-                NEXT_VERSION="v$((MAJOR + 1)).0.0"
-              elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
-                NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
-              else
-                NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-              fi
-              
-              TAG="modules/${MODULE}/${NEXT_VERSION}"
-              echo "Next version for $MODULE will be: $NEXT_VERSION (tag: $TAG)"
-              
-              # Generate changelog for this module
-              if [ -z "$LATEST_TAG" ]; then
-                echo "Generating initial changelog for $MODULE"
-                CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- "modules/${MODULE}")
-              else
-                echo "Generating changelog for $MODULE from $LATEST_TAG to HEAD"
-                CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD -- "modules/${MODULE}")
-              fi
-              
-              if [ -z "$CHANGELOG" ]; then
-                CHANGELOG="- No specific changes to this module since last release"
-              fi
-              
-              # Create release for this module
-              echo "# ${MODULE} ${TAG}" > "changelog_${MODULE}.md"
-              echo "" >> "changelog_${MODULE}.md"
-              echo "## Changes" >> "changelog_${MODULE}.md"
-              echo "" >> "changelog_${MODULE}.md"
-              echo "$CHANGELOG" >> "changelog_${MODULE}.md"
-              
-              gh release create $TAG \
-                --title "$MODULE $NEXT_VERSION" \
-                --notes-file "changelog_${MODULE}.md" \
-                --repo ${{ github.repository }} \
-                --latest=false
-              
-              # Announce to Go proxy
-              MODULE_NAME="github.com/GoCodeAlone/modular/modules/${MODULE}"
-              go get ${MODULE_NAME}@${NEXT_VERSION}
-              
-              echo "Released $MODULE version $NEXT_VERSION"
-              RELEASED_MODULES="$RELEASED_MODULES $MODULE:$NEXT_VERSION"
+              echo "$MODULE has changes and needs a release"
+              MODULES_WITH_CHANGES="$MODULES_WITH_CHANGES $MODULE"
             else
-              echo "No release needed for $MODULE"
+              echo "$MODULE has no relevant changes"
             fi
           done
           
-          echo "================================================"
-          echo "RELEASE SUMMARY:"
-          if [ "${{ needs.detect-and-release-main.outputs.main_released }}" = "true" ]; then
-            echo "✓ Main library released: ${{ needs.detect-and-release-main.outputs.main_version }}"
+          # Clean up the modules list and output as JSON array for matrix
+          if [ -n "$MODULES_WITH_CHANGES" ]; then
+            # Convert space-separated list to JSON array
+            MODULES_JSON=$(echo "$MODULES_WITH_CHANGES" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
+            echo "modules_with_changes=$MODULES_JSON" >> $GITHUB_OUTPUT
+            echo "Modules with changes: $MODULES_WITH_CHANGES"
           else
-            echo "- Main library: no changes, no release needed"
+            echo "modules_with_changes=[]" >> $GITHUB_OUTPUT
+            echo "No modules have relevant changes"
+          fi
+
+  release-main:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.main_has_changes == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      releaseType: ${{ github.event.inputs.releaseType }}
+    secrets: inherit
+
+  release-modules:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.modules_with_changes != '[]'
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect-changes.outputs.modules_with_changes) }}
+    uses: ./.github/workflows/module-release.yml
+    with:
+      module: ${{ matrix.module }}
+      releaseType: ${{ github.event.inputs.releaseType }}
+    secrets: inherit
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, release-main, release-modules]
+    if: always()
+    steps:
+      - name: Display Release Summary
+        run: |
+          echo "================================================"
+          echo "🎉 RELEASE SUMMARY"
+          echo "=================="
+          
+          if [ "${{ needs.detect-changes.outputs.main_has_changes }}" = "true" ]; then
+            if [ "${{ needs.release-main.result }}" = "success" ]; then
+              echo "✅ Main library: Released successfully"
+            else
+              echo "❌ Main library: Release failed"
+            fi
+          else
+            echo "⏭️  Main library: No relevant changes, no release needed"
           fi
           
-          if [ -n "$RELEASED_MODULES" ]; then
-            echo "✓ Modules released:"
-            for module_version in $RELEASED_MODULES; do
-              echo "  - $module_version"
-            done
+          MODULES_WITH_CHANGES='${{ needs.detect-changes.outputs.modules_with_changes }}'
+          if [ "$MODULES_WITH_CHANGES" != "[]" ]; then
+            echo "📦 Modules:"
+            if [ "${{ needs.release-modules.result }}" = "success" ]; then
+              echo "✅ Module releases: Completed successfully"
+            else
+              echo "❌ Module releases: Some releases failed"
+            fi
+            echo "   Modules processed: $(echo '${{ needs.detect-changes.outputs.modules_with_changes }}' | jq -r '.[]' | tr '\n' ' ')"
           else
-            echo "- Modules: no changes, no releases needed"
+            echo "⏭️  Modules: No relevant changes, no releases needed"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          echo "================================================"
