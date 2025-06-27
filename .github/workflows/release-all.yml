@@ -1,0 +1,250 @@
+name: Release All Components with Changes
+run-name: Release All Components with Changes
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseType:
+        description: 'Release type for all components'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+
+jobs:
+  detect-and-release-main:
+    runs-on: ubuntu-latest
+    outputs:
+      main_released: ${{ steps.release_main.outputs.released }}
+      main_version: ${{ steps.release_main.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.23.5'
+          check-latest: true
+
+      - name: Check for main library changes and release if needed
+        id: release_main
+        run: |
+          # Find the latest tag for the main library (excluding module tags)
+          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
+          echo "Latest main library tag: $LATEST_TAG"
+          
+          # Check for changes in main library (excluding modules/ directory)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No previous main library release found, will create initial release"
+            HAS_CHANGES=true
+            CURRENT_VERSION="v0.0.0"
+          else
+            echo "Checking for changes since $LATEST_TAG in main library"
+            CHANGES=$(git log --pretty=format:"%h" ${LATEST_TAG}..HEAD -- . ':!modules' | wc -l)
+            echo "Number of commits affecting main library since $LATEST_TAG: $CHANGES"
+            
+            if [ "$CHANGES" -gt 0 ]; then
+              echo "Found changes in main library since last release"
+              HAS_CHANGES=true
+              CURRENT_VERSION=$LATEST_TAG
+            else
+              echo "No changes found in main library since last release"
+              HAS_CHANGES=false
+            fi
+          fi
+          
+          if [ "$HAS_CHANGES" = "true" ]; then
+            echo "Proceeding with main library release..."
+            
+            # Calculate next version
+            CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
+            MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
+            MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
+            PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
+            
+            if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
+              NEXT_VERSION="v$((MAJOR + 1)).0.0"
+            elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
+              NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+            else
+              NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+            
+            echo "Next version will be: $NEXT_VERSION"
+            
+            # Run tests
+            echo "Running tests for main library..."
+            go test -v ./...
+            
+            # Generate changelog
+            if [ -z "$LATEST_TAG" ]; then
+              echo "Generating initial changelog"
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- . ':!modules')
+            else
+              echo "Generating changelog from $LATEST_TAG to HEAD"
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD -- . ':!modules')
+            fi
+            
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="- No specific changes to the main library since last release"
+            fi
+            
+            # Create release
+            echo "# Release ${NEXT_VERSION}" > changelog.md
+            echo "" >> changelog.md
+            echo "## Changes" >> changelog.md
+            echo "" >> changelog.md
+            echo "$CHANGELOG" >> changelog.md
+            
+            gh release create $NEXT_VERSION \
+              --title "Modular $NEXT_VERSION" \
+              --notes-file changelog.md \
+              --repo ${{ github.repository }} \
+              --latest
+            
+            # Announce to Go proxy
+            GOPROXY=proxy.golang.org go list -m github.com/GoCodeAlone/modular@${NEXT_VERSION}
+            
+            echo "Released main library version $NEXT_VERSION"
+            echo "released=true" >> $GITHUB_OUTPUT
+            echo "version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "No release needed for main library"
+            echo "released=false" >> $GITHUB_OUTPUT
+            echo "version=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  detect-and-release-modules:
+    runs-on: ubuntu-latest
+    needs: detect-and-release-main
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.23.5'
+          check-latest: true
+
+      - name: Detect and release modules with changes
+        run: |
+          # Get list of all modules
+          MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | grep -v README)
+          echo "Found modules: $MODULES"
+          
+          RELEASED_MODULES=""
+          
+          for MODULE in $MODULES; do
+            echo "================================================"
+            echo "Checking module: $MODULE"
+            
+            # Find the latest tag for this module
+            LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
+            echo "Latest tag for $MODULE: $LATEST_TAG"
+            
+            # Check for changes in this module
+            if [ -z "$LATEST_TAG" ]; then
+              echo "No previous release found for $MODULE, will create initial release"
+              HAS_CHANGES=true
+              CURRENT_VERSION="v0.0.0"
+            else
+              echo "Checking for changes since $LATEST_TAG in modules/$MODULE"
+              CHANGES=$(git log --pretty=format:"%h" ${LATEST_TAG}..HEAD -- "modules/${MODULE}" | wc -l)
+              echo "Number of commits affecting $MODULE since $LATEST_TAG: $CHANGES"
+              
+              if [ "$CHANGES" -gt 0 ]; then
+                echo "Found changes in $MODULE since last release"
+                HAS_CHANGES=true
+                CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|modules/${MODULE}/||")
+              else
+                echo "No changes found in $MODULE since last release"
+                HAS_CHANGES=false
+              fi
+            fi
+            
+            if [ "$HAS_CHANGES" = "true" ]; then
+              echo "Proceeding with $MODULE release..."
+              
+              # Calculate next version
+              CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
+              MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
+              MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
+              PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
+              
+              if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
+                NEXT_VERSION="v$((MAJOR + 1)).0.0"
+              elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
+                NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+              else
+                NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              fi
+              
+              TAG="modules/${MODULE}/${NEXT_VERSION}"
+              echo "Next version for $MODULE will be: $NEXT_VERSION (tag: $TAG)"
+              
+              # Generate changelog for this module
+              if [ -z "$LATEST_TAG" ]; then
+                echo "Generating initial changelog for $MODULE"
+                CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- "modules/${MODULE}")
+              else
+                echo "Generating changelog for $MODULE from $LATEST_TAG to HEAD"
+                CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD -- "modules/${MODULE}")
+              fi
+              
+              if [ -z "$CHANGELOG" ]; then
+                CHANGELOG="- No specific changes to this module since last release"
+              fi
+              
+              # Create release for this module
+              echo "# ${MODULE} ${TAG}" > "changelog_${MODULE}.md"
+              echo "" >> "changelog_${MODULE}.md"
+              echo "## Changes" >> "changelog_${MODULE}.md"
+              echo "" >> "changelog_${MODULE}.md"
+              echo "$CHANGELOG" >> "changelog_${MODULE}.md"
+              
+              gh release create $TAG \
+                --title "$MODULE $NEXT_VERSION" \
+                --notes-file "changelog_${MODULE}.md" \
+                --repo ${{ github.repository }} \
+                --latest=false
+              
+              # Announce to Go proxy
+              MODULE_NAME="github.com/GoCodeAlone/modular/modules/${MODULE}"
+              go get ${MODULE_NAME}@${NEXT_VERSION}
+              
+              echo "Released $MODULE version $NEXT_VERSION"
+              RELEASED_MODULES="$RELEASED_MODULES $MODULE:$NEXT_VERSION"
+            else
+              echo "No release needed for $MODULE"
+            fi
+          done
+          
+          echo "================================================"
+          echo "RELEASE SUMMARY:"
+          if [ "${{ needs.detect-and-release-main.outputs.main_released }}" = "true" ]; then
+            echo "✓ Main library released: ${{ needs.detect-and-release-main.outputs.main_version }}"
+          else
+            echo "- Main library: no changes, no release needed"
+          fi
+          
+          if [ -n "$RELEASED_MODULES" ]; then
+            echo "✓ Modules released:"
+            for module_version in $RELEASED_MODULES; do
+              echo "  - $module_version"
+            done
+          else
+            echo "- Modules: no changes, no releases needed"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
