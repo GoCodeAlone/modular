@@ -32,6 +32,7 @@
   - [Required Fields](#required-fields)
   - [Custom Validation Logic](#custom-validation-logic)
   - [Configuration Feeders](#configuration-feeders)
+  - [Instance-Aware Configuration](#instance-aware-configuration)
 - [Multi-tenancy Support](#multi-tenancy-support)
   - [Tenant Context](#tenant-context)
   - [Tenant Service](#tenant-service)
@@ -583,6 +584,310 @@ if err != nil {
 ```
 
 Multiple feeders can be chained, with later feeders overriding values from earlier ones.
+
+### Instance-Aware Configuration
+
+Instance-aware configuration is a powerful feature that allows you to manage multiple instances of the same configuration type using environment variables with instance-specific prefixes. This is particularly useful for scenarios like multiple database connections, cache instances, or service endpoints where each instance needs separate configuration.
+
+#### Overview
+
+Traditional configuration approaches often struggle with multiple instances because they rely on fixed environment variable names. For example, if you need multiple database connections, both would compete for the same `DSN` environment variable:
+
+```yaml
+database:
+  connections:
+    primary: {}    # Would use DSN env var
+    secondary: {}  # Would also use DSN env var - conflict!
+```
+
+Instance-aware configuration solves this by using instance-specific prefixes:
+
+```bash
+# Single instance (backward compatible)
+DRIVER=postgres
+DSN=postgres://localhost/db
+
+# Multiple instances with prefixes  
+DB_PRIMARY_DRIVER=postgres
+DB_PRIMARY_DSN=postgres://localhost/primary
+DB_SECONDARY_DRIVER=mysql
+DB_SECONDARY_DSN=mysql://localhost/secondary
+```
+
+#### InstanceAwareEnvFeeder
+
+The `InstanceAwareEnvFeeder` is the core component that handles environment variable feeding for multiple instances:
+
+```go
+// Create an instance-aware feeder with a prefix function
+feeder := modular.NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+    return "DB_" + strings.ToUpper(instanceKey) + "_"
+})
+
+// Feed a single instance with instance-specific environment variables
+config := &database.ConnectionConfig{}
+err := feeder.FeedKey("primary", config)
+// This will look for DB_PRIMARY_DRIVER, DB_PRIMARY_DSN, etc.
+```
+
+The `InstanceAwareEnvFeeder` implements three interfaces:
+
+1. **Basic Feeder**: `Feed(interface{}) error` - For backward compatibility
+2. **ComplexFeeder**: `FeedKey(string, interface{}) error` - For instance-specific feeding
+3. **InstanceAwareFeeder**: `FeedInstances(interface{}) error` - For feeding multiple instances at once
+
+#### InstanceAwareConfigProvider
+
+The `InstanceAwareConfigProvider` wraps configuration objects and associates them with instance prefix functions:
+
+```go
+// Create instance-aware config provider
+prefixFunc := func(instanceKey string) string {
+    return "DB_" + strings.ToUpper(instanceKey) + "_"
+}
+
+config := &database.Config{
+    Connections: map[string]database.ConnectionConfig{
+        "primary":   {},
+        "secondary": {},
+    },
+}
+
+provider := modular.NewInstanceAwareConfigProvider(config, prefixFunc)
+app.RegisterConfigSection("database", provider)
+```
+
+#### Module Integration
+
+Modules can implement the `InstanceAwareConfigSupport` interface to enable automatic instance-aware configuration:
+
+```go
+// InstanceAwareConfigSupport indicates support for instance-aware feeding
+type InstanceAwareConfigSupport interface {
+    // GetInstanceConfigs returns a map of instance configurations
+    GetInstanceConfigs() map[string]interface{}
+}
+```
+
+Example implementation in the database module:
+
+```go
+// GetInstanceConfigs returns the connections map for instance-aware configuration
+func (c *Config) GetInstanceConfigs() map[string]interface{} {
+    instances := make(map[string]interface{})
+    for name, connection := range c.Connections {
+        // Create a copy to avoid modifying the original
+        connCopy := connection
+        instances[name] = &connCopy
+    }
+    return instances
+}
+```
+
+#### Environment Variable Patterns
+
+Instance-aware configuration supports consistent naming patterns:
+
+```bash
+# Pattern: <PREFIX><INSTANCE_KEY>_<FIELD_NAME>
+
+# Database connections
+DB_PRIMARY_DRIVER=postgres
+DB_PRIMARY_DSN=postgres://user:pass@localhost/primary
+DB_PRIMARY_MAX_OPEN_CONNECTIONS=25
+
+DB_SECONDARY_DRIVER=mysql  
+DB_SECONDARY_DSN=mysql://user:pass@localhost/secondary
+DB_SECONDARY_MAX_OPEN_CONNECTIONS=10
+
+# Cache instances
+CACHE_SESSION_DRIVER=redis
+CACHE_SESSION_ADDR=localhost:6379
+CACHE_SESSION_DB=0
+
+CACHE_OBJECTS_DRIVER=redis
+CACHE_OBJECTS_ADDR=localhost:6379
+CACHE_OBJECTS_DB=1
+
+# HTTP servers
+HTTP_API_PORT=8080
+HTTP_API_HOST=0.0.0.0
+
+HTTP_ADMIN_PORT=8081
+HTTP_ADMIN_HOST=127.0.0.1
+```
+
+#### Configuration Struct Requirements
+
+For instance-aware configuration to work, configuration structs must have `env` struct tags:
+
+```go
+type ConnectionConfig struct {
+    Driver string `json:"driver" yaml:"driver" env:"DRIVER"`
+    DSN    string `json:"dsn" yaml:"dsn" env:"DSN"`
+    MaxOpenConnections int `json:"max_open_connections" yaml:"max_open_connections" env:"MAX_OPEN_CONNECTIONS"`
+    MaxIdleConnections int `json:"max_idle_connections" yaml:"max_idle_connections" env:"MAX_IDLE_CONNECTIONS"`
+}
+```
+
+The `env` tag specifies the environment variable name that will be combined with the instance prefix.
+
+#### Complete Example
+
+Here's a complete example showing how to use instance-aware configuration for multiple database connections:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/database"
+)
+
+func main() {
+    // Set up environment variables for multiple database connections
+    os.Setenv("DB_PRIMARY_DRIVER", "postgres")
+    os.Setenv("DB_PRIMARY_DSN", "postgres://localhost/primary")
+    os.Setenv("DB_SECONDARY_DRIVER", "mysql")
+    os.Setenv("DB_SECONDARY_DSN", "mysql://localhost/secondary")
+    os.Setenv("DB_CACHE_DRIVER", "sqlite")
+    os.Setenv("DB_CACHE_DSN", ":memory:")
+
+    // Create application
+    app := modular.NewStdApplication(
+        modular.NewStdConfigProvider(&AppConfig{}),
+        logger,
+    )
+
+    // Register database module (it automatically sets up instance-aware config)
+    app.RegisterModule(database.NewModule())
+
+    // Initialize application
+    err := app.Init()
+    if err != nil {
+        panic(err)
+    }
+
+    // Get database manager
+    var dbManager *database.Module
+    app.GetService("database.manager", &dbManager)
+
+    // Access different database connections
+    primaryDB, _ := dbManager.GetConnection("primary")   // Uses DB_PRIMARY_*
+    secondaryDB, _ := dbManager.GetConnection("secondary") // Uses DB_SECONDARY_*
+    cacheDB, _ := dbManager.GetConnection("cache")       // Uses DB_CACHE_*
+}
+```
+
+#### Manual Instance Configuration
+
+You can also manually configure instances without automatic module support:
+
+```go
+// Define configuration with instances
+type MyConfig struct {
+    Services map[string]ServiceConfig `json:"services" yaml:"services"`
+}
+
+type ServiceConfig struct {
+    URL     string `json:"url" yaml:"url" env:"URL"`
+    Timeout int    `json:"timeout" yaml:"timeout" env:"TIMEOUT"`
+    APIKey  string `json:"api_key" yaml:"api_key" env:"API_KEY"`
+}
+
+// Set up environment variables
+os.Setenv("SVC_AUTH_URL", "https://auth.example.com")
+os.Setenv("SVC_AUTH_TIMEOUT", "30")
+os.Setenv("SVC_AUTH_API_KEY", "auth-key-123")
+
+os.Setenv("SVC_PAYMENT_URL", "https://payment.example.com")
+os.Setenv("SVC_PAYMENT_TIMEOUT", "60")
+os.Setenv("SVC_PAYMENT_API_KEY", "payment-key-456")
+
+// Create instance-aware feeder
+feeder := modular.NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+    return "SVC_" + strings.ToUpper(instanceKey) + "_"
+})
+
+// Configure each service instance
+config := &MyConfig{
+    Services: map[string]ServiceConfig{
+        "auth":    {},
+        "payment": {},
+    },
+}
+
+// Feed each instance
+for name, serviceConfig := range config.Services {
+    configPtr := &serviceConfig
+    if err := feeder.FeedKey(name, configPtr); err != nil {
+        return fmt.Errorf("failed to configure service %s: %w", name, err)
+    }
+    config.Services[name] = *configPtr
+}
+```
+
+#### Best Practices
+
+1. **Consistent Naming**: Use consistent prefix patterns across your application
+   ```bash
+   DB_<INSTANCE>_<FIELD>     # Database connections
+   CACHE_<INSTANCE>_<FIELD>  # Cache instances  
+   HTTP_<INSTANCE>_<FIELD>   # HTTP servers
+   ```
+
+2. **Uppercase Instance Keys**: Convert instance keys to uppercase for environment variables
+   ```go
+   prefixFunc := func(instanceKey string) string {
+       return "DB_" + strings.ToUpper(instanceKey) + "_"
+   }
+   ```
+
+3. **Environment Variable Documentation**: Document expected environment variables
+   ```bash
+   # Required environment variables:
+   DB_PRIMARY_DRIVER=postgres
+   DB_PRIMARY_DSN=postgres://...
+   DB_READONLY_DRIVER=postgres
+   DB_READONLY_DSN=postgres://...
+   ```
+
+4. **Graceful Defaults**: Provide sensible defaults for non-critical configuration
+   ```go
+   type ConnectionConfig struct {
+       Driver string `env:"DRIVER"`
+       DSN    string `env:"DSN"`
+       MaxOpenConnections int `env:"MAX_OPEN_CONNECTIONS" default:"25"`
+   }
+   ```
+
+5. **Validation**: Implement validation for instance configurations
+   ```go
+   func (c *ConnectionConfig) Validate() error {
+       if c.Driver == "" {
+           return errors.New("driver is required")
+       }
+       if c.DSN == "" {
+           return errors.New("DSN is required")
+       }
+       return nil
+   }
+   ```
+
+#### Benefits
+
+Instance-aware configuration provides several key benefits:
+
+- **🔄 Backward Compatibility**: All existing functionality is preserved
+- **🏗️ Extensible Design**: Easy to add to any module configuration
+- **🔧 Multiple Patterns**: Supports both single and multi-instance configurations
+- **📦 Module Support**: Enhanced support across database, cache, and HTTP server modules
+- **✅ No Conflicts**: Different instances don't interfere with each other
+- **🎯 Consistent Naming**: Predictable environment variable patterns
+- **⚙️ Automatic Configuration**: Modules handle instance-aware configuration automatically
 
 ## Multi-tenancy Support
 
