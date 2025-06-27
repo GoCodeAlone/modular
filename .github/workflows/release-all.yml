@@ -1,3 +1,13 @@
+# Release workflow that automatically detects and releases all components with changes
+# This workflow will:
+# 1. Check for changes in the main Modular library (excluding modules/)
+# 2. If changes exist, release a new version of the main library
+# 3. Check each module for changes since its last release
+# 4. Release new versions for any modules that have changes
+# 
+# Use this workflow when you want to release everything that has changed.
+# Use individual workflows (release.yml, module-release.yml) for specific releases.
+
 name: Release All Components with Changes
 run-name: Release All Components with Changes
 
