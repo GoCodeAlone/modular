@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
@@ -56,7 +57,7 @@ func (m *CacheModule) Init(app modular.Application) error {
 	// Retrieve the registered config section for access
 	cfg, err := app.GetConfigSection(m.name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get config section for cache module: %w", err)
 	}
 
 	m.config = cfg.GetConfig().(*CacheConfig)
@@ -84,7 +85,7 @@ func (m *CacheModule) Start(ctx context.Context) error {
 	m.logger.Info("Starting cache module")
 	err := m.cacheEngine.Connect(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect cache engine: %w", err)
 	}
 	return nil
 }
@@ -92,7 +93,10 @@ func (m *CacheModule) Start(ctx context.Context) error {
 // Stop performs shutdown logic for the module
 func (m *CacheModule) Stop(ctx context.Context) error {
 	m.logger.Info("Stopping cache module")
-	return m.cacheEngine.Close(ctx)
+	if err := m.cacheEngine.Close(ctx); err != nil {
+		return fmt.Errorf("failed to close cache engine: %w", err)
+	}
+	return nil
 }
 
 // Dependencies returns the names of modules this module depends on
@@ -133,22 +137,35 @@ func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, tt
 	if ttl == 0 {
 		ttl = time.Duration(m.config.DefaultTTL) * time.Second
 	}
-	return m.cacheEngine.Set(ctx, key, value, ttl)
+	if err := m.cacheEngine.Set(ctx, key, value, ttl); err != nil {
+		return fmt.Errorf("failed to set cache item: %w", err)
+	}
+	return nil
 }
 
 // Delete removes an item from the cache
 func (m *CacheModule) Delete(ctx context.Context, key string) error {
-	return m.cacheEngine.Delete(ctx, key)
+	if err := m.cacheEngine.Delete(ctx, key); err != nil {
+		return fmt.Errorf("failed to delete cache item: %w", err)
+	}
+	return nil
 }
 
 // Flush removes all items from the cache
 func (m *CacheModule) Flush(ctx context.Context) error {
-	return m.cacheEngine.Flush(ctx)
+	if err := m.cacheEngine.Flush(ctx); err != nil {
+		return fmt.Errorf("failed to flush cache: %w", err)
+	}
+	return nil
 }
 
 // GetMulti retrieves multiple items from the cache
 func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]interface{}, error) {
-	return m.cacheEngine.GetMulti(ctx, keys)
+	result, err := m.cacheEngine.GetMulti(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get multiple cache items: %w", err)
+	}
+	return result, nil
 }
 
 // SetMulti stores multiple items in the cache
@@ -156,10 +173,16 @@ func (m *CacheModule) SetMulti(ctx context.Context, items map[string]interface{}
 	if ttl == 0 {
 		ttl = time.Duration(m.config.DefaultTTL) * time.Second
 	}
-	return m.cacheEngine.SetMulti(ctx, items, ttl)
+	if err := m.cacheEngine.SetMulti(ctx, items, ttl); err != nil {
+		return fmt.Errorf("failed to set multiple cache items: %w", err)
+	}
+	return nil
 }
 
 // DeleteMulti removes multiple items from the cache
 func (m *CacheModule) DeleteMulti(ctx context.Context, keys []string) error {
-	return m.cacheEngine.DeleteMulti(ctx, keys)
+	if err := m.cacheEngine.DeleteMulti(ctx, keys); err != nil {
+		return fmt.Errorf("failed to delete multiple cache items: %w", err)
+	}
+	return nil
 }

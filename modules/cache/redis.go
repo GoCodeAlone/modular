@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -26,7 +27,7 @@ func NewRedisCache(config *CacheConfig) *RedisCache {
 func (c *RedisCache) Connect(ctx context.Context) error {
 	opts, err := redis.ParseURL(c.config.RedisURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse Redis URL: %w", err)
 	}
 
 	if c.config.RedisPassword != "" {
@@ -39,13 +40,18 @@ func (c *RedisCache) Connect(ctx context.Context) error {
 	c.client = redis.NewClient(opts)
 
 	// Test the connection
-	return c.client.Ping(ctx).Err()
+	if err := c.client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("failed to ping Redis server: %w", err)
+	}
+	return nil
 }
 
 // Close closes the connection to Redis
 func (c *RedisCache) Close(ctx context.Context) error {
 	if c.client != nil {
-		return c.client.Close()
+		if err := c.client.Close(); err != nil {
+			return fmt.Errorf("failed to close Redis connection: %w", err)
+		}
 	}
 	return nil
 }
@@ -83,7 +89,10 @@ func (c *RedisCache) Set(ctx context.Context, key string, value interface{}, ttl
 		return ErrInvalidValue
 	}
 
-	return c.client.Set(ctx, key, data, ttl).Err()
+	if err := c.client.Set(ctx, key, data, ttl).Err(); err != nil {
+		return fmt.Errorf("failed to set Redis key %s: %w", key, err)
+	}
+	return nil
 }
 
 // Delete removes an item from the Redis cache
@@ -92,7 +101,10 @@ func (c *RedisCache) Delete(ctx context.Context, key string) error {
 		return ErrNotConnected
 	}
 
-	return c.client.Del(ctx, key).Err()
+	if err := c.client.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("failed to delete Redis key %s: %w", key, err)
+	}
+	return nil
 }
 
 // Flush removes all items from the Redis cache
@@ -101,7 +113,10 @@ func (c *RedisCache) Flush(ctx context.Context) error {
 		return ErrNotConnected
 	}
 
-	return c.client.FlushDB(ctx).Err()
+	if err := c.client.FlushDB(ctx).Err(); err != nil {
+		return fmt.Errorf("failed to flush Redis database: %w", err)
+	}
+	return nil
 }
 
 // GetMulti retrieves multiple items from the Redis cache
@@ -116,7 +131,7 @@ func (c *RedisCache) GetMulti(ctx context.Context, keys []string) (map[string]in
 
 	vals, err := c.client.MGet(ctx, keys...).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get multiple Redis keys: %w", err)
 	}
 
 	result := make(map[string]interface{}, len(keys))
@@ -154,7 +169,10 @@ func (c *RedisCache) SetMulti(ctx context.Context, items map[string]interface{},
 	}
 
 	_, err := pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to execute Redis pipeline for SetMulti: %w", err)
+	}
+	return nil
 }
 
 // DeleteMulti removes multiple items from the Redis cache
@@ -167,5 +185,8 @@ func (c *RedisCache) DeleteMulti(ctx context.Context, keys []string) error {
 		return ErrNotConnected
 	}
 
-	return c.client.Del(ctx, keys...).Err()
+	if err := c.client.Del(ctx, keys...).Err(); err != nil {
+		return fmt.Errorf("failed to delete multiple Redis keys: %w", err)
+	}
+	return nil
 }
