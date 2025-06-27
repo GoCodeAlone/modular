@@ -23,15 +23,15 @@ func TestConnectionConfigEnvMapping(t *testing.T) {
 			name:        "postgres_connection_with_env_vars",
 			instanceKey: "main",
 			envVars: map[string]string{
-				"MAIN_DRIVER":                    "postgres",
-				"MAIN_DSN":                       "postgres://user:pass@localhost:5432/maindb?sslmode=disable",
-				"MAIN_MAX_OPEN_CONNECTIONS":      "25",
-				"MAIN_MAX_IDLE_CONNECTIONS":      "5",
-				"MAIN_CONNECTION_MAX_LIFETIME":   "3600",
-				"MAIN_CONNECTION_MAX_IDLE_TIME":  "300",
-				"MAIN_AWS_IAM_AUTH_ENABLED":      "true",
-				"MAIN_AWS_IAM_AUTH_REGION":       "us-west-2",
-				"MAIN_AWS_IAM_AUTH_DB_USER":      "iam_user",
+				"MAIN_DRIVER":                     "postgres",
+				"MAIN_DSN":                        "postgres://user:pass@localhost:5432/maindb?sslmode=disable",
+				"MAIN_MAX_OPEN_CONNECTIONS":       "25",
+				"MAIN_MAX_IDLE_CONNECTIONS":       "5",
+				"MAIN_CONNECTION_MAX_LIFETIME":    "3600",
+				"MAIN_CONNECTION_MAX_IDLE_TIME":   "300",
+				"MAIN_AWS_IAM_AUTH_ENABLED":       "true",
+				"MAIN_AWS_IAM_AUTH_REGION":        "us-west-2",
+				"MAIN_AWS_IAM_AUTH_DB_USER":       "iam_user",
 				"MAIN_AWS_IAM_AUTH_TOKEN_REFRESH": "600",
 			},
 			instancePrefix: func(instanceKey string) string {
@@ -89,7 +89,7 @@ func TestConnectionConfigEnvMapping(t *testing.T) {
 
 			// Create config
 			config := &ConnectionConfig{}
-			
+
 			// Initialize AWSIAMAuth if needed for this test
 			if tt.expectedConfig.AWSIAMAuth != nil {
 				config.AWSIAMAuth = &AWSIAMAuthConfig{}
@@ -97,7 +97,7 @@ func TestConnectionConfigEnvMapping(t *testing.T) {
 
 			// Create and use the instance-aware feeder
 			feeder := modular.NewInstanceAwareEnvFeeder(tt.instancePrefix)
-			
+
 			err := feeder.FeedKey(tt.instanceKey, config)
 			require.NoError(t, err)
 

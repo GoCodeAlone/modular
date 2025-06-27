@@ -9,6 +9,11 @@ import (
 	"github.com/GoCodeAlone/modular"
 )
 
+// Static errors for err113 compliance
+var (
+	ErrNoDefaultService = errors.New("no default database service available")
+)
+
 // Module name constant
 const Name = "database"
 
@@ -20,17 +25,23 @@ type lazyDefaultService struct {
 func (l *lazyDefaultService) Connect() error {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return errors.New("no default database service available")
+		return ErrNoDefaultService
 	}
-	return service.Connect()
+	if err := service.Connect(); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	return nil
 }
 
 func (l *lazyDefaultService) Close() error {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return errors.New("no default database service available")
+		return ErrNoDefaultService
 	}
-	return service.Close()
+	if err := service.Close(); err != nil {
+		return fmt.Errorf("failed to close: %w", err)
+	}
+	return nil
 }
 
 func (l *lazyDefaultService) DB() *sql.DB {
@@ -44,9 +55,12 @@ func (l *lazyDefaultService) DB() *sql.DB {
 func (l *lazyDefaultService) Ping(ctx context.Context) error {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return errors.New("no default database service available")
+		return ErrNoDefaultService
 	}
-	return service.Ping(ctx)
+	if err := service.Ping(ctx); err != nil {
+		return fmt.Errorf("failed to ping: %w", err)
+	}
+	return nil
 }
 
 func (l *lazyDefaultService) Stats() sql.DBStats {
@@ -60,49 +74,73 @@ func (l *lazyDefaultService) Stats() sql.DBStats {
 func (l *lazyDefaultService) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.ExecContext(ctx, query, args...)
+	result, err := service.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	return result, nil
 }
 
 func (l *lazyDefaultService) Exec(query string, args ...interface{}) (sql.Result, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.Exec(query, args...)
+	result, err := service.Exec(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	return result, nil
 }
 
 func (l *lazyDefaultService) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.PrepareContext(ctx, query)
+	stmt, err := service.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	return stmt, nil
 }
 
 func (l *lazyDefaultService) Prepare(query string) (*sql.Stmt, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.Prepare(query)
+	stmt, err := service.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	return stmt, nil
 }
 
 func (l *lazyDefaultService) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.QueryContext(ctx, query, args...)
+	rows, err := service.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query: %w", err)
+	}
+	return rows, nil
 }
 
 func (l *lazyDefaultService) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.Query(query, args...)
+	rows, err := service.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query: %w", err)
+	}
+	return rows, nil
 }
 
 func (l *lazyDefaultService) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
@@ -124,17 +162,25 @@ func (l *lazyDefaultService) QueryRow(query string, args ...interface{}) *sql.Ro
 func (l *lazyDefaultService) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.BeginTx(ctx, opts)
+	tx, err := service.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	return tx, nil
 }
 
 func (l *lazyDefaultService) Begin() (*sql.Tx, error) {
 	service := l.module.GetDefaultService()
 	if service == nil {
-		return nil, errors.New("no default database service available")
+		return nil, ErrNoDefaultService
 	}
-	return service.Begin()
+	tx, err := service.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	return tx, nil
 }
 
 // Module represents the database module
@@ -175,7 +221,7 @@ func (m *Module) RegisterConfig(app modular.Application) error {
 	instancePrefixFunc := func(instanceKey string) string {
 		return "DB_" + instanceKey + "_"
 	}
-	
+
 	configProvider := modular.NewInstanceAwareConfigProvider(defaultConfig, instancePrefixFunc)
 	app.RegisterConfigSection(m.Name(), configProvider)
 	return nil

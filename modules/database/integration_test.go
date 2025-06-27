@@ -22,7 +22,7 @@ func TestDatabaseModuleWithInstanceAwareConfiguration(t *testing.T) {
 		"DB_MAIN_DRIVER": "sqlite",
 		"DB_MAIN_DSN":    ":memory:",
 
-		"DB_READONLY_DRIVER": "sqlite", 
+		"DB_READONLY_DRIVER": "sqlite",
 		"DB_READONLY_DSN":    ":memory:",
 
 		"DB_CACHE_DRIVER": "sqlite",
@@ -63,7 +63,7 @@ func TestDatabaseModuleWithInstanceAwareConfiguration(t *testing.T) {
 		"cache":    {},
 	}
 
-	// Test the instance-aware configuration manually 
+	// Test the instance-aware configuration manually
 	// (In real usage, this would be done automatically during app.LoadConfig())
 	iaProvider, ok := configProvider.(*modular.InstanceAwareConfigProvider)
 	require.True(t, ok, "Should be instance-aware config provider")
@@ -73,7 +73,7 @@ func TestDatabaseModuleWithInstanceAwareConfiguration(t *testing.T) {
 
 	feeder := modular.NewInstanceAwareEnvFeeder(prefixFunc)
 	instanceConfigs := config.GetInstanceConfigs()
-	
+
 	// Feed each instance
 	for instanceKey, instanceConfig := range instanceConfigs {
 		err = feeder.FeedKey(instanceKey, instanceConfig)
