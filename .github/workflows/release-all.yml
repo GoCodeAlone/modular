@@ -10,6 +10,8 @@
 
 name: Release All Components with Changes
 run-name: Release All Components with Changes
+permissions:
+  contents: write
 
 on:
   workflow_dispatch:
