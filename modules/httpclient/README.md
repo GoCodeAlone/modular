@@ -1,5 +1,7 @@
 # HTTP Client Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/httpclient.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/httpclient)
+
 This module provides a configurable HTTP client service that can be used by other modules in the modular framework. It supports configurable connection pooling, timeouts, and optional verbose logging of HTTP requests and responses.
 
 ## Features

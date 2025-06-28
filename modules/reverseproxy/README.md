@@ -1,5 +1,7 @@
 # Reverse Proxy Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/reverseproxy.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/reverseproxy)
+
 A module for the [Modular](https://github.com/GoCodeAlone/modular) framework that provides a flexible reverse proxy with advanced routing capabilities.
 
 ## Overview

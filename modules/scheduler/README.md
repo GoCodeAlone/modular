@@ -1,5 +1,7 @@
 # Scheduler Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/scheduler.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/scheduler)
+
 The Scheduler Module provides job scheduling capabilities for Modular applications. It supports one-time and recurring jobs using cron syntax with comprehensive job history tracking.
 
 ## Features

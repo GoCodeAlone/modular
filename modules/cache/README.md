@@ -1,5 +1,7 @@
 # Cache Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/cache.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/cache)
+
 The Cache Module provides caching functionality for Modular applications. It offers different cache backend options including in-memory and Redis (placeholder implementation).
 
 ## Features
