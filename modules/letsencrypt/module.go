@@ -1,5 +1,125 @@
 // Package letsencrypt provides a module for automatic SSL certificate generation
 // via Let's Encrypt for the modular framework.
+//
+// This module integrates Let's Encrypt ACME protocol support into the modular framework,
+// enabling automatic SSL/TLS certificate provisioning, renewal, and management. It supports
+// multiple challenge types and DNS providers for flexible certificate acquisition.
+//
+// # Features
+//
+// The letsencrypt module provides the following capabilities:
+//   - Automatic SSL certificate acquisition from Let's Encrypt
+//   - Support for HTTP-01 and DNS-01 challenge types
+//   - Multiple DNS provider integrations (Cloudflare, Route53, DigitalOcean, etc.)
+//   - Automatic certificate renewal before expiration
+//   - Certificate storage and management
+//   - Staging and production environment support
+//   - Service interface for integration with HTTP servers
+//
+// # Challenge Types
+//
+// The module supports two ACME challenge types:
+//   - HTTP-01: Domain validation via HTTP endpoints
+//   - DNS-01: Domain validation via DNS TXT records
+//
+// # Supported DNS Providers
+//
+// When using DNS-01 challenges, the following providers are supported:
+//   - Cloudflare
+//   - AWS Route53
+//   - DigitalOcean
+//   - Google Cloud DNS
+//   - Azure DNS
+//   - Namecheap
+//
+// # Configuration
+//
+// The module can be configured through the LetsEncryptConfig structure:
+//
+//	config := &LetsEncryptConfig{
+//	    Email:           "admin@example.com",
+//	    Domains:         []string{"example.com", "www.example.com"},
+//	    ChallengeType:   "http-01",        // or "dns-01"
+//	    DNSProvider:     "cloudflare",     // for DNS challenges
+//	    CADirectory:     CAProduction,     // or CAStaging for testing
+//	    CertificatePath: "/etc/ssl/certs", // certificate storage path
+//	    KeyPath:         "/etc/ssl/private", // private key storage path
+//	    DNSProviderConfig: &CloudflareConfig{
+//	        APIToken: "your-cloudflare-token",
+//	    },
+//	}
+//
+// # Service Registration
+//
+// The module registers itself as a certificate service:
+//
+//	// Get the certificate service
+//	certService := app.GetService("letsencrypt.certificates").(letsencrypt.CertificateService)
+//	
+//	// Get a certificate for a domain
+//	cert, err := certService.GetCertificate("example.com")
+//	
+//	// Configure TLS with automatic certificates
+//	tlsConfig := &tls.Config{
+//	    GetCertificate: certService.GetCertificate,
+//	}
+//
+// # Usage Examples
+//
+// Basic HTTP server with automatic HTTPS:
+//
+//	// Configure Let's Encrypt module
+//	config := &LetsEncryptConfig{
+//	    Email:   "admin@example.com",
+//	    Domains: []string{"example.com"},
+//	    ChallengeType: "http-01",
+//	    CADirectory: CAProduction,
+//	}
+//	
+//	// Get certificate service
+//	certService := app.GetService("letsencrypt.certificates").(CertificateService)
+//	
+//	// Create TLS config with automatic certificates
+//	tlsConfig := &tls.Config{
+//	    GetCertificate: certService.GetCertificate,
+//	}
+//	
+//	// Start HTTPS server
+//	server := &http.Server{
+//	    Addr:      ":443",
+//	    TLSConfig: tlsConfig,
+//	    Handler:   httpHandler,
+//	}
+//	server.ListenAndServeTLS("", "")
+//
+// DNS challenge with Cloudflare:
+//
+//	config := &LetsEncryptConfig{
+//	    Email:       "admin@example.com",
+//	    Domains:     []string{"example.com", "*.example.com"},
+//	    ChallengeType: "dns-01",
+//	    DNSProvider: "cloudflare",
+//	    DNSProviderConfig: &CloudflareConfig{
+//	        APIToken: os.Getenv("CLOUDFLARE_API_TOKEN"),
+//	    },
+//	}
+//
+// # Certificate Management
+//
+// The module automatically handles:
+//   - Certificate acquisition on first request
+//   - Certificate renewal (default: 30 days before expiration)
+//   - Certificate storage and loading
+//   - OCSP stapling support
+//   - Certificate chain validation
+//
+// # Security Considerations
+//
+// - Use staging environment for testing to avoid rate limits
+// - Store API credentials securely (environment variables, secrets)
+// - Ensure proper file permissions for certificate storage
+// - Monitor certificate expiration and renewal logs
+// - Use strong private keys (RSA 2048+ or ECDSA P-256+)
 package letsencrypt
 
 import (
@@ -29,16 +149,33 @@ import (
 
 // Constants for Let's Encrypt URLs
 const (
-	// CAStaging is the URL for Let's Encrypt's staging environment
+	// CAStaging is the URL for Let's Encrypt's staging environment.
+	// Use this for testing to avoid hitting production rate limits.
+	// Certificates from staging are not trusted by browsers.
 	CAStaging = "https://acme-staging-v02.api.letsencrypt.org/directory"
-	// CAProduction is the URL for Let's Encrypt's production environment
+	
+	// CAProduction is the URL for Let's Encrypt's production environment.
+	// Use this for production deployments. Has strict rate limits.
+	// Certificates from production are trusted by all major browsers.
 	CAProduction = "https://acme-v02.api.letsencrypt.org/directory"
 )
 
-// ModuleName is the name of this module
+// ModuleName is the unique identifier for the letsencrypt module.
 const ModuleName = "letsencrypt"
 
-// LetsEncryptModule represents the Let's Encrypt module
+// LetsEncryptModule provides automatic SSL certificate management using Let's Encrypt.
+// It handles certificate acquisition, renewal, and storage with support for multiple
+// challenge types and DNS providers.
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
+//   - modular.Startable: Startup logic
+//   - modular.Stoppable: Shutdown logic
+//   - CertificateService: Certificate management interface
+//
+// Certificate operations are thread-safe and support concurrent requests.
 type LetsEncryptModule struct {
 	config        *LetsEncryptConfig
 	client        *lego.Client
@@ -47,7 +184,7 @@ type LetsEncryptModule struct {
 	certMutex     sync.RWMutex
 	shutdownChan  chan struct{}
 	renewalTicker *time.Ticker
-	rootCAs       *x509.CertPool // Changed from *tls.CertPool to *x509.CertPool
+	rootCAs       *x509.CertPool // Certificate authority root certificates
 }
 
 // User implements the ACME User interface for Let's Encrypt
