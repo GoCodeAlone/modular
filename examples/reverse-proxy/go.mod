@@ -2,6 +2,8 @@ module reverse-proxy
 
 go 1.24.2
 
+toolchain go1.24.4
+
 require (
 	github.com/GoCodeAlone/modular v1.3.0
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0
