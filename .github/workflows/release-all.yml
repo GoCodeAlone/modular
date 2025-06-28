@@ -182,8 +182,8 @@ jobs:
           
           # Clean up the modules list and output as JSON array for matrix
           if [ -n "$MODULES_WITH_CHANGES" ]; then
-            # Convert space-separated list to JSON array
-            MODULES_JSON=$(echo "$MODULES_WITH_CHANGES" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
+            # Convert space-separated list to JSON array (compact format for GitHub Actions)
+            MODULES_JSON=$(echo "$MODULES_WITH_CHANGES" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s . -c)
             echo "modules_with_changes=$MODULES_JSON" >> $GITHUB_OUTPUT
             echo "Modules with changes: $MODULES_WITH_CHANGES"
           else

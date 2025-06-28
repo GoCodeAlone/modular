@@ -1,5 +1,5 @@
 name: Module Release
-run-name: Module Release for ${{ github.event.inputs.module }} - ${{ github.event.inputs.releaseType }}
+run-name: Module Release for ${{ inputs.module || github.event.inputs.module }} - ${{ inputs.releaseType || github.event.inputs.releaseType }}
 
 on:
   workflow_dispatch:
@@ -65,7 +65,7 @@ jobs:
           MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | jq -R . | jq -s .)
           {
             echo "modules<<EOF"
-            echo "$MODULES_JSON"
+            echo "$MODULES"
             echo "EOF"
           } >> $GITHUB_OUTPUT
           echo "Available modules: $MODULES"
@@ -82,7 +82,7 @@ jobs:
       - name: Determine release version
         id: version
         run: |
-          MODULE="${{ github.event.inputs.module }}"
+          MODULE="${{ inputs.module || github.event.inputs.module }}"
           echo "Selected module: $MODULE"
           
           # Find the latest tag for this module
@@ -107,17 +107,17 @@ jobs:
           PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
           
           # Calculate next version based on release type
-          if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
+          if [ "${{ inputs.releaseType || github.event.inputs.releaseType }}" == "major" ]; then
             NEXT_VERSION="v$((MAJOR + 1)).0.0"
-          elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
+          elif [ "${{ inputs.releaseType || github.event.inputs.releaseType }}" == "minor" ]; then
             NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
           else
             NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
           fi
           
           # Use manual version if provided
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            MANUAL_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "${{ inputs.version || github.event.inputs.version }}" ]; then
+            MANUAL_VERSION="${{ inputs.version || github.event.inputs.version }}"
             # Ensure the 'v' prefix
             if [[ $MANUAL_VERSION != v* ]]; then
               MANUAL_VERSION="v${MANUAL_VERSION}"
@@ -175,15 +175,15 @@ jobs:
             --title "${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
-            --latest=false --
+            --latest=false
           
-          git tag ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }} $GITHUB_SHA --
-          git push origin ${{ steps.version.outputs.module }}/${{ steps.version.outputs.next_version }}
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
           
           # Get all assets of the release and delete each one
-          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' -- | while read asset; do
+          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' | while read asset; do
             echo "Deleting asset: $asset"
-            gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y --
+            gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
           done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

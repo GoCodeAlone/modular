@@ -1,5 +1,7 @@
 # Authentication Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/auth.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/auth)
+
 The Authentication module provides comprehensive authentication capabilities for the Modular framework, including JWT tokens, session management, password hashing, and OAuth2/OIDC integration.
 
 ## Features

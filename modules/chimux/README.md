@@ -1,5 +1,7 @@
 # chimux Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/chimux.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/chimux)
+
 A module for the [Modular](https://github.com/GoCodeAlone/modular) framework.
 
 ## Overview

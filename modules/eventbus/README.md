@@ -1,5 +1,7 @@
 # EventBus Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/eventbus.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/eventbus)
+
 The EventBus Module provides a publish-subscribe messaging system for Modular applications. It enables decoupled communication between components through a flexible event-driven architecture.
 
 ## Features

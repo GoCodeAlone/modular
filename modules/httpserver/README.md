@@ -1,5 +1,7 @@
 # HTTP Server Module
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/httpserver.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/httpserver)
+
 This module provides HTTP/HTTPS server capabilities for the modular framework. It handles listening on a specified port, TLS configuration, and server timeouts.
 
 ## Features
