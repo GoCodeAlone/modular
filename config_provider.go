@@ -9,40 +9,99 @@ import (
 
 const mainConfigSection = "_main"
 
-// LoadAppConfigFunc is the function type for loading application configuration
+// LoadAppConfigFunc is the function type for loading application configuration.
+// This function is responsible for loading configuration data into the application
+// using the registered config feeders and config sections.
+//
+// The default implementation can be replaced for testing or custom configuration scenarios.
 type LoadAppConfigFunc func(*StdApplication) error
 
-// AppConfigLoader is the default implementation that can be replaced in tests
+// AppConfigLoader is the default implementation that can be replaced in tests.
+// This variable allows the configuration loading strategy to be customized,
+// which is particularly useful for testing scenarios where you want to
+// control how configuration is loaded.
+//
+// Example of replacing for tests:
+//   oldLoader := modular.AppConfigLoader
+//   defer func() { modular.AppConfigLoader = oldLoader }()
+//   modular.AppConfigLoader = func(app *StdApplication) error {
+//       // Custom test configuration loading
+//       return nil
+//   }
 var AppConfigLoader LoadAppConfigFunc = loadAppConfig
 
-// ConfigProvider defines the interface for providing configuration objects
+// ConfigProvider defines the interface for providing configuration objects.
+// Configuration providers encapsulate configuration data and make it available
+// to modules and the application framework.
+//
+// The framework supports multiple configuration sources (files, environment variables,
+// command-line flags) and formats (JSON, YAML, TOML) through different providers.
 type ConfigProvider interface {
-	// GetConfig returns the configuration object
+	// GetConfig returns the configuration object.
+	// The returned value should be a pointer to a struct that represents
+	// the configuration schema. Modules typically type-assert this to
+	// their expected configuration type.
+	//
+	// Example:
+	//   cfg := provider.GetConfig().(*MyModuleConfig)
 	GetConfig() any
 }
 
-// StdConfigProvider provides a standard implementation of ConfigProvider
+// StdConfigProvider provides a standard implementation of ConfigProvider.
+// It wraps a configuration struct and makes it available through the ConfigProvider interface.
+//
+// This is the most common way to create configuration providers for modules.
+// Simply create your configuration struct and wrap it with NewStdConfigProvider.
 type StdConfigProvider struct {
 	cfg any
 }
 
-// GetConfig returns the configuration object
+// GetConfig returns the configuration object.
+// The returned value is the exact object that was passed to NewStdConfigProvider.
 func (s *StdConfigProvider) GetConfig() any {
 	return s.cfg
 }
 
-// NewStdConfigProvider creates a new standard configuration provider
+// NewStdConfigProvider creates a new standard configuration provider.
+// The cfg parameter should be a pointer to a struct that defines the
+// configuration schema for your module.
+//
+// Example:
+//   type MyConfig struct {
+//       Host string `json:"host" default:"localhost"`
+//       Port int    `json:"port" default:"8080"`
+//   }
+//   
+//   cfg := &MyConfig{}
+//   provider := modular.NewStdConfigProvider(cfg)
 func NewStdConfigProvider(cfg any) *StdConfigProvider {
 	return &StdConfigProvider{cfg: cfg}
 }
 
-// Config represents a configuration builder that can combine multiple feeders and structures
+// Config represents a configuration builder that can combine multiple feeders and structures.
+// It extends the golobby/config library with additional functionality for the modular framework.
+//
+// The Config builder allows you to:
+//   - Add multiple configuration sources (files, environment, etc.)
+//   - Combine configuration from different feeders
+//   - Apply configuration to multiple struct targets
+//   - Track which structs have been configured
 type Config struct {
 	*config.Config
+	// StructKeys maps struct identifiers to their configuration objects.
+	// Used internally to track which configuration structures have been processed.
 	StructKeys map[string]interface{}
 }
 
-// NewConfig creates a new configuration builder
+// NewConfig creates a new configuration builder.
+// The returned Config can be used to set up complex configuration scenarios
+// involving multiple sources and target structures.
+//
+// Example:
+//   cfg := modular.NewConfig()
+//   cfg.AddFeeder(modular.ConfigFeeders[0]) // Add file feeder
+//   cfg.AddStruct(&myConfig)                // Add target struct
+//   err := cfg.Feed()                       // Load configuration
 func NewConfig() *Config {
 	return &Config{
 		Config:     config.New(),

@@ -12,52 +12,208 @@ import (
 	"time"
 )
 
-// AppRegistry provides registry functionality for applications
+// AppRegistry provides registry functionality for applications.
+// This interface provides access to the application's service registry,
+// allowing modules and components to access registered services.
 type AppRegistry interface {
-	// SvcRegistry retrieves the service svcRegistry
+	// SvcRegistry retrieves the service registry.
+	// The service registry contains all services registered by modules
+	// and the application, providing a central location for service lookup.
 	SvcRegistry() ServiceRegistry
 }
 
-// Application represents the core application interface with configuration, module management, and service registration
+// Application represents the core application interface with configuration, module management, and service registration.
+// This is the main interface that modules interact with during initialization and runtime.
+//
+// The Application provides a complete framework for:
+//   - Managing module lifecycle (registration, initialization, startup, shutdown)
+//   - Configuration management with multiple sections and providers
+//   - Service registry for inter-module communication
+//   - Dependency injection and resolution
+//   - Graceful startup and shutdown coordination
+//
+// Basic usage pattern:
+//   app := modular.NewStdApplication(configProvider, logger)
+//   app.RegisterModule(&MyModule{})
+//   app.RegisterModule(&AnotherModule{})
+//   if err := app.Run(); err != nil {
+//       log.Fatal(err)
+//   }
 type Application interface {
-	// ConfigProvider retrieves the application config provider
+	// ConfigProvider retrieves the application's main configuration provider.
+	// This provides access to application-level configuration that isn't
+	// specific to any particular module.
 	ConfigProvider() ConfigProvider
-	// SvcRegistry retrieves the service svcRegistry
+
+	// SvcRegistry retrieves the service registry.
+	// Modules use this to register services they provide and lookup
+	// services they need from other modules.
 	SvcRegistry() ServiceRegistry
-	// RegisterModule adds a module to the application
+
+	// RegisterModule adds a module to the application.
+	// Modules must be registered before calling Init(). The framework
+	// will handle initialization order based on declared dependencies.
+	//
+	// Example:
+	//   app.RegisterModule(&DatabaseModule{})
+	//   app.RegisterModule(&WebServerModule{})
 	RegisterModule(module Module)
-	// RegisterConfigSection registers a configuration section with the application
+
+	// RegisterConfigSection registers a configuration section with the application.
+	// This allows modules to register their configuration requirements,
+	// making them available for loading from configuration sources.
+	//
+	// Example:
+	//   cfg := &MyModuleConfig{}
+	//   provider := modular.NewStdConfigProvider(cfg)
+	//   app.RegisterConfigSection("mymodule", provider)
 	RegisterConfigSection(section string, cp ConfigProvider)
-	// ConfigSections retrieves all registered configuration sections
+
+	// ConfigSections retrieves all registered configuration sections.
+	// Returns a map of section names to their configuration providers.
+	// Useful for debugging and introspection.
 	ConfigSections() map[string]ConfigProvider
-	// GetConfigSection retrieves a configuration section
+
+	// GetConfigSection retrieves a specific configuration section.
+	// Returns an error if the section doesn't exist.
+	//
+	// Example:
+	//   provider, err := app.GetConfigSection("database")
+	//   if err != nil {
+	//       return err
+	//   }
+	//   cfg := provider.GetConfig().(*DatabaseConfig)
 	GetConfigSection(section string) (ConfigProvider, error)
-	// RegisterService adds a service with type checking
+
+	// RegisterService adds a service to the service registry with type checking.
+	// Services registered here become available to all modules that declare
+	// them as dependencies.
+	//
+	// Returns an error if a service with the same name is already registered.
+	//
+	// Example:
+	//   db := &DatabaseConnection{}
+	//   err := app.RegisterService("database", db)
 	RegisterService(name string, service any) error
-	// GetService retrieves a service with type assertion
+
+	// GetService retrieves a service from the registry with type assertion.
+	// The target parameter must be a pointer to the expected type.
+	// The framework will perform type checking and assignment.
+	//
+	// Example:
+	//   var db *DatabaseConnection
+	//   err := app.GetService("database", &db)
 	GetService(name string, target any) error
-	// Init initializes the application with the provided modules
+
+	// Init initializes the application and all registered modules.
+	// This method:
+	//   - Calls RegisterConfig on all configurable modules
+	//   - Loads configuration from all registered sources
+	//   - Resolves module dependencies
+	//   - Initializes modules in dependency order
+	//   - Registers services provided by modules
+	//
+	// Must be called before Start() or Run().
 	Init() error
-	// Start starts the application
+
+	// Start starts the application and all startable modules.
+	// Modules implementing the Startable interface will have their
+	// Start method called in dependency order.
+	//
+	// This is typically used when you want to start the application
+	// but handle the shutdown logic yourself (rather than using Run()).
 	Start() error
-	// Stop stops the application
+
+	// Stop stops the application and all stoppable modules.
+	// Modules implementing the Stoppable interface will have their
+	// Stop method called in reverse dependency order.
+	//
+	// Provides a timeout context for graceful shutdown.
 	Stop() error
-	// Run starts the application and blocks until termination
+
+	// Run starts the application and blocks until termination.
+	// This is equivalent to calling Init(), Start(), and then waiting
+	// for a termination signal (SIGINT, SIGTERM) before calling Stop().
+	//
+	// This is the most common way to run a modular application:
+	//   if err := app.Run(); err != nil {
+	//       log.Fatal(err)
+	//   }
 	Run() error
-	// Logger retrieves the application's logger
+
+	// Logger retrieves the application's logger.
+	// This logger is used by the framework and can be used by modules
+	// for consistent logging throughout the application.
 	Logger() Logger
-	// SetLogger sets the application's logger
+
+	// SetLogger sets the application's logger.
+	// Should be called before module registration to ensure
+	// all framework operations use the new logger.
 	SetLogger(logger Logger)
 }
 
-// TenantApplication extends Application with multi-tenant functionality
+// TenantApplication extends Application with multi-tenant functionality.
+// This interface adds tenant-aware capabilities to the standard Application,
+// allowing the same application instance to serve multiple tenants with
+// isolated configurations and contexts.
+//
+// Multi-tenant applications can:
+//   - Maintain separate configurations per tenant
+//   - Provide tenant-specific service instances
+//   - Isolate tenant data and operations
+//   - Support dynamic tenant registration and management
+//
+// Example usage:
+//   app := modular.NewStdApplication(configProvider, logger)
+//   // Register tenant service and tenant-aware modules
+//   tenantCtx, err := app.WithTenant("tenant-123")
+//   if err != nil {
+//       return err
+//   }
+//   // Use tenant context for tenant-specific operations
 type TenantApplication interface {
 	Application
-	// GetTenantService returns the application's tenant service if available
+
+	// GetTenantService returns the application's tenant service if available.
+	// The tenant service manages tenant registration, lookup, and lifecycle.
+	// Returns an error if no tenant service has been registered.
+	//
+	// Example:
+	//   tenantSvc, err := app.GetTenantService()
+	//   if err != nil {
+	//       return fmt.Errorf("multi-tenancy not configured: %w", err)
+	//   }
 	GetTenantService() (TenantService, error)
-	// WithTenant creates a tenant context from the application context
+
+	// WithTenant creates a tenant context from the application context.
+	// Tenant contexts provide scoped access to tenant-specific configurations
+	// and services, enabling isolation between different tenants.
+	//
+	// The returned context can be used for tenant-specific operations
+	// and will carry tenant identification through the call chain.
+	//
+	// Example:
+	//   tenantCtx, err := app.WithTenant("customer-456")
+	//   if err != nil {
+	//       return err
+	//   }
+	//   // Use tenantCtx for tenant-specific operations
 	WithTenant(tenantID TenantID) (*TenantContext, error)
-	// GetTenantConfig retrieves configuration for a specific tenant and section
+
+	// GetTenantConfig retrieves configuration for a specific tenant and section.
+	// This allows modules to access tenant-specific configuration that may
+	// override or extend the default application configuration.
+	//
+	// The section parameter specifies which configuration section to retrieve
+	// (e.g., "database", "cache", etc.), and the framework will return the
+	// tenant-specific version if available, falling back to defaults otherwise.
+	//
+	// Example:
+	//   cfg, err := app.GetTenantConfig("tenant-789", "database")
+	//   if err != nil {
+	//       return err
+	//   }
+	//   dbConfig := cfg.GetConfig().(*DatabaseConfig)
 	GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error)
 }
 
@@ -73,7 +229,36 @@ type StdApplication struct {
 	tenantService  TenantService // Added tenant service reference
 }
 
-// NewStdApplication creates a new application instance
+// NewStdApplication creates a new application instance with the provided configuration and logger.
+// This is the standard way to create a modular application.
+//
+// Parameters:
+//   - cp: ConfigProvider for application-level configuration
+//   - logger: Logger implementation for framework and module logging
+//
+// The created application will have empty registries that can be populated by
+// registering modules and services. The application must be initialized with
+// Init() before it can be started.
+//
+// Example:
+//   // Create configuration
+//   appConfig := &MyAppConfig{}
+//   configProvider := modular.NewStdConfigProvider(appConfig)
+//   
+//   // Create logger (implement modular.Logger interface)
+//   logger := &MyLogger{}
+//   
+//   // Create application
+//   app := modular.NewStdApplication(configProvider, logger)
+//   
+//   // Register modules
+//   app.RegisterModule(&DatabaseModule{})
+//   app.RegisterModule(&WebServerModule{})
+//   
+//   // Run application
+//   if err := app.Run(); err != nil {
+//       log.Fatal(err)
+//   }
 func NewStdApplication(cp ConfigProvider, logger Logger) Application {
 	return &StdApplication{
 		cfgProvider:    cp,
