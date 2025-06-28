@@ -4,15 +4,27 @@ import (
 	"errors"
 )
 
+// Common error definitions for the modular framework.
+// These errors are organized into categories for different subsystems:
+//
+// Configuration errors: Issues with loading, parsing, or validating configuration
+// Service registry errors: Problems with service registration and lookup
+// Module lifecycle errors: Errors during module initialization, startup, or shutdown
+// Dependency resolution errors: Issues with resolving module or service dependencies
+// Tenant management errors: Problems with multi-tenant functionality
+//
+// All errors follow Go 1.13+ error wrapping conventions and can be used
+// with errors.Is() and errors.As() for error handling and testing.
+
 // Application errors
 var (
-	// Configuration errors
+	// Configuration errors - issues with loading and managing configuration
 	ErrConfigSectionNotFound = errors.New("config section not found")
 	ErrApplicationNil        = errors.New("application is nil")
 	ErrConfigProviderNil     = errors.New("failed to load app config: config provider is nil")
 	ErrConfigSectionError    = errors.New("failed to load app config: error triggered by section")
 
-	// Config validation errors
+	// Config validation errors - problems with configuration structure and values
 	ErrConfigNil                  = errors.New("config is nil")
 	ErrConfigNotPointer           = errors.New("config must be a pointer")
 	ErrConfigNotStruct            = errors.New("config must be a struct")

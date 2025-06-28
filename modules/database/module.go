@@ -1,3 +1,26 @@
+// Package database provides database connectivity and management for modular applications.
+// This module supports multiple database connections with different drivers and provides
+// a unified interface for database operations.
+//
+// The database module features:
+//   - Multiple database connections with configurable drivers (MySQL, PostgreSQL, SQLite, etc.)
+//   - Connection pooling and health monitoring
+//   - Default connection selection for simplified usage
+//   - Database service abstraction for testing and mocking
+//   - Instance-aware configuration for environment-specific settings
+//
+// Usage:
+//
+//	app.RegisterModule(database.NewModule())
+//
+// The module registers database services that provide access to sql.DB instances
+// and higher-level database operations. Other modules can depend on these services
+// for database access.
+//
+// Configuration:
+//
+//	The module requires a "database" configuration section with connection details
+//	for each database instance, including driver, DSN, and connection pool settings.
 package database
 
 import (
@@ -14,10 +37,13 @@ var (
 	ErrNoDefaultService = errors.New("no default database service available")
 )
 
-// Module name constant
+// Module name constant for service registration and dependency resolution.
 const Name = "database"
 
-// lazyDefaultService is a wrapper that lazily resolves the default database service
+// lazyDefaultService is a wrapper that lazily resolves the default database service.
+// This wrapper allows the database service to be registered before the actual
+// database connections are established, supporting proper dependency injection
+// while maintaining lazy initialization of database resources.
 type lazyDefaultService struct {
 	module *Module
 }
@@ -183,7 +209,15 @@ func (l *lazyDefaultService) Begin() (*sql.Tx, error) {
 	return tx, nil
 }
 
-// Module represents the database module
+// Module represents the database module and implements the modular.Module interface.
+// It manages multiple database connections and provides services for database access.
+//
+// The module supports:
+//   - Multiple named database connections
+//   - Automatic connection health monitoring
+//   - Default connection selection
+//   - Service abstraction for easier testing
+//   - Instance-aware configuration
 type Module struct {
 	config      *Config
 	connections map[string]*sql.DB
@@ -196,7 +230,13 @@ var (
 	ErrMissingDSN        = errors.New("database connection missing DSN")
 )
 
-// NewModule creates a new database module
+// NewModule creates a new database module instance.
+// The returned module must be registered with the application before use.
+//
+// Example:
+//
+//	dbModule := database.NewModule()
+//	app.RegisterModule(dbModule)
 func NewModule() *Module {
 	return &Module{
 		connections: make(map[string]*sql.DB),
@@ -204,12 +244,23 @@ func NewModule() *Module {
 	}
 }
 
-// Name returns the name of the module
+// Name returns the name of the module.
+// This name is used for dependency resolution and configuration section lookup.
 func (m *Module) Name() string {
 	return Name
 }
 
-// RegisterConfig registers the module's configuration structure
+// RegisterConfig registers the module's configuration structure.
+// The database module uses instance-aware configuration to support
+// environment-specific database connection settings.
+//
+// Configuration structure:
+//   - Default: name of the default connection to use
+//   - Connections: map of connection names to their configurations
+//
+// Environment variables:
+//
+//	DB_<CONNECTION_NAME>_DRIVER, DB_<CONNECTION_NAME>_DSN, etc.
 func (m *Module) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &Config{
@@ -227,7 +278,15 @@ func (m *Module) RegisterConfig(app modular.Application) error {
 	return nil
 }
 
-// Init initializes the database module
+// Init initializes the database module and establishes database connections.
+// This method loads the configuration, validates connection settings,
+// and establishes connections to all configured databases.
+//
+// Initialization process:
+//  1. Load configuration from the "database" section
+//  2. Validate connection configurations
+//  3. Create database services for each connection
+//  4. Test initial connectivity
 func (m *Module) Init(app modular.Application) error {
 	// Get the configuration
 	provider, err := app.GetConfigSection(m.Name())
@@ -251,7 +310,9 @@ func (m *Module) Init(app modular.Application) error {
 	return nil
 }
 
-// Start starts the database module
+// Start starts the database module and verifies connectivity.
+// This method performs health checks on all database connections
+// to ensure they are ready for use by other modules.
 func (m *Module) Start(ctx context.Context) error {
 	// Test connections to make sure they're still alive
 	for name, db := range m.connections {
@@ -262,7 +323,9 @@ func (m *Module) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the database module
+// Stop stops the database module and closes all connections.
+// This method gracefully closes all database connections and services,
+// ensuring proper cleanup during application shutdown.
 func (m *Module) Stop(ctx context.Context) error {
 	// Close all database services
 	for name, service := range m.services {
@@ -277,12 +340,19 @@ func (m *Module) Stop(ctx context.Context) error {
 	return nil
 }
 
-// Dependencies returns the names of modules this module depends on
+// Dependencies returns the names of modules this module depends on.
+// The database module has no dependencies, making it suitable as a
+// foundation module that other modules can depend on.
 func (m *Module) Dependencies() []string {
 	return nil // No dependencies
 }
 
-// ProvidesServices declares services provided by this module
+// ProvidesServices declares services provided by this module.
+// The database module provides:
+//   - database.manager: Module instance for direct database management
+//   - database.service: Default database service for convenient access
+//
+// Other modules can depend on these services to access database functionality.
 func (m *Module) ProvidesServices() []modular.ServiceProvider {
 	providers := []modular.ServiceProvider{
 		{
@@ -300,12 +370,22 @@ func (m *Module) ProvidesServices() []modular.ServiceProvider {
 	return providers
 }
 
-// RequiresServices declares services required by this module
+// RequiresServices declares services required by this module.
+// The database module is self-contained and doesn't require
+// services from other modules.
 func (m *Module) RequiresServices() []modular.ServiceDependency {
 	return nil // No required services
 }
 
-// GetConnection returns a database connection by name
+// GetConnection returns a database connection by name.
+// This method allows access to specific named database connections
+// that were configured in the module's configuration.
+//
+// Example:
+//
+//	if db, exists := dbModule.GetConnection("primary"); exists {
+//	    // Use the primary database connection
+//	}
 func (m *Module) GetConnection(name string) (*sql.DB, bool) {
 	if db, exists := m.connections[name]; exists {
 		return db, true
@@ -313,7 +393,12 @@ func (m *Module) GetConnection(name string) (*sql.DB, bool) {
 	return nil, false
 }
 
-// GetDefaultConnection returns the default database connection
+// GetDefaultConnection returns the default database connection.
+// The default connection is determined by the "default" field in the
+// configuration. If no default is configured or the named connection
+// doesn't exist, this method will return any available connection.
+//
+// Returns nil if no connections are available.
 func (m *Module) GetDefaultConnection() *sql.DB {
 	if m.config == nil || m.config.Default == "" {
 		return nil
@@ -331,7 +416,8 @@ func (m *Module) GetDefaultConnection() *sql.DB {
 	return nil
 }
 
-// GetConnections returns a list of all available connection names
+// GetConnections returns a list of all available connection names.
+// This is useful for discovery and diagnostic purposes.
 func (m *Module) GetConnections() []string {
 	connections := make([]string, 0, len(m.connections))
 	for name := range m.connections {
@@ -340,7 +426,9 @@ func (m *Module) GetConnections() []string {
 	return connections
 }
 
-// GetDefaultService returns the default database service
+// GetDefaultService returns the default database service.
+// Similar to GetDefaultConnection, but returns a DatabaseService
+// interface that provides additional functionality beyond the raw sql.DB.
 func (m *Module) GetDefaultService() DatabaseService {
 	if m.config == nil || m.config.Default == "" {
 		return nil
@@ -358,7 +446,9 @@ func (m *Module) GetDefaultService() DatabaseService {
 	return nil
 }
 
-// GetService returns a database service by name
+// GetService returns a database service by name.
+// Database services provide a higher-level interface than raw database
+// connections, including connection management and additional utilities.
 func (m *Module) GetService(name string) (DatabaseService, bool) {
 	if service, exists := m.services[name]; exists {
 		return service, true
@@ -366,7 +456,9 @@ func (m *Module) GetService(name string) (DatabaseService, bool) {
 	return nil, false
 }
 
-// initializeConnections initializes the database connections based on the module's configuration
+// initializeConnections initializes database connections based on the module's configuration.
+// This method processes each configured connection, creates database services,
+// and establishes initial connectivity to validate the configuration.
 func (m *Module) initializeConnections() error {
 	// Initialize database connections
 	if len(m.config.Connections) > 0 {

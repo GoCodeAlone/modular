@@ -22,12 +22,13 @@ type LoadAppConfigFunc func(*StdApplication) error
 // control how configuration is loaded.
 //
 // Example of replacing for tests:
-//   oldLoader := modular.AppConfigLoader
-//   defer func() { modular.AppConfigLoader = oldLoader }()
-//   modular.AppConfigLoader = func(app *StdApplication) error {
-//       // Custom test configuration loading
-//       return nil
-//   }
+//
+//	oldLoader := modular.AppConfigLoader
+//	defer func() { modular.AppConfigLoader = oldLoader }()
+//	modular.AppConfigLoader = func(app *StdApplication) error {
+//	    // Custom test configuration loading
+//	    return nil
+//	}
 var AppConfigLoader LoadAppConfigFunc = loadAppConfig
 
 // ConfigProvider defines the interface for providing configuration objects.
@@ -67,13 +68,14 @@ func (s *StdConfigProvider) GetConfig() any {
 // configuration schema for your module.
 //
 // Example:
-//   type MyConfig struct {
-//       Host string `json:"host" default:"localhost"`
-//       Port int    `json:"port" default:"8080"`
-//   }
-//   
-//   cfg := &MyConfig{}
-//   provider := modular.NewStdConfigProvider(cfg)
+//
+//	type MyConfig struct {
+//	    Host string `json:"host" default:"localhost"`
+//	    Port int    `json:"port" default:"8080"`
+//	}
+//
+//	cfg := &MyConfig{}
+//	provider := modular.NewStdConfigProvider(cfg)
 func NewStdConfigProvider(cfg any) *StdConfigProvider {
 	return &StdConfigProvider{cfg: cfg}
 }
@@ -98,10 +100,11 @@ type Config struct {
 // involving multiple sources and target structures.
 //
 // Example:
-//   cfg := modular.NewConfig()
-//   cfg.AddFeeder(modular.ConfigFeeders[0]) // Add file feeder
-//   cfg.AddStruct(&myConfig)                // Add target struct
-//   err := cfg.Feed()                       // Load configuration
+//
+//	cfg := modular.NewConfig()
+//	cfg.AddFeeder(modular.ConfigFeeders[0]) // Add file feeder
+//	cfg.AddStruct(&myConfig)                // Add target struct
+//	err := cfg.Feed()                       // Load configuration
 func NewConfig() *Config {
 	return &Config{
 		Config:     config.New(),

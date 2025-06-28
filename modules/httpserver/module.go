@@ -1,4 +1,27 @@
 // Package httpserver provides an HTTP server module for the modular framework.
+// This module offers a complete HTTP server implementation with support for
+// TLS, automatic certificate management, graceful shutdown, and middleware integration.
+//
+// The httpserver module features:
+//   - HTTP and HTTPS server support
+//   - Automatic TLS certificate generation and management
+//   - Configurable timeouts and limits
+//   - Graceful shutdown handling
+//   - Handler registration and middleware support
+//   - Health check endpoints
+//   - Integration with Let's Encrypt for automatic certificates
+//
+// Usage:
+//
+//	app.RegisterModule(httpserver.NewModule())
+//
+// The module registers an HTTP server service that can be used by other modules
+// to register handlers, middleware, or access the underlying server instance.
+//
+// Configuration:
+//
+//	The module requires an "httpserver" configuration section with server
+//	settings including address, ports, TLS configuration, and timeout values.
 package httpserver
 
 import (
@@ -22,19 +45,28 @@ import (
 	"github.com/GoCodeAlone/modular"
 )
 
-// ModuleName is the name of this module
+// ModuleName is the name of this module for registration and dependency resolution.
 const ModuleName = "httpserver"
 
-// Error definitions
+// Error definitions for HTTP server operations.
 var (
-	// ErrServerNotStarted is returned when attempting to stop a server that hasn't been started
+	// ErrServerNotStarted is returned when attempting to stop a server that hasn't been started.
 	ErrServerNotStarted = errors.New("server not started")
 
-	// ErrNoHandler is returned when no HTTP handler is available
+	// ErrNoHandler is returned when no HTTP handler is available for the server.
 	ErrNoHandler = errors.New("no HTTP handler available")
 )
 
-// HTTPServerModule represents the HTTP server module
+// HTTPServerModule represents the HTTP server module and implements the modular.Module interface.
+// It provides a complete HTTP server implementation with TLS support, graceful shutdown,
+// and integration with the modular framework's configuration and service systems.
+//
+// The module manages:
+//   - HTTP server lifecycle (start, stop, graceful shutdown)
+//   - TLS certificate management and automatic generation
+//   - Request routing and handler registration
+//   - Server configuration and health monitoring
+//   - Integration with certificate services for automatic HTTPS
 type HTTPServerModule struct {
 	config             *HTTPServerConfig
 	server             *http.Server
@@ -48,17 +80,32 @@ type HTTPServerModule struct {
 // Make sure the HTTPServerModule implements the Module interface
 var _ modular.Module = (*HTTPServerModule)(nil)
 
-// NewHTTPServerModule creates a new instance of the HTTP server module
+// NewHTTPServerModule creates a new instance of the HTTP server module.
+// The returned module must be registered with the application before use.
+//
+// Example:
+//
+//	httpModule := httpserver.NewHTTPServerModule()
+//	app.RegisterModule(httpModule)
 func NewHTTPServerModule() modular.Module {
 	return &HTTPServerModule{}
 }
 
-// Name returns the name of the module
+// Name returns the name of the module.
+// This name is used for dependency resolution and configuration section lookup.
 func (m *HTTPServerModule) Name() string {
 	return ModuleName
 }
 
-// RegisterConfig registers the module's configuration structure
+// RegisterConfig registers the module's configuration structure.
+// The HTTP server module supports comprehensive configuration including:
+//   - Server address and port settings
+//   - Timeout configurations (read, write, idle, shutdown)
+//   - TLS settings and certificate paths
+//   - Security headers and CORS configuration
+//
+// Default values are provided for common use cases, but can be
+// overridden through configuration files or environment variables.
 func (m *HTTPServerModule) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &HTTPServerConfig{
@@ -74,7 +121,16 @@ func (m *HTTPServerModule) RegisterConfig(app modular.Application) error {
 	return nil
 }
 
-// Init initializes the module with the provided application
+// Init initializes the module with the provided application.
+// This method loads the configuration, sets up the logger, and prepares
+// the HTTP server for startup. It also attempts to resolve optional
+// services like certificate management.
+//
+// Initialization process:
+//  1. Load HTTP server configuration
+//  2. Set up logging
+//  3. Resolve optional certificate service for TLS
+//  4. Prepare server instance (actual startup happens in Start)
 func (m *HTTPServerModule) Init(app modular.Application) error {
 	m.app = app
 	m.logger = app.Logger()
@@ -113,7 +169,19 @@ func (m *HTTPServerModule) Constructor() modular.ModuleConstructor {
 	}
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server and begins accepting connections.
+// This method configures the server with the loaded configuration,
+// sets up TLS if enabled, and starts listening for HTTP requests.
+//
+// The server startup process:
+//  1. Validate that a handler has been registered
+//  2. Create http.Server instance with configured timeouts
+//  3. Set up TLS certificates if HTTPS is enabled
+//  4. Start the server in a goroutine
+//  5. Handle graceful shutdown on context cancellation
+//
+// The server will continue running until the context is cancelled
+// or Stop() is called explicitly.
 func (m *HTTPServerModule) Start(ctx context.Context) error {
 	if m.handler == nil {
 		return ErrNoHandler
@@ -248,7 +316,18 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the HTTP server
+// Stop stops the HTTP server gracefully.
+// This method initiates a graceful shutdown of the HTTP server,
+// allowing existing connections to finish processing before closing.
+//
+// The shutdown process:
+//  1. Check if server is running
+//  2. Create shutdown context with configured timeout
+//  3. Call server.Shutdown() to stop accepting new connections
+//  4. Wait for existing connections to complete or timeout
+//  5. Mark server as stopped
+//
+// If the shutdown timeout is exceeded, the server will be forcefully closed.
 func (m *HTTPServerModule) Stop(ctx context.Context) error {
 	if m.server == nil || !m.started {
 		return ErrServerNotStarted

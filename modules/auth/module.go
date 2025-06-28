@@ -9,14 +9,16 @@
 //   - Password hashing and validation
 //
 // Usage:
-//   app.RegisterModule(auth.NewModule())
+//
+//	app.RegisterModule(auth.NewModule())
 //
 // The module registers an "auth" service that implements the AuthService interface,
 // providing methods for user login, token validation, and session management.
 //
 // Configuration:
-//   The module requires an "auth" configuration section with JWT secrets,
-//   session settings, and OAuth2 configuration.
+//
+//	The module requires an "auth" configuration section with JWT secrets,
+//	session settings, and OAuth2 configuration.
 package auth
 
 import (
@@ -48,8 +50,9 @@ type Module struct {
 // The returned module must be registered with the application before use.
 //
 // Example:
-//   authModule := auth.NewModule()
-//   app.RegisterModule(authModule)
+//
+//	authModule := auth.NewModule()
+//	app.RegisterModule(authModule)
 func NewModule() modular.Module {
 	return &Module{}
 }

@@ -33,12 +33,13 @@ type AppRegistry interface {
 //   - Graceful startup and shutdown coordination
 //
 // Basic usage pattern:
-//   app := modular.NewStdApplication(configProvider, logger)
-//   app.RegisterModule(&MyModule{})
-//   app.RegisterModule(&AnotherModule{})
-//   if err := app.Run(); err != nil {
-//       log.Fatal(err)
-//   }
+//
+//	app := modular.NewStdApplication(configProvider, logger)
+//	app.RegisterModule(&MyModule{})
+//	app.RegisterModule(&AnotherModule{})
+//	if err := app.Run(); err != nil {
+//	    log.Fatal(err)
+//	}
 type Application interface {
 	// ConfigProvider retrieves the application's main configuration provider.
 	// This provides access to application-level configuration that isn't
@@ -164,13 +165,14 @@ type Application interface {
 //   - Support dynamic tenant registration and management
 //
 // Example usage:
-//   app := modular.NewStdApplication(configProvider, logger)
-//   // Register tenant service and tenant-aware modules
-//   tenantCtx, err := app.WithTenant("tenant-123")
-//   if err != nil {
-//       return err
-//   }
-//   // Use tenant context for tenant-specific operations
+//
+//	app := modular.NewStdApplication(configProvider, logger)
+//	// Register tenant service and tenant-aware modules
+//	tenantCtx, err := app.WithTenant("tenant-123")
+//	if err != nil {
+//	    return err
+//	}
+//	// Use tenant context for tenant-specific operations
 type TenantApplication interface {
 	Application
 
@@ -241,24 +243,25 @@ type StdApplication struct {
 // Init() before it can be started.
 //
 // Example:
-//   // Create configuration
-//   appConfig := &MyAppConfig{}
-//   configProvider := modular.NewStdConfigProvider(appConfig)
-//   
-//   // Create logger (implement modular.Logger interface)
-//   logger := &MyLogger{}
-//   
-//   // Create application
-//   app := modular.NewStdApplication(configProvider, logger)
-//   
-//   // Register modules
-//   app.RegisterModule(&DatabaseModule{})
-//   app.RegisterModule(&WebServerModule{})
-//   
-//   // Run application
-//   if err := app.Run(); err != nil {
-//       log.Fatal(err)
-//   }
+//
+//	// Create configuration
+//	appConfig := &MyAppConfig{}
+//	configProvider := modular.NewStdConfigProvider(appConfig)
+//
+//	// Create logger (implement modular.Logger interface)
+//	logger := &MyLogger{}
+//
+//	// Create application
+//	app := modular.NewStdApplication(configProvider, logger)
+//
+//	// Register modules
+//	app.RegisterModule(&DatabaseModule{})
+//	app.RegisterModule(&WebServerModule{})
+//
+//	// Run application
+//	if err := app.Run(); err != nil {
+//	    log.Fatal(err)
+//	}
 func NewStdApplication(cp ConfigProvider, logger Logger) Application {
 	return &StdApplication{
 		cfgProvider:    cp,
