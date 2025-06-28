@@ -1,3 +1,85 @@
+// Package chimux provides a Chi-based HTTP router module for the modular framework.
+//
+// This module wraps the popular Go Chi router and integrates it with the modular
+// framework's service system, providing HTTP routing, middleware management, CORS
+// support, and tenant-aware configuration.
+//
+// # Features
+//
+// The chimux module offers the following capabilities:
+//   - HTTP routing with pattern matching and parameter extraction
+//   - Middleware chain management with automatic service discovery
+//   - CORS configuration with per-tenant customization
+//   - Base path support for sub-application mounting
+//   - Tenant-aware configuration for multi-tenant applications
+//   - Service registration for dependency injection
+//
+// # Requirements
+//
+// The chimux module requires a TenantApplication to operate. It will return an
+// error if initialized with a regular Application instance.
+//
+// # Configuration
+//
+// The module can be configured through the ChiMuxConfig structure:
+//
+//	config := &ChiMuxConfig{
+//	    AllowedOrigins:   []string{"https://example.com", "https://app.example.com"},
+//	    AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+//	    AllowedHeaders:   []string{"Origin", "Accept", "Content-Type", "Authorization"},
+//	    AllowCredentials: true,
+//	    MaxAge:           3600,
+//	    Timeout:          30000,
+//	    BasePath:         "/api/v1",
+//	}
+//
+// # Service Registration
+//
+// The module registers multiple services for different use cases:
+//   - "chimux.router": The full ChiMuxModule instance
+//   - "router": BasicRouter interface for simple routing needs
+//   - "chi.router": Direct access to the underlying Chi router
+//
+// # Usage Examples
+//
+// Basic routing:
+//
+//	router := app.GetService("router").(chimux.BasicRouter)
+//	router.Get("/users", getUsersHandler)
+//	router.Post("/users", createUserHandler)
+//	router.Get("/users/{id}", getUserHandler)
+//
+// Advanced routing with Chi features:
+//
+//	chiRouter := app.GetService("chi.router").(chi.Router)
+//	chiRouter.Route("/api", func(r chi.Router) {
+//	    r.Use(authMiddleware)
+//	    r.Get("/protected", protectedHandler)
+//	})
+//
+// Middleware integration:
+//
+//	// Modules implementing MiddlewareProvider are automatically discovered
+//	type MyModule struct{}
+//	
+//	func (m *MyModule) ProvideMiddleware() []chimux.Middleware {
+//	    return []chimux.Middleware{
+//	        myCustomMiddleware,
+//	        loggingMiddleware,
+//	    }
+//	}
+//
+// # Tenant Support
+//
+// The module supports tenant-specific configurations:
+//
+//	// Different tenants can have different CORS settings
+//	tenant1Config := &ChiMuxConfig{
+//	    AllowedOrigins: []string{"https://tenant1.example.com"},
+//	}
+//	tenant2Config := &ChiMuxConfig{
+//	    AllowedOrigins: []string{"https://tenant2.example.com"},
+//	}
 package chimux
 
 import (
@@ -14,19 +96,37 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// ModuleName is the name of this module
+// ModuleName is the unique identifier for the chimux module.
 const ModuleName = "chimux"
 
-// ServiceName is the name of the service provided by this module (the chi router)
+// ServiceName is the name of the primary service provided by this module.
+// Use this to request the chimux router service through dependency injection.
 const ServiceName = "chimux.router"
 
-// Error definitions
+// Error definitions for the chimux module.
 var (
-	// ErrRequiresTenantApplication is returned when the module is initialized with a non-tenant application
+	// ErrRequiresTenantApplication is returned when the module is initialized
+	// with a non-tenant application. The chimux module requires tenant support
+	// for proper multi-tenant routing and configuration.
 	ErrRequiresTenantApplication = errors.New("chimux module requires a TenantApplication")
 )
 
-// ChiMuxModule represents the chimux module
+// ChiMuxModule provides HTTP routing functionality using the Chi router library.
+// It integrates Chi with the modular framework's service system and provides
+// tenant-aware configuration, middleware management, and CORS support.
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
+//   - modular.Startable: Startup logic
+//   - modular.Stoppable: Shutdown logic
+//   - modular.TenantAwareModule: Tenant lifecycle management
+//   - BasicRouter: Basic HTTP routing
+//   - Router: Extended Chi router functionality
+//   - ChiRouterService: Direct Chi router access
+//
+// The router is thread-safe and supports concurrent request handling.
 type ChiMuxModule struct {
 	name          string
 	config        *ChiMuxConfig
@@ -36,7 +136,12 @@ type ChiMuxModule struct {
 	logger        modular.Logger
 }
 
-// NewChiMuxModule creates a new instance of the chimux module
+// NewChiMuxModule creates a new instance of the chimux module.
+// This is the primary constructor for the chimux module and should be used
+// when registering the module with the application.
+//
+// Example:
+//	app.RegisterModule(chimux.NewChiMuxModule())
 func NewChiMuxModule() modular.Module {
 	return &ChiMuxModule{
 		name:          ModuleName,
@@ -44,12 +149,24 @@ func NewChiMuxModule() modular.Module {
 	}
 }
 
-// Name returns the name of the module
+// Name returns the unique identifier for this module.
+// This name is used for service registration, dependency resolution,
+// and configuration section identification.
 func (m *ChiMuxModule) Name() string {
 	return m.name
 }
 
-// RegisterConfig registers the module's configuration structure
+// RegisterConfig registers the module's configuration structure.
+// This method is called during application initialization to register
+// the default configuration values for the chimux module.
+//
+// Default configuration:
+//   - AllowedOrigins: ["*"] (all origins allowed)
+//   - AllowedMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+//   - AllowedHeaders: ["Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"]
+//   - AllowCredentials: false
+//   - MaxAge: 300 seconds (5 minutes)
+//   - Timeout: 60000 milliseconds (60 seconds)
 func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &ChiMuxConfig{
@@ -66,7 +183,22 @@ func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 	return nil
 }
 
-// Init initializes the module
+// Init initializes the chimux module with the application context.
+// This method is called after all modules have been registered and their
+// configurations loaded. It sets up the Chi router, applies middleware,
+// and configures CORS settings.
+//
+// The initialization process:
+//   1. Validates that the application supports tenants
+//   2. Loads the module configuration
+//   3. Creates and configures the Chi router
+//   4. Sets up default middleware (RequestID, RealIP, Logger, Recoverer)
+//   5. Applies CORS middleware based on configuration
+//   6. Discovers and applies middleware from other modules
+//
+// Requirements:
+//   - Must be used with a TenantApplication
+//   - Configuration must be properly loaded
 func (m *ChiMuxModule) Init(app modular.Application) error {
 	if err := m.initApplication(app); err != nil {
 		return err
@@ -176,7 +308,15 @@ func (m *ChiMuxModule) setupMiddleware(app modular.Application) error {
 	return nil
 }
 
-// Start performs startup logic for the module
+// Start performs startup logic for the module.
+// This method loads tenant-specific configurations that may have been
+// registered after module initialization. It's called after all modules
+// have been initialized and are ready to start.
+//
+// The startup process:
+//   1. Loads configurations for all registered tenants
+//   2. Applies tenant-specific CORS and routing settings
+//   3. Prepares the router for incoming requests
 func (m *ChiMuxModule) Start(context.Context) error {
 	m.logger.Info("Starting chimux module")
 
@@ -186,18 +326,31 @@ func (m *ChiMuxModule) Start(context.Context) error {
 	return nil
 }
 
-// Stop performs shutdown logic for the module
+// Stop performs shutdown logic for the module.
+// This method gracefully shuts down the router and cleans up resources.
+// Note that the HTTP server itself is typically managed by a separate
+// HTTP server module.
 func (m *ChiMuxModule) Stop(context.Context) error {
 	m.logger.Info("Stopping chimux module")
 	return nil
 }
 
-// Dependencies returns the names of modules this module depends on
+// Dependencies returns the names of modules this module depends on.
+// The chimux module has no hard dependencies and can be started independently.
+// However, it will automatically discover and integrate with modules that
+// implement MiddlewareProvider.
 func (m *ChiMuxModule) Dependencies() []string {
 	return nil
 }
 
-// ProvidesServices declares services provided by this module
+// ProvidesServices declares services provided by this module.
+// The chimux module provides multiple service interfaces to accommodate
+// different usage patterns and integration needs.
+//
+// Provided services:
+//   - "chimux.router": The full ChiMuxModule instance
+//   - "router": BasicRouter interface for simple routing needs
+//   - "chi.router": Direct access to the underlying Chi router
 func (m *ChiMuxModule) ProvidesServices() []modular.ServiceProvider {
 	return []modular.ServiceProvider{
 		{
@@ -218,7 +371,10 @@ func (m *ChiMuxModule) ProvidesServices() []modular.ServiceProvider {
 	}
 }
 
-// RequiresServices declares services required by this module
+// RequiresServices declares services required by this module.
+// The chimux module optionally depends on middleware providers.
+// It will automatically discover and integrate with any modules
+// that implement the MiddlewareProvider interface.
 func (m *ChiMuxModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
 		{
@@ -230,14 +386,21 @@ func (m *ChiMuxModule) RequiresServices() []modular.ServiceDependency {
 	}
 }
 
-// Constructor provides a dependency injection constructor for the module
+// Constructor provides a dependency injection constructor for the module.
+// This method is used by the dependency injection system to create
+// the module instance with any required services.
 func (m *ChiMuxModule) Constructor() modular.ModuleConstructor {
 	return func(app modular.Application, services map[string]any) (modular.Module, error) {
 		return m, nil
 	}
 }
 
-// OnTenantRegistered is called when a new tenant is registered
+// OnTenantRegistered is called when a new tenant is registered.
+// This method is part of the TenantAwareModule interface and allows
+// the chimux module to prepare tenant-specific configurations.
+//
+// The actual configuration loading is deferred to avoid deadlocks
+// during the tenant registration process.
 func (m *ChiMuxModule) OnTenantRegistered(tenantID modular.TenantID) {
 	m.logger.Info("Tenant registered in chimux module", "tenantID", tenantID)
 
@@ -246,14 +409,19 @@ func (m *ChiMuxModule) OnTenantRegistered(tenantID modular.TenantID) {
 	m.tenantConfigs[tenantID] = nil
 }
 
-// OnTenantRemoved is called when a tenant is removed
+// OnTenantRemoved is called when a tenant is removed.
+// This method cleans up any tenant-specific configurations and resources.
 func (m *ChiMuxModule) OnTenantRemoved(tenantID modular.TenantID) {
 	m.logger.Info("Tenant removed from chimux module", "tenantID", tenantID)
 	delete(m.tenantConfigs, tenantID)
 }
 
-// GetTenantConfig retrieves the loaded configuration for a specific tenant
-// Returns the base config if no specific tenant config is found.
+// GetTenantConfig retrieves the loaded configuration for a specific tenant.
+// Returns the tenant-specific configuration if available, or the base
+// configuration as a fallback.
+//
+// This method is useful for modules that need to access tenant-specific
+// router configurations at runtime.
 func (m *ChiMuxModule) GetTenantConfig(tenantID modular.TenantID) *ChiMuxConfig {
 	if cfg, ok := m.tenantConfigs[tenantID]; ok {
 		return cfg
