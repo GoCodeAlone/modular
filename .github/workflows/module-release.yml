@@ -1,5 +1,5 @@
 name: Module Release
-run-name: Module Release for ${{ github.event.inputs.module }} - ${{ github.event.inputs.releaseType }}
+run-name: Module Release for ${{ inputs.module || github.event.inputs.module }} - ${{ inputs.releaseType || github.event.inputs.releaseType }}
 
 on:
   workflow_dispatch:
@@ -82,7 +82,7 @@ jobs:
       - name: Determine release version
         id: version
         run: |
-          MODULE="${{ github.event.inputs.module }}"
+          MODULE="${{ inputs.module || github.event.inputs.module }}"
           echo "Selected module: $MODULE"
           
           # Find the latest tag for this module
@@ -107,17 +107,17 @@ jobs:
           PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
           
           # Calculate next version based on release type
-          if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
+          if [ "${{ inputs.releaseType || github.event.inputs.releaseType }}" == "major" ]; then
             NEXT_VERSION="v$((MAJOR + 1)).0.0"
-          elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
+          elif [ "${{ inputs.releaseType || github.event.inputs.releaseType }}" == "minor" ]; then
             NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
           else
             NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
           fi
           
           # Use manual version if provided
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            MANUAL_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "${{ inputs.version || github.event.inputs.version }}" ]; then
+            MANUAL_VERSION="${{ inputs.version || github.event.inputs.version }}"
             # Ensure the 'v' prefix
             if [[ $MANUAL_VERSION != v* ]]; then
               MANUAL_VERSION="v${MANUAL_VERSION}"
