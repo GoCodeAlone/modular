@@ -20,14 +20,53 @@ const (
 	tagDesc     = "desc" // Used for generating sample config and documentation
 )
 
-// ConfigValidator is an interface for configuration validation
+// ConfigValidator is an interface for configuration validation.
+// Configuration structs can implement this interface to provide
+// custom validation logic beyond the standard required field checking.
+//
+// The framework automatically calls Validate() on configuration objects
+// that implement this interface during module initialization.
+//
+// Example implementation:
+//
+//	type MyConfig struct {
+//	    Host string `json:"host" required:"true"`
+//	    Port int    `json:"port" default:"8080" validate:"range:1024-65535"`
+//	}
+//
+//	func (c *MyConfig) Validate() error {
+//	    if c.Port < 1024 || c.Port > 65535 {
+//	        return fmt.Errorf("port must be between 1024 and 65535")
+//	    }
+//	    return nil
+//	}
 type ConfigValidator interface {
-	// Validate validates the configuration and returns an error if invalid
+	// Validate validates the configuration and returns an error if invalid.
+	// This method is called automatically by the framework after configuration
+	// loading and default value processing. It should return a descriptive
+	// error if the configuration is invalid.
 	Validate() error
 }
 
-// ProcessConfigDefaults applies default values to a config struct based on struct tags
-// It looks for `default:"value"` tags on struct fields and sets the field value if currently zero/empty
+// ProcessConfigDefaults applies default values to a config struct based on struct tags.
+// It looks for `default:"value"` tags on struct fields and sets the field value if currently zero/empty.
+//
+// Supported field types:
+//   - Basic types: string, int, float, bool
+//   - Slices: []string, []int, etc.
+//   - Pointers to basic types
+//
+// Example struct tags:
+//
+//	type Config struct {
+//	    Host     string `default:"localhost"`
+//	    Port     int    `default:"8080"`
+//	    Debug    bool   `default:"false"`
+//	    Features []string `default:"feature1,feature2"`
+//	}
+//
+// This function is automatically called by the configuration loading system
+// before validation, but can also be called manually if needed.
 func ProcessConfigDefaults(cfg interface{}) error {
 	if cfg == nil {
 		return ErrConfigNil

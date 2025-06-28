@@ -23,6 +23,24 @@ import (
 // ReverseProxyModule provides a modular reverse proxy implementation with support for
 // multiple backends, composite routes that combine responses from different backends,
 // and tenant-specific routing configurations.
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
+//   - modular.TenantAwareModule: Tenant lifecycle management
+//   - modular.Startable: Startup logic
+//   - modular.Stoppable: Shutdown logic
+//
+// Key features include:
+//   - Multi-backend proxy routing with health checks
+//   - Composite responses combining multiple backend calls
+//   - Circuit breakers for fault tolerance
+//   - Response caching for performance optimization
+//   - Tenant-aware routing and configuration
+//   - Request/response transformation pipelines
+//   - Comprehensive metrics collection
+//   - Path-based and header-based routing rules
 type ReverseProxyModule struct {
 	config          *ReverseProxyConfig
 	router          routerService
@@ -46,8 +64,19 @@ type ReverseProxyModule struct {
 }
 
 // NewModule creates a new ReverseProxyModule with default settings.
-// It initializes the HTTP client with optimized connection pooling and timeouts,
-// and prepares the internal data structures needed for routing.
+// This is the primary constructor for the reverseproxy module and should be used
+// when registering the module with the application.
+//
+// The module initializes with:
+//   - Optimized HTTP client with connection pooling
+//   - Circuit breakers for each backend
+//   - Response caching infrastructure
+//   - Metrics collection (if enabled)
+//   - Thread-safe data structures for concurrent access
+//
+// Example:
+//
+//	app.RegisterModule(reverseproxy.NewModule())
 func NewModule() *ReverseProxyModule {
 	// We'll initialize with a nil client and create it later
 	// either in Constructor (if httpclient service is available)

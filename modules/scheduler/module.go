@@ -1,3 +1,59 @@
+// Package scheduler provides job scheduling and task execution capabilities for the modular framework.
+//
+// This module implements a flexible job scheduler that supports both immediate and scheduled
+// job execution, configurable worker pools, job persistence, and comprehensive job lifecycle
+// management. It's designed for reliable background task processing in web applications and services.
+//
+// # Features
+//
+// The scheduler module provides the following capabilities:
+//   - Immediate and scheduled job execution
+//   - Configurable worker pools for concurrent processing
+//   - Job persistence with multiple storage backends
+//   - Job status tracking and lifecycle management
+//   - Automatic job cleanup and retention policies
+//   - Service interface for dependency injection
+//   - Thread-safe operations for concurrent access
+//
+// # Service Registration
+//
+// The module registers a scheduler service for dependency injection:
+//
+//	// Get the scheduler service
+//	scheduler := app.GetService("scheduler.provider").(*SchedulerModule)
+//
+//	// Schedule immediate job
+//	job := scheduler.ScheduleJob("process-data", processDataFunc, time.Now())
+//
+//	// Schedule delayed job
+//	futureTime := time.Now().Add(time.Hour)
+//	job := scheduler.ScheduleJob("cleanup", cleanupFunc, futureTime)
+//
+// # Usage Examples
+//
+// Basic job scheduling:
+//
+//	// Define a job function
+//	emailJob := func(ctx context.Context) error {
+//	    return sendEmail("user@example.com", "Welcome!")
+//	}
+//
+//	// Schedule immediate execution
+//	job := scheduler.ScheduleJob("send-welcome-email", emailJob, time.Now())
+//
+//	// Schedule for later
+//	scheduledTime := time.Now().Add(time.Minute * 30)
+//	job := scheduler.ScheduleJob("send-reminder", reminderJob, scheduledTime)
+//
+// Job with custom options:
+//
+//	// Create scheduler with custom options
+//	customScheduler := NewScheduler(
+//	    jobStore,
+//	    WithWorkerCount(10),
+//	    WithQueueSize(500),
+//	    WithCheckInterval(time.Second * 5),
+//	)
 package scheduler
 
 import (
@@ -9,13 +65,25 @@ import (
 	"github.com/GoCodeAlone/modular"
 )
 
-// ModuleName is the name of this module
+// ModuleName is the unique identifier for the scheduler module.
 const ModuleName = "scheduler"
 
-// ServiceName is the name of the service provided by this module
+// ServiceName is the name of the service provided by this module.
+// Other modules can use this name to request the scheduler service through dependency injection.
 const ServiceName = "scheduler.provider"
 
-// SchedulerModule represents the scheduler module
+// SchedulerModule provides job scheduling and task execution capabilities.
+// It manages a pool of worker goroutines that execute scheduled jobs and
+// provides persistence and lifecycle management for jobs.
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
+//   - modular.Startable: Startup logic
+//   - modular.Stoppable: Shutdown logic
+//
+// Job execution is thread-safe and supports concurrent job processing.
 type SchedulerModule struct {
 	name          string
 	config        *SchedulerConfig
@@ -26,19 +94,37 @@ type SchedulerModule struct {
 	schedulerLock sync.Mutex
 }
 
-// NewModule creates a new instance of the scheduler module
+// NewModule creates a new instance of the scheduler module.
+// This is the primary constructor for the scheduler module and should be used
+// when registering the module with the application.
+//
+// Example:
+//
+//	app.RegisterModule(scheduler.NewModule())
 func NewModule() modular.Module {
 	return &SchedulerModule{
 		name: ModuleName,
 	}
 }
 
-// Name returns the name of the module
+// Name returns the unique identifier for this module.
+// This name is used for service registration, dependency resolution,
+// and configuration section identification.
 func (m *SchedulerModule) Name() string {
 	return m.name
 }
 
-// RegisterConfig registers the module's configuration structure
+// RegisterConfig registers the module's configuration structure.
+// This method is called during application initialization to register
+// the default configuration values for the scheduler module.
+//
+// Default configuration:
+//   - WorkerCount: 5 worker goroutines
+//   - QueueSize: 100 job queue capacity
+//   - ShutdownTimeout: 30 seconds for graceful shutdown
+//   - StorageType: "memory" storage backend
+//   - CheckInterval: 1 second for job polling
+//   - RetentionDays: 7 days for completed job retention
 func (m *SchedulerModule) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &SchedulerConfig{

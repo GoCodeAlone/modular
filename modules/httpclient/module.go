@@ -1,4 +1,118 @@
 // Package httpclient provides a configurable HTTP client module for the modular framework.
+//
+// This module offers a production-ready HTTP client with comprehensive configuration
+// options, request/response logging, connection pooling, timeout management, and
+// request modification capabilities. It's designed for reliable HTTP communication
+// in microservices and web applications.
+//
+// # Features
+//
+// The httpclient module provides the following capabilities:
+//   - Configurable connection pooling and keep-alive settings
+//   - Request and response timeout management
+//   - TLS handshake timeout configuration
+//   - Comprehensive request/response logging with file output
+//   - Request modification pipeline for adding headers, authentication, etc.
+//   - Performance-optimized transport settings
+//   - Support for compression and keep-alive control
+//   - Service interface for dependency injection
+//
+// # Configuration
+//
+// The module can be configured through the Config structure:
+//
+//	config := &Config{
+//	    MaxIdleConns:        100,        // total idle connections
+//	    MaxIdleConnsPerHost: 10,         // idle connections per host
+//	    IdleConnTimeout:     90,         // idle connection timeout (seconds)
+//	    RequestTimeout:      30,         // request timeout (seconds)
+//	    TLSTimeout:          10,         // TLS handshake timeout (seconds)
+//	    DisableCompression:  false,      // enable gzip compression
+//	    DisableKeepAlives:   false,      // enable connection reuse
+//	    Verbose:             true,       // enable request/response logging
+//	    VerboseOptions: &VerboseOptions{
+//	        LogToFile:    true,
+//	        LogFilePath:  "/var/log/httpclient",
+//	    },
+//	}
+//
+// # Service Registration
+//
+// The module registers itself as a service for dependency injection:
+//
+//	// Get the HTTP client service
+//	client := app.GetService("httpclient").(httpclient.ClientService)
+//
+//	// Use the client
+//	resp, err := client.Client().Get("https://api.example.com/users")
+//
+//	// Create a client with custom timeout
+//	timeoutClient := client.WithTimeout(60)
+//	resp, err := timeoutClient.Post("https://api.example.com/upload", "application/json", data)
+//
+// # Usage Examples
+//
+// Basic HTTP requests:
+//
+//	// GET request
+//	resp, err := client.Client().Get("https://api.example.com/health")
+//	if err != nil {
+//	    return err
+//	}
+//	defer resp.Body.Close()
+//
+//	// POST request with JSON
+//	jsonData := bytes.NewBuffer([]byte(`{"name": "test"}`))
+//	resp, err := client.Client().Post(
+//	    "https://api.example.com/users",
+//	    "application/json",
+//	    jsonData,
+//	)
+//
+// Request modification for authentication:
+//
+//	// Set up request modifier for API key authentication
+//	modifier := func(req *http.Request) *http.Request {
+//	    req.Header.Set("Authorization", "Bearer "+apiToken)
+//	    req.Header.Set("User-Agent", "MyApp/1.0")
+//	    return req
+//	}
+//	client.SetRequestModifier(modifier)
+//
+//	// All subsequent requests will include the headers
+//	resp, err := client.Client().Get("https://api.example.com/protected")
+//
+// Custom timeout scenarios:
+//
+//	// Short timeout for health checks
+//	healthClient := client.WithTimeout(5)
+//	resp, err := healthClient.Get("https://service.example.com/health")
+//
+//	// Long timeout for file uploads
+//	uploadClient := client.WithTimeout(300)
+//	resp, err := uploadClient.Post("https://api.example.com/upload", contentType, fileData)
+//
+// # Logging and Debugging
+//
+// When verbose logging is enabled, the module logs detailed request and response
+// information including headers, bodies, and timing data. This is invaluable for
+// debugging API integrations and monitoring HTTP performance.
+//
+// Log output includes:
+//   - Request method, URL, and headers
+//   - Request body (configurable)
+//   - Response status, headers, and body
+//   - Request duration and timing breakdown
+//   - Error details and retry information
+//
+// # Performance Considerations
+//
+// The module is optimized for production use with:
+//   - Connection pooling to reduce connection overhead
+//   - Keep-alive connections for better performance
+//   - Configurable timeouts to prevent resource leaks
+//   - Optional compression to reduce bandwidth usage
+//   - Efficient request modification pipeline
 package httpclient
 
 import (
@@ -13,13 +127,24 @@ import (
 	"github.com/GoCodeAlone/modular"
 )
 
-// ModuleName is the name of this module
+// ModuleName is the unique identifier for the httpclient module.
 const ModuleName = "httpclient"
 
-// ServiceName is the name of the service provided by this module
+// ServiceName is the name of the service provided by this module.
+// Other modules can use this name to request the HTTP client service through dependency injection.
 const ServiceName = "httpclient"
 
 // HTTPClientModule implements a configurable HTTP client module.
+// It provides a production-ready HTTP client with comprehensive configuration
+// options, logging capabilities, and request modification features.
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
+//   - ClientService: HTTP client service interface
+//
+// The HTTP client is thread-safe and can be used concurrently from multiple goroutines.
 type HTTPClientModule struct {
 	config     *Config
 	app        modular.Application
@@ -37,18 +162,38 @@ var (
 )
 
 // NewHTTPClientModule creates a new instance of the HTTP client module.
+// This is the primary constructor for the httpclient module and should be used
+// when registering the module with the application.
+//
+// Example:
+//
+//	app.RegisterModule(httpclient.NewHTTPClientModule())
 func NewHTTPClientModule() modular.Module {
 	return &HTTPClientModule{
 		modifier: func(r *http.Request) *http.Request { return r }, // Default no-op modifier
 	}
 }
 
-// Name returns the name of the module.
+// Name returns the unique identifier for this module.
+// This name is used for service registration, dependency resolution,
+// and configuration section identification.
 func (m *HTTPClientModule) Name() string {
 	return ModuleName
 }
 
-// RegisterConfig registers the module's configuration.
+// RegisterConfig registers the module's configuration structure.
+// This method is called during application initialization to register
+// the default configuration values for the httpclient module.
+//
+// Default configuration:
+//   - MaxIdleConns: 100 (total idle connections)
+//   - MaxIdleConnsPerHost: 10 (idle connections per host)
+//   - IdleConnTimeout: 90 seconds
+//   - RequestTimeout: 30 seconds
+//   - TLSTimeout: 10 seconds
+//   - DisableCompression: false (compression enabled)
+//   - DisableKeepAlives: false (keep-alives enabled)
+//   - Verbose: false (logging disabled)
 func (m *HTTPClientModule) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &Config{
@@ -66,7 +211,23 @@ func (m *HTTPClientModule) RegisterConfig(app modular.Application) error {
 	return nil
 }
 
-// Init initializes the module with the provided application.
+// Init initializes the httpclient module with the application context.
+// This method is called after all modules have been registered and their
+// configurations loaded. It sets up the HTTP client, transport, and logging.
+//
+// The initialization process:
+//  1. Retrieves the module's configuration
+//  2. Sets up logging
+//  3. Creates and configures the HTTP transport with connection pooling
+//  4. Sets up request/response logging if verbose mode is enabled
+//  5. Creates the HTTP client with configured transport and middleware
+//  6. Initializes request modification pipeline
+//
+// Transport configuration includes:
+//   - Connection pooling settings for optimal performance
+//   - Timeout configurations for reliability
+//   - Compression and keep-alive settings
+//   - TLS handshake timeout for secure connections
 func (m *HTTPClientModule) Init(app modular.Application) error {
 	m.app = app
 	m.logger = app.Logger()
