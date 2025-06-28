@@ -40,7 +40,7 @@ type Schema interface {
 //	if err != nil {
 //	    return err
 //	}
-//	
+//
 //	// Use for multiple validations
 //	err = service.ValidateBytes(schema, jsonData1)
 //	err = service.ValidateBytes(schema, jsonData2)
@@ -93,7 +93,7 @@ type JSONSchemaService interface {
 	//	    return err
 	//	}
 	//	defer file.Close()
-	//	
+	//
 	//	err = service.ValidateReader(schema, file)
 	//	if err != nil {
 	//	    return fmt.Errorf("file validation failed: %w", err)

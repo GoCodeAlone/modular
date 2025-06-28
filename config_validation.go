@@ -28,17 +28,18 @@ const (
 // that implement this interface during module initialization.
 //
 // Example implementation:
-//   type MyConfig struct {
-//       Host string `json:"host" required:"true"`
-//       Port int    `json:"port" default:"8080" validate:"range:1024-65535"`
-//   }
-//   
-//   func (c *MyConfig) Validate() error {
-//       if c.Port < 1024 || c.Port > 65535 {
-//           return fmt.Errorf("port must be between 1024 and 65535")
-//       }
-//       return nil
-//   }
+//
+//	type MyConfig struct {
+//	    Host string `json:"host" required:"true"`
+//	    Port int    `json:"port" default:"8080" validate:"range:1024-65535"`
+//	}
+//
+//	func (c *MyConfig) Validate() error {
+//	    if c.Port < 1024 || c.Port > 65535 {
+//	        return fmt.Errorf("port must be between 1024 and 65535")
+//	    }
+//	    return nil
+//	}
 type ConfigValidator interface {
 	// Validate validates the configuration and returns an error if invalid.
 	// This method is called automatically by the framework after configuration
@@ -56,12 +57,13 @@ type ConfigValidator interface {
 //   - Pointers to basic types
 //
 // Example struct tags:
-//   type Config struct {
-//       Host     string `default:"localhost"`
-//       Port     int    `default:"8080"`
-//       Debug    bool   `default:"false"`
-//       Features []string `default:"feature1,feature2"`
-//   }
+//
+//	type Config struct {
+//	    Host     string `default:"localhost"`
+//	    Port     int    `default:"8080"`
+//	    Debug    bool   `default:"false"`
+//	    Features []string `default:"feature1,feature2"`
+//	}
 //
 // This function is automatically called by the configuration loading system
 // before validation, but can also be called manually if needed.

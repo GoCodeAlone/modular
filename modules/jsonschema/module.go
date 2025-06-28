@@ -29,10 +29,10 @@
 //
 //	// Get the JSON schema service
 //	schemaService := app.GetService("jsonschema.service").(jsonschema.JSONSchemaService)
-//	
+//
 //	// Compile a schema
 //	schema, err := schemaService.CompileSchema("/path/to/user-schema.json")
-//	
+//
 //	// Validate JSON data
 //	err = schemaService.ValidateBytes(schema, jsonData)
 //
@@ -45,7 +45,7 @@
 //	if err != nil {
 //	    return fmt.Errorf("failed to compile schema: %w", err)
 //	}
-//	
+//
 //	// Validate JSON bytes
 //	jsonData := []byte(`{"name": "John", "age": 30}`)
 //	err = schemaService.ValidateBytes(schema, jsonData)
@@ -57,7 +57,7 @@
 //
 //	// Validate from HTTP request body
 //	err = schemaService.ValidateReader(schema, request.Body)
-//	
+//
 //	// Validate Go structs/interfaces
 //	userData := map[string]interface{}{
 //	    "name": "Alice",
@@ -74,14 +74,14 @@
 //	    if err != nil {
 //	        log.Fatal("Failed to compile user schema:", err)
 //	    }
-//	    
+//
 //	    return func(w http.ResponseWriter, r *http.Request) {
 //	        // Validate request body against schema
 //	        if err := schemaService.ValidateReader(userSchema, r.Body); err != nil {
 //	            http.Error(w, "Invalid request: "+err.Error(), http.StatusBadRequest)
 //	            return
 //	        }
-//	        
+//
 //	        // Process valid request...
 //	    }
 //	}
@@ -93,7 +93,7 @@
 //	if err != nil {
 //	    return err
 //	}
-//	
+//
 //	configData := map[string]interface{}{
 //	    "database": map[string]interface{}{
 //	        "host": "localhost",
@@ -103,7 +103,7 @@
 //	        "level": "info",
 //	    },
 //	}
-//	
+//
 //	if err := schemaService.ValidateInterface(configSchema, configData); err != nil {
 //	    return fmt.Errorf("invalid configuration: %w", err)
 //	}
@@ -171,6 +171,7 @@ type Module struct {
 // with a configured JSON schema compiler.
 //
 // Example:
+//
 //	app.RegisterModule(jsonschema.NewModule())
 func NewModule() *Module {
 	return &Module{

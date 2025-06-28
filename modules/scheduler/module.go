@@ -21,10 +21,10 @@
 //
 //	// Get the scheduler service
 //	scheduler := app.GetService("scheduler.provider").(*SchedulerModule)
-//	
+//
 //	// Schedule immediate job
 //	job := scheduler.ScheduleJob("process-data", processDataFunc, time.Now())
-//	
+//
 //	// Schedule delayed job
 //	futureTime := time.Now().Add(time.Hour)
 //	job := scheduler.ScheduleJob("cleanup", cleanupFunc, futureTime)
@@ -37,10 +37,10 @@
 //	emailJob := func(ctx context.Context) error {
 //	    return sendEmail("user@example.com", "Welcome!")
 //	}
-//	
+//
 //	// Schedule immediate execution
 //	job := scheduler.ScheduleJob("send-welcome-email", emailJob, time.Now())
-//	
+//
 //	// Schedule for later
 //	scheduledTime := time.Now().Add(time.Minute * 30)
 //	job := scheduler.ScheduleJob("send-reminder", reminderJob, scheduledTime)
@@ -99,6 +99,7 @@ type SchedulerModule struct {
 // when registering the module with the application.
 //
 // Example:
+//
 //	app.RegisterModule(scheduler.NewModule())
 func NewModule() modular.Module {
 	return &SchedulerModule{

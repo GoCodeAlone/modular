@@ -12,19 +12,20 @@
 //   - TenantAwareModule: modules that can adapt their behavior per tenant
 //
 // Example multi-tenant application setup:
-//   // Create tenant service
-//   tenantSvc := modular.NewStandardTenantService(logger)
-//   
-//   // Register tenant service
-//   app.RegisterService("tenantService", tenantSvc)
-//   
-//   // Register tenant-aware modules
-//   app.RegisterModule(&MyTenantAwareModule{})
-//   
-//   // Register tenants with specific configurations
-//   tenantSvc.RegisterTenant("tenant-1", map[string]ConfigProvider{
-//       "database": modular.NewStdConfigProvider(&DatabaseConfig{Host: "tenant1-db"}),
-//   })
+//
+//	// Create tenant service
+//	tenantSvc := modular.NewStandardTenantService(logger)
+//
+//	// Register tenant service
+//	app.RegisterService("tenantService", tenantSvc)
+//
+//	// Register tenant-aware modules
+//	app.RegisterModule(&MyTenantAwareModule{})
+//
+//	// Register tenants with specific configurations
+//	tenantSvc.RegisterTenant("tenant-1", map[string]ConfigProvider{
+//	    "database": modular.NewStdConfigProvider(&DatabaseConfig{Host: "tenant1-db"}),
+//	})
 package modular
 
 import (
@@ -57,8 +58,9 @@ type TenantContext struct {
 // the application to identify which tenant an operation belongs to.
 //
 // Example:
-//   tenantCtx := modular.NewTenantContext(ctx, "customer-123")
-//   result, err := tenantAwareService.DoSomething(tenantCtx, data)
+//
+//	tenantCtx := modular.NewTenantContext(ctx, "customer-123")
+//	result, err := tenantAwareService.DoSomething(tenantCtx, data)
 func NewTenantContext(ctx context.Context, tenantID TenantID) *TenantContext {
 	return &TenantContext{
 		Context:  ctx,
@@ -78,11 +80,12 @@ func (tc *TenantContext) GetTenantID() TenantID {
 // or empty string and false if it's not a tenant-aware context.
 //
 // This is useful for functions that may or may not receive a tenant context:
-//   if tenantID, ok := modular.GetTenantIDFromContext(ctx); ok {
-//       // Handle tenant-specific logic
-//   } else {
-//       // Handle default/non-tenant logic
-//   }
+//
+//	if tenantID, ok := modular.GetTenantIDFromContext(ctx); ok {
+//	    // Handle tenant-specific logic
+//	} else {
+//	    // Handle default/non-tenant logic
+//	}
 func GetTenantIDFromContext(ctx context.Context) (TenantID, bool) {
 	if tc, ok := ctx.(*TenantContext); ok {
 		return tc.GetTenantID(), true
@@ -172,23 +175,24 @@ type TenantService interface {
 //   - Perform tenant-specific migrations or setup
 //
 // Example implementation:
-//   type MyModule struct {
-//       tenantConnections map[TenantID]*Connection
-//   }
-//   
-//   func (m *MyModule) OnTenantRegistered(tenantID TenantID) {
-//       // Initialize tenant-specific resources
-//       conn := createConnectionForTenant(tenantID)
-//       m.tenantConnections[tenantID] = conn
-//   }
-//   
-//   func (m *MyModule) OnTenantRemoved(tenantID TenantID) {
-//       // Clean up tenant-specific resources
-//       if conn, ok := m.tenantConnections[tenantID]; ok {
-//           conn.Close()
-//           delete(m.tenantConnections, tenantID)
-//       }
-//   }
+//
+//	type MyModule struct {
+//	    tenantConnections map[TenantID]*Connection
+//	}
+//
+//	func (m *MyModule) OnTenantRegistered(tenantID TenantID) {
+//	    // Initialize tenant-specific resources
+//	    conn := createConnectionForTenant(tenantID)
+//	    m.tenantConnections[tenantID] = conn
+//	}
+//
+//	func (m *MyModule) OnTenantRemoved(tenantID TenantID) {
+//	    // Clean up tenant-specific resources
+//	    if conn, ok := m.tenantConnections[tenantID]; ok {
+//	        conn.Close()
+//	        delete(m.tenantConnections, tenantID)
+//	    }
+//	}
 type TenantAwareModule interface {
 	Module
 

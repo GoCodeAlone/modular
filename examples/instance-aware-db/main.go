@@ -13,9 +13,9 @@ import (
 func main() {
 	// This example demonstrates how to use instance-aware environment variable configuration
 	// for multiple database connections
-	
+
 	fmt.Println("=== Instance-Aware Database Configuration Example ===")
-	
+
 	// Set up environment variables for multiple database connections
 	// In a real application, these would be set externally
 	envVars := map[string]string{
@@ -32,7 +32,7 @@ func main() {
 		os.Setenv(key, value)
 		fmt.Printf("  %s=%s\n", key, value)
 	}
-	
+
 	// Clean up environment variables at the end
 	defer func() {
 		for key := range envVars {
@@ -81,7 +81,7 @@ func main() {
 	connections := dbManager.GetConnections()
 	for _, connName := range connections {
 		fmt.Printf("  - %s\n", connName)
-		
+
 		if db, exists := dbManager.GetConnection(connName); exists {
 			if err := db.Ping(); err != nil {
 				fmt.Printf("    ❌ Failed to ping %s: %v\n", connName, err)
@@ -100,7 +100,7 @@ func main() {
 
 	// Demonstrate using different connections
 	fmt.Println("\nDemonstrating multiple database connections:")
-	
+
 	// Use primary connection
 	if primaryDB, exists := dbManager.GetConnection("primary"); exists {
 		fmt.Println("Using primary database...")
@@ -111,7 +111,7 @@ func main() {
 		}
 	}
 
-	// Use secondary connection  
+	// Use secondary connection
 	if secondaryDB, exists := dbManager.GetConnection("secondary"); exists {
 		fmt.Println("Using secondary database...")
 		if _, err := secondaryDB.Exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, message TEXT)"); err != nil {
@@ -186,7 +186,7 @@ func setupDatabaseConnections(app modular.Application, dbModule *database.Module
 		if prefixFunc != nil {
 			feeder := modular.NewInstanceAwareEnvFeeder(prefixFunc)
 			instanceConfigs := config.GetInstanceConfigs()
-			
+
 			// Feed each instance with environment variables
 			for instanceKey, instanceConfig := range instanceConfigs {
 				if err := feeder.FeedKey(instanceKey, instanceConfig); err != nil {

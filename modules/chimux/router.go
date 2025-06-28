@@ -27,7 +27,7 @@ type Middleware func(http.Handler) http.Handler
 // Example implementation:
 //
 //	type AuthModule struct{}
-//	
+//
 //	func (a *AuthModule) ProvideMiddleware() []chimux.Middleware {
 //	    return []chimux.Middleware{
 //	        authenticationMiddleware,
@@ -50,53 +50,53 @@ type MiddlewareProvider interface {
 // require Chi's advanced features like Route groups or sub-routers.
 type BasicRouter interface {
 	// HTTP method handlers for registering route handlers
-	
+
 	// Get registers a GET handler for the specified pattern.
 	// The pattern supports Chi's URL parameter syntax: "/users/{id}"
 	Get(pattern string, handler http.HandlerFunc)
-	
+
 	// Post registers a POST handler for the specified pattern.
 	Post(pattern string, handler http.HandlerFunc)
-	
+
 	// Put registers a PUT handler for the specified pattern.
 	Put(pattern string, handler http.HandlerFunc)
-	
+
 	// Delete registers a DELETE handler for the specified pattern.
 	Delete(pattern string, handler http.HandlerFunc)
-	
+
 	// Patch registers a PATCH handler for the specified pattern.
 	Patch(pattern string, handler http.HandlerFunc)
-	
+
 	// Head registers a HEAD handler for the specified pattern.
 	Head(pattern string, handler http.HandlerFunc)
-	
+
 	// Options registers an OPTIONS handler for the specified pattern.
 	Options(pattern string, handler http.HandlerFunc)
 
 	// Generic handlers for registering any HTTP handler
-	
+
 	// Handle registers a generic HTTP handler for the specified pattern.
 	// Use this when you need to handle multiple HTTP methods in one handler
 	// or when working with existing http.Handler implementations.
 	Handle(pattern string, handler http.Handler)
-	
+
 	// HandleFunc registers a generic HTTP handler function for the specified pattern.
 	HandleFunc(pattern string, handler http.HandlerFunc)
 
 	// Mounting and middleware support
-	
+
 	// Mount attaches another http.Handler at the specified pattern.
 	// This is useful for mounting sub-applications or third-party handlers.
 	// The mounted handler will receive requests with the mount pattern stripped.
 	Mount(pattern string, handler http.Handler)
-	
+
 	// Use appends one or more middleware functions to the middleware chain.
 	// Middleware is applied in the order it's added and affects all routes
 	// registered after the middleware is added.
 	Use(middlewares ...func(http.Handler) http.Handler)
 
 	// HTTP handler interface
-	
+
 	// ServeHTTP implements the http.Handler interface, allowing the router
 	// to be used directly as an HTTP handler or mounted in other routers.
 	ServeHTTP(w http.ResponseWriter, r *http.Request)

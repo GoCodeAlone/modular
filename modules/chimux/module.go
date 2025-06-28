@@ -61,7 +61,7 @@
 //
 //	// Modules implementing MiddlewareProvider are automatically discovered
 //	type MyModule struct{}
-//	
+//
 //	func (m *MyModule) ProvideMiddleware() []chimux.Middleware {
 //	    return []chimux.Middleware{
 //	        myCustomMiddleware,
@@ -141,6 +141,7 @@ type ChiMuxModule struct {
 // when registering the module with the application.
 //
 // Example:
+//
 //	app.RegisterModule(chimux.NewChiMuxModule())
 func NewChiMuxModule() modular.Module {
 	return &ChiMuxModule{
@@ -189,12 +190,12 @@ func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 // and configures CORS settings.
 //
 // The initialization process:
-//   1. Validates that the application supports tenants
-//   2. Loads the module configuration
-//   3. Creates and configures the Chi router
-//   4. Sets up default middleware (RequestID, RealIP, Logger, Recoverer)
-//   5. Applies CORS middleware based on configuration
-//   6. Discovers and applies middleware from other modules
+//  1. Validates that the application supports tenants
+//  2. Loads the module configuration
+//  3. Creates and configures the Chi router
+//  4. Sets up default middleware (RequestID, RealIP, Logger, Recoverer)
+//  5. Applies CORS middleware based on configuration
+//  6. Discovers and applies middleware from other modules
 //
 // Requirements:
 //   - Must be used with a TenantApplication
@@ -314,9 +315,9 @@ func (m *ChiMuxModule) setupMiddleware(app modular.Application) error {
 // have been initialized and are ready to start.
 //
 // The startup process:
-//   1. Loads configurations for all registered tenants
-//   2. Applies tenant-specific CORS and routing settings
-//   3. Prepares the router for incoming requests
+//  1. Loads configurations for all registered tenants
+//  2. Applies tenant-specific CORS and routing settings
+//  3. Prepares the router for incoming requests
 func (m *ChiMuxModule) Start(context.Context) error {
 	m.logger.Info("Starting chimux module")
 

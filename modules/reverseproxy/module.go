@@ -75,6 +75,7 @@ type ReverseProxyModule struct {
 //   - Thread-safe data structures for concurrent access
 //
 // Example:
+//
 //	app.RegisterModule(reverseproxy.NewModule())
 func NewModule() *ReverseProxyModule {
 	// We'll initialize with a nil client and create it later

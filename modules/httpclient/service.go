@@ -19,11 +19,11 @@ import (
 //	// Basic usage
 //	client := httpClientService.Client()
 //	resp, err := client.Get("https://api.example.com/data")
-//	
+//
 //	// Custom timeout
 //	shortTimeoutClient := httpClientService.WithTimeout(5)
 //	resp, err := shortTimeoutClient.Get("https://api.example.com/health")
-//	
+//
 //	// Request modification
 //	modifier := httpClientService.RequestModifier()
 //	req, _ := http.NewRequest("GET", "https://api.example.com/data", nil)
@@ -81,14 +81,14 @@ type ClientService interface {
 //	        return req
 //	    }
 //	}
-//	
+//
 //	// Request tracing
 //	func tracingModifier(req *http.Request) *http.Request {
 //	    req.Header.Set("X-Request-ID", generateRequestID())
 //	    req.Header.Set("X-Trace-ID", getTraceID(req.Context()))
 //	    return req
 //	}
-//	
+//
 //	// User agent setting
 //	func userAgentModifier(userAgent string) RequestModifierFunc {
 //	    return func(req *http.Request) *http.Request {

@@ -41,16 +41,16 @@ type ServiceProvider struct {
 //
 // There are two main patterns for service dependencies:
 //
-// 1. Name-based lookup:
-//   ServiceDependency{Name: "database", Required: true}
+//  1. Name-based lookup:
+//     ServiceDependency{Name: "database", Required: true}
 //
-// 2. Interface-based lookup:
-//   ServiceDependency{
-//       Name: "logger",
-//       MatchByInterface: true,
-//       SatisfiesInterface: reflect.TypeOf((*Logger)(nil)).Elem(),
-//       Required: true,
-//   }
+//  2. Interface-based lookup:
+//     ServiceDependency{
+//     Name: "logger",
+//     MatchByInterface: true,
+//     SatisfiesInterface: reflect.TypeOf((*Logger)(nil)).Elem(),
+//     Required: true,
+//     }
 type ServiceDependency struct {
 	// Name is the service identifier to lookup.
 	// For interface-based matching, this is used as the key in the

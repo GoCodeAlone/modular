@@ -42,10 +42,10 @@
 //
 //	// Get the HTTP client service
 //	client := app.GetService("httpclient").(httpclient.ClientService)
-//	
+//
 //	// Use the client
 //	resp, err := client.Client().Get("https://api.example.com/users")
-//	
+//
 //	// Create a client with custom timeout
 //	timeoutClient := client.WithTimeout(60)
 //	resp, err := timeoutClient.Post("https://api.example.com/upload", "application/json", data)
@@ -60,12 +60,12 @@
 //	    return err
 //	}
 //	defer resp.Body.Close()
-//	
+//
 //	// POST request with JSON
 //	jsonData := bytes.NewBuffer([]byte(`{"name": "test"}`))
 //	resp, err := client.Client().Post(
-//	    "https://api.example.com/users", 
-//	    "application/json", 
+//	    "https://api.example.com/users",
+//	    "application/json",
 //	    jsonData,
 //	)
 //
@@ -78,7 +78,7 @@
 //	    return req
 //	}
 //	client.SetRequestModifier(modifier)
-//	
+//
 //	// All subsequent requests will include the headers
 //	resp, err := client.Client().Get("https://api.example.com/protected")
 //
@@ -87,7 +87,7 @@
 //	// Short timeout for health checks
 //	healthClient := client.WithTimeout(5)
 //	resp, err := healthClient.Get("https://service.example.com/health")
-//	
+//
 //	// Long timeout for file uploads
 //	uploadClient := client.WithTimeout(300)
 //	resp, err := uploadClient.Post("https://api.example.com/upload", contentType, fileData)
@@ -166,6 +166,7 @@ var (
 // when registering the module with the application.
 //
 // Example:
+//
 //	app.RegisterModule(httpclient.NewHTTPClientModule())
 func NewHTTPClientModule() modular.Module {
 	return &HTTPClientModule{
@@ -215,12 +216,12 @@ func (m *HTTPClientModule) RegisterConfig(app modular.Application) error {
 // configurations loaded. It sets up the HTTP client, transport, and logging.
 //
 // The initialization process:
-//   1. Retrieves the module's configuration
-//   2. Sets up logging
-//   3. Creates and configures the HTTP transport with connection pooling
-//   4. Sets up request/response logging if verbose mode is enabled
-//   5. Creates the HTTP client with configured transport and middleware
-//   6. Initializes request modification pipeline
+//  1. Retrieves the module's configuration
+//  2. Sets up logging
+//  3. Creates and configures the HTTP transport with connection pooling
+//  4. Sets up request/response logging if verbose mode is enabled
+//  5. Creates the HTTP client with configured transport and middleware
+//  6. Initializes request modification pipeline
 //
 // Transport configuration includes:
 //   - Connection pooling settings for optimal performance

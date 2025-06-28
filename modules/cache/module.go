@@ -31,7 +31,7 @@
 //
 //	// Get the cache service
 //	cacheService := app.GetService("cache.provider").(*CacheModule)
-//	
+//
 //	// Use the cache
 //	err := cacheService.Set(ctx, "key", "value", time.Minute*5)
 //	value, found := cacheService.Get(ctx, "key")
@@ -42,24 +42,24 @@
 //
 //	// Set a value with default TTL
 //	err := cache.Set(ctx, "user:123", userData, 0)
-//	
+//
 //	// Set a value with custom TTL
 //	err := cache.Set(ctx, "session:abc", sessionData, time.Hour)
-//	
+//
 //	// Get a value
 //	value, found := cache.Get(ctx, "user:123")
 //	if found {
 //	    user := value.(UserData)
 //	    // use user data
 //	}
-//	
+//
 //	// Batch operations
 //	items := map[string]interface{}{
 //	    "key1": "value1",
 //	    "key2": "value2",
 //	}
 //	err := cache.SetMulti(ctx, items, time.Minute*10)
-//	
+//
 //	results, err := cache.GetMulti(ctx, []string{"key1", "key2"})
 package cache
 
@@ -103,6 +103,7 @@ type CacheModule struct {
 // when registering the module with the application.
 //
 // Example:
+//
 //	app.RegisterModule(cache.NewModule())
 func NewModule() modular.Module {
 	return &CacheModule{
@@ -149,10 +150,10 @@ func (m *CacheModule) RegisterConfig(app modular.Application) error {
 // configurations loaded. It sets up the cache engine based on the configuration.
 //
 // The initialization process:
-//   1. Retrieves the module's configuration
-//   2. Sets up logging
-//   3. Initializes the appropriate cache engine (memory or Redis)
-//   4. Logs the initialization status
+//  1. Retrieves the module's configuration
+//  2. Sets up logging
+//  3. Initializes the appropriate cache engine (memory or Redis)
+//  4. Logs the initialization status
 //
 // Supported cache engines:
 //   - "memory": In-memory cache with LRU eviction
@@ -205,9 +206,9 @@ func (m *CacheModule) Start(ctx context.Context) error {
 // It's called during application shutdown to ensure proper cleanup.
 //
 // The shutdown process:
-//   1. Logs the shutdown initiation
-//   2. Closes cache engine connections
-//   3. Cleans up any background processes
+//  1. Logs the shutdown initiation
+//  2. Closes cache engine connections
+//  3. Cleans up any background processes
 func (m *CacheModule) Stop(ctx context.Context) error {
 	m.logger.Info("Stopping cache module")
 	if err := m.cacheEngine.Close(ctx); err != nil {
@@ -257,6 +258,7 @@ func (m *CacheModule) Constructor() modular.ModuleConstructor {
 // If the key doesn't exist or has expired, returns (nil, false).
 //
 // Example:
+//
 //	value, found := cache.Get(ctx, "user:123")
 //	if found {
 //	    user := value.(UserData)
@@ -271,9 +273,10 @@ func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 // The value can be any serializable type.
 //
 // Example:
+//
 //	// Use default TTL
 //	err := cache.Set(ctx, "user:123", userData, 0)
-//	
+//
 //	// Use custom TTL
 //	err := cache.Set(ctx, "session:abc", sessionData, time.Hour)
 func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
@@ -290,6 +293,7 @@ func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, tt
 // Returns an error if the deletion fails, but not if the key doesn't exist.
 //
 // Example:
+//
 //	err := cache.Delete(ctx, "user:123")
 //	if err != nil {
 //	    // handle deletion error
@@ -306,6 +310,7 @@ func (m *CacheModule) Delete(ctx context.Context, key string) error {
 // Useful for cache invalidation or testing scenarios.
 //
 // Example:
+//
 //	err := cache.Flush(ctx)
 //	if err != nil {
 //	    // handle flush error
@@ -322,6 +327,7 @@ func (m *CacheModule) Flush(ctx context.Context) error {
 // Missing keys are simply not included in the result map.
 //
 // Example:
+//
 //	keys := []string{"user:123", "user:456", "user:789"}
 //	results, err := cache.GetMulti(ctx, keys)
 //	if err != nil {
@@ -343,6 +349,7 @@ func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]i
 // This is more efficient than multiple Set calls for batch operations.
 //
 // Example:
+//
 //	items := map[string]interface{}{
 //	    "user:123": userData1,
 //	    "user:456": userData2,
@@ -364,6 +371,7 @@ func (m *CacheModule) SetMulti(ctx context.Context, items map[string]interface{}
 // Does not return an error for keys that don't exist.
 //
 // Example:
+//
 //	keys := []string{"user:123", "user:456", "expired:key"}
 //	err := cache.DeleteMulti(ctx, keys)
 //	if err != nil {

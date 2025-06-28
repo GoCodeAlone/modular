@@ -37,10 +37,10 @@
 //
 //	// Get the event bus service
 //	eventBus := app.GetService("eventbus.provider").(*EventBusModule)
-//	
+//
 //	// Publish an event
 //	err := eventBus.Publish(ctx, "user.created", userData)
-//	
+//
 //	// Subscribe to events
 //	subscription, err := eventBus.Subscribe(ctx, "user.*", userEventHandler)
 //
@@ -50,7 +50,7 @@
 //
 //	// Publish a simple event
 //	err := eventBus.Publish(ctx, "order.placed", orderData)
-//	
+//
 //	// Publish with custom metadata
 //	event := Event{
 //	    Topic:   "payment.processed",
@@ -69,25 +69,25 @@
 //	    user := event.Payload.(UserData)
 //	    return updateUserCache(user)
 //	})
-//	
+//
 //	// Asynchronous subscription for heavy processing
 //	asyncSub, err := eventBus.SubscribeAsync(ctx, "image.uploaded", func(ctx context.Context, event Event) error {
 //	    imageData := event.Payload.(ImageData)
 //	    return processImageThumbnails(imageData)
 //	})
-//	
+//
 //	// Wildcard subscriptions
 //	allOrdersSub, err := eventBus.Subscribe(ctx, "order.*", orderEventHandler)
 //
 // Subscription management:
 //
 //	// Check subscription details
-//	fmt.Printf("Subscribed to: %s (ID: %s, Async: %v)", 
+//	fmt.Printf("Subscribed to: %s (ID: %s, Async: %v)",
 //	    subscription.Topic(), subscription.ID(), subscription.IsAsync())
-//	
+//
 //	// Cancel specific subscriptions
 //	err := eventBus.Unsubscribe(ctx, subscription)
-//	
+//
 //	// Or cancel through the subscription itself
 //	err := subscription.Cancel()
 //
@@ -152,6 +152,7 @@ type EventBusModule struct {
 // when registering the module with the application.
 //
 // Example:
+//
 //	app.RegisterModule(eventbus.NewModule())
 func NewModule() modular.Module {
 	return &EventBusModule{
@@ -201,10 +202,10 @@ func (m *EventBusModule) RegisterConfig(app modular.Application) error {
 // configurations loaded. It sets up the event bus engine based on configuration.
 //
 // The initialization process:
-//   1. Retrieves the module's configuration
-//   2. Sets up logging
-//   3. Initializes the appropriate event bus engine
-//   4. Prepares the event bus for startup
+//  1. Retrieves the module's configuration
+//  2. Sets up logging
+//  3. Initializes the appropriate event bus engine
+//  4. Prepares the event bus for startup
 //
 // Supported engines:
 //   - "memory": In-process event bus using Go channels
@@ -238,10 +239,10 @@ func (m *EventBusModule) Init(app modular.Application) error {
 // It's called after all modules have been initialized and are ready to start.
 //
 // The startup process:
-//   1. Checks if already started (idempotent)
-//   2. Starts the underlying event bus engine
-//   3. Initializes worker pools for async processing
-//   4. Prepares topic management and subscription tracking
+//  1. Checks if already started (idempotent)
+//  2. Starts the underlying event bus engine
+//  3. Initializes worker pools for async processing
+//  4. Prepares topic management and subscription tracking
 //
 // This method is thread-safe and can be called multiple times safely.
 func (m *EventBusModule) Start(ctx context.Context) error {
@@ -270,12 +271,12 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 // events are processed and all subscriptions are properly cleaned up.
 //
 // The shutdown process:
-//   1. Checks if already stopped (idempotent)
-//   2. Stops accepting new events
-//   3. Waits for in-flight events to complete
-//   4. Cancels all active subscriptions
-//   5. Shuts down worker pools
-//   6. Closes the underlying event bus engine
+//  1. Checks if already stopped (idempotent)
+//  2. Stops accepting new events
+//  3. Waits for in-flight events to complete
+//  4. Cancels all active subscriptions
+//  5. Shuts down worker pools
+//  6. Closes the underlying event bus engine
 //
 // This method is thread-safe and can be called multiple times safely.
 func (m *EventBusModule) Stop(ctx context.Context) error {
@@ -344,6 +345,7 @@ func (m *EventBusModule) Constructor() modular.ModuleConstructor {
 // Topic patterns and wildcards may be supported depending on the engine.
 //
 // Example:
+//
 //	err := eventBus.Publish(ctx, "user.created", userData)
 //	err := eventBus.Publish(ctx, "order.payment.failed", paymentData)
 func (m *EventBusModule) Publish(ctx context.Context, topic string, payload interface{}) error {
@@ -364,6 +366,7 @@ func (m *EventBusModule) Publish(ctx context.Context, topic string, payload inte
 //   - Critical event handlers that must complete before continuing
 //
 // Example:
+//
 //	subscription, err := eventBus.Subscribe(ctx, "user.login", func(ctx context.Context, event Event) error {
 //	    user := event.Payload.(UserData)
 //	    return updateLastLoginTime(user.ID)
@@ -383,6 +386,7 @@ func (m *EventBusModule) Subscribe(ctx context.Context, topic string, handler Ev
 //   - When you want to avoid blocking publishers
 //
 // Example:
+//
 //	subscription, err := eventBus.SubscribeAsync(ctx, "image.uploaded", func(ctx context.Context, event Event) error {
 //	    imageData := event.Payload.(ImageData)
 //	    return generateThumbnails(imageData)
@@ -399,6 +403,7 @@ func (m *EventBusModule) SubscribeAsync(ctx context.Context, topic string, handl
 // subscription is safe and will not cause errors.
 //
 // Example:
+//
 //	err := eventBus.Unsubscribe(ctx, subscription)
 func (m *EventBusModule) Unsubscribe(ctx context.Context, subscription Subscription) error {
 	return m.eventbus.Unsubscribe(ctx, subscription)
@@ -409,6 +414,7 @@ func (m *EventBusModule) Unsubscribe(ctx context.Context, subscription Subscript
 // interfaces that show current event bus activity.
 //
 // Example:
+//
 //	activeTopics := eventBus.Topics()
 //	for _, topic := range activeTopics {
 //	    count := eventBus.SubscriberCount(topic)
@@ -423,6 +429,7 @@ func (m *EventBusModule) Topics() []string {
 // Returns 0 if the topic has no subscribers.
 //
 // Example:
+//
 //	count := eventBus.SubscriberCount("user.created")
 //	if count == 0 {
 //	    log.Warn("No subscribers for user creation events")

@@ -55,10 +55,10 @@
 //
 //	// Get the certificate service
 //	certService := app.GetService("letsencrypt.certificates").(letsencrypt.CertificateService)
-//	
+//
 //	// Get a certificate for a domain
 //	cert, err := certService.GetCertificate("example.com")
-//	
+//
 //	// Configure TLS with automatic certificates
 //	tlsConfig := &tls.Config{
 //	    GetCertificate: certService.GetCertificate,
@@ -75,15 +75,15 @@
 //	    ChallengeType: "http-01",
 //	    CADirectory: CAProduction,
 //	}
-//	
+//
 //	// Get certificate service
 //	certService := app.GetService("letsencrypt.certificates").(CertificateService)
-//	
+//
 //	// Create TLS config with automatic certificates
 //	tlsConfig := &tls.Config{
 //	    GetCertificate: certService.GetCertificate,
 //	}
-//	
+//
 //	// Start HTTPS server
 //	server := &http.Server{
 //	    Addr:      ":443",
@@ -153,7 +153,7 @@ const (
 	// Use this for testing to avoid hitting production rate limits.
 	// Certificates from staging are not trusted by browsers.
 	CAStaging = "https://acme-staging-v02.api.letsencrypt.org/directory"
-	
+
 	// CAProduction is the URL for Let's Encrypt's production environment.
 	// Use this for production deployments. Has strict rate limits.
 	// Certificates from production are trusted by all major browsers.
