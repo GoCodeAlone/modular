@@ -1,6 +1,6 @@
 module basic-app
 
-go 1.24.2
+go 1.23.0
 
 replace github.com/GoCodeAlone/modular => ../../
 
