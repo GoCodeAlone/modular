@@ -177,7 +177,13 @@ func extractEndpointFromDSN(dsn string) (string, error) {
 	// Handle different DSN formats
 	if strings.Contains(dsn, "://") {
 		// URL-style DSN (e.g., postgres://user:password@host:port/database)
-		u, err := url.Parse(dsn)
+		// Handle potential special characters in password by preprocessing
+		preprocessedDSN, err := preprocessDSNForParsing(dsn)
+		if err != nil {
+			return "", fmt.Errorf("failed to preprocess DSN: %w", err)
+		}
+		
+		u, err := url.Parse(preprocessedDSN)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse DSN URL: %w", err)
 		}
@@ -203,11 +209,71 @@ func extractEndpointFromDSN(dsn string) (string, error) {
 	return "", ErrExtractEndpointFailed
 }
 
+// preprocessDSNForParsing handles special characters in passwords by URL-encoding them
+func preprocessDSNForParsing(dsn string) (string, error) {
+	// Find the pattern: ://username:password@host
+	protocolEnd := strings.Index(dsn, "://")
+	if protocolEnd == -1 {
+		return dsn, nil // Not a URL-style DSN
+	}
+	
+	// Find the start of credentials (after ://)
+	credentialsStart := protocolEnd + 3
+	
+	// Find the end of credentials (before @host)
+	// We need to find the last @ that separates credentials from host
+	// Look for the pattern @host:port or @host/path
+	remainingDSN := dsn[credentialsStart:]
+	
+	// Find all @ characters
+	atIndices := []int{}
+	for i := 0; i < len(remainingDSN); i++ {
+		if remainingDSN[i] == '@' {
+			atIndices = append(atIndices, i)
+		}
+	}
+	
+	if len(atIndices) == 0 {
+		return dsn, nil // No credentials
+	}
+	
+	// Use the last @ as the separator between credentials and host
+	atIndex := atIndices[len(atIndices)-1]
+	
+	// Extract the credentials part
+	credentialsEnd := credentialsStart + atIndex
+	credentials := dsn[credentialsStart:credentialsEnd]
+	
+	// Find the colon that separates username from password
+	colonIndex := strings.Index(credentials, ":")
+	if colonIndex == -1 {
+		return dsn, nil // No password
+	}
+	
+	// Extract username and password
+	username := credentials[:colonIndex]
+	password := credentials[colonIndex+1:]
+	
+	// URL-encode the password
+	encodedPassword := url.QueryEscape(password)
+	
+	// Reconstruct the DSN with encoded password
+	encodedDSN := dsn[:credentialsStart] + username + ":" + encodedPassword + dsn[credentialsEnd:]
+	
+	return encodedDSN, nil
+}
+
 // replaceDSNPassword replaces the password in a DSN with the provided token
 func replaceDSNPassword(dsn, token string) (string, error) {
 	if strings.Contains(dsn, "://") {
 		// URL-style DSN
-		u, err := url.Parse(dsn)
+		// Handle potential special characters in password by preprocessing
+		preprocessedDSN, err := preprocessDSNForParsing(dsn)
+		if err != nil {
+			return "", fmt.Errorf("failed to preprocess DSN: %w", err)
+		}
+		
+		u, err := url.Parse(preprocessedDSN)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse DSN URL: %w", err)
 		}

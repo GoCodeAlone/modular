@@ -115,6 +115,24 @@ func TestExtractEndpointFromDSN(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "postgres URL style with special characters in password",
+			dsn:      "postgresql://someuser:8jKwouNHdI!u6a?kx(UuQ-Bgm34P@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
+			expected: "some-dev-backend.cluster.us-east-1.rds.amazonaws.com",
+			wantErr:  false,
+		},
+		{
+			name:     "postgres URL style with URL-encoded special characters in password",
+			dsn:      "postgresql://someuser:8jKwouNHdI%21u6a%3Fkx%28UuQ-Bgm34P@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
+			expected: "some-dev-backend.cluster.us-east-1.rds.amazonaws.com",
+			wantErr:  false,
+		},
+		{
+			name:     "postgres URL style with complex special characters in password",
+			dsn:      "postgres://user:p@ssw0rd!#$^&*()_+-=[]{}|;':\",./<>@host.example.com:5432/db",
+			expected: "host.example.com:5432",
+			wantErr:  false,
+		},
+		{
 			name:    "invalid DSN",
 			dsn:     "invalid-dsn",
 			wantErr: true,
@@ -165,6 +183,18 @@ func TestReplaceDSNPassword(t *testing.T) {
 			name:     "postgres key-value style without password",
 			dsn:      "host=localhost port=5432 user=postgres dbname=mydb",
 			expected: "host=localhost port=5432 user=postgres dbname=mydb password=test-iam-token",
+			wantErr:  false,
+		},
+		{
+			name:     "postgres URL style with special characters in password",
+			dsn:      "postgresql://someuser:8jKwouNHdI!u6a?kx(UuQ-Bgm34P@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
+			expected: "postgresql://someuser:test-iam-token@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
+			wantErr:  false,
+		},
+		{
+			name:     "postgres URL style with complex special characters in password",
+			dsn:      "postgres://user:p@ssw0rd!#$^&*()_+-=[]{}|;':\",./<>@host.example.com:5432/db",
+			expected: "postgres://user:test-iam-token@host.example.com:5432/db",
 			wantErr:  false,
 		},
 		{
