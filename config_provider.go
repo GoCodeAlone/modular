@@ -88,11 +88,16 @@ func NewStdConfigProvider(cfg any) *StdConfigProvider {
 //   - Combine configuration from different feeders
 //   - Apply configuration to multiple struct targets
 //   - Track which structs have been configured
+//   - Enable verbose debugging for configuration processing
 type Config struct {
 	*config.Config
 	// StructKeys maps struct identifiers to their configuration objects.
 	// Used internally to track which configuration structures have been processed.
 	StructKeys map[string]interface{}
+	// VerboseDebug enables detailed logging during configuration processing
+	VerboseDebug bool
+	// Logger is used for verbose debug logging
+	Logger Logger
 }
 
 // NewConfig creates a new configuration builder.
@@ -107,9 +112,40 @@ type Config struct {
 //	err := cfg.Feed()                       // Load configuration
 func NewConfig() *Config {
 	return &Config{
-		Config:     config.New(),
-		StructKeys: make(map[string]interface{}),
+		Config:       config.New(),
+		StructKeys:   make(map[string]interface{}),
+		VerboseDebug: false,
+		Logger:       nil,
 	}
+}
+
+// SetVerboseDebug enables or disables verbose debug logging
+func (c *Config) SetVerboseDebug(enabled bool, logger Logger) *Config {
+	c.VerboseDebug = enabled
+	c.Logger = logger
+
+	// Apply verbose debugging to any verbose-aware feeders
+	for _, feeder := range c.Feeders {
+		if verboseFeeder, ok := feeder.(VerboseAwareFeeder); ok {
+			verboseFeeder.SetVerboseDebug(enabled, logger)
+		}
+	}
+
+	return c
+}
+
+// AddFeeder overrides the parent AddFeeder to support verbose debugging
+func (c *Config) AddFeeder(feeder Feeder) *Config {
+	c.Config.AddFeeder(feeder)
+
+	// If verbose debugging is enabled, apply it to this feeder
+	if c.VerboseDebug && c.Logger != nil {
+		if verboseFeeder, ok := feeder.(VerboseAwareFeeder); ok {
+			verboseFeeder.SetVerboseDebug(true, c.Logger)
+		}
+	}
+
+	return c
 }
 
 // AddStructKey adds a structure with a key to the configuration
@@ -120,33 +156,86 @@ func (c *Config) AddStructKey(key string, target interface{}) *Config {
 
 // Feed with validation applies defaults and validates configs after feeding
 func (c *Config) Feed() error {
+	if c.VerboseDebug && c.Logger != nil {
+		c.Logger.Debug("Starting config feed process", "structKeysCount", len(c.StructKeys), "feedersCount", len(c.Feeders))
+	}
+
 	if err := c.Config.Feed(); err != nil {
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Config feed failed", "error", err)
+		}
 		return fmt.Errorf("config feed error: %w", err)
 	}
 
+	if c.VerboseDebug && c.Logger != nil {
+		c.Logger.Debug("Config feed completed, processing struct keys")
+	}
+
 	for key, target := range c.StructKeys {
-		for _, f := range c.Feeders {
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Processing struct key", "key", key, "targetType", reflect.TypeOf(target))
+		}
+
+		for i, f := range c.Feeders {
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Applying feeder to struct", "key", key, "feederIndex", i, "feederType", fmt.Sprintf("%T", f))
+			}
+
 			cf, ok := f.(ComplexFeeder)
 			if !ok {
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("Feeder is not a ComplexFeeder, skipping", "key", key, "feederType", fmt.Sprintf("%T", f))
+				}
 				continue
 			}
 
 			if err := cf.FeedKey(key, target); err != nil {
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("ComplexFeeder FeedKey failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+				}
 				return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
 			}
+
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("ComplexFeeder FeedKey succeeded", "key", key, "feederType", fmt.Sprintf("%T", f))
+			}
+		}
+
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Validating config for struct key", "key", key)
 		}
 
 		// Apply defaults and validate config
 		if err := ValidateConfig(target); err != nil {
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Config validation failed", "key", key, "error", err)
+			}
 			return fmt.Errorf("config validation error for %s: %w", key, err)
+		}
+
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Config validation succeeded", "key", key)
 		}
 
 		// Call Setup if implemented
 		if setupable, ok := target.(ConfigSetup); ok {
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Calling Setup for config", "key", key)
+			}
 			if err := setupable.Setup(); err != nil {
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("Config setup failed", "key", key, "error", err)
+				}
 				return fmt.Errorf("%w for %s: %w", ErrConfigSetupError, key, err)
 			}
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Config setup succeeded", "key", key)
+			}
 		}
+	}
+
+	if c.VerboseDebug && c.Logger != nil {
+		c.Logger.Debug("Config feed process completed successfully")
 	}
 
 	return nil
@@ -164,16 +253,33 @@ func loadAppConfig(app *StdApplication) error {
 		return ErrApplicationNil
 	}
 
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Starting configuration loading process")
+	}
+
 	// Skip if no ConfigFeeders are defined
 	if len(ConfigFeeders) == 0 {
 		app.logger.Info("No config feeders defined, skipping config loading")
 		return nil
 	}
 
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Configuration feeders available", "count", len(ConfigFeeders))
+		for i, feeder := range ConfigFeeders {
+			app.logger.Debug("Config feeder registered", "index", i, "type", fmt.Sprintf("%T", feeder))
+		}
+	}
+
 	// Build the configuration
 	cfgBuilder := NewConfig()
+	if app.IsVerboseConfig() {
+		cfgBuilder.SetVerboseDebug(true, app.logger)
+	}
 	for _, feeder := range ConfigFeeders {
 		cfgBuilder.AddFeeder(feeder)
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Added config feeder to builder", "type", fmt.Sprintf("%T", feeder))
+		}
 	}
 
 	// Process configs
@@ -185,13 +291,28 @@ func loadAppConfig(app *StdApplication) error {
 		return nil
 	}
 
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Configuration structures prepared for feeding", "count", len(tempConfigs))
+	}
+
 	// Feed all configs at once
 	if err := cfgBuilder.Feed(); err != nil {
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Configuration feeding failed", "error", err)
+		}
 		return err
+	}
+
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Configuration feeding completed successfully")
 	}
 
 	// Apply updated configs
 	applyConfigUpdates(app, tempConfigs)
+
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Configuration loading process completed")
+	}
 
 	return nil
 }
@@ -200,6 +321,10 @@ func loadAppConfig(app *StdApplication) error {
 func processConfigs(app *StdApplication, cfgBuilder *Config) (map[string]configInfo, bool) {
 	tempConfigs := make(map[string]configInfo)
 	hasConfigs := false
+
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Processing configuration sections")
+	}
 
 	// Process main app config if provided
 	if processedMain := processMainConfig(app, cfgBuilder, tempConfigs); processedMain {
@@ -211,12 +336,19 @@ func processConfigs(app *StdApplication, cfgBuilder *Config) (map[string]configI
 		hasConfigs = true
 	}
 
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Configuration processing completed", "totalConfigs", len(tempConfigs), "hasValidConfigs", hasConfigs)
+	}
+
 	return tempConfigs, hasConfigs
 }
 
 // processMainConfig handles the main application config
 func processMainConfig(app *StdApplication, cfgBuilder *Config, tempConfigs map[string]configInfo) bool {
 	if app.cfgProvider == nil {
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Main config provider is nil, skipping main config")
+		}
 		return false
 	}
 
@@ -224,6 +356,10 @@ func processMainConfig(app *StdApplication, cfgBuilder *Config, tempConfigs map[
 	if mainCfg == nil {
 		app.logger.Warn("Main config is nil, skipping main config loading")
 		return false
+	}
+
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Processing main configuration", "configType", reflect.TypeOf(mainCfg), "section", mainConfigSection)
 	}
 
 	tempMainCfg, mainCfgInfo, err := createTempConfig(mainCfg)
@@ -236,6 +372,10 @@ func processMainConfig(app *StdApplication, cfgBuilder *Config, tempConfigs map[
 	tempConfigs[mainConfigSection] = mainCfgInfo
 	app.logger.Debug("Added main config for loading", "type", reflect.TypeOf(mainCfg))
 
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Main configuration prepared for feeding", "section", mainConfigSection)
+	}
+
 	return true
 }
 
@@ -243,7 +383,15 @@ func processMainConfig(app *StdApplication, cfgBuilder *Config, tempConfigs map[
 func processSectionConfigs(app *StdApplication, cfgBuilder *Config, tempConfigs map[string]configInfo) bool {
 	hasValidSections := false
 
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Processing configuration sections", "totalSections", len(app.cfgSections))
+	}
+
 	for sectionKey, provider := range app.cfgSections {
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Processing configuration section", "section", sectionKey, "providerType", fmt.Sprintf("%T", provider))
+		}
+
 		if provider == nil {
 			app.logger.Warn("Skipping nil config provider", "section", sectionKey)
 			continue
@@ -253,6 +401,10 @@ func processSectionConfigs(app *StdApplication, cfgBuilder *Config, tempConfigs 
 		if sectionCfg == nil {
 			app.logger.Warn("Skipping section with nil config", "section", sectionKey)
 			continue
+		}
+
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Section config retrieved", "section", sectionKey, "configType", reflect.TypeOf(sectionCfg))
 		}
 
 		tempSectionCfg, sectionInfo, err := createTempConfig(sectionCfg)
@@ -268,6 +420,14 @@ func processSectionConfigs(app *StdApplication, cfgBuilder *Config, tempConfigs 
 
 		app.logger.Debug("Added section config for loading",
 			"section", sectionKey, "type", reflect.TypeOf(sectionCfg))
+
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Section configuration prepared for feeding", "section", sectionKey)
+		}
+	}
+
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Section configuration processing completed", "validSections", hasValidSections)
 	}
 
 	return hasValidSections

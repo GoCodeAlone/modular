@@ -27,6 +27,17 @@ type InstanceAwareFeeder interface {
 	FeedInstances(instances interface{}) error
 }
 
+// VerboseAwareFeeder provides functionality for verbose debug logging during configuration feeding
+type VerboseAwareFeeder interface {
+	// SetVerboseDebug enables or disables verbose debug logging
+	SetVerboseDebug(enabled bool, logger interface{ Debug(msg string, args ...any) })
+}
+
+// VerboseLogger provides a minimal logging interface to avoid circular dependencies
+type VerboseLogger interface {
+	Debug(msg string, args ...any)
+}
+
 // InstancePrefixFunc is a function that generates a prefix for an instance key
 type InstancePrefixFunc = feeders.InstancePrefixFunc
 
