@@ -9,7 +9,6 @@ import (
 
 // VerboseEnvFeeder is an environment variable feeder with verbose debug logging support
 type VerboseEnvFeeder struct {
-	EnvFeeder
 	verboseDebug bool
 	logger       interface {
 		Debug(msg string, args ...any)
@@ -19,7 +18,6 @@ type VerboseEnvFeeder struct {
 // NewVerboseEnvFeeder creates a new verbose environment feeder
 func NewVerboseEnvFeeder() *VerboseEnvFeeder {
 	return &VerboseEnvFeeder{
-		EnvFeeder:    NewEnvFeeder(),
 		verboseDebug: false,
 		logger:       nil,
 	}
@@ -125,7 +123,10 @@ func (f *VerboseEnvFeeder) processField(field reflect.Value, fieldType *reflect.
 			}
 			return f.processStructFields(field.Elem(), prefix)
 		}
-	default:
+	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Slice, reflect.String, reflect.UnsafePointer:
 		// Check for env tag for primitive types and other non-struct types
 		if envTag, exists := fieldType.Tag.Lookup("env"); exists {
 			if f.verboseDebug && f.logger != nil {
