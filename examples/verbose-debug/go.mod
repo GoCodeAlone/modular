@@ -1,4 +1,4 @@
-module github.com/GoCodeAlone/modular/examples/verbose-debug
+module verbose-debug
 
 go 1.24.2
 

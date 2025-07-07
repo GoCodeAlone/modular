@@ -26,6 +26,8 @@ jobs:
           - http-client
           - advanced-logging
           - multi-tenant-app
+          - instance-aware-db
+          - verbose-debug
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

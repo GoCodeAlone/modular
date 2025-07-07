@@ -1,0 +1,16 @@
+# Instance-Aware Database Configuration Example
+# This example demonstrates instance-aware environment variable configuration
+
+# Basic application settings
+database:
+  default: "primary"
+  connections:
+    primary:
+      driver: "sqlite"
+      dsn: "./primary.db"
+    secondary:
+      driver: "sqlite"
+      dsn: "./secondary.db"
+    cache:
+      driver: "sqlite"
+      dsn: ":memory:"

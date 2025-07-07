@@ -1,6 +1,8 @@
-module github.com/GoCodeAlone/modular/examples/instance-aware-db
+module instance-aware-db
 
-go 1.23.0
+go 1.24.2
+
+toolchain go1.24.4
 
 replace github.com/GoCodeAlone/modular => ../..
 

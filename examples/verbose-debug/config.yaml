@@ -1,0 +1,24 @@
+# Verbose Debug Example Configuration
+# This example demonstrates verbose configuration debugging functionality
+
+# Application configuration
+appName: "Verbose Debug Example"
+debug: true
+logLevel: "debug"
+
+# Database configuration (will be overridden by environment variables)
+database:
+  default: "primary"
+  connections:
+    primary:
+      driver: "sqlite"
+      dsn: "./primary.db"
+      maxConns: 10
+    secondary:
+      driver: "sqlite"
+      dsn: "./secondary.db"
+      maxConns: 5
+    cache:
+      driver: "sqlite"
+      dsn: ":memory:"
+      maxConns: 3
