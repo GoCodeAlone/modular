@@ -182,7 +182,7 @@ func extractEndpointFromDSN(dsn string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to preprocess DSN: %w", err)
 		}
-		
+
 		u, err := url.Parse(preprocessedDSN)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse DSN URL: %w", err)
@@ -216,15 +216,15 @@ func preprocessDSNForParsing(dsn string) (string, error) {
 	if protocolEnd == -1 {
 		return dsn, nil // Not a URL-style DSN
 	}
-	
+
 	// Find the start of credentials (after ://)
 	credentialsStart := protocolEnd + 3
-	
+
 	// Find the end of credentials (before @host)
 	// We need to find the last @ that separates credentials from host
 	// Look for the pattern @host:port or @host/path
 	remainingDSN := dsn[credentialsStart:]
-	
+
 	// Find all @ characters
 	atIndices := []int{}
 	for i := 0; i < len(remainingDSN); i++ {
@@ -232,34 +232,34 @@ func preprocessDSNForParsing(dsn string) (string, error) {
 			atIndices = append(atIndices, i)
 		}
 	}
-	
+
 	if len(atIndices) == 0 {
 		return dsn, nil // No credentials
 	}
-	
+
 	// Use the last @ as the separator between credentials and host
 	atIndex := atIndices[len(atIndices)-1]
-	
+
 	// Extract the credentials part
 	credentialsEnd := credentialsStart + atIndex
 	credentials := dsn[credentialsStart:credentialsEnd]
-	
+
 	// Find the colon that separates username from password
 	colonIndex := strings.Index(credentials, ":")
 	if colonIndex == -1 {
 		return dsn, nil // No password
 	}
-	
+
 	// Extract username and password
 	username := credentials[:colonIndex]
 	password := credentials[colonIndex+1:]
-	
+
 	// URL-encode the password
 	encodedPassword := url.QueryEscape(password)
-	
+
 	// Reconstruct the DSN with encoded password
 	encodedDSN := dsn[:credentialsStart] + username + ":" + encodedPassword + dsn[credentialsEnd:]
-	
+
 	return encodedDSN, nil
 }
 
@@ -272,7 +272,7 @@ func replaceDSNPassword(dsn, token string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to preprocess DSN: %w", err)
 		}
-		
+
 		u, err := url.Parse(preprocessedDSN)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse DSN URL: %w", err)
