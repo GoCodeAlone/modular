@@ -94,4 +94,53 @@ func TestAffixedEnvFeeder(t *testing.T) {
 			t.Fatalf("Expected ErrEnvInvalidStructure, got %v", err)
 		}
 	})
+
+	t.Run("verbose debugging", func(t *testing.T) {
+		t.Setenv("VERBOSE_VALUE_TEST", "verbose_affixed")
+
+		type Config struct {
+			Value string `env:"VALUE"`
+		}
+
+		var config Config
+		feeder := NewAffixedEnvFeeder("VERBOSE", "TEST")
+		logger := &MockLogger{}
+
+		// Enable verbose debugging
+		feeder.SetVerboseDebug(true, logger)
+
+		err := feeder.Feed(&config)
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		if config.Value != "verbose_affixed" {
+			t.Errorf("Expected Value to be 'verbose_affixed', got '%s'", config.Value)
+		}
+
+		// Check that verbose debug messages were logged
+		if len(logger.messages) == 0 {
+			t.Error("Expected verbose debug messages to be logged")
+		}
+
+		// Check for specific expected messages
+		expectedMessages := []string{
+			"Verbose affixed environment feeder debugging enabled",
+			"AffixedEnvFeeder: Starting feed process",
+			"AffixedEnvFeeder: Processing struct with affixes",
+		}
+
+		for _, expected := range expectedMessages {
+			found := false
+			for _, msg := range logger.messages {
+				if msg == expected {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Expected debug message '%s' not found in logged messages", expected)
+			}
+		}
+	})
 }

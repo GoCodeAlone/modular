@@ -23,63 +23,116 @@ var ErrEnvEmptyPrefixAndSuffix = errors.New("env: prefix or suffix cannot be emp
 
 // AffixedEnvFeeder is a feeder that reads environment variables with a prefix and/or suffix
 type AffixedEnvFeeder struct {
-	Prefix string
-	Suffix string
+	Prefix       string
+	Suffix       string
+	verboseDebug bool
+	logger       interface {
+		Debug(msg string, args ...any)
+	}
 }
 
 // NewAffixedEnvFeeder creates a new AffixedEnvFeeder with the specified prefix and suffix
 func NewAffixedEnvFeeder(prefix, suffix string) AffixedEnvFeeder {
-	return AffixedEnvFeeder{Prefix: prefix, Suffix: suffix}
+	return AffixedEnvFeeder{
+		Prefix:       prefix,
+		Suffix:       suffix,
+		verboseDebug: false,
+		logger:       nil,
+	}
+}
+
+// SetVerboseDebug enables or disables verbose debug logging
+func (f *AffixedEnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg string, args ...any) }) {
+	f.verboseDebug = enabled
+	f.logger = logger
+	if enabled && logger != nil {
+		f.logger.Debug("Verbose affixed environment feeder debugging enabled")
+	}
 }
 
 // Feed reads environment variables and populates the provided structure
 func (f AffixedEnvFeeder) Feed(structure interface{}) error {
+	if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("AffixedEnvFeeder: Starting feed process", "structureType", reflect.TypeOf(structure), "prefix", f.Prefix, "suffix", f.Suffix)
+	}
+
 	inputType := reflect.TypeOf(structure)
 	if inputType != nil {
 		if inputType.Kind() == reflect.Ptr {
 			if inputType.Elem().Kind() == reflect.Struct {
-				return fillStruct(reflect.ValueOf(structure).Elem(), f.Prefix, f.Suffix)
+				return f.fillStruct(reflect.ValueOf(structure).Elem(), f.Prefix, f.Suffix)
 			}
 		}
 	}
 
+	if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("AffixedEnvFeeder: Invalid structure provided")
+	}
 	return ErrEnvInvalidStructure
 }
 
 // fillStruct sets struct fields from environment variables
-func fillStruct(rv reflect.Value, prefix, suffix string) error {
+func (f AffixedEnvFeeder) fillStruct(rv reflect.Value, prefix, suffix string) error {
 	if prefix == "" && suffix == "" {
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Both prefix and suffix are empty")
+		}
 		return ErrEnvEmptyPrefixAndSuffix
 	}
 
 	prefix = strings.ToUpper(prefix)
 	suffix = strings.ToUpper(suffix)
 
-	return processStructFields(rv, prefix, suffix)
+	if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("AffixedEnvFeeder: Processing struct with affixes", "prefix", prefix, "suffix", suffix, "structType", rv.Type())
+	}
+
+	return f.processStructFields(rv, prefix, suffix)
 }
 
 // processStructFields iterates through struct fields
-func processStructFields(rv reflect.Value, prefix, suffix string) error {
+func (f AffixedEnvFeeder) processStructFields(rv reflect.Value, prefix, suffix string) error {
+	if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("AffixedEnvFeeder: Processing struct fields", "numFields", rv.NumField(), "prefix", prefix, "suffix", suffix)
+	}
+
 	for i := 0; i < rv.NumField(); i++ {
 		field := rv.Field(i)
 		fieldType := rv.Type().Field(i)
 
-		if err := processField(field, &fieldType, prefix, suffix); err != nil {
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Processing field", "fieldName", fieldType.Name, "fieldType", fieldType.Type, "fieldKind", field.Kind())
+		}
+
+		if err := f.processField(field, &fieldType, prefix, suffix); err != nil {
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("AffixedEnvFeeder: Field processing failed", "fieldName", fieldType.Name, "error", err)
+			}
 			return fmt.Errorf("error in field '%s': %w", fieldType.Name, err)
+		}
+
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Field processing completed", "fieldName", fieldType.Name)
 		}
 	}
 	return nil
 }
 
 // processField handles a single struct field
-func processField(field reflect.Value, fieldType *reflect.StructField, prefix, suffix string) error {
+func (f AffixedEnvFeeder) processField(field reflect.Value, fieldType *reflect.StructField, prefix, suffix string) error {
 	// Handle nested structs
 	switch field.Kind() {
 	case reflect.Struct:
-		return processStructFields(field, prefix, suffix)
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Processing nested struct", "fieldName", fieldType.Name, "structType", field.Type())
+		}
+		return f.processStructFields(field, prefix, suffix)
 	case reflect.Pointer:
 		if !field.IsZero() && field.Elem().Kind() == reflect.Struct {
-			return processStructFields(field.Elem(), prefix, suffix)
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("AffixedEnvFeeder: Processing nested struct pointer", "fieldName", fieldType.Name, "structType", field.Elem().Type())
+			}
+			return f.processStructFields(field.Elem(), prefix, suffix)
 		}
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16,
 		reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
@@ -88,7 +141,12 @@ func processField(field reflect.Value, fieldType *reflect.StructField, prefix, s
 		reflect.Interface, reflect.Map, reflect.Slice, reflect.String, reflect.UnsafePointer:
 		// Check for env tag for primitive types and other non-struct types
 		if envTag, exists := fieldType.Tag.Lookup("env"); exists {
-			return setFieldFromEnv(field, envTag, prefix, suffix)
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("AffixedEnvFeeder: Found env tag", "fieldName", fieldType.Name, "envTag", envTag)
+			}
+			return f.setFieldFromEnv(field, envTag, prefix, suffix)
+		} else if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: No env tag found", "fieldName", fieldType.Name)
 		}
 	}
 
@@ -96,7 +154,7 @@ func processField(field reflect.Value, fieldType *reflect.StructField, prefix, s
 }
 
 // setFieldFromEnv sets a field value from an environment variable
-func setFieldFromEnv(field reflect.Value, envTag, prefix, suffix string) error {
+func (f AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, suffix string) error {
 	// Build environment variable name
 	envName := strings.ToUpper(envTag)
 	if prefix != "" {
@@ -106,9 +164,24 @@ func setFieldFromEnv(field reflect.Value, envTag, prefix, suffix string) error {
 		envName = envName + "_" + suffix
 	}
 
+	if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("AffixedEnvFeeder: Looking up environment variable", "envName", envName, "envTag", envTag, "prefix", prefix, "suffix", suffix)
+	}
+
 	// Get and apply environment variable if exists
 	if envValue := os.Getenv(envName); envValue != "" {
-		return setFieldValue(field, envValue)
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Environment variable found", "envName", envName, "envValue", envValue)
+		}
+		err := setFieldValue(field, envValue)
+		if err != nil && f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Failed to set field value", "envName", envName, "envValue", envValue, "error", err)
+		} else if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("AffixedEnvFeeder: Successfully set field value", "envName", envName, "envValue", envValue)
+		}
+		return err
+	} else if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("AffixedEnvFeeder: Environment variable not found or empty", "envName", envName)
 	}
 	return nil
 }

@@ -54,12 +54,11 @@ func main() {
 		}
 	}()
 
-	// Configure feeders with verbose-aware environment feeders
-	// The database module will automatically handle instance-aware feeding
-	verboseEnvFeeder := feeders.NewVerboseEnvFeeder()
+	// Configure feeders with verbose environment feeder
+	envFeeder := feeders.NewEnvFeeder()
 	
 	modular.ConfigFeeders = []modular.Feeder{
-		verboseEnvFeeder, // Use verbose environment feeder for app config
+		envFeeder, // Use environment feeder with verbose support when enabled
 		// Instance-aware feeding is handled automatically by the database module
 	}
 

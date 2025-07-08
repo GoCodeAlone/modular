@@ -79,17 +79,17 @@ DEBUG Verbose configuration debugging enabled
 🚀 Initializing application with verbose debugging...
 DEBUG Starting configuration loading process
 DEBUG Configuration feeders available count=1
-DEBUG Config feeder registered index=0 type=*feeders.VerboseEnvFeeder
-DEBUG Added config feeder to builder type=*feeders.VerboseEnvFeeder
+DEBUG Config feeder registered index=0 type=*feeders.EnvFeeder
+DEBUG Added config feeder to builder type=*feeders.EnvFeeder
 DEBUG Processing configuration sections
 DEBUG Processing main configuration configType=*main.AppConfig section=_main
-DEBUG VerboseEnvFeeder: Starting feed process structureType=*main.AppConfig
-DEBUG VerboseEnvFeeder: Processing struct structType=main.AppConfig numFields=3 prefix=
-DEBUG VerboseEnvFeeder: Processing field fieldName=AppName fieldType=string fieldKind=string
-DEBUG VerboseEnvFeeder: Found env tag fieldName=AppName envTag=APP_NAME
-DEBUG VerboseEnvFeeder: Looking up environment variable fieldName=AppName envName=APP_NAME envTag=APP_NAME prefix=
-DEBUG VerboseEnvFeeder: Environment variable found fieldName=AppName envName=APP_NAME envValue=Verbose Debug Example
-DEBUG VerboseEnvFeeder: Successfully set field value fieldName=AppName envName=APP_NAME envValue=Verbose Debug Example
+DEBUG EnvFeeder: Starting feed process structureType=*main.AppConfig
+DEBUG EnvFeeder: Processing struct structType=main.AppConfig numFields=3 prefix=
+DEBUG EnvFeeder: Processing field fieldName=AppName fieldType=string fieldKind=string
+DEBUG EnvFeeder: Found env tag fieldName=AppName envTag=APP_NAME
+DEBUG EnvFeeder: Looking up environment variable fieldName=AppName envName=APP_NAME envTag=APP_NAME prefix=
+DEBUG EnvFeeder: Environment variable found fieldName=AppName envName=APP_NAME envValue=Verbose Debug Example
+DEBUG EnvFeeder: Successfully set field value fieldName=AppName envName=APP_NAME envValue=Verbose Debug Example
 ...
 ```
 
