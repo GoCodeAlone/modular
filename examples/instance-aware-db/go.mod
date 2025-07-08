@@ -2,8 +2,6 @@ module instance-aware-db
 
 go 1.24.2
 
-toolchain go1.24.4
-
 replace github.com/GoCodeAlone/modular => ../..
 
 replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database

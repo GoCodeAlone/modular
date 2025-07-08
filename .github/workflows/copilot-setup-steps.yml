@@ -1,0 +1,106 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation, and
+# allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
+      contents: read
+
+    # You can define any steps you want, and they will run before the agent starts.
+    # If you do not check out your code, Copilot will do this for you.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Setup Go environment for modular framework development and testing
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.24.2'
+          cache-dependency-path: go.sum
+
+      # Install Go dependencies and development tools
+      - name: Install Go dependencies and tools
+        run: |
+          go mod download
+          go mod verify
+
+      # Install golangci-lint for Go code linting
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          args: --version
+
+      # Install module dependencies for all modules
+      - name: Install module dependencies
+        run: |
+          echo "Installing dependencies for all modules..."
+          for module_dir in modules/*/; do
+            if [ -f "$module_dir/go.mod" ]; then
+              echo "Installing dependencies for $module_dir"
+              cd "$module_dir"
+              go mod download
+              go mod verify
+              cd - > /dev/null
+            fi
+          done
+
+      # Install example dependencies
+      - name: Install example dependencies
+        run: |
+          echo "Installing dependencies for all examples..."
+          for example_dir in examples/*/; do
+            if [ -f "$example_dir/go.mod" ]; then
+              echo "Installing dependencies for $example_dir"
+              cd "$example_dir"
+              go mod download
+              go mod verify
+              cd - > /dev/null
+            fi
+          done
+
+      # Install CLI tool dependencies
+      - name: Install CLI tool dependencies
+        run: |
+          echo "Installing CLI tool dependencies..."
+          cd cmd/modcli
+          go mod download
+          go mod verify
+          cd - > /dev/null
+
+      # Build CLI tool for testing
+      - name: Build CLI tool
+        run: |
+          cd cmd/modcli
+          go build -o modcli .
+          ./modcli --help
+          cd - > /dev/null
+
+      # Verify all tools are properly installed
+      - name: Verify tool installations
+        run: |
+          echo "=== Tool Versions ==="
+          go version
+          golangci-lint --version
+          echo "=== Go Environment ==="
+          go env GOVERSION
+          go env GOROOT
+          go env GOPATH
+          echo "All tools installed successfully!"
