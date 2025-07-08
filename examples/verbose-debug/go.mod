@@ -45,3 +45,6 @@ require (
 
 // Use local module for development
 replace github.com/GoCodeAlone/modular => ../..
+
+// Use local database module for development
+replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database

@@ -652,7 +652,7 @@ func TestInstanceAwareEnvFeeder_FeedKey_WithVerboseDebug(t *testing.T) {
 	assert.Equal(t, "postgres://localhost/primary", config.DSN)
 
 	// Verify verbose logging occurred
-	assert.Positive(t, len(mockLogger.DebugCalls), "Expected verbose debug calls")
+	assert.NotEmpty(t, mockLogger.DebugCalls, "Expected verbose debug calls")
 
 	// Look for key verbose logging messages
 	foundStartMessage := false
