@@ -675,7 +675,7 @@ func (app *StdApplication) resolveInterfaceBasedDependencies(
 func (app *StdApplication) findServiceByInterface(dep ServiceDependency) (service any, serviceName string) {
 	for serviceName, service := range app.svcRegistry {
 		serviceType := reflect.TypeOf(service)
-		if serviceType.Implements(dep.SatisfiesInterface) {
+		if app.typeImplementsInterface(serviceType, dep.SatisfiesInterface) {
 			return service, serviceName
 		}
 	}
