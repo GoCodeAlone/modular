@@ -268,10 +268,10 @@ func TestInstanceAwareEnvFeederSetVerboseDebug(t *testing.T) {
 
 	// Test setting verbose debug to true
 	feeder.SetVerboseDebug(true, nil)
-	
+
 	// Test setting verbose debug to false
 	feeder.SetVerboseDebug(false, nil)
-	
+
 	// Since there's no public way to check the internal verboseDebug field,
 	// we just verify the method runs without error
 	assert.NotNil(t, feeder)
@@ -290,10 +290,10 @@ func TestInstanceAwareEnvFeederErrorHandling(t *testing.T) {
 	)
 
 	tests := []struct {
-		name           string
-		config         interface{}
-		shouldError    bool
-		expectedError  string
+		name          string
+		config        interface{}
+		shouldError   bool
+		expectedError string
 	}{
 		{
 			name:          "nil_config",
@@ -302,7 +302,7 @@ func TestInstanceAwareEnvFeederErrorHandling(t *testing.T) {
 			expectedError: "env: invalid structure",
 		},
 		{
-			name:          "non_pointer_config", 
+			name:          "non_pointer_config",
 			config:        TestConfig{},
 			shouldError:   true,
 			expectedError: "env: invalid structure",
@@ -323,9 +323,9 @@ func TestInstanceAwareEnvFeederErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := feeder.Feed(tt.config)
-			
+
 			if tt.shouldError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				assert.NoError(t, err)
@@ -343,9 +343,9 @@ func TestInstanceAwareEnvFeederFeedKey(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		instanceKey   string
-		envVars       map[string]string
+		name           string
+		instanceKey    string
+		envVars        map[string]string
 		expectedConfig TestConfig
 	}{
 		{
@@ -358,7 +358,7 @@ func TestInstanceAwareEnvFeederFeedKey(t *testing.T) {
 			},
 			expectedConfig: TestConfig{
 				Driver:   "postgres",
-				DSN:      "postgres://localhost/primary", 
+				DSN:      "postgres://localhost/primary",
 				Username: "primary_user",
 			},
 		},
@@ -417,10 +417,10 @@ func TestInstanceAwareEnvFeederComplexTypes(t *testing.T) {
 	}
 
 	type ComplexConfig struct {
-		Name       string       `env:"NAME"`
-		Port       string       `env:"PORT"`
-		Nested     NestedConfig // No env tag - should be processed as nested struct
-		NestedPtr  *NestedConfig `env:"NESTED_PTR"`
+		Name      string        `env:"NAME"`
+		Port      string        `env:"PORT"`
+		Nested    NestedConfig  // No env tag - should be processed as nested struct
+		NestedPtr *NestedConfig `env:"NESTED_PTR"`
 	}
 
 	// Clean up environment

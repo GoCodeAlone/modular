@@ -279,7 +279,7 @@ func TestVerboseEnvFeederTypeConversion(t *testing.T) {
 	os.Setenv("INT_VALUE", "42")
 	os.Setenv("FLOAT_VALUE", "3.14")
 	os.Setenv("STRING_VALUE", "test string")
-	
+
 	defer func() {
 		os.Unsetenv("BOOL_VALUE")
 		os.Unsetenv("INT_VALUE")
@@ -290,7 +290,7 @@ func TestVerboseEnvFeederTypeConversion(t *testing.T) {
 	var config Config
 	feeder := NewVerboseEnvFeeder()
 	feeder.SetVerboseDebug(true, logger)
-	
+
 	err := feeder.Feed(&config)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -327,7 +327,7 @@ func TestVerboseEnvFeederEmbeddedStructs(t *testing.T) {
 	// Set up environment variables
 	os.Setenv("EMBEDDED_FIELD", "embedded value")
 	os.Setenv("MAIN_FIELD", "main value")
-	
+
 	defer func() {
 		os.Unsetenv("EMBEDDED_FIELD")
 		os.Unsetenv("MAIN_FIELD")
@@ -336,7 +336,7 @@ func TestVerboseEnvFeederEmbeddedStructs(t *testing.T) {
 	var config Config
 	feeder := NewVerboseEnvFeeder()
 	feeder.SetVerboseDebug(true, logger)
-	
+
 	err := feeder.Feed(&config)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -362,7 +362,7 @@ func TestVerboseEnvFeederArrayAndSliceTypes(t *testing.T) {
 
 	// Set up environment variables
 	os.Setenv("SLICE_FIELD", "item1,item2,item3")
-	
+
 	defer func() {
 		os.Unsetenv("SLICE_FIELD")
 	}()
@@ -370,7 +370,7 @@ func TestVerboseEnvFeederArrayAndSliceTypes(t *testing.T) {
 	var config Config
 	feeder := NewVerboseEnvFeeder()
 	feeder.SetVerboseDebug(true, logger)
-	
+
 	err := feeder.Feed(&config)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)

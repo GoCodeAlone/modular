@@ -862,7 +862,7 @@ func TestSetVerboseConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock logger to capture debug messages
 			mockLogger := &MockLogger{}
-			
+
 			// Set up expectations for debug messages
 			if tt.enabled {
 				mockLogger.On("Debug", "Verbose configuration debugging enabled", []interface{}(nil)).Return()
@@ -897,7 +897,7 @@ func TestSetVerboseConfig(t *testing.T) {
 
 func TestIsVerboseConfig(t *testing.T) {
 	mockLogger := &MockLogger{}
-	
+
 	// Create application
 	app := NewStdApplication(
 		NewStdConfigProvider(testCfg{Str: "test"}),
