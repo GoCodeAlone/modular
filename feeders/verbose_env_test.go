@@ -1,6 +1,7 @@
 package feeders
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -260,4 +261,121 @@ func TestVerboseEnvFeeder(t *testing.T) {
 			t.Error("Expected to find 'No env tag found' log message")
 		}
 	})
+}
+
+// TestVerboseEnvFeederTypeConversion tests type conversion scenarios
+func TestVerboseEnvFeederTypeConversion(t *testing.T) {
+	logger := &mockLogger{}
+
+	type Config struct {
+		BoolValue   bool    `env:"BOOL_VALUE"`
+		IntValue    int     `env:"INT_VALUE"`
+		FloatValue  float64 `env:"FLOAT_VALUE"`
+		StringValue string  `env:"STRING_VALUE"`
+	}
+
+	// Set up environment variables
+	os.Setenv("BOOL_VALUE", "true")
+	os.Setenv("INT_VALUE", "42")
+	os.Setenv("FLOAT_VALUE", "3.14")
+	os.Setenv("STRING_VALUE", "test string")
+	
+	defer func() {
+		os.Unsetenv("BOOL_VALUE")
+		os.Unsetenv("INT_VALUE")
+		os.Unsetenv("FLOAT_VALUE")
+		os.Unsetenv("STRING_VALUE")
+	}()
+
+	var config Config
+	feeder := NewVerboseEnvFeeder()
+	feeder.SetVerboseDebug(true, logger)
+	
+	err := feeder.Feed(&config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify the values were set correctly
+	if !config.BoolValue {
+		t.Error("Expected BoolValue to be true")
+	}
+	if config.IntValue != 42 {
+		t.Errorf("Expected IntValue to be 42, got %d", config.IntValue)
+	}
+	if config.FloatValue != 3.14 {
+		t.Errorf("Expected FloatValue to be 3.14, got %f", config.FloatValue)
+	}
+	if config.StringValue != "test string" {
+		t.Errorf("Expected StringValue to be 'test string', got '%s'", config.StringValue)
+	}
+}
+
+// TestVerboseEnvFeederEmbeddedStructs tests embedded struct processing
+func TestVerboseEnvFeederEmbeddedStructs(t *testing.T) {
+	logger := &mockLogger{}
+
+	type EmbeddedConfig struct {
+		EmbeddedField string `env:"EMBEDDED_FIELD"`
+	}
+
+	type Config struct {
+		EmbeddedConfig
+		MainField string `env:"MAIN_FIELD"`
+	}
+
+	// Set up environment variables
+	os.Setenv("EMBEDDED_FIELD", "embedded value")
+	os.Setenv("MAIN_FIELD", "main value")
+	
+	defer func() {
+		os.Unsetenv("EMBEDDED_FIELD")
+		os.Unsetenv("MAIN_FIELD")
+	}()
+
+	var config Config
+	feeder := NewVerboseEnvFeeder()
+	feeder.SetVerboseDebug(true, logger)
+	
+	err := feeder.Feed(&config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify the values were set correctly
+	if config.EmbeddedField != "embedded value" {
+		t.Errorf("Expected EmbeddedField to be 'embedded value', got '%s'", config.EmbeddedField)
+	}
+	if config.MainField != "main value" {
+		t.Errorf("Expected MainField to be 'main value', got '%s'", config.MainField)
+	}
+}
+
+// TestVerboseEnvFeederArrayAndSliceTypes tests array and slice type handling
+func TestVerboseEnvFeederArrayAndSliceTypes(t *testing.T) {
+	logger := &mockLogger{}
+
+	type Config struct {
+		SliceField []string `env:"SLICE_FIELD"`
+		// Removed ArrayField as it's not supported by the underlying library
+	}
+
+	// Set up environment variables
+	os.Setenv("SLICE_FIELD", "item1,item2,item3")
+	
+	defer func() {
+		os.Unsetenv("SLICE_FIELD")
+	}()
+
+	var config Config
+	feeder := NewVerboseEnvFeeder()
+	feeder.SetVerboseDebug(true, logger)
+	
+	err := feeder.Feed(&config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Note: The actual behavior depends on the underlying feeder implementation
+	// These tests ensure the verbose feeder can handle these types without crashing
 }

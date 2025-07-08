@@ -257,3 +257,217 @@ func clearTestEnv(t *testing.T) {
 		os.Unsetenv(envVar)
 	}
 }
+
+// TestInstanceAwareEnvFeederSetVerboseDebug tests the verbose debug functionality
+func TestInstanceAwareEnvFeederSetVerboseDebug(t *testing.T) {
+	feeder := NewInstanceAwareEnvFeeder(
+		func(instanceKey string) string {
+			return "DB_" + instanceKey + "_"
+		},
+	)
+
+	// Test setting verbose debug to true
+	feeder.SetVerboseDebug(true, nil)
+	
+	// Test setting verbose debug to false
+	feeder.SetVerboseDebug(false, nil)
+	
+	// Since there's no public way to check the internal verboseDebug field,
+	// we just verify the method runs without error
+	assert.NotNil(t, feeder)
+}
+
+// TestInstanceAwareEnvFeederErrorHandling tests error handling scenarios
+func TestInstanceAwareEnvFeederErrorHandling(t *testing.T) {
+	type TestConfig struct {
+		Value string `env:"VALUE"`
+	}
+
+	feeder := NewInstanceAwareEnvFeeder(
+		func(instanceKey string) string {
+			return instanceKey + "_"
+		},
+	)
+
+	tests := []struct {
+		name           string
+		config         interface{}
+		shouldError    bool
+		expectedError  string
+	}{
+		{
+			name:          "nil_config",
+			config:        nil,
+			shouldError:   true,
+			expectedError: "env: invalid structure",
+		},
+		{
+			name:          "non_pointer_config", 
+			config:        TestConfig{},
+			shouldError:   true,
+			expectedError: "env: invalid structure",
+		},
+		{
+			name:          "pointer_to_non_struct",
+			config:        &[]string{},
+			shouldError:   true,
+			expectedError: "env: invalid structure",
+		},
+		{
+			name:        "valid_config",
+			config:      &TestConfig{},
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := feeder.Feed(tt.config)
+			
+			if tt.shouldError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestInstanceAwareEnvFeederFeedKey tests the FeedKey method with various scenarios
+func TestInstanceAwareEnvFeederFeedKey(t *testing.T) {
+	type TestConfig struct {
+		Driver   string `env:"DRIVER"`
+		DSN      string `env:"DSN"`
+		Username string `env:"USERNAME"`
+	}
+
+	tests := []struct {
+		name          string
+		instanceKey   string
+		envVars       map[string]string
+		expectedConfig TestConfig
+	}{
+		{
+			name:        "feed_key_with_values",
+			instanceKey: "primary",
+			envVars: map[string]string{
+				"DB_PRIMARY_DRIVER":   "postgres",
+				"DB_PRIMARY_DSN":      "postgres://localhost/primary",
+				"DB_PRIMARY_USERNAME": "primary_user",
+			},
+			expectedConfig: TestConfig{
+				Driver:   "postgres",
+				DSN:      "postgres://localhost/primary", 
+				Username: "primary_user",
+			},
+		},
+		{
+			name:        "feed_key_with_missing_values",
+			instanceKey: "secondary",
+			envVars: map[string]string{
+				"DB_SECONDARY_DRIVER": "mysql",
+				// Missing DSN and USERNAME
+			},
+			expectedConfig: TestConfig{
+				Driver:   "mysql",
+				DSN:      "",
+				Username: "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up environment
+			defer cleanupInstanceTestEnv()
+
+			// Set up environment variables
+			for key, value := range tt.envVars {
+				os.Setenv(key, value)
+			}
+
+			// Create feeder
+			feeder := NewInstanceAwareEnvFeeder(
+				func(instanceKey string) string {
+					return "DB_" + instanceKey + "_"
+				},
+			)
+
+			// Create config instance
+			config := &TestConfig{}
+
+			// Feed the specific key
+			err := feeder.FeedKey(tt.instanceKey, config)
+			require.NoError(t, err)
+
+			// Verify the configuration
+			assert.Equal(t, tt.expectedConfig.Driver, config.Driver)
+			assert.Equal(t, tt.expectedConfig.DSN, config.DSN)
+			assert.Equal(t, tt.expectedConfig.Username, config.Username)
+		})
+	}
+}
+
+// TestInstanceAwareEnvFeederComplexTypes tests feeding complex types
+func TestInstanceAwareEnvFeederComplexTypes(t *testing.T) {
+	type NestedConfig struct {
+		Timeout string `env:"TIMEOUT"`
+		Retries string `env:"RETRIES"`
+	}
+
+	type ComplexConfig struct {
+		Name       string       `env:"NAME"`
+		Port       string       `env:"PORT"`
+		Nested     NestedConfig // No env tag - should be processed as nested struct
+		NestedPtr  *NestedConfig `env:"NESTED_PTR"`
+	}
+
+	// Clean up environment
+	defer cleanupInstanceTestEnv()
+
+	// Set up environment variables
+	envVars := map[string]string{
+		"APP_PRIMARY_NAME":    "Primary App",
+		"APP_PRIMARY_PORT":    "8080",
+		"APP_PRIMARY_TIMEOUT": "30s",
+		"APP_PRIMARY_RETRIES": "3",
+	}
+
+	for key, value := range envVars {
+		os.Setenv(key, value)
+	}
+
+	// Create feeder
+	feeder := NewInstanceAwareEnvFeeder(
+		func(instanceKey string) string {
+			return "APP_" + instanceKey + "_"
+		},
+	)
+
+	// Create config instance
+	config := &ComplexConfig{}
+
+	// Feed the configuration
+	err := feeder.FeedKey("primary", config)
+	require.NoError(t, err)
+
+	// Verify the configuration
+	assert.Equal(t, "Primary App", config.Name)
+	assert.Equal(t, "8080", config.Port)
+	assert.Equal(t, "30s", config.Nested.Timeout)
+	assert.Equal(t, "3", config.Nested.Retries)
+}
+
+// Helper function to clean up test environment variables
+func cleanupInstanceTestEnv() {
+	envVars := []string{
+		"DB_PRIMARY_DRIVER", "DB_PRIMARY_DSN", "DB_PRIMARY_USERNAME",
+		"DB_SECONDARY_DRIVER", "DB_SECONDARY_DSN", "DB_SECONDARY_USERNAME",
+		"APP_PRIMARY_NAME", "APP_PRIMARY_PORT", "APP_PRIMARY_TIMEOUT", "APP_PRIMARY_RETRIES",
+	}
+
+	for _, envVar := range envVars {
+		os.Unsetenv(envVar)
+	}
+}

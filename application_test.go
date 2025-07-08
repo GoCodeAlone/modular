@@ -842,3 +842,86 @@ var (
 	ErrModuleStartFailed = fmt.Errorf("module start failed")
 	ErrModuleStopFailed  = fmt.Errorf("module stop failed")
 )
+
+func TestSetVerboseConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+	}{
+		{
+			name:    "Enable verbose config",
+			enabled: true,
+		},
+		{
+			name:    "Disable verbose config",
+			enabled: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock logger to capture debug messages
+			mockLogger := &MockLogger{}
+			
+			// Set up expectations for debug messages
+			if tt.enabled {
+				mockLogger.On("Debug", "Verbose configuration debugging enabled", []interface{}(nil)).Return()
+			} else {
+				mockLogger.On("Debug", "Verbose configuration debugging disabled", []interface{}(nil)).Return()
+			}
+
+			// Create application with mock logger
+			app := NewStdApplication(
+				NewStdConfigProvider(testCfg{Str: "test"}),
+				mockLogger,
+			)
+
+			// Test that verbose config is initially false
+			if app.IsVerboseConfig() != false {
+				t.Error("Expected verbose config to be initially false")
+			}
+
+			// Set verbose config
+			app.SetVerboseConfig(tt.enabled)
+
+			// Verify the setting was applied
+			if app.IsVerboseConfig() != tt.enabled {
+				t.Errorf("Expected verbose config to be %v, got %v", tt.enabled, app.IsVerboseConfig())
+			}
+
+			// Verify mock expectations were met
+			mockLogger.AssertExpectations(t)
+		})
+	}
+}
+
+func TestIsVerboseConfig(t *testing.T) {
+	mockLogger := &MockLogger{}
+	
+	// Create application
+	app := NewStdApplication(
+		NewStdConfigProvider(testCfg{Str: "test"}),
+		mockLogger,
+	)
+
+	// Test initial state
+	if app.IsVerboseConfig() != false {
+		t.Error("Expected IsVerboseConfig to return false initially")
+	}
+
+	// Test after enabling
+	mockLogger.On("Debug", "Verbose configuration debugging enabled", []interface{}(nil)).Return()
+	app.SetVerboseConfig(true)
+	if app.IsVerboseConfig() != true {
+		t.Error("Expected IsVerboseConfig to return true after enabling")
+	}
+
+	// Test after disabling
+	mockLogger.On("Debug", "Verbose configuration debugging disabled", []interface{}(nil)).Return()
+	app.SetVerboseConfig(false)
+	if app.IsVerboseConfig() != false {
+		t.Error("Expected IsVerboseConfig to return false after disabling")
+	}
+
+	mockLogger.AssertExpectations(t)
+}
