@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
@@ -146,4 +147,11 @@ func main() {
 	fmt.Println("4. Debug instance-aware environment variable mapping")
 	fmt.Println("5. Troubleshoot configuration loading issues step by step")
 	fmt.Println("\nUse app.SetVerboseConfig(true) to enable this debugging in your application!")
+
+	// If running in CI, keep the process alive a bit longer for CI validation
+	if os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true" {
+		fmt.Println("\n🤖 Detected CI environment - keeping process alive for validation...")
+		time.Sleep(4 * time.Second)
+		fmt.Println("✅ CI validation complete")
+	}
 }

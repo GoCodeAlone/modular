@@ -515,7 +515,10 @@ type MockVerboseAwareFeeder struct {
 
 func (m *MockVerboseAwareFeeder) Feed(structure interface{}) error {
 	args := m.Called(structure)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock feeder error: %w", err)
+	}
+	return nil
 }
 
 func (m *MockVerboseAwareFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg string, args ...any) }) {
