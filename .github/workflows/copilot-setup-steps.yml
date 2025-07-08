@@ -46,7 +46,6 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
-          args: --version
 
       # Install module dependencies for all modules
       - name: Install module dependencies
@@ -98,7 +97,7 @@ jobs:
         run: |
           echo "=== Tool Versions ==="
           go version
-          golangci-lint --version
+          golangci-lint version
           echo "=== Go Environment ==="
           go env GOVERSION
           go env GOROOT
