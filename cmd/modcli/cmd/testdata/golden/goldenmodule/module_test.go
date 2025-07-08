@@ -3,11 +3,10 @@ package goldenmodule
 import (
 	"context"
 	"fmt"
-	"testing"
-
 	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 func TestNewGoldenModuleModule(t *testing.T) {

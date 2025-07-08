@@ -9,6 +9,7 @@ type MockApplication struct {
 	configSections map[string]modular.ConfigProvider
 	services       map[string]interface{}
 	logger         modular.Logger
+	verboseConfig  bool
 }
 
 // NewMockApplication creates a new mock application for testing
@@ -108,6 +109,16 @@ func (m *MockApplication) Logger() modular.Logger {
 // SetLogger sets the logger for the mock application
 func (m *MockApplication) SetLogger(logger modular.Logger) {
 	m.logger = logger
+}
+
+// SetVerboseConfig sets verbose configuration debugging for the mock
+func (m *MockApplication) SetVerboseConfig(enabled bool) {
+	m.verboseConfig = enabled
+}
+
+// IsVerboseConfig returns whether verbose configuration debugging is enabled
+func (m *MockApplication) IsVerboseConfig() bool {
+	return m.verboseConfig
 }
 
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider

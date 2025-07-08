@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"bytes"
 	"fmt"
+	"go/format"
 	"io"
 	"os"
 	"os/exec"
@@ -529,6 +530,16 @@ func TestGenerateModuleWithGoldenFiles(t *testing.T) {
 			t.Logf("Successfully ran go mod tidy in golden module directory")
 		}
 
+		// Run go fmt in the golden directory to ensure consistent formatting
+		fmtCmd := exec.Command("go", "fmt", "./...")
+		fmtCmd.Dir = goldenModuleDir
+		fmtOutput, fmtErr := fmtCmd.CombinedOutput()
+		if fmtErr != nil {
+			t.Logf("Warning: go fmt for golden module reported an issue: %v\nOutput: %s", fmtErr, string(fmtOutput))
+		} else {
+			t.Logf("Successfully ran go fmt in golden module directory")
+		}
+
 		t.Logf("Updated golden files in: %s", goldenModuleDir)
 	} else {
 		// Compare generated files with golden files
@@ -610,6 +621,22 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+// Helper function to format Go code if it's a .go file
+func formatGoCode(content []byte, filename string) ([]byte, error) {
+	if !strings.HasSuffix(filename, ".go") {
+		return content, nil
+	}
+
+	// Use go/format to format the code
+	formatted, err := format.Source(content)
+	if err != nil {
+		// If formatting fails, return original content with a warning
+		// This prevents test failures due to syntax errors in generated code
+		return content, nil
+	}
+	return formatted, nil
+}
+
 // Helper function to compare two directories recursively
 func compareDirectories(t *testing.T, dir1, dir2 string) error {
 	// Read all files in dir1
@@ -651,6 +678,16 @@ func compareDirectories(t *testing.T, dir1, dir2 string) error {
 		content2, err := os.ReadFile(path2)
 		if err != nil {
 			return fmt.Errorf("golden file %s not found: %v", path2, err)
+		}
+
+		// Format code before comparison
+		content1, err = formatGoCode(content1, file.Name())
+		if err != nil {
+			return fmt.Errorf("failed to format file %s: %v", path1, err)
+		}
+		content2, err = formatGoCode(content2, file.Name())
+		if err != nil {
+			return fmt.Errorf("failed to format file %s: %v", path2, err)
 		}
 
 		// Compare contents

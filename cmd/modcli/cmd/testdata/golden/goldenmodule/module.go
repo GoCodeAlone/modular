@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-
 	"github.com/GoCodeAlone/modular"
+	"log/slog"
 )
 
 // Config holds the configuration for the GoldenModule module

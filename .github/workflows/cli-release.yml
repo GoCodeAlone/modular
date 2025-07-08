@@ -108,9 +108,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  test:
+    name: Run CLI Tests
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          cd cmd/modcli
+          go mod download
+          go mod verify
+
+      - name: Run CLI tests
+        run: |
+          cd cmd/modcli
+          go test ./... -v -race
+
+      - name: Run lint checks
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          cd cmd/modcli
+          golangci-lint run
+
   build:
     name: Build CLI
-    needs: prepare
+    needs: [prepare, test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -151,7 +183,7 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [prepare, build]
+    needs: [prepare, test, build]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
