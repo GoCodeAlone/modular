@@ -23,17 +23,17 @@ type AppConfig struct {
 func main() {
 	fmt.Println("=== Verbose Configuration Debug Example ===")
 	fmt.Println("This example demonstrates the built-in verbose configuration debugging")
-	fmt.Println("functionality to troubleshoot InstanceAware environment variable mapping.\n")
+	fmt.Println("functionality to troubleshoot InstanceAware environment variable mapping.")
 
 	// Set up environment variables for both app and database configuration
 	envVars := map[string]string{
 		"APP_NAME":               "Verbose Debug Example",
-		"APP_DEBUG":              "true", 
+		"APP_DEBUG":              "true",
 		"APP_LOG_LEVEL":          "debug",
 		"DB_PRIMARY_DRIVER":      "sqlite",
 		"DB_PRIMARY_DSN":         "./primary.db",
 		"DB_PRIMARY_MAX_CONNS":   "10",
-		"DB_SECONDARY_DRIVER":    "sqlite", 
+		"DB_SECONDARY_DRIVER":    "sqlite",
 		"DB_SECONDARY_DSN":       "./secondary.db",
 		"DB_SECONDARY_MAX_CONNS": "5",
 		"DB_CACHE_DRIVER":        "sqlite",
@@ -56,7 +56,7 @@ func main() {
 
 	// Configure feeders with verbose environment feeder
 	envFeeder := feeders.NewEnvFeeder()
-	
+
 	modular.ConfigFeeders = []modular.Feeder{
 		envFeeder, // Use environment feeder with verbose support when enabled
 		// Instance-aware feeding is handled automatically by the database module
@@ -72,7 +72,7 @@ func main() {
 	)
 
 	// *** ENABLE VERBOSE CONFIGURATION DEBUGGING ***
-	// This is the key feature - it enables detailed DEBUG logging throughout 
+	// This is the key feature - it enables detailed DEBUG logging throughout
 	// the configuration loading process
 	fmt.Println("\n🔧 Enabling verbose configuration debugging...")
 	app.SetVerboseConfig(true)
@@ -99,7 +99,7 @@ func main() {
 	}
 
 	fmt.Println("\n🗄️  Database connections loaded:")
-	
+
 	// Get database module to show connections
 	var dbManager *database.Module
 	if err := app.GetService("database.manager", &dbManager); err != nil {
@@ -142,7 +142,7 @@ func main() {
 	fmt.Println("\n=== Verbose Debug Benefits ===")
 	fmt.Println("1. See exactly which configuration sections are being processed")
 	fmt.Println("2. Track which environment variables are being looked up")
-	fmt.Println("3. Monitor which configuration keys are being evaluated") 
+	fmt.Println("3. Monitor which configuration keys are being evaluated")
 	fmt.Println("4. Debug instance-aware environment variable mapping")
 	fmt.Println("5. Troubleshoot configuration loading issues step by step")
 	fmt.Println("\nUse app.SetVerboseConfig(true) to enable this debugging in your application!")

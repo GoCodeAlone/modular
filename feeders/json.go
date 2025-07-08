@@ -90,7 +90,10 @@ func (j JSONFeeder) Feed(structure interface{}) error {
 			j.logger.Debug("JSONFeeder: Feed completed successfully", "filePath", j.Path)
 		}
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("json feed error: %w", err)
+	}
+	return nil
 }
 
 // FeedKey reads a JSON file and extracts a specific key
@@ -100,7 +103,7 @@ func (j JSONFeeder) FeedKey(key string, target interface{}) error {
 	}
 
 	err := feedKey(j, key, target, json.Marshal, json.Unmarshal, "JSON file")
-	
+
 	if j.verboseDebug && j.logger != nil {
 		if err != nil {
 			j.logger.Debug("JSONFeeder: FeedKey completed with error", "filePath", j.Path, "key", key, "error", err)

@@ -1,6 +1,7 @@
 package feeders
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/BurntSushi/toml"
@@ -48,7 +49,10 @@ func (t TomlFeeder) Feed(structure interface{}) error {
 			t.logger.Debug("TomlFeeder: Feed completed successfully", "filePath", t.Path)
 		}
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("toml feed error: %w", err)
+	}
+	return nil
 }
 
 // FeedKey reads a TOML file and extracts a specific key

@@ -16,8 +16,8 @@ type EnvFeeder struct {
 }
 
 // NewEnvFeeder creates a new EnvFeeder that reads from environment variables
-func NewEnvFeeder() EnvFeeder {
-	return EnvFeeder{
+func NewEnvFeeder() *EnvFeeder {
+	return &EnvFeeder{
 		verboseDebug: false,
 		logger:       nil,
 	}
@@ -33,7 +33,7 @@ func (f *EnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg st
 }
 
 // Feed implements the Feeder interface with optional verbose logging
-func (f EnvFeeder) Feed(structure interface{}) error {
+func (f *EnvFeeder) Feed(structure interface{}) error {
 	if f.verboseDebug && f.logger != nil {
 		f.logger.Debug("EnvFeeder: Starting feed process", "structureType", reflect.TypeOf(structure))
 	}
@@ -78,7 +78,7 @@ func (f EnvFeeder) Feed(structure interface{}) error {
 }
 
 // processStructFields processes all fields in a struct with optional verbose logging
-func (f EnvFeeder) processStructFields(rv reflect.Value, prefix string) error {
+func (f *EnvFeeder) processStructFields(rv reflect.Value, prefix string) error {
 	structType := rv.Type()
 
 	if f.verboseDebug && f.logger != nil {
@@ -108,7 +108,7 @@ func (f EnvFeeder) processStructFields(rv reflect.Value, prefix string) error {
 }
 
 // processField handles a single struct field with optional verbose logging
-func (f EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructField, prefix string) error {
+func (f *EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructField, prefix string) error {
 	// Handle nested structs
 	switch field.Kind() {
 	case reflect.Struct:
@@ -142,7 +142,7 @@ func (f EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructFi
 }
 
 // setFieldFromEnv sets a field value from an environment variable with optional verbose logging
-func (f EnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, fieldName string) error {
+func (f *EnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, fieldName string) error {
 	// Build environment variable name with prefix
 	envName := strings.ToUpper(envTag)
 	if prefix != "" {

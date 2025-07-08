@@ -49,7 +49,10 @@ func (y YamlFeeder) Feed(structure interface{}) error {
 			y.logger.Debug("YamlFeeder: Feed completed successfully", "filePath", y.Path)
 		}
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("yaml feed error: %w", err)
+	}
+	return nil
 }
 
 // FeedKey reads a YAML file and extracts a specific key

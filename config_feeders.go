@@ -8,7 +8,7 @@ import (
 
 // ConfigFeeders provides a default set of configuration feeders for common use cases
 var ConfigFeeders = []Feeder{
-	feeders.EnvFeeder{},
+	feeders.NewEnvFeeder(),
 }
 
 // Feeder aliases
