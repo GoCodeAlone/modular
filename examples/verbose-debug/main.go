@@ -9,6 +9,9 @@ import (
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
 	"github.com/GoCodeAlone/modular/modules/database"
+
+	// Import SQLite driver for database connections
+	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -75,7 +78,7 @@ func main() {
 	}
 
 	// Create a custom database module that has predefined connections
-	dbModule := database.NewModule()
+	dbModule := createPreConfiguredDatabaseModule()
 	app.RegisterModule(dbModule)
 
 	// Initialize the application - this will trigger verbose config logging
@@ -180,7 +183,85 @@ func (f *VerboseInstanceFeeder) FeedKey(key string, target interface{}) error {
 		f.logger.Debug("VerboseInstanceFeeder: Processing configuration key", "key", key)
 	}
 
-	// Check if the target implements InstanceAwareConfigSupport (i.e., it has GetInstanceConfigs method)
+	// For database configuration, we need to handle it specially because
+	// the database module's GetInstanceConfigs creates copies instead of returning
+	// pointers to the original configurations
+	if key == "database" {
+		if dbConfig, ok := target.(*database.Config); ok {
+			if f.verboseEnabled && f.logger != nil {
+				f.logger.Debug("VerboseInstanceFeeder: Found database configuration", "key", key)
+			}
+
+			// Ensure connections map exists
+			if dbConfig.Connections == nil {
+				dbConfig.Connections = make(map[string]database.ConnectionConfig)
+			}
+
+			// If no instances, create the expected instances
+			if len(dbConfig.Connections) == 0 {
+				dbConfig.Connections["primary"] = database.ConnectionConfig{}
+				dbConfig.Connections["secondary"] = database.ConnectionConfig{}
+				dbConfig.Connections["cache"] = database.ConnectionConfig{}
+				dbConfig.Default = "primary"
+			}
+
+			if f.verboseEnabled && f.logger != nil {
+				f.logger.Debug("VerboseInstanceFeeder: Processing database connections", "count", len(dbConfig.Connections))
+			}
+
+			// Create an instance-aware feeder with the database prefix function
+			prefixFunc := func(instanceKey string) string {
+				return "DB_" + instanceKey + "_"
+			}
+			instanceFeeder := modular.NewInstanceAwareEnvFeeder(prefixFunc)
+
+			// Enable verbose debugging on the instance feeder
+			if f.verboseEnabled && f.logger != nil {
+				if verboseAware, ok := instanceFeeder.(modular.VerboseAwareFeeder); ok {
+					verboseAware.SetVerboseDebug(true, f.logger)
+				}
+			}
+
+			// Process each connection directly
+			updatedConnections := make(map[string]database.ConnectionConfig)
+			for connName, conn := range dbConfig.Connections {
+				if f.verboseEnabled && f.logger != nil {
+					f.logger.Debug("VerboseInstanceFeeder: Processing database connection", "key", key, "connectionName", connName)
+				}
+
+				// Create a copy of the connection config that we can modify
+				connCopy := conn
+				
+				// Feed the instance configuration
+				if err := instanceFeeder.FeedKey(connName, &connCopy); err != nil {
+					if f.verboseEnabled && f.logger != nil {
+						f.logger.Debug("VerboseInstanceFeeder: Failed to feed connection", "key", key, "connectionName", connName, "error", err)
+					}
+					return fmt.Errorf("failed to feed connection %s for key %s: %w", connName, key, err)
+				}
+
+				// Store the updated connection
+				updatedConnections[connName] = connCopy
+
+				if f.verboseEnabled && f.logger != nil {
+					f.logger.Debug("VerboseInstanceFeeder: Successfully fed connection",
+						"key", key, "connectionName", connName,
+						"driver", connCopy.Driver, "dsn", connCopy.DSN)
+				}
+			}
+
+			// Update the original configuration with the fed values
+			dbConfig.Connections = updatedConnections
+
+			if f.verboseEnabled && f.logger != nil {
+				f.logger.Debug("VerboseInstanceFeeder: Completed database configuration feeding", "key", key)
+			}
+
+			return nil
+		}
+	}
+
+	// For non-database configurations, use the standard instance-aware approach
 	if instanceConfig, ok := target.(modular.InstanceAwareConfigSupport); ok {
 		if f.verboseEnabled && f.logger != nil {
 			f.logger.Debug("VerboseInstanceFeeder: Found instance-aware configuration", "key", key)
@@ -190,56 +271,15 @@ func (f *VerboseInstanceFeeder) FeedKey(key string, target interface{}) error {
 		instances := instanceConfig.GetInstanceConfigs()
 		if f.verboseEnabled && f.logger != nil {
 			f.logger.Debug("VerboseInstanceFeeder: Retrieved instance configurations", "key", key, "instanceCount", len(instances))
-			for instKey := range instances {
-				f.logger.Debug("VerboseInstanceFeeder: Found instance", "key", key, "instanceKey", instKey)
-			}
 		}
 
-		// If no instances found but this is a database config, create the expected instances
-		if len(instances) == 0 && key == "database" {
-			if dbConfig, ok := target.(*database.Config); ok {
-				if f.verboseEnabled && f.logger != nil {
-					f.logger.Debug("VerboseInstanceFeeder: Database config has no instances, creating default instances")
-				}
-
-				// Create the expected database connections
-				if dbConfig.Connections == nil {
-					dbConfig.Connections = make(map[string]database.ConnectionConfig)
-				}
-
-				dbConfig.Connections["primary"] = database.ConnectionConfig{}
-				dbConfig.Connections["secondary"] = database.ConnectionConfig{}
-				dbConfig.Connections["cache"] = database.ConnectionConfig{}
-				dbConfig.Default = "primary"
-
-				// Now get the instances again
-				instances = instanceConfig.GetInstanceConfigs()
-				if f.verboseEnabled && f.logger != nil {
-					f.logger.Debug("VerboseInstanceFeeder: Created database instances", "key", key, "instanceCount", len(instances))
-				}
-			}
-		}
-
-		// Find the associated InstanceAwareConfigProvider to get the prefix function
-		// This is a bit of a hack, but we need to determine the prefix function somehow
-		// For database configs, we'll use the standard DB_ prefix pattern
+		// Find the associated prefix function
 		var prefixFunc func(string) string
-		if key == "database" {
-			prefixFunc = func(instanceKey string) string {
-				return "DB_" + instanceKey + "_"
-			}
-		} else {
-			// For other modules, use a generic pattern
-			prefixFunc = func(instanceKey string) string {
-				return strings.ToUpper(key) + "_" + instanceKey + "_"
-			}
+		prefixFunc = func(instanceKey string) string {
+			return strings.ToUpper(key) + "_" + instanceKey + "_"
 		}
 
-		if f.verboseEnabled && f.logger != nil {
-			f.logger.Debug("VerboseInstanceFeeder: Using prefix function for key", "key", key)
-		}
-
-		// Create an instance-aware feeder with the determined prefix function
+		// Create an instance-aware feeder
 		instanceFeeder := modular.NewInstanceAwareEnvFeeder(prefixFunc)
 
 		// Enable verbose debugging if this feeder has it enabled
@@ -297,7 +337,46 @@ type PreConfiguredDatabaseModule struct {
 	*database.Module
 }
 
-// RegisterConfig overrides the default RegisterConfig to provide predefined connection names
+// Name returns the module name
+func (m *PreConfiguredDatabaseModule) Name() string {
+	return "database"
+}
+
+// Init initializes the PreConfiguredDatabaseModule with debug logging
+func (m *PreConfiguredDatabaseModule) Init(app modular.Application) error {
+	if app.IsVerboseConfig() {
+		app.Logger().Debug("PreConfiguredDatabaseModule: Starting initialization")
+	}
+
+	// Get the configuration to debug what we have
+	provider, err := app.GetConfigSection(m.Name())
+	if err != nil {
+		if app.IsVerboseConfig() {
+			app.Logger().Debug("PreConfiguredDatabaseModule: Failed to get config section", "error", err)
+		}
+		return fmt.Errorf("failed to get config section: %w", err)
+	}
+
+	config := provider.GetConfig()
+	if app.IsVerboseConfig() {
+		if dbConfig, ok := config.(*database.Config); ok {
+			app.Logger().Debug("PreConfiguredDatabaseModule: Retrieved database config",
+				"default", dbConfig.Default,
+				"connectionCount", len(dbConfig.Connections))
+			for name, conn := range dbConfig.Connections {
+				app.Logger().Debug("PreConfiguredDatabaseModule: Connection details",
+					"name", name,
+					"driver", conn.Driver,
+					"dsn", conn.DSN)
+			}
+		} else {
+			app.Logger().Debug("PreConfiguredDatabaseModule: Config is not database.Config", "configType", fmt.Sprintf("%T", config))
+		}
+	}
+
+	// Call the parent Init method
+	return m.Module.Init(app)
+}
 func (m *PreConfiguredDatabaseModule) RegisterConfig(app modular.Application) error {
 	// Create configuration with predefined connection names that will be populated from environment variables
 	defaultConfig := &database.Config{
