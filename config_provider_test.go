@@ -507,3 +507,143 @@ func Test_loadAppConfig(t *testing.T) {
 		})
 	}
 }
+
+// Mock for VerboseAwareFeeder
+type MockVerboseAwareFeeder struct {
+	mock.Mock
+}
+
+func (m *MockVerboseAwareFeeder) Feed(structure interface{}) error {
+	args := m.Called(structure)
+	return args.Error(0)
+}
+
+func (m *MockVerboseAwareFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg string, args ...any) }) {
+	m.Called(enabled, logger)
+}
+
+func TestConfig_SetVerboseDebug(t *testing.T) {
+	tests := []struct {
+		name               string
+		setVerbose         bool
+		feeders            []Feeder
+		expectVerboseCalls int
+	}{
+		{
+			name:       "enable verbose debug with verbose-aware feeder",
+			setVerbose: true,
+			feeders: []Feeder{
+				&MockVerboseAwareFeeder{},
+				&MockComplexFeeder{}, // non-verbose aware feeder
+			},
+			expectVerboseCalls: 1,
+		},
+		{
+			name:       "disable verbose debug with verbose-aware feeder",
+			setVerbose: false,
+			feeders: []Feeder{
+				&MockVerboseAwareFeeder{},
+			},
+			expectVerboseCalls: 1,
+		},
+		{
+			name:       "enable verbose debug with no verbose-aware feeders",
+			setVerbose: true,
+			feeders: []Feeder{
+				&MockComplexFeeder{},
+			},
+			expectVerboseCalls: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := new(MockLogger)
+
+			// Set up the config with feeders already added (no verbose initially)
+			cfg := NewConfig()
+			for _, feeder := range tt.feeders {
+				cfg.AddFeeder(feeder)
+			}
+
+			// Set up expectations for SetVerboseDebug call
+			for _, feeder := range tt.feeders {
+				if mockVerbose, ok := feeder.(*MockVerboseAwareFeeder); ok {
+					mockVerbose.On("SetVerboseDebug", tt.setVerbose, mockLogger).Return()
+				}
+			}
+
+			// Call SetVerboseDebug
+			result := cfg.SetVerboseDebug(tt.setVerbose, mockLogger)
+
+			// Assertions
+			assert.Equal(t, cfg, result, "SetVerboseDebug should return the same config instance")
+			assert.Equal(t, tt.setVerbose, cfg.VerboseDebug)
+			assert.Equal(t, mockLogger, cfg.Logger)
+
+			// Verify mock expectations
+			for _, feeder := range tt.feeders {
+				if mockVerbose, ok := feeder.(*MockVerboseAwareFeeder); ok {
+					mockVerbose.AssertExpectations(t)
+				}
+			}
+		})
+	}
+}
+
+func TestConfig_AddFeeder_WithVerboseDebug(t *testing.T) {
+	tests := []struct {
+		name              string
+		verboseEnabled    bool
+		feeder            Feeder
+		expectVerboseCall bool
+	}{
+		{
+			name:              "add verbose-aware feeder with verbose enabled",
+			verboseEnabled:    true,
+			feeder:            &MockVerboseAwareFeeder{},
+			expectVerboseCall: true,
+		},
+		{
+			name:              "add verbose-aware feeder with verbose disabled",
+			verboseEnabled:    false,
+			feeder:            &MockVerboseAwareFeeder{},
+			expectVerboseCall: false,
+		},
+		{
+			name:              "add non-verbose-aware feeder",
+			verboseEnabled:    true,
+			feeder:            &MockComplexFeeder{},
+			expectVerboseCall: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := new(MockLogger)
+
+			cfg := NewConfig()
+			cfg.VerboseDebug = tt.verboseEnabled
+			cfg.Logger = mockLogger
+
+			// Set up expectations for verbose-aware feeders
+			if tt.expectVerboseCall {
+				if mockVerbose, ok := tt.feeder.(*MockVerboseAwareFeeder); ok {
+					mockVerbose.On("SetVerboseDebug", true, mockLogger).Return()
+				}
+			}
+
+			// Call AddFeeder
+			result := cfg.AddFeeder(tt.feeder)
+
+			// Assertions
+			assert.Equal(t, cfg, result, "AddFeeder should return the same config instance")
+			assert.Contains(t, cfg.Feeders, tt.feeder)
+
+			// Verify mock expectations
+			if mockVerbose, ok := tt.feeder.(*MockVerboseAwareFeeder); ok {
+				mockVerbose.AssertExpectations(t)
+			}
+		})
+	}
+}

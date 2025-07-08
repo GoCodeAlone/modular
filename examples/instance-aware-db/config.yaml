@@ -1,16 +1,17 @@
 # Instance-Aware Database Configuration Example
 # This example demonstrates instance-aware environment variable configuration
+# The YAML values below are overridden by DB_*_* environment variables set in main.go
 
 # Basic application settings
 database:
   default: "primary"
   connections:
     primary:
-      driver: "sqlite"
-      dsn: "./primary.db"
+      driver: ""  # Will be overridden by DB_PRIMARY_DRIVER env var 
+      dsn: ""     # Will be overridden by DB_PRIMARY_DSN env var
     secondary:
-      driver: "sqlite"
-      dsn: "./secondary.db"
+      driver: ""  # Will be overridden by DB_SECONDARY_DRIVER env var
+      dsn: ""     # Will be overridden by DB_SECONDARY_DSN env var
     cache:
-      driver: "sqlite"
-      dsn: ":memory:"
+      driver: ""  # Will be overridden by DB_CACHE_DRIVER env var
+      dsn: ""     # Will be overridden by DB_CACHE_DSN env var
