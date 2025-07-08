@@ -1,0 +1,24 @@
+# Verbose Debug Example Configuration
+# This example demonstrates verbose configuration debugging functionality
+
+# Application configuration (will be overridden by environment variables)
+appName: "Default App Name"
+debug: false
+logLevel: "info"
+
+# Database configuration (will be populated by instance-aware environment variables)
+database:
+  default: "primary"
+  connections:
+    primary:
+      driver: ""  # Will be set from DB_PRIMARY_DRIVER env var
+      dsn: ""     # Will be set from DB_PRIMARY_DSN env var
+      maxConns: 1 # Will be overridden by DB_PRIMARY_MAX_CONNS env var
+    secondary:
+      driver: ""  # Will be set from DB_SECONDARY_DRIVER env var
+      dsn: ""     # Will be set from DB_SECONDARY_DSN env var
+      maxConns: 1 # Will be overridden by DB_SECONDARY_MAX_CONNS env var
+    cache:
+      driver: ""  # Will be set from DB_CACHE_DRIVER env var
+      dsn: ""     # Will be set from DB_CACHE_DSN env var
+      maxConns: 1 # Will be overridden by DB_CACHE_MAX_CONNS env var

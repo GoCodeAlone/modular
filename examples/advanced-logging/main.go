@@ -91,6 +91,11 @@ func main() {
 	app.Logger().Info("The logs contain request headers, response headers, and body content")
 
 	// Keep running for a bit longer to allow manual testing
-	app.Logger().Info("Server will continue running for 30 seconds for manual testing...")
-	time.Sleep(30 * time.Second)
+	// In CI environments, run for a shorter time
+	duration := 30 * time.Second
+	if os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true" {
+		duration = 4 * time.Second
+	}
+	app.Logger().Info("Server will continue running for manual testing...", "duration", duration)
+	time.Sleep(duration)
 }

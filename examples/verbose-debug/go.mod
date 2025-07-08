@@ -1,14 +1,13 @@
-module instance-aware-db
+module verbose-debug
 
 go 1.24.2
 
-replace github.com/GoCodeAlone/modular => ../..
-
-replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database
+toolchain go1.24.4
 
 require (
 	github.com/GoCodeAlone/modular v1.3.0
-	github.com/GoCodeAlone/modular/modules/database v0.0.0-00010101000000-000000000000
+	github.com/GoCodeAlone/modular/modules/database v1.0.16
+	modernc.org/sqlite v1.38.0
 )
 
 require (
@@ -27,9 +26,25 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19 // indirect
 	github.com/aws/smithy-go v1.22.2 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/golobby/cast v1.3.3 // indirect
 	github.com/golobby/config/v3 v3.4.2 // indirect
 	github.com/golobby/dotenv v1.3.2 // indirect
 	github.com/golobby/env/v2 v2.2.4 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/ncruces/go-strftime v0.1.9 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	modernc.org/libc v1.65.10 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 )
+
+// Use local module for development
+replace github.com/GoCodeAlone/modular => ../..
+
+// Use local database module for development
+replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database

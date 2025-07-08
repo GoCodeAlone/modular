@@ -61,6 +61,8 @@ func (a *MockApplication) Init() error                              { return nil
 func (a *MockApplication) Start() error                             { return nil }
 func (a *MockApplication) Stop() error                              { return nil }
 func (a *MockApplication) Run() error                               { return nil }
+func (a *MockApplication) IsVerboseConfig() bool                    { return false }
+func (a *MockApplication) SetVerboseConfig(bool)                    {}
 
 type MockConfigProvider struct {
 	config interface{}

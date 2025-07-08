@@ -151,6 +151,15 @@ type Application interface {
 	// Should be called before module registration to ensure
 	// all framework operations use the new logger.
 	SetLogger(logger Logger)
+
+	// SetVerboseConfig enables or disables verbose configuration debugging.
+	// When enabled, DEBUG level logging will be performed during configuration
+	// processing to show which config is being processed, which key is being
+	// evaluated, and which attribute or key is being searched for.
+	SetVerboseConfig(enabled bool)
+
+	// IsVerboseConfig returns whether verbose configuration debugging is enabled.
+	IsVerboseConfig() bool
 }
 
 // TenantApplication extends Application with multi-tenant functionality.
@@ -229,6 +238,7 @@ type StdApplication struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	tenantService  TenantService // Added tenant service reference
+	verboseConfig  bool          // Flag for verbose configuration debugging
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -665,7 +675,7 @@ func (app *StdApplication) resolveInterfaceBasedDependencies(
 func (app *StdApplication) findServiceByInterface(dep ServiceDependency) (service any, serviceName string) {
 	for serviceName, service := range app.svcRegistry {
 		serviceType := reflect.TypeOf(service)
-		if serviceType.Implements(dep.SatisfiesInterface) {
+		if app.typeImplementsInterface(serviceType, dep.SatisfiesInterface) {
 			return service, serviceName
 		}
 	}
@@ -813,6 +823,21 @@ func (app *StdApplication) Logger() Logger {
 // SetLogger sets the application's logger
 func (app *StdApplication) SetLogger(logger Logger) {
 	app.logger = logger
+}
+
+// SetVerboseConfig enables or disables verbose configuration debugging
+func (app *StdApplication) SetVerboseConfig(enabled bool) {
+	app.verboseConfig = enabled
+	if enabled {
+		app.logger.Debug("Verbose configuration debugging enabled")
+	} else {
+		app.logger.Debug("Verbose configuration debugging disabled")
+	}
+}
+
+// IsVerboseConfig returns whether verbose configuration debugging is enabled
+func (app *StdApplication) IsVerboseConfig() bool {
+	return app.verboseConfig
 }
 
 // resolveDependencies returns modules in initialization order

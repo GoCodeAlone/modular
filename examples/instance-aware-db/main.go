@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
@@ -145,6 +146,13 @@ func main() {
 	fmt.Println("3. Automatic configuration from environment variables")
 	fmt.Println("4. No conflicts between different database instances")
 	fmt.Println("5. Easy to configure in different environments (dev, test, prod)")
+
+	// If running in CI, keep the process alive a bit longer for CI validation
+	if os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true" {
+		fmt.Println("\n🤖 Detected CI environment - keeping process alive for validation...")
+		time.Sleep(4 * time.Second)
+		fmt.Println("✅ CI validation complete")
+	}
 }
 
 // AppConfig demonstrates basic application configuration

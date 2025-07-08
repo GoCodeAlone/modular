@@ -257,3 +257,415 @@ func clearTestEnv(t *testing.T) {
 		os.Unsetenv(envVar)
 	}
 }
+
+// TestInstanceAwareEnvFeederSetVerboseDebug tests the verbose debug functionality
+func TestInstanceAwareEnvFeederSetVerboseDebug(t *testing.T) {
+	feeder := NewInstanceAwareEnvFeeder(
+		func(instanceKey string) string {
+			return "DB_" + instanceKey + "_"
+		},
+	)
+
+	// Test setting verbose debug to true
+	feeder.SetVerboseDebug(true, nil)
+
+	// Test setting verbose debug to false
+	feeder.SetVerboseDebug(false, nil)
+
+	// Since there's no public way to check the internal verboseDebug field,
+	// we just verify the method runs without error
+	assert.NotNil(t, feeder)
+}
+
+// TestInstanceAwareEnvFeederErrorHandling tests error handling scenarios
+func TestInstanceAwareEnvFeederErrorHandling(t *testing.T) {
+	type TestConfig struct {
+		Value string `env:"VALUE"`
+	}
+
+	feeder := NewInstanceAwareEnvFeeder(
+		func(instanceKey string) string {
+			return instanceKey + "_"
+		},
+	)
+
+	tests := []struct {
+		name          string
+		config        interface{}
+		shouldError   bool
+		expectedError string
+	}{
+		{
+			name:          "nil_config",
+			config:        nil,
+			shouldError:   true,
+			expectedError: "env: invalid structure",
+		},
+		{
+			name:          "non_pointer_config",
+			config:        TestConfig{},
+			shouldError:   true,
+			expectedError: "env: invalid structure",
+		},
+		{
+			name:          "pointer_to_non_struct",
+			config:        &[]string{},
+			shouldError:   true,
+			expectedError: "env: invalid structure",
+		},
+		{
+			name:        "valid_config",
+			config:      &TestConfig{},
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := feeder.Feed(tt.config)
+
+			if tt.shouldError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestInstanceAwareEnvFeederFeedKey tests the FeedKey method with various scenarios
+func TestInstanceAwareEnvFeederFeedKey(t *testing.T) {
+	type TestConfig struct {
+		Driver   string `env:"DRIVER"`
+		DSN      string `env:"DSN"`
+		Username string `env:"USERNAME"`
+	}
+
+	tests := []struct {
+		name           string
+		instanceKey    string
+		envVars        map[string]string
+		expectedConfig TestConfig
+	}{
+		{
+			name:        "feed_key_with_values",
+			instanceKey: "primary",
+			envVars: map[string]string{
+				"DB_PRIMARY_DRIVER":   "postgres",
+				"DB_PRIMARY_DSN":      "postgres://localhost/primary",
+				"DB_PRIMARY_USERNAME": "primary_user",
+			},
+			expectedConfig: TestConfig{
+				Driver:   "postgres",
+				DSN:      "postgres://localhost/primary",
+				Username: "primary_user",
+			},
+		},
+		{
+			name:        "feed_key_with_missing_values",
+			instanceKey: "secondary",
+			envVars: map[string]string{
+				"DB_SECONDARY_DRIVER": "mysql",
+				// Missing DSN and USERNAME
+			},
+			expectedConfig: TestConfig{
+				Driver:   "mysql",
+				DSN:      "",
+				Username: "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up environment
+			defer cleanupInstanceTestEnv()
+
+			// Set up environment variables
+			for key, value := range tt.envVars {
+				os.Setenv(key, value)
+			}
+
+			// Create feeder
+			feeder := NewInstanceAwareEnvFeeder(
+				func(instanceKey string) string {
+					return "DB_" + instanceKey + "_"
+				},
+			)
+
+			// Create config instance
+			config := &TestConfig{}
+
+			// Feed the specific key
+			err := feeder.FeedKey(tt.instanceKey, config)
+			require.NoError(t, err)
+
+			// Verify the configuration
+			assert.Equal(t, tt.expectedConfig.Driver, config.Driver)
+			assert.Equal(t, tt.expectedConfig.DSN, config.DSN)
+			assert.Equal(t, tt.expectedConfig.Username, config.Username)
+		})
+	}
+}
+
+// TestInstanceAwareEnvFeederComplexTypes tests feeding complex types
+func TestInstanceAwareEnvFeederComplexTypes(t *testing.T) {
+	type NestedConfig struct {
+		Timeout string `env:"TIMEOUT"`
+		Retries string `env:"RETRIES"`
+	}
+
+	type ComplexConfig struct {
+		Name      string        `env:"NAME"`
+		Port      string        `env:"PORT"`
+		Nested    NestedConfig  // No env tag - should be processed as nested struct
+		NestedPtr *NestedConfig `env:"NESTED_PTR"`
+	}
+
+	// Clean up environment
+	defer cleanupInstanceTestEnv()
+
+	// Set up environment variables
+	envVars := map[string]string{
+		"APP_PRIMARY_NAME":    "Primary App",
+		"APP_PRIMARY_PORT":    "8080",
+		"APP_PRIMARY_TIMEOUT": "30s",
+		"APP_PRIMARY_RETRIES": "3",
+	}
+
+	for key, value := range envVars {
+		os.Setenv(key, value)
+	}
+
+	// Create feeder
+	feeder := NewInstanceAwareEnvFeeder(
+		func(instanceKey string) string {
+			return "APP_" + instanceKey + "_"
+		},
+	)
+
+	// Create config instance
+	config := &ComplexConfig{}
+
+	// Feed the configuration
+	err := feeder.FeedKey("primary", config)
+	require.NoError(t, err)
+
+	// Verify the configuration
+	assert.Equal(t, "Primary App", config.Name)
+	assert.Equal(t, "8080", config.Port)
+	assert.Equal(t, "30s", config.Nested.Timeout)
+	assert.Equal(t, "3", config.Nested.Retries)
+}
+
+// Helper function to clean up test environment variables
+func cleanupInstanceTestEnv() {
+	envVars := []string{
+		"DB_PRIMARY_DRIVER", "DB_PRIMARY_DSN", "DB_PRIMARY_USERNAME",
+		"DB_SECONDARY_DRIVER", "DB_SECONDARY_DSN", "DB_SECONDARY_USERNAME",
+		"APP_PRIMARY_NAME", "APP_PRIMARY_PORT", "APP_PRIMARY_TIMEOUT", "APP_PRIMARY_RETRIES",
+	}
+
+	for _, envVar := range envVars {
+		os.Unsetenv(envVar)
+	}
+}
+
+// Mock logger for testing verbose functionality
+type MockVerboseLogger struct {
+	DebugCalls []struct {
+		Msg  string
+		Args []any
+	}
+}
+
+func (m *MockVerboseLogger) Debug(msg string, args ...any) {
+	m.DebugCalls = append(m.DebugCalls, struct {
+		Msg  string
+		Args []any
+	}{Msg: msg, Args: args})
+}
+
+func TestInstanceAwareEnvFeeder_SetVerboseDebug(t *testing.T) {
+	tests := []struct {
+		name           string
+		enabled        bool
+		expectLogEntry bool
+	}{
+		{
+			name:           "enable verbose debug",
+			enabled:        true,
+			expectLogEntry: true,
+		},
+		{
+			name:           "disable verbose debug",
+			enabled:        false,
+			expectLogEntry: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &MockVerboseLogger{}
+			feeder := NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+				return "DB_" + instanceKey + "_"
+			})
+
+			// Call SetVerboseDebug
+			feeder.SetVerboseDebug(tt.enabled, mockLogger)
+
+			// Verify the state
+			assert.Equal(t, tt.enabled, feeder.verboseDebug)
+			if tt.enabled {
+				assert.Equal(t, mockLogger, feeder.logger)
+				// Should have logged the enable message
+				require.Len(t, mockLogger.DebugCalls, 1)
+				assert.Equal(t, "Verbose instance-aware environment feeder debugging enabled", mockLogger.DebugCalls[0].Msg)
+			} else {
+				assert.Equal(t, mockLogger, feeder.logger)
+				// Should not have logged anything when disabled
+				assert.Empty(t, mockLogger.DebugCalls)
+			}
+		})
+	}
+}
+
+func TestInstanceAwareEnvFeeder_Feed_WithVerboseDebug(t *testing.T) {
+	type TestConfig struct {
+		Driver string `env:"DRIVER"`
+		DSN    string `env:"DSN"`
+	}
+
+	tests := []struct {
+		name                string
+		config              interface{}
+		expectError         bool
+		expectedLogContains []string // Check if these messages are included in logs
+	}{
+		{
+			name:        "valid struct with verbose logging",
+			config:      &TestConfig{},
+			expectError: false,
+			expectedLogContains: []string{
+				"InstanceAwareEnvFeeder: Starting feed process (single instance)",
+			},
+		},
+		{
+			name:        "nil config with verbose logging",
+			config:      nil,
+			expectError: true,
+			expectedLogContains: []string{
+				"InstanceAwareEnvFeeder: Starting feed process (single instance)",
+				"InstanceAwareEnvFeeder: Structure type is nil",
+			},
+		},
+		{
+			name:        "non-pointer config with verbose logging",
+			config:      TestConfig{},
+			expectError: true,
+			expectedLogContains: []string{
+				"InstanceAwareEnvFeeder: Starting feed process (single instance)",
+				"InstanceAwareEnvFeeder: Structure is not a pointer",
+			},
+		},
+		{
+			name:        "non-struct config with verbose logging",
+			config:      new(string),
+			expectError: true,
+			expectedLogContains: []string{
+				"InstanceAwareEnvFeeder: Starting feed process (single instance)",
+				"InstanceAwareEnvFeeder: Structure element is not a struct",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLogger := &MockVerboseLogger{}
+			feeder := NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+				return "DB_" + instanceKey + "_"
+			})
+
+			// Enable verbose debugging
+			feeder.SetVerboseDebug(true, mockLogger)
+
+			// Call Feed
+			err := feeder.Feed(tt.config)
+
+			// Verify error expectation
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			// Verify that expected debug messages are present
+			logMessages := make([]string, len(mockLogger.DebugCalls))
+			for i, call := range mockLogger.DebugCalls {
+				logMessages[i] = call.Msg
+			}
+
+			for _, expectedLog := range tt.expectedLogContains {
+				found := false
+				for _, logMsg := range logMessages {
+					if logMsg == expectedLog {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Expected to find log message: %s in %v", expectedLog, logMessages)
+			}
+		})
+	}
+}
+
+func TestInstanceAwareEnvFeeder_FeedKey_WithVerboseDebug(t *testing.T) {
+	type TestConfig struct {
+		Driver string `env:"DRIVER"`
+		DSN    string `env:"DSN"`
+	}
+
+	// Clean up environment
+	defer cleanupInstanceTestEnv()
+
+	// Set up environment variables
+	os.Setenv("DB_PRIMARY_DRIVER", "postgres")
+	os.Setenv("DB_PRIMARY_DSN", "postgres://localhost/primary")
+
+	mockLogger := &MockVerboseLogger{}
+	feeder := NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+		return "DB_" + instanceKey + "_"
+	})
+
+	// Enable verbose debugging
+	feeder.SetVerboseDebug(true, mockLogger)
+
+	config := &TestConfig{}
+
+	// Call FeedKey
+	err := feeder.FeedKey("primary", config)
+	require.NoError(t, err)
+
+	// Verify the configuration was loaded
+	assert.Equal(t, "postgres", config.Driver)
+	assert.Equal(t, "postgres://localhost/primary", config.DSN)
+
+	// Verify verbose logging occurred
+	assert.NotEmpty(t, mockLogger.DebugCalls, "Expected verbose debug calls")
+
+	// Look for key verbose logging messages
+	foundStartMessage := false
+	foundCompletedMessage := false
+	for _, call := range mockLogger.DebugCalls {
+		if call.Msg == "InstanceAwareEnvFeeder: Starting FeedKey process" {
+			foundStartMessage = true
+		}
+		if call.Msg == "InstanceAwareEnvFeeder: FeedKey completed successfully" {
+			foundCompletedMessage = true
+		}
+	}
+
+	assert.True(t, foundStartMessage, "Expected to find start message in debug logs")
+	assert.True(t, foundCompletedMessage, "Expected to find completion message in debug logs")
+}

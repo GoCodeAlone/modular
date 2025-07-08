@@ -5,6 +5,10 @@ type TenantAffixedEnvFeeder struct {
 	*AffixedEnvFeeder
 	SetPrefixFunc func(string)
 	SetSuffixFunc func(string)
+	verboseDebug  bool
+	logger        interface {
+		Debug(msg string, args ...any)
+	}
 }
 
 // NewTenantAffixedEnvFeeder creates a new TenantAffixedEnvFeeder with the given prefix and suffix functions
@@ -23,5 +27,20 @@ func NewTenantAffixedEnvFeeder(prefix, suffix func(string) string) TenantAffixed
 		SetSuffixFunc: func(s string) {
 			affixedFeeder.Suffix = suffix(s)
 		},
+		verboseDebug: false,
+		logger:       nil,
+	}
+}
+
+// SetVerboseDebug enables or disables verbose debug logging
+func (f *TenantAffixedEnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg string, args ...any) }) {
+	f.verboseDebug = enabled
+	f.logger = logger
+	// Also enable verbose debug on the underlying AffixedEnvFeeder
+	if f.AffixedEnvFeeder != nil {
+		f.AffixedEnvFeeder.SetVerboseDebug(enabled, logger)
+	}
+	if enabled && logger != nil {
+		f.logger.Debug("Verbose tenant affixed environment feeder debugging enabled")
 	}
 }

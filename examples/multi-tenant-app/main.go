@@ -34,7 +34,7 @@ func main() {
 
 	// Register tenant config loader
 	tenantConfigLoader := modular.NewFileBasedTenantConfigLoader(modular.TenantConfigParams{
-		ConfigNameRegex: regexp.MustCompile("^\\w+\\.yaml$"),
+		ConfigNameRegex: regexp.MustCompile(`^\w+\.yaml$`),
 		ConfigDir:       "tenants",
 		ConfigFeeders: []modular.Feeder{
 			feeders.NewTenantAffixedEnvFeeder(func(tenantId string) string {
