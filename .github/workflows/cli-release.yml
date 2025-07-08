@@ -1,5 +1,5 @@
 name: Build and Release CLI
-run-name: Release CLI ${{ github.event.inputs.version || github.event.inputs.releaseType }} }}
+run-name: Release CLI ${{ github.event.inputs.version || github.event.inputs.releaseType }}
 
 on:
   push:
