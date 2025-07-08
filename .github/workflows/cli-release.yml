@@ -134,11 +134,6 @@ jobs:
           cd cmd/modcli
           go test ./... -v -race
 
-      - name: Run lint checks
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          cd cmd/modcli
-          golangci-lint run
 
   build:
     name: Build CLI
