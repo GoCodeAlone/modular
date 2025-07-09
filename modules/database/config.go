@@ -9,6 +9,12 @@ type Config struct {
 	Default string `json:"default" yaml:"default"`
 }
 
+// Validate implements ConfigValidator interface
+func (c *Config) Validate() error {
+	// Add any validation logic here if needed
+	return nil
+}
+
 // GetInstanceConfigs returns the connections map for instance-aware configuration
 func (c *Config) GetInstanceConfigs() map[string]interface{} {
 	instances := make(map[string]interface{})

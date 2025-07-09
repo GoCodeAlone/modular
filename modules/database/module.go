@@ -294,10 +294,20 @@ func (m *Module) Init(app modular.Application) error {
 		return fmt.Errorf("failed to get config section: %w", err)
 	}
 
-	// Get the actual config
-	cfg, ok := provider.GetConfig().(*Config)
-	if !ok {
-		return ErrInvalidConfigType
+	// Get the actual config - it may be from an instance-aware provider
+	var cfg *Config
+	if iaProvider, ok := provider.(*modular.InstanceAwareConfigProvider); ok {
+		// For instance-aware providers, get the fed config
+		cfg, ok = iaProvider.GetConfig().(*Config)
+		if !ok {
+			return ErrInvalidConfigType
+		}
+	} else {
+		// For standard providers
+		cfg, ok = provider.GetConfig().(*Config)
+		if !ok {
+			return ErrInvalidConfigType
+		}
 	}
 
 	m.config = cfg

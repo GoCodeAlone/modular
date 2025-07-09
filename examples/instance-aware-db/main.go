@@ -9,6 +9,9 @@ import (
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
 	"github.com/GoCodeAlone/modular/modules/database"
+
+	// Import SQLite driver
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -20,11 +23,11 @@ func main() {
 	// Set up environment variables for multiple database connections
 	// In a real application, these would be set externally
 	envVars := map[string]string{
-		"DB_PRIMARY_DRIVER":   "sqlite",
+		"DB_PRIMARY_DRIVER":   "sqlite3",
 		"DB_PRIMARY_DSN":      "./primary.db",
-		"DB_SECONDARY_DRIVER": "sqlite",
+		"DB_SECONDARY_DRIVER": "sqlite3",
 		"DB_SECONDARY_DSN":    "./secondary.db",
-		"DB_CACHE_DRIVER":     "sqlite",
+		"DB_CACHE_DRIVER":     "sqlite3",
 		"DB_CACHE_DSN":        ":memory:",
 	}
 
@@ -41,18 +44,23 @@ func main() {
 		}
 	}()
 
-	// Configure feeders - just basic env feeding since we don't need a YAML file
+	// Configure feeders with YAML configuration file + environment variables
 	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewEnvFeeder(), // Regular env feeding for app config
-		// Instance-aware feeding is handled automatically by the database module
+		feeders.NewYamlFeeder("config.yaml"), // Load YAML config first
+		feeders.NewEnvFeeder(),               // Then apply environment variables
 	}
 
 	// Create application
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
 		logger,
 	)
+
+	// Enable verbose configuration debugging
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetVerboseConfig(true)
+	}
 
 	// Register the database module
 	dbModule := database.NewModule()
@@ -65,17 +73,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// After init, configure the database connections that should be loaded from env vars
-	if err := setupDatabaseConnections(app, dbModule); err != nil {
-		fmt.Printf("Failed to setup database connections: %v\n", err)
-		os.Exit(1)
-	}
-
 	// Get the database module to demonstrate multiple connections
 	var dbManager *database.Module
 	if err := app.GetService("database.manager", &dbManager); err != nil {
 		fmt.Printf("Failed to get database manager: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Debug: Check what connections are available before using them
+	fmt.Printf("\nDEBUG: Database configuration after initialization:\n")
+	if configProvider, err := app.GetConfigSection("database"); err == nil {
+		if iaProvider, ok := configProvider.(*modular.InstanceAwareConfigProvider); ok {
+			if cfg, ok := iaProvider.GetConfig().(*database.Config); ok {
+				fmt.Printf("  Default: %s\n", cfg.Default)
+				fmt.Printf("  Connections count: %d\n", len(cfg.Connections))
+				for name, conn := range cfg.Connections {
+					fmt.Printf("    %s: driver=%s, dsn=%s\n", name, conn.Driver, conn.DSN)
+				}
+			}
+		}
 	}
 
 	fmt.Println("\nAvailable database connections:")
@@ -146,6 +162,7 @@ func main() {
 	fmt.Println("3. Automatic configuration from environment variables")
 	fmt.Println("4. No conflicts between different database instances")
 	fmt.Println("5. Easy to configure in different environments (dev, test, prod)")
+	fmt.Println("6. YAML configuration defines structure, ENV vars provide values")
 
 	// If running in CI, keep the process alive a bit longer for CI validation
 	if os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true" {
@@ -157,59 +174,17 @@ func main() {
 
 // AppConfig demonstrates basic application configuration
 type AppConfig struct {
-	AppName     string `yaml:"appName" env:"APP_NAME" default:"Instance-Aware DB Example"`
+	App AppSettings `yaml:"app"`
+}
+
+// AppSettings contains basic app configuration
+type AppSettings struct {
+	Name        string `yaml:"name" env:"APP_NAME" default:"Instance-Aware DB Example"`
 	Environment string `yaml:"environment" env:"ENVIRONMENT" default:"development"`
 }
 
 // Validate implements basic validation
 func (c *AppConfig) Validate() error {
 	// Add any validation logic here
-	return nil
-}
-
-// setupDatabaseConnections configures the database connections that should be loaded from environment variables
-func setupDatabaseConnections(app modular.Application, dbModule *database.Module) error {
-	// Get the database configuration section
-	configProvider, err := app.GetConfigSection(dbModule.Name())
-	if err != nil {
-		return fmt.Errorf("failed to get database config section: %w", err)
-	}
-
-	config, ok := configProvider.GetConfig().(*database.Config)
-	if !ok {
-		return fmt.Errorf("invalid database config type")
-	}
-
-	// Set up the connections that should be configured from environment variables
-	config.Connections = map[string]database.ConnectionConfig{
-		"primary":   {}, // Will be populated from DB_PRIMARY_* env vars
-		"secondary": {}, // Will be populated from DB_SECONDARY_* env vars
-		"cache":     {}, // Will be populated from DB_CACHE_* env vars
-	}
-	config.Default = "primary"
-
-	// Apply instance-aware configuration
-	if iaProvider, ok := configProvider.(*modular.InstanceAwareConfigProvider); ok {
-		prefixFunc := iaProvider.GetInstancePrefixFunc()
-		if prefixFunc != nil {
-			feeder := modular.NewInstanceAwareEnvFeeder(prefixFunc)
-			instanceConfigs := config.GetInstanceConfigs()
-
-			// Feed each instance with environment variables
-			for instanceKey, instanceConfig := range instanceConfigs {
-				if err := feeder.FeedKey(instanceKey, instanceConfig); err != nil {
-					return fmt.Errorf("failed to feed instance config for %s: %w", instanceKey, err)
-				}
-			}
-
-			// Update the original config with the fed instances
-			for name, instance := range instanceConfigs {
-				if connPtr, ok := instance.(*database.ConnectionConfig); ok {
-					config.Connections[name] = *connPtr
-				}
-			}
-		}
-	}
-
 	return nil
 }

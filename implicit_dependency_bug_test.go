@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"sort"
 	"testing"
 )
 
@@ -353,119 +352,6 @@ func (l *testLogger) Debug(msg string, keysAndValues ...any) {}
 func (l *testLogger) Info(msg string, keysAndValues ...any)  {}
 func (l *testLogger) Warn(msg string, keysAndValues ...any)  {}
 func (l *testLogger) Error(msg string, keysAndValues ...any) {}
-
-// initWithDeterministicDependencyResolution is a simplified version that focuses on
-// demonstrating the deterministic dependency resolution fix
-func (app *StdApplication) initWithDeterministicDependencyResolution() error {
-	// For this test, we skip configuration loading and focus on dependency resolution
-
-	// Resolve dependencies with deterministic ordering
-	order, err := app.resolveDependenciesDeterministic()
-	if err != nil {
-		return fmt.Errorf("failed to resolve dependencies: %w", err)
-	}
-
-	// Initialize modules in dependency order
-	for _, name := range order {
-		module := app.moduleRegistry[name]
-
-		// Inject services if the module supports it (before Init)
-		if _, ok := module.(ServiceAware); ok {
-			module, err = app.injectServices(module)
-			if err != nil {
-				return fmt.Errorf("failed to inject services for module %s: %w", name, err)
-			}
-			app.moduleRegistry[name] = module
-		}
-
-		if err := module.Init(app); err != nil {
-			return fmt.Errorf("failed to initialize module %s: %w", name, err)
-		}
-
-		// Register services provided by modules (after Init)
-		if svcAware, ok := module.(ServiceAware); ok {
-			for _, svc := range svcAware.ProvidesServices() {
-				if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
-					return fmt.Errorf("module '%s' failed to register service '%s': %w", name, svc.Name, err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// resolveDependenciesDeterministic is a fixed version of resolveDependencies
-// that ensures deterministic ordering by sorting module names
-func (app *StdApplication) resolveDependenciesDeterministic() ([]string, error) {
-	// Create dependency graph
-	graph := make(map[string][]string)
-	for name, module := range app.moduleRegistry {
-		if _, ok := module.(DependencyAware); !ok {
-			app.logger.Debug("Module does not implement DependencyAware, skipping", "module", name)
-			graph[name] = nil
-			continue
-		}
-		graph[name] = module.(DependencyAware).Dependencies()
-	}
-
-	// Analyze service dependencies to augment the graph with implicit dependencies
-	app.addImplicitDependencies(graph)
-
-	// Topological sort with deterministic ordering
-	var result []string
-	visited := make(map[string]bool)
-	temp := make(map[string]bool)
-
-	var visit func(string) error
-	visit = func(node string) error {
-		if temp[node] {
-			return fmt.Errorf("%w: %s", ErrCircularDependency, node)
-		}
-		if visited[node] {
-			return nil
-		}
-		temp[node] = true
-
-		// Sort dependencies to ensure deterministic order
-		deps := make([]string, len(graph[node]))
-		copy(deps, graph[node])
-		sort.Strings(deps)
-
-		for _, dep := range deps {
-			if _, exists := app.moduleRegistry[dep]; !exists {
-				return fmt.Errorf("%w: %s depends on non-existent module %s",
-					ErrModuleDependencyMissing, node, dep)
-			}
-			if err := visit(dep); err != nil {
-				return err
-			}
-		}
-
-		visited[node] = true
-		temp[node] = false
-		result = append(result, node)
-		return nil
-	}
-
-	// Visit all nodes in sorted order to ensure deterministic behavior
-	var nodes []string
-	for node := range graph {
-		nodes = append(nodes, node)
-	}
-	sort.Strings(nodes)
-
-	for _, node := range nodes {
-		if !visited[node] {
-			if err := visit(node); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	app.logger.Debug("Module initialization order", "order", result)
-	return result, nil
-}
 
 // initWithForcedBadOrder forces a bad initialization order to demonstrate the bug
 func (app *StdApplication) initWithForcedBadOrder() error {

@@ -355,6 +355,14 @@ func loadAppConfig(app *StdApplication) error {
 		return err
 	}
 
+	// Apply instance-aware feeding for supported configurations AFTER regular feeding
+	if err := applyInstanceAwareFeeding(app, tempConfigs); err != nil {
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Instance-aware feeding failed", "error", err)
+		}
+		return err
+	}
+
 	if app.IsVerboseConfig() {
 		app.logger.Debug("Configuration feeding completed successfully")
 	}
@@ -501,6 +509,110 @@ func applyConfigUpdates(app *StdApplication, tempConfigs map[string]configInfo) 
 		updateSectionConfig(app, sectionKey, info)
 		app.logger.Debug("Updated section config", "section", sectionKey)
 	}
+}
+
+// applyInstanceAwareFeeding applies instance-aware feeding to configurations that support it
+func applyInstanceAwareFeeding(app *StdApplication, tempConfigs map[string]configInfo) error {
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Starting instance-aware feeding process")
+	}
+
+	// Check each section for instance-aware config support
+	for sectionKey := range tempConfigs {
+		if sectionKey == mainConfigSection {
+			continue // Skip main config section for now
+		}
+
+		// Get the original provider to check if it's instance-aware
+		provider, exists := app.cfgSections[sectionKey]
+		if !exists {
+			continue
+		}
+
+		// Check if the provider is instance-aware
+		iaProvider, isInstanceAware := provider.(*InstanceAwareConfigProvider)
+		if !isInstanceAware {
+			if app.IsVerboseConfig() {
+				app.logger.Debug("Section provider is not instance-aware, skipping", "section", sectionKey)
+			}
+			continue
+		}
+
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Processing instance-aware section", "section", sectionKey)
+		}
+
+		// Get the config from the temporary config that was just fed with YAML/ENV data
+		configInfo := tempConfigs[sectionKey]
+		var tempConfig interface{}
+		if configInfo.isPtr {
+			tempConfig = configInfo.tempVal.Interface()
+		} else {
+			tempConfig = configInfo.tempVal.Elem().Interface()
+		}
+
+		// Check if it supports instance configurations
+		instanceSupport, supportsInstances := tempConfig.(InstanceAwareConfigSupport)
+		if !supportsInstances {
+			if app.IsVerboseConfig() {
+				app.logger.Debug("Config does not support instances, skipping", "section", sectionKey)
+			}
+			continue
+		}
+
+		// Get the instance configurations
+		instances := instanceSupport.GetInstanceConfigs()
+		if len(instances) == 0 {
+			if app.IsVerboseConfig() {
+				app.logger.Debug("No instances found for section", "section", sectionKey)
+			}
+			continue
+		}
+
+		if app.IsVerboseConfig() {
+			app.logger.Debug("Found instances for section", "section", sectionKey, "instanceCount", len(instances))
+		}
+
+		// Get the prefix function
+		prefixFunc := iaProvider.GetInstancePrefixFunc()
+		if prefixFunc == nil {
+			app.logger.Warn("Instance-aware provider missing prefix function", "section", sectionKey)
+			continue
+		}
+
+		// Create instance-aware feeder
+		instanceFeeder := NewInstanceAwareEnvFeeder(prefixFunc)
+
+		// Apply verbose debug if enabled
+		if app.IsVerboseConfig() {
+			if verboseFeeder, ok := instanceFeeder.(VerboseAwareFeeder); ok {
+				verboseFeeder.SetVerboseDebug(true, app.logger)
+			}
+		}
+
+		// Feed each instance
+		for instanceKey, instanceConfig := range instances {
+			if app.IsVerboseConfig() {
+				app.logger.Debug("Feeding instance configuration", "section", sectionKey, "instance", instanceKey)
+			}
+
+			if err := instanceFeeder.FeedKey(instanceKey, instanceConfig); err != nil {
+				app.logger.Warn("Failed to feed instance configuration",
+					"section", sectionKey, "instance", instanceKey, "error", err)
+				continue
+			}
+
+			if app.IsVerboseConfig() {
+				app.logger.Debug("Successfully fed instance configuration", "section", sectionKey, "instance", instanceKey)
+			}
+		}
+	}
+
+	if app.IsVerboseConfig() {
+		app.logger.Debug("Instance-aware feeding process completed")
+	}
+
+	return nil
 }
 
 // Helper types and functions

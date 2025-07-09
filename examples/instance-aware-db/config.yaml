@@ -3,15 +3,19 @@
 # The YAML values below are overridden by DB_*_* environment variables set in main.go
 
 # Basic application settings
+app:
+  name: "Instance-Aware Database Example"
+  environment: "development"
+
 database:
   default: "primary"
   connections:
     primary:
-      driver: ""  # Will be overridden by DB_PRIMARY_DRIVER env var 
-      dsn: ""     # Will be overridden by DB_PRIMARY_DSN env var
+      driver: "sqlite3"  # Will be overridden by DB_PRIMARY_DRIVER env var 
+      dsn: "./default_primary.db"     # Will be overridden by DB_PRIMARY_DSN env var
     secondary:
-      driver: ""  # Will be overridden by DB_SECONDARY_DRIVER env var
-      dsn: ""     # Will be overridden by DB_SECONDARY_DSN env var
+      driver: "sqlite3"  # Will be overridden by DB_SECONDARY_DRIVER env var
+      dsn: "./default_secondary.db"     # Will be overridden by DB_SECONDARY_DSN env var
     cache:
-      driver: ""  # Will be overridden by DB_CACHE_DRIVER env var
-      dsn: ""     # Will be overridden by DB_CACHE_DSN env var
+      driver: "sqlite3"  # Will be overridden by DB_CACHE_DRIVER env var
+      dsn: ":memory:"     # Will be overridden by DB_CACHE_DSN env var
