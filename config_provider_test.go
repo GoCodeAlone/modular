@@ -137,7 +137,10 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
-				feeder.On("FeedKey", "main", mock.Anything).Return(nil)
+				// Due to map iteration order being random, either key could be processed first
+				// If "test" is processed first, it will fail and stop processing
+				// If "main" is processed first, it will succeed, then "test" will fail
+				feeder.On("FeedKey", "main", mock.Anything).Return(nil).Maybe()
 				feeder.On("FeedKey", "test", mock.Anything).Return(ErrFeedKeyFailed)
 				cfg.AddFeeder(feeder)
 				cfg.AddStructKey("main", &testCfg{})
@@ -434,7 +437,10 @@ func Test_loadAppConfig(t *testing.T) {
 			setupFeeders: func() []Feeder {
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
-				feeder.On("FeedKey", "_main", mock.Anything).Return(nil)
+				// Due to map iteration order being random, either key could be processed first
+				// If "section1" is processed first, it will fail and stop processing
+				// If "_main" is processed first, it will succeed, then "section1" will fail
+				feeder.On("FeedKey", "_main", mock.Anything).Return(nil).Maybe()
 				feeder.On("FeedKey", "section1", mock.Anything).Return(ErrFeedKeyFailed)
 				return []Feeder{feeder}
 			},
