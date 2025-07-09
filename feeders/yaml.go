@@ -487,6 +487,11 @@ func (y *YamlFeeder) setFieldValue(field reflect.Value, value interface{}) error
 		return nil
 	}
 
+	// Handle slice types (like []string from []interface{})
+	if field.Kind() == reflect.Slice && valueReflect.Kind() == reflect.Slice {
+		return y.setSliceValue(field, valueReflect)
+	}
+
 	// Handle string conversion for basic types
 	if valueReflect.Kind() == reflect.String {
 		str := valueReflect.String()
@@ -537,4 +542,46 @@ func (y *YamlFeeder) setFieldValue(field reflect.Value, value interface{}) error
 	}
 
 	return wrapYamlTypeConversionError(valueReflect.Type().String(), field.Type().String())
+}
+
+// setSliceValue converts []interface{} to specific slice types like []string
+func (y *YamlFeeder) setSliceValue(field reflect.Value, valueReflect reflect.Value) error {
+	if !field.CanSet() {
+		return wrapYamlFieldCannotBeSetError()
+	}
+
+	sliceType := field.Type()
+	elemType := sliceType.Elem()
+
+	// Create a new slice of the correct type
+	newSlice := reflect.MakeSlice(sliceType, valueReflect.Len(), valueReflect.Len())
+
+	// Convert each element
+	for i := 0; i < valueReflect.Len(); i++ {
+		sourceElem := valueReflect.Index(i)
+		targetElem := newSlice.Index(i)
+
+		// Try direct conversion first
+		if sourceElem.Type().ConvertibleTo(elemType) {
+			targetElem.Set(sourceElem.Convert(elemType))
+			continue
+		}
+
+		// Handle string conversion for basic types
+		if sourceElem.Kind() == reflect.Interface {
+			sourceElem = sourceElem.Elem() // Get the actual value from interface{}
+		}
+
+		if sourceElem.Type().ConvertibleTo(elemType) {
+			targetElem.Set(sourceElem.Convert(elemType))
+		} else if elemType.Kind() == reflect.String && sourceElem.CanInterface() {
+			// Convert any value to string
+			targetElem.SetString(fmt.Sprintf("%v", sourceElem.Interface()))
+		} else {
+			return wrapYamlTypeConversionError(sourceElem.Type().String(), elemType.String())
+		}
+	}
+
+	field.Set(newSlice)
+	return nil
 }
