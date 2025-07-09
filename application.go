@@ -871,7 +871,12 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 		}
 		temp[node] = true
 
-		for _, dep := range graph[node] {
+		// Sort dependencies to ensure deterministic order
+		deps := make([]string, len(graph[node]))
+		copy(deps, graph[node])
+		slices.Sort(deps)
+
+		for _, dep := range deps {
 			if _, exists := app.moduleRegistry[dep]; !exists {
 				return fmt.Errorf("%w: %s depends on non-existent module %s",
 					ErrModuleDependencyMissing, node, dep)
@@ -887,8 +892,14 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 		return nil
 	}
 
-	// Visit all nodes
+	// Visit all nodes in sorted order to ensure deterministic behavior
+	var nodes []string
 	for node := range graph {
+		nodes = append(nodes, node)
+	}
+	slices.Sort(nodes)
+
+	for _, node := range nodes {
 		if !visited[node] {
 			if err := visit(node); err != nil {
 				return nil, err
