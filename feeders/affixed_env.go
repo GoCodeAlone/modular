@@ -5,7 +5,6 @@ package feeders
 import (
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 
@@ -29,6 +28,7 @@ type AffixedEnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
+	fieldTracker FieldTracker
 }
 
 // NewAffixedEnvFeeder creates a new AffixedEnvFeeder with the specified prefix and suffix
@@ -38,6 +38,7 @@ func NewAffixedEnvFeeder(prefix, suffix string) AffixedEnvFeeder {
 		Suffix:       suffix,
 		verboseDebug: false,
 		logger:       nil,
+		fieldTracker: nil,
 	}
 }
 
@@ -48,6 +49,11 @@ func (f *AffixedEnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug
 	if enabled && logger != nil {
 		f.logger.Debug("Verbose affixed environment feeder debugging enabled")
 	}
+}
+
+// SetFieldTracker sets the field tracker for recording field populations
+func (f *AffixedEnvFeeder) SetFieldTracker(tracker FieldTracker) {
+	f.fieldTracker = tracker
 }
 
 // Feed reads environment variables and populates the provided structure
@@ -144,7 +150,8 @@ func (f AffixedEnvFeeder) processField(field reflect.Value, fieldType *reflect.S
 			if f.verboseDebug && f.logger != nil {
 				f.logger.Debug("AffixedEnvFeeder: Found env tag", "fieldName", fieldType.Name, "envTag", envTag)
 			}
-			return f.setFieldFromEnv(field, envTag, prefix, suffix)
+			fieldPath := fieldType.Name
+			return f.setFieldFromEnv(field, fieldType, envTag, fieldPath, prefix, suffix)
 		} else if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("AffixedEnvFeeder: No env tag found", "fieldName", fieldType.Name)
 		}
@@ -154,7 +161,7 @@ func (f AffixedEnvFeeder) processField(field reflect.Value, fieldType *reflect.S
 }
 
 // setFieldFromEnv sets a field value from an environment variable
-func (f AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, suffix string) error {
+func (f AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, fieldType *reflect.StructField, envTag, fieldPath, prefix, suffix string) error {
 	// Build environment variable name
 	envName := strings.ToUpper(envTag)
 	if prefix != "" {
@@ -169,17 +176,42 @@ func (f AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, s
 	}
 
 	// Get and apply environment variable if exists
-	if envValue := os.Getenv(envName); envValue != "" {
+	catalog := GetGlobalEnvCatalog()
+	envValue, exists := catalog.Get(envName)
+	if exists && envValue != "" {
 		if f.verboseDebug && f.logger != nil {
-			f.logger.Debug("AffixedEnvFeeder: Environment variable found", "envName", envName, "envValue", envValue)
+			source := catalog.GetSource(envName)
+			f.logger.Debug("AffixedEnvFeeder: Environment variable found", "envName", envName, "envValue", envValue, "source", source)
 		}
 		err := setFieldValue(field, envValue)
-		if err != nil && f.verboseDebug && f.logger != nil {
-			f.logger.Debug("AffixedEnvFeeder: Failed to set field value", "envName", envName, "envValue", envValue, "error", err)
-		} else if f.verboseDebug && f.logger != nil {
+		if err != nil {
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("AffixedEnvFeeder: Failed to set field value", "envName", envName, "envValue", envValue, "error", err)
+			}
+			return err
+		}
+
+		// Record field population
+		if f.fieldTracker != nil {
+			convertedValue, _ := cast.FromType(envValue, field.Type())
+			fp := FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldType.Name,
+				FieldType:  field.Type().String(),
+				FeederType: "AffixedEnvFeeder",
+				SourceType: "env_affixed",
+				SourceKey:  envName,
+				Value:      convertedValue,
+				SearchKeys: []string{envName},
+				FoundKey:   envName,
+			}
+			f.fieldTracker.RecordFieldPopulation(fp)
+		}
+
+		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("AffixedEnvFeeder: Successfully set field value", "envName", envName, "envValue", envValue)
 		}
-		return err
+		return nil
 	} else if f.verboseDebug && f.logger != nil {
 		f.logger.Debug("AffixedEnvFeeder: Environment variable not found or empty", "envName", envName)
 	}

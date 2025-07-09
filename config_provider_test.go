@@ -353,13 +353,23 @@ func Test_loadAppConfig(t *testing.T) {
 			},
 			setupFeeders: func() []Feeder {
 				feeder := new(MockComplexFeeder)
-				// Setup for main config
+				// Setup to handle any Feed call - let the Run function determine the type
 				feeder.On("Feed", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-					cfg := args.Get(0).(*testCfg)
+					if cfg, ok := args.Get(0).(*testCfg); ok {
+						cfg.Str = updatedValue
+						cfg.Num = 42
+					} else if cfg, ok := args.Get(0).(*testSectionCfg); ok {
+						cfg.Enabled = true
+						cfg.Name = "updated"
+					}
+				})
+				// Setup for main config FeedKey calls
+				feeder.On("FeedKey", "_main", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+					cfg := args.Get(1).(*testCfg)
 					cfg.Str = updatedValue
 					cfg.Num = 42
 				})
-				// Setup for section config
+				// Setup for section config FeedKey calls
 				feeder.On("FeedKey", "section1", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 					cfg := args.Get(1).(*testSectionCfg)
 					cfg.Enabled = true
@@ -420,6 +430,7 @@ func Test_loadAppConfig(t *testing.T) {
 			setupFeeders: func() []Feeder {
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
+				feeder.On("FeedKey", "_main", mock.Anything).Return(nil)
 				feeder.On("FeedKey", "section1", mock.Anything).Return(ErrFeedKeyFailed)
 				return []Feeder{feeder}
 			},
@@ -457,7 +468,16 @@ func Test_loadAppConfig(t *testing.T) {
 			setupFeeders: func() []Feeder {
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-					cfg := args.Get(0).(*testCfg)
+					if cfg, ok := args.Get(0).(*testCfg); ok {
+						cfg.Str = updatedValue
+						cfg.Num = 42
+					} else if cfg, ok := args.Get(0).(*testSectionCfg); ok {
+						cfg.Enabled = true
+						cfg.Name = "updated"
+					}
+				})
+				feeder.On("FeedKey", "_main", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+					cfg := args.Get(1).(*testCfg)
 					cfg.Str = updatedValue
 					cfg.Num = 42
 				})
