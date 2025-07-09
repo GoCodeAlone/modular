@@ -57,18 +57,6 @@ port = 5432
 		},
 	}
 
-	type Config struct {
-		App struct {
-			Name    string `yaml:"name" json:"name" toml:"name"`
-			Version string `yaml:"version" json:"version" toml:"version"`
-			Debug   bool   `yaml:"debug" json:"debug" toml:"debug"`
-		} `yaml:"app" json:"app" toml:"app"`
-		Database struct {
-			Host string `yaml:"host" json:"host" toml:"host"`
-			Port int    `yaml:"port" json:"port" toml:"port"`
-		} `yaml:"database" json:"database" toml:"database"`
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary file

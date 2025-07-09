@@ -57,7 +57,7 @@ func (f *AffixedEnvFeeder) SetFieldTracker(tracker FieldTracker) {
 }
 
 // Feed reads environment variables and populates the provided structure
-func (f AffixedEnvFeeder) Feed(structure interface{}) error {
+func (f *AffixedEnvFeeder) Feed(structure interface{}) error {
 	if f.verboseDebug && f.logger != nil {
 		f.logger.Debug("AffixedEnvFeeder: Starting feed process", "structureType", reflect.TypeOf(structure), "prefix", f.Prefix, "suffix", f.Suffix)
 	}
@@ -78,7 +78,7 @@ func (f AffixedEnvFeeder) Feed(structure interface{}) error {
 }
 
 // fillStruct sets struct fields from environment variables
-func (f AffixedEnvFeeder) fillStruct(rv reflect.Value, prefix, suffix string) error {
+func (f *AffixedEnvFeeder) fillStruct(rv reflect.Value, prefix, suffix string) error {
 	if prefix == "" && suffix == "" {
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("AffixedEnvFeeder: Both prefix and suffix are empty")
@@ -97,7 +97,7 @@ func (f AffixedEnvFeeder) fillStruct(rv reflect.Value, prefix, suffix string) er
 }
 
 // processStructFields iterates through struct fields
-func (f AffixedEnvFeeder) processStructFields(rv reflect.Value, prefix, suffix string) error {
+func (f *AffixedEnvFeeder) processStructFields(rv reflect.Value, prefix, suffix string) error {
 	if f.verboseDebug && f.logger != nil {
 		f.logger.Debug("AffixedEnvFeeder: Processing struct fields", "numFields", rv.NumField(), "prefix", prefix, "suffix", suffix)
 	}
@@ -125,7 +125,7 @@ func (f AffixedEnvFeeder) processStructFields(rv reflect.Value, prefix, suffix s
 }
 
 // processField handles a single struct field
-func (f AffixedEnvFeeder) processField(field reflect.Value, fieldType *reflect.StructField, prefix, suffix string) error {
+func (f *AffixedEnvFeeder) processField(field reflect.Value, fieldType *reflect.StructField, prefix, suffix string) error {
 	// Handle nested structs
 	switch field.Kind() {
 	case reflect.Struct:
@@ -161,7 +161,7 @@ func (f AffixedEnvFeeder) processField(field reflect.Value, fieldType *reflect.S
 }
 
 // setFieldFromEnv sets a field value from an environment variable
-func (f AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, fieldType *reflect.StructField, envTag, fieldPath, prefix, suffix string) error {
+func (f *AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, fieldType *reflect.StructField, envTag, fieldPath, prefix, suffix string) error {
 	// Build environment variable name
 	envName := strings.ToUpper(envTag)
 	if prefix != "" {

@@ -44,7 +44,7 @@ func (y *YamlFeeder) SetFieldTracker(tracker FieldTracker) {
 }
 
 // Feed reads the YAML file and populates the provided structure
-func (y YamlFeeder) Feed(structure interface{}) error {
+func (y *YamlFeeder) Feed(structure interface{}) error {
 	if y.verboseDebug && y.logger != nil {
 		y.logger.Debug("YamlFeeder: Starting feed process", "filePath", y.Path, "structureType", reflect.TypeOf(structure))
 	}
@@ -66,7 +66,7 @@ func (y YamlFeeder) Feed(structure interface{}) error {
 }
 
 // FeedKey reads a YAML file and extracts a specific key
-func (y YamlFeeder) FeedKey(key string, target interface{}) error {
+func (y *YamlFeeder) FeedKey(key string, target interface{}) error {
 	if y.verboseDebug && y.logger != nil {
 		y.logger.Debug("YamlFeeder: Starting FeedKey process", "filePath", y.Path, "key", key, "targetType", reflect.TypeOf(target))
 	}

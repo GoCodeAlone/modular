@@ -112,7 +112,7 @@ func TestBasicEnvFeederWithConfigBuilder(t *testing.T) {
 
 	// Verify config was populated correctly
 	assert.Equal(t, "Test App", config.AppName)
-	assert.Equal(t, true, config.Debug)
+	assert.True(t, config.Debug)
 	assert.Equal(t, 8080, config.Port)
 
 	// Verify field tracking captured all field populations
@@ -350,7 +350,7 @@ database:
 	// APP_NAME should come from ENV (overriding YAML)
 	assert.Equal(t, "Test App from ENV", config.App.AppName)
 	// Debug should come from YAML (no ENV override)
-	assert.Equal(t, true, config.App.Debug)
+	assert.True(t, config.App.Debug)
 	// Port should come from YAML
 	assert.Equal(t, 9090, config.App.Port)
 

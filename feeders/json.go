@@ -60,8 +60,8 @@ type JSONFeeder struct {
 }
 
 // NewJSONFeeder creates a new JSONFeeder that reads from the specified JSON file
-func NewJSONFeeder(filePath string) JSONFeeder {
-	return JSONFeeder{
+func NewJSONFeeder(filePath string) *JSONFeeder {
+	return &JSONFeeder{
 		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
@@ -79,7 +79,7 @@ func (j *JSONFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg s
 }
 
 // Feed reads the JSON file and populates the provided structure
-func (j JSONFeeder) Feed(structure interface{}) error {
+func (j *JSONFeeder) Feed(structure interface{}) error {
 	if j.verboseDebug && j.logger != nil {
 		j.logger.Debug("JSONFeeder: Starting feed process", "filePath", j.Path, "structureType", reflect.TypeOf(structure))
 	}
@@ -101,7 +101,7 @@ func (j JSONFeeder) Feed(structure interface{}) error {
 }
 
 // FeedKey reads a JSON file and extracts a specific key
-func (j JSONFeeder) FeedKey(key string, target interface{}) error {
+func (j *JSONFeeder) FeedKey(key string, target interface{}) error {
 	if j.verboseDebug && j.logger != nil {
 		j.logger.Debug("JSONFeeder: Starting FeedKey process", "filePath", j.Path, "key", key, "targetType", reflect.TypeOf(target))
 	}
@@ -124,7 +124,7 @@ func (j *JSONFeeder) SetFieldTracker(tracker FieldTracker) {
 }
 
 // feedWithTracking reads the JSON file and populates the provided structure with field tracking
-func (j JSONFeeder) feedWithTracking(structure interface{}) error {
+func (j *JSONFeeder) feedWithTracking(structure interface{}) error {
 	// Read and parse the JSON file manually for consistent behavior
 	data, err := os.ReadFile(j.Path)
 	if err != nil {
@@ -154,7 +154,7 @@ func (j JSONFeeder) feedWithTracking(structure interface{}) error {
 }
 
 // processStructFields iterates through struct fields and populates them from JSON data
-func (j JSONFeeder) processStructFields(rv reflect.Value, jsonData map[string]interface{}, fieldPrefix string) error {
+func (j *JSONFeeder) processStructFields(rv reflect.Value, jsonData map[string]interface{}, fieldPrefix string) error {
 	structType := rv.Type()
 
 	for i := 0; i < rv.NumField(); i++ {
@@ -201,7 +201,7 @@ func (j JSONFeeder) processStructFields(rv reflect.Value, jsonData map[string]in
 }
 
 // processField processes a single field, handling nested structs, slices, and basic types
-func (j JSONFeeder) processField(field reflect.Value, fieldType reflect.StructField, value interface{}, fieldPath string) error {
+func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructField, value interface{}, fieldPath string) error {
 	fieldKind := field.Kind()
 
 	switch fieldKind {
@@ -231,7 +231,7 @@ func (j JSONFeeder) processField(field reflect.Value, fieldType reflect.StructFi
 }
 
 // setFieldFromJSON sets a field value from JSON data with type conversion
-func (j JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
+func (j *JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
 	// Convert and set the value
 	convertedValue := reflect.ValueOf(value)
 	if convertedValue.Type().ConvertibleTo(field.Type()) {
@@ -260,7 +260,7 @@ func (j JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fie
 }
 
 // setSliceFromJSON sets a slice field from JSON array data
-func (j JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
+func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
 	// Handle slice values
 	if arrayValue, ok := value.([]interface{}); ok {
 		sliceType := field.Type()

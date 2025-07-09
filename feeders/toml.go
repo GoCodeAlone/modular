@@ -20,8 +20,8 @@ type TomlFeeder struct {
 }
 
 // NewTomlFeeder creates a new TomlFeeder that reads from the specified TOML file
-func NewTomlFeeder(filePath string) TomlFeeder {
-	return TomlFeeder{
+func NewTomlFeeder(filePath string) *TomlFeeder {
+	return &TomlFeeder{
 		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
@@ -44,7 +44,7 @@ func (t *TomlFeeder) SetFieldTracker(tracker FieldTracker) {
 }
 
 // Feed reads the TOML file and populates the provided structure
-func (t TomlFeeder) Feed(structure interface{}) error {
+func (t *TomlFeeder) Feed(structure interface{}) error {
 	if t.verboseDebug && t.logger != nil {
 		t.logger.Debug("TomlFeeder: Starting feed process", "filePath", t.Path, "structureType", reflect.TypeOf(structure))
 	}
@@ -66,7 +66,7 @@ func (t TomlFeeder) Feed(structure interface{}) error {
 }
 
 // FeedKey reads a TOML file and extracts a specific key
-func (t TomlFeeder) FeedKey(key string, target interface{}) error {
+func (t *TomlFeeder) FeedKey(key string, target interface{}) error {
 	if t.verboseDebug && t.logger != nil {
 		t.logger.Debug("TomlFeeder: Starting FeedKey process", "filePath", t.Path, "key", key, "targetType", reflect.TypeOf(target))
 	}
@@ -84,7 +84,7 @@ func (t TomlFeeder) FeedKey(key string, target interface{}) error {
 }
 
 // feedWithTracking reads the TOML file and populates the provided structure with field tracking
-func (t TomlFeeder) feedWithTracking(structure interface{}) error {
+func (t *TomlFeeder) feedWithTracking(structure interface{}) error {
 	// Read and parse the TOML file manually for consistent behavior
 	data, err := os.ReadFile(t.Path)
 	if err != nil {
@@ -114,7 +114,7 @@ func (t TomlFeeder) feedWithTracking(structure interface{}) error {
 }
 
 // processStructFields iterates through struct fields and populates them from TOML data
-func (t TomlFeeder) processStructFields(rv reflect.Value, tomlData map[string]interface{}, fieldPrefix string) error {
+func (t *TomlFeeder) processStructFields(rv reflect.Value, tomlData map[string]interface{}, fieldPrefix string) error {
 	structType := rv.Type()
 
 	for i := 0; i < rv.NumField(); i++ {
@@ -161,7 +161,7 @@ func (t TomlFeeder) processStructFields(rv reflect.Value, tomlData map[string]in
 }
 
 // processField processes a single field, handling nested structs, slices, and basic types
-func (t TomlFeeder) processField(field reflect.Value, fieldType reflect.StructField, value interface{}, fieldPath string) error {
+func (t *TomlFeeder) processField(field reflect.Value, fieldType reflect.StructField, value interface{}, fieldPath string) error {
 	fieldKind := field.Kind()
 
 	switch fieldKind {
@@ -191,7 +191,7 @@ func (t TomlFeeder) processField(field reflect.Value, fieldType reflect.StructFi
 }
 
 // setFieldFromTOML sets a field value from TOML data with type conversion
-func (t TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
+func (t *TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
 	// Convert and set the value
 	convertedValue := reflect.ValueOf(value)
 	if convertedValue.Type().ConvertibleTo(field.Type()) {
@@ -220,7 +220,7 @@ func (t TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fie
 }
 
 // setSliceFromTOML sets a slice field from TOML array data
-func (t TomlFeeder) setSliceFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
+func (t *TomlFeeder) setSliceFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
 	// Handle slice values
 	if arrayValue, ok := value.([]interface{}); ok {
 		sliceType := field.Type()
