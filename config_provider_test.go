@@ -172,8 +172,11 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
-				feeder.On("FeedKey", "main", mock.Anything).Return(nil)
-				feeder.On("FeedKey", "test", mock.Anything).Return(nil)
+				// Due to map iteration order being random, either key could be processed first
+				// If "test" is processed first, it will succeed then fail at setup
+				// If "main" is processed first, it will succeed, then "test" will succeed and fail at setup
+				feeder.On("FeedKey", "main", mock.Anything).Return(nil).Maybe()
+				feeder.On("FeedKey", "test", mock.Anything).Return(nil).Maybe()
 				cfg.AddFeeder(feeder)
 				cfg.AddStructKey("main", &testCfg{})
 				cfg.AddStructKey("test", &testSetupCfg{shouldError: true})
