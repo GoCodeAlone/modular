@@ -28,9 +28,6 @@ require (
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/golobby/cast v1.3.3 // indirect
-	github.com/golobby/config/v3 v3.4.2 // indirect
-	github.com/golobby/dotenv v1.3.2 // indirect
-	github.com/golobby/env/v2 v2.2.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
