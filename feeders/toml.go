@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/golobby/config/v3/pkg/feeder"
 )
 
 // TomlFeeder is a feeder that reads TOML files with optional verbose debug logging
 type TomlFeeder struct {
-	feeder.Toml
+	Path         string
 	verboseDebug bool
 	logger       interface {
 		Debug(msg string, args ...any)
@@ -23,7 +22,7 @@ type TomlFeeder struct {
 // NewTomlFeeder creates a new TomlFeeder that reads from the specified TOML file
 func NewTomlFeeder(filePath string) TomlFeeder {
 	return TomlFeeder{
-		Toml:         feeder.Toml{Path: filePath},
+		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
 		fieldTracker: nil,
@@ -50,14 +49,8 @@ func (t TomlFeeder) Feed(structure interface{}) error {
 		t.logger.Debug("TomlFeeder: Starting feed process", "filePath", t.Path, "structureType", reflect.TypeOf(structure))
 	}
 
-	var err error
-
-	// Use field tracking if available
-	if t.fieldTracker != nil {
-		err = t.feedWithTracking(structure)
-	} else {
-		err = t.Toml.Feed(structure)
-	}
+	// Always use custom parsing logic for consistency
+	err := t.feedWithTracking(structure)
 
 	if t.verboseDebug && t.logger != nil {
 		if err != nil {
@@ -92,12 +85,7 @@ func (t TomlFeeder) FeedKey(key string, target interface{}) error {
 
 // feedWithTracking reads the TOML file and populates the provided structure with field tracking
 func (t TomlFeeder) feedWithTracking(structure interface{}) error {
-	if t.fieldTracker == nil {
-		// Fall back to regular feeding if no tracker is set
-		return wrapTomlFeederError(t.Toml.Feed(structure))
-	}
-
-	// Read and parse the TOML file manually for field tracking
+	// Read and parse the TOML file manually for consistent behavior
 	data, err := os.ReadFile(t.Path)
 	if err != nil {
 		return fmt.Errorf("failed to read TOML file %s: %w", t.Path, err)
@@ -106,6 +94,19 @@ func (t TomlFeeder) feedWithTracking(structure interface{}) error {
 	var tomlData map[string]interface{}
 	if err := toml.Unmarshal(data, &tomlData); err != nil {
 		return fmt.Errorf("failed to parse TOML file %s: %w", t.Path, err)
+	}
+
+	// Check if we're dealing with a struct pointer
+	structValue := reflect.ValueOf(structure)
+	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+		// Not a struct pointer, fall back to standard TOML unmarshaling
+		if t.verboseDebug && t.logger != nil {
+			t.logger.Debug("TomlFeeder: Not a struct pointer, using standard TOML unmarshaling", "structureType", reflect.TypeOf(structure))
+		}
+		if err := toml.Unmarshal(data, structure); err != nil {
+			return fmt.Errorf("failed to unmarshal TOML data: %w", err)
+		}
+		return nil
 	}
 
 	// Process the structure with field tracking
@@ -127,14 +128,20 @@ func (t TomlFeeder) processStructFields(rv reflect.Value, tomlData map[string]in
 
 		// Get TOML tag or use field name
 		tomlTag := fieldType.Tag.Get("toml")
-		if tomlTag == "" || tomlTag == "-" {
-			continue
-		}
+		var tomlKey string
 
-		// Handle toml tag with options (e.g., "field,omitempty")
-		tomlKey := strings.Split(tomlTag, ",")[0]
-		if tomlKey == "" {
+		if tomlTag == "" {
+			// No TOML tag, use field name
 			tomlKey = fieldType.Name
+		} else if tomlTag == "-" {
+			// Explicitly skipped
+			continue
+		} else {
+			// Handle toml tag with options (e.g., "field,omitempty")
+			tomlKey = strings.Split(tomlTag, ",")[0]
+			if tomlKey == "" {
+				tomlKey = fieldType.Name
+			}
 		}
 
 		fieldPath := fieldType.Name // Use struct field name for path

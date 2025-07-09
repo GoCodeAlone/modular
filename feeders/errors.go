@@ -101,12 +101,3 @@ func wrapYamlTypeConversionError(fromType, toType string) error {
 func wrapYamlBoolConversionError(value string) error {
 	return fmt.Errorf("%w: '%s'", ErrYamlBoolConversion, value)
 }
-
-// General feeder error wrapper functions
-func wrapJsonFeederError(err error) error {
-	return fmt.Errorf("%w: %w", ErrJsonFeederUnavailable, err)
-}
-
-func wrapTomlFeederError(err error) error {
-	return fmt.Errorf("%w: %w", ErrTomlFeederUnavailable, err)
-}

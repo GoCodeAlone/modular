@@ -64,7 +64,7 @@ func TestNewConfig(t *testing.T) {
 	cfg := NewConfig()
 
 	assert.NotNil(t, cfg)
-	assert.NotNil(t, cfg.Config)
+	assert.NotNil(t, cfg.Feeders)
 	assert.NotNil(t, cfg.StructKeys)
 	assert.Empty(t, cfg.StructKeys)
 }
@@ -109,9 +109,10 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
+				feeder.On("FeedKey", "main", mock.Anything).Return(nil)
 				feeder.On("FeedKey", "test", mock.Anything).Return(nil)
 				cfg.AddFeeder(feeder)
-				cfg.AddStruct(&testCfg{})
+				cfg.AddStructKey("main", &testCfg{})
 				cfg.AddStructKey("test", &testCfg{})
 				return cfg, feeder
 			},
@@ -124,7 +125,7 @@ func TestConfig_Feed(t *testing.T) {
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(ErrFeedFailed)
 				cfg.AddFeeder(feeder)
-				cfg.AddStruct(&testCfg{})
+				cfg.AddStructKey("main", &testCfg{})
 				return cfg, feeder
 			},
 			expectFeedErr:  true,
@@ -136,9 +137,10 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
+				feeder.On("FeedKey", "main", mock.Anything).Return(nil)
 				feeder.On("FeedKey", "test", mock.Anything).Return(ErrFeedKeyFailed)
 				cfg.AddFeeder(feeder)
-				cfg.AddStruct(&testCfg{})
+				cfg.AddStructKey("main", &testCfg{})
 				cfg.AddStructKey("test", &testCfg{})
 				return cfg, feeder
 			},
@@ -152,9 +154,10 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
+				feeder.On("FeedKey", "main", mock.Anything).Return(nil)
 				feeder.On("FeedKey", "test", mock.Anything).Return(nil)
 				cfg.AddFeeder(feeder)
-				cfg.AddStruct(&testCfg{})
+				cfg.AddStructKey("main", &testCfg{})
 				cfg.AddStructKey("test", &testSetupCfg{})
 				return cfg, feeder
 			},
@@ -166,9 +169,10 @@ func TestConfig_Feed(t *testing.T) {
 				cfg := NewConfig()
 				feeder := new(MockComplexFeeder)
 				feeder.On("Feed", mock.Anything).Return(nil)
+				feeder.On("FeedKey", "main", mock.Anything).Return(nil)
 				feeder.On("FeedKey", "test", mock.Anything).Return(nil)
 				cfg.AddFeeder(feeder)
-				cfg.AddStruct(&testCfg{})
+				cfg.AddStructKey("main", &testCfg{})
 				cfg.AddStructKey("test", &testSetupCfg{shouldError: true})
 				return cfg, feeder
 			},

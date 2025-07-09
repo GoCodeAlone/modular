@@ -6,13 +6,12 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/golobby/config/v3/pkg/feeder"
 	"gopkg.in/yaml.v3"
 )
 
 // YamlFeeder is a feeder that reads YAML files with optional verbose debug logging
 type YamlFeeder struct {
-	feeder.Yaml
+	Path         string
 	verboseDebug bool
 	logger       interface {
 		Debug(msg string, args ...any)
@@ -23,7 +22,7 @@ type YamlFeeder struct {
 // NewYamlFeeder creates a new YamlFeeder that reads from the specified YAML file
 func NewYamlFeeder(filePath string) *YamlFeeder {
 	return &YamlFeeder{
-		Yaml:         feeder.Yaml{Path: filePath},
+		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
 		fieldTracker: nil,
@@ -50,38 +49,9 @@ func (y YamlFeeder) Feed(structure interface{}) error {
 		y.logger.Debug("YamlFeeder: Starting feed process", "filePath", y.Path, "structureType", reflect.TypeOf(structure))
 	}
 
-	// If no field tracker is set, use the original behavior
-	if y.fieldTracker == nil {
-		err := y.Yaml.Feed(structure)
-		if y.verboseDebug && y.logger != nil {
-			if err != nil {
-				y.logger.Debug("YamlFeeder: Feed completed with error", "filePath", y.Path, "error", err)
-			} else {
-				y.logger.Debug("YamlFeeder: Feed completed successfully", "filePath", y.Path)
-			}
-		}
-		if err != nil {
-			return fmt.Errorf("yaml feed error: %w", err)
-		}
-		return nil
-	}
-
-	// With field tracking, check if we're dealing with a struct pointer
-	structValue := reflect.ValueOf(structure)
-	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
-		// Not a struct pointer, fall back to original behavior
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Not a struct pointer, using original feeder", "structureType", reflect.TypeOf(structure))
-		}
-		err := y.Yaml.Feed(structure)
-		if err != nil {
-			return fmt.Errorf("yaml feed error: %w", err)
-		}
-		return nil
-	}
-
-	// With field tracking, we need to process the YAML data manually
+	// Always use custom parsing logic for consistency
 	err := y.feedWithTracking(structure)
+
 	if y.verboseDebug && y.logger != nil {
 		if err != nil {
 			y.logger.Debug("YamlFeeder: Feed completed with error", "filePath", y.Path, "error", err)
@@ -160,6 +130,19 @@ func (y *YamlFeeder) feedWithTracking(structure interface{}) error {
 			y.logger.Debug("YamlFeeder: Failed to read YAML file", "filePath", y.Path, "error", err)
 		}
 		return fmt.Errorf("failed to read YAML file: %w", err)
+	}
+
+	// Check if we're dealing with a struct pointer
+	structValue := reflect.ValueOf(structure)
+	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+		// Not a struct pointer, fall back to standard YAML unmarshaling
+		if y.verboseDebug && y.logger != nil {
+			y.logger.Debug("YamlFeeder: Not a struct pointer, using standard YAML unmarshaling", "structureType", reflect.TypeOf(structure))
+		}
+		if err := yaml.Unmarshal(content, structure); err != nil {
+			return fmt.Errorf("failed to unmarshal YAML data: %w", err)
+		}
+		return nil
 	}
 
 	// Parse YAML content

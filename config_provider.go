@@ -3,8 +3,6 @@ package modular
 import (
 	"fmt"
 	"reflect"
-
-	"github.com/golobby/config/v3"
 )
 
 const mainConfigSection = "_main"
@@ -81,7 +79,7 @@ func NewStdConfigProvider(cfg any) *StdConfigProvider {
 }
 
 // Config represents a configuration builder that can combine multiple feeders and structures.
-// It extends the golobby/config library with additional functionality for the modular framework.
+// It provides functionality for the modular framework to coordinate configuration loading.
 //
 // The Config builder allows you to:
 //   - Add multiple configuration sources (files, environment, etc.)
@@ -91,7 +89,8 @@ func NewStdConfigProvider(cfg any) *StdConfigProvider {
 //   - Enable verbose debugging for configuration processing
 //   - Track field-level population details
 type Config struct {
-	*config.Config
+	// Feeders contains all the registered configuration feeders
+	Feeders []Feeder
 	// StructKeys maps struct identifiers to their configuration objects.
 	// Used internally to track which configuration structures have been processed.
 	StructKeys map[string]interface{}
@@ -115,7 +114,7 @@ type Config struct {
 //	err := cfg.Feed()                       // Load configuration
 func NewConfig() *Config {
 	return &Config{
-		Config:       config.New(),
+		Feeders:      make([]Feeder, 0),
 		StructKeys:   make(map[string]interface{}),
 		VerboseDebug: false,
 		Logger:       nil,
@@ -143,9 +142,9 @@ func (c *Config) SetVerboseDebug(enabled bool, logger Logger) *Config {
 	return c
 }
 
-// AddFeeder overrides the parent AddFeeder to support verbose debugging and field tracking
+// AddFeeder adds a configuration feeder to support verbose debugging and field tracking
 func (c *Config) AddFeeder(feeder Feeder) *Config {
-	c.Config.AddFeeder(feeder)
+	c.Feeders = append(c.Feeders, feeder)
 
 	// If verbose debugging is enabled, apply it to this feeder
 	if c.VerboseDebug && c.Logger != nil {
@@ -281,16 +280,9 @@ func (c *Config) Feed() error {
 			}
 		}
 	} else {
-		// Fallback to the original golobby config system if no struct keys
+		// No struct keys configured - this means no explicit structures were added
 		if c.VerboseDebug && c.Logger != nil {
-			c.Logger.Debug("Using fallback golobby config feeding process")
-		}
-
-		if err := c.Config.Feed(); err != nil {
-			if c.VerboseDebug && c.Logger != nil {
-				c.Logger.Debug("Config feed failed", "error", err)
-			}
-			return fmt.Errorf("config feed error: %w", err)
+			c.Logger.Debug("No struct keys configured - skipping feed process")
 		}
 	}
 

@@ -6,8 +6,6 @@ import (
 	"os"
 	"reflect"
 	"strings"
-
-	"github.com/golobby/config/v3/pkg/feeder"
 )
 
 // Feeder interface for common operations
@@ -53,7 +51,7 @@ func feedKey(
 
 // JSONFeeder is a feeder that reads JSON files with optional verbose debug logging
 type JSONFeeder struct {
-	feeder.Json
+	Path         string
 	verboseDebug bool
 	logger       interface {
 		Debug(msg string, args ...any)
@@ -64,7 +62,7 @@ type JSONFeeder struct {
 // NewJSONFeeder creates a new JSONFeeder that reads from the specified JSON file
 func NewJSONFeeder(filePath string) JSONFeeder {
 	return JSONFeeder{
-		Json:         feeder.Json{Path: filePath},
+		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
 		fieldTracker: nil,
@@ -86,14 +84,8 @@ func (j JSONFeeder) Feed(structure interface{}) error {
 		j.logger.Debug("JSONFeeder: Starting feed process", "filePath", j.Path, "structureType", reflect.TypeOf(structure))
 	}
 
-	var err error
-
-	// Use field tracking if available
-	if j.fieldTracker != nil {
-		err = j.feedWithTracking(structure)
-	} else {
-		err = j.Json.Feed(structure)
-	}
+	// Always use custom parsing logic for consistency
+	err := j.feedWithTracking(structure)
 
 	if j.verboseDebug && j.logger != nil {
 		if err != nil {
@@ -133,12 +125,7 @@ func (j *JSONFeeder) SetFieldTracker(tracker FieldTracker) {
 
 // feedWithTracking reads the JSON file and populates the provided structure with field tracking
 func (j JSONFeeder) feedWithTracking(structure interface{}) error {
-	if j.fieldTracker == nil {
-		// Fall back to regular feeding if no tracker is set
-		return wrapJsonFeederError(j.Json.Feed(structure))
-	}
-
-	// Read and parse the JSON file manually for field tracking
+	// Read and parse the JSON file manually for consistent behavior
 	data, err := os.ReadFile(j.Path)
 	if err != nil {
 		return fmt.Errorf("failed to read JSON file %s: %w", j.Path, err)
@@ -147,6 +134,19 @@ func (j JSONFeeder) feedWithTracking(structure interface{}) error {
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal(data, &jsonData); err != nil {
 		return fmt.Errorf("failed to parse JSON file %s: %w", j.Path, err)
+	}
+
+	// Check if we're dealing with a struct pointer
+	structValue := reflect.ValueOf(structure)
+	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+		// Not a struct pointer, fall back to standard JSON unmarshaling
+		if j.verboseDebug && j.logger != nil {
+			j.logger.Debug("JSONFeeder: Not a struct pointer, using standard JSON unmarshaling", "structureType", reflect.TypeOf(structure))
+		}
+		if err := json.Unmarshal(data, structure); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON data: %w", err)
+		}
+		return nil
 	}
 
 	// Process the structure with field tracking
@@ -168,14 +168,20 @@ func (j JSONFeeder) processStructFields(rv reflect.Value, jsonData map[string]in
 
 		// Get JSON tag or use field name
 		jsonTag := fieldType.Tag.Get("json")
-		if jsonTag == "" || jsonTag == "-" {
-			continue
-		}
+		var jsonKey string
 
-		// Handle json tag with options (e.g., "field,omitempty")
-		jsonKey := strings.Split(jsonTag, ",")[0]
-		if jsonKey == "" {
+		if jsonTag == "" {
+			// No JSON tag, use field name
 			jsonKey = fieldType.Name
+		} else if jsonTag == "-" {
+			// Explicitly skipped
+			continue
+		} else {
+			// Handle json tag with options (e.g., "field,omitempty")
+			jsonKey = strings.Split(jsonTag, ",")[0]
+			if jsonKey == "" {
+				jsonKey = fieldType.Name
+			}
 		}
 
 		fieldPath := fieldType.Name // Use struct field name for path
