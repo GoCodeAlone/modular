@@ -37,8 +37,8 @@ func TestTenantAffixedEnvFeeder_Debug(t *testing.T) {
 	feeder.SetPrefixFunc("test123")
 	feeder.SetSuffixFunc("PROD")
 
-	fmt.Printf("Final prefix: %s\n", feeder.AffixedEnvFeeder.Prefix)
-	fmt.Printf("Final suffix: %s\n", feeder.AffixedEnvFeeder.Suffix)
+	fmt.Printf("Final prefix: %s\n", feeder.Prefix)
+	fmt.Printf("Final suffix: %s\n", feeder.Suffix)
 
 	// Expected env var name: APP_test123_ + _ + NAME + _ + _PROD = APP_test123__NAME__PROD
 	expectedEnvVar := "APP_test123__NAME__PROD"

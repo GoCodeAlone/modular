@@ -64,10 +64,10 @@ func TestDirectFeederFieldTracking(t *testing.T) {
 
 			// Verify that config values were actually set
 			assert.Equal(t, "Test App", config.App.Name)
-			assert.Equal(t, true, config.App.Debug)
+			assert.True(t, config.App.Debug)
 
 			// Verify that field populations were tracked
-			assert.Greater(t, len(tracker.FieldPopulations), 0, "Should have tracked field populations")
+			assert.NotEmpty(t, tracker.FieldPopulations, "Should have tracked field populations")
 
 			// Print tracked populations for debugging
 			t.Logf("Tracked %d field populations:", len(tracker.FieldPopulations))
@@ -137,7 +137,7 @@ func TestInstanceAwareDirectFieldTracking(t *testing.T) {
 	assert.Equal(t, "mysql://localhost/secondary", secondaryConfig.DSN)
 
 	// Verify that field populations were tracked
-	assert.Greater(t, len(tracker.FieldPopulations), 0, "Should have tracked field populations")
+	assert.NotEmpty(t, tracker.FieldPopulations, "Should have tracked field populations")
 
 	// Print tracked populations for debugging
 	t.Logf("Tracked %d field populations:", len(tracker.FieldPopulations))

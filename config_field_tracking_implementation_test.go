@@ -135,7 +135,7 @@ func TestEnhancedFieldTracking(t *testing.T) {
 
 			// Verify the config was populated correctly
 			assert.Equal(t, "Test App", config.AppName)
-			assert.Equal(t, true, config.Debug)
+			assert.True(t, config.Debug)
 
 			// Field tracking should now work with the bridge
 			// Verify field populations were tracked

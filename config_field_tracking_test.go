@@ -285,7 +285,7 @@ connections:
 			// Verify that configuration was populated
 			if tt.name == "environment_variable_population_tracking" {
 				assert.Equal(t, "Test App", appConfig.AppName)
-				assert.Equal(t, true, appConfig.Debug)
+				assert.True(t, appConfig.Debug)
 
 				// Verify field tracking captured the populations
 				populations := tracker.FieldPopulations
@@ -553,6 +553,11 @@ func captureStructFields(rv reflect.Value, prefix string, fields map[string]inte
 					}
 				}
 			}
+		case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+			reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
+			reflect.Chan, reflect.Func, reflect.Interface, reflect.Slice, reflect.String, reflect.UnsafePointer:
+			fields[fieldPath] = field.Interface()
 		default:
 			fields[fieldPath] = field.Interface()
 		}

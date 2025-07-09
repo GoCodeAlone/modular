@@ -20,7 +20,7 @@ DEBUG=true
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 `
-	err := os.WriteFile(envFile, []byte(envContent), 0644)
+	err := os.WriteFile(envFile, []byte(envContent), 0600)
 	if err != nil {
 		t.Fatalf("Failed to create test .env file: %v", err)
 	}

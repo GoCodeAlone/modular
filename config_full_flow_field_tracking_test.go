@@ -11,15 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setEnvWithCleanup sets an environment variable and schedules it for cleanup using t.Cleanup
-func setEnvWithCleanup(t *testing.T, key, value string) {
-	t.Setenv(key, value)
-	// Also ensure it gets unset when the test finishes
-	t.Cleanup(func() {
-		os.Unsetenv(key)
-	})
-}
-
 // setEnvVarsWithCleanup sets multiple environment variables with automatic cleanup
 func setEnvVarsWithCleanup(t *testing.T, envVars map[string]string) {
 	var keys []string
