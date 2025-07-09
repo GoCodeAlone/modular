@@ -1,18 +1,19 @@
 package modular
 
 import (
-	"github.com/golobby/config/v3"
-
 	"github.com/GoCodeAlone/modular/feeders"
 )
+
+// Feeder defines the interface for configuration feeders that provide configuration data.
+type Feeder interface {
+	// Feed gets a struct and feeds it using configuration data.
+	Feed(structure interface{}) error
+}
 
 // ConfigFeeders provides a default set of configuration feeders for common use cases
 var ConfigFeeders = []Feeder{
 	feeders.NewEnvFeeder(),
 }
-
-// Feeder aliases
-type Feeder = config.Feeder
 
 // ComplexFeeder extends the basic Feeder interface with additional functionality for complex configuration scenarios
 type ComplexFeeder interface {

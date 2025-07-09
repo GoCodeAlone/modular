@@ -3,8 +3,6 @@ package modular
 import (
 	"fmt"
 	"reflect"
-
-	"github.com/golobby/config/v3"
 )
 
 const mainConfigSection = "_main"
@@ -81,7 +79,7 @@ func NewStdConfigProvider(cfg any) *StdConfigProvider {
 }
 
 // Config represents a configuration builder that can combine multiple feeders and structures.
-// It extends the golobby/config library with additional functionality for the modular framework.
+// It provides functionality for the modular framework to coordinate configuration loading.
 //
 // The Config builder allows you to:
 //   - Add multiple configuration sources (files, environment, etc.)
@@ -89,8 +87,10 @@ func NewStdConfigProvider(cfg any) *StdConfigProvider {
 //   - Apply configuration to multiple struct targets
 //   - Track which structs have been configured
 //   - Enable verbose debugging for configuration processing
+//   - Track field-level population details
 type Config struct {
-	*config.Config
+	// Feeders contains all the registered configuration feeders
+	Feeders []Feeder
 	// StructKeys maps struct identifiers to their configuration objects.
 	// Used internally to track which configuration structures have been processed.
 	StructKeys map[string]interface{}
@@ -98,6 +98,8 @@ type Config struct {
 	VerboseDebug bool
 	// Logger is used for verbose debug logging
 	Logger Logger
+	// FieldTracker tracks which fields are populated by which feeders
+	FieldTracker FieldTracker
 }
 
 // NewConfig creates a new configuration builder.
@@ -112,10 +114,11 @@ type Config struct {
 //	err := cfg.Feed()                       // Load configuration
 func NewConfig() *Config {
 	return &Config{
-		Config:       config.New(),
+		Feeders:      make([]Feeder, 0),
 		StructKeys:   make(map[string]interface{}),
 		VerboseDebug: false,
 		Logger:       nil,
+		FieldTracker: NewDefaultFieldTracker(),
 	}
 }
 
@@ -123,6 +126,11 @@ func NewConfig() *Config {
 func (c *Config) SetVerboseDebug(enabled bool, logger Logger) *Config {
 	c.VerboseDebug = enabled
 	c.Logger = logger
+
+	// Set logger on field tracker
+	if c.FieldTracker != nil {
+		c.FieldTracker.SetLogger(logger)
+	}
 
 	// Apply verbose debugging to any verbose-aware feeders
 	for _, feeder := range c.Feeders {
@@ -134,14 +142,32 @@ func (c *Config) SetVerboseDebug(enabled bool, logger Logger) *Config {
 	return c
 }
 
-// AddFeeder overrides the parent AddFeeder to support verbose debugging
+// AddFeeder adds a configuration feeder to support verbose debugging and field tracking
 func (c *Config) AddFeeder(feeder Feeder) *Config {
-	c.Config.AddFeeder(feeder)
+	c.Feeders = append(c.Feeders, feeder)
 
 	// If verbose debugging is enabled, apply it to this feeder
 	if c.VerboseDebug && c.Logger != nil {
 		if verboseFeeder, ok := feeder.(VerboseAwareFeeder); ok {
 			verboseFeeder.SetVerboseDebug(true, c.Logger)
+		}
+	}
+	// If field tracking is enabled, apply it to this feeder
+	if c.FieldTracker != nil {
+		// Check for main package FieldTrackingFeeder interface
+		if trackingFeeder, ok := feeder.(FieldTrackingFeeder); ok {
+			trackingFeeder.SetFieldTracker(c.FieldTracker)
+		} else {
+			// Check for feeders package interface compatibility
+			// Use reflection to check if the feeder has a SetFieldTracker method
+			feederValue := reflect.ValueOf(feeder)
+			setFieldTrackerMethod := feederValue.MethodByName("SetFieldTracker")
+			if setFieldTrackerMethod.IsValid() {
+				// Create a bridge adapter and call SetFieldTracker
+				bridge := NewFieldTrackerBridge(c.FieldTracker)
+				args := []reflect.Value{reflect.ValueOf(bridge)}
+				setFieldTrackerMethod.Call(args)
+			}
 		}
 	}
 
@@ -154,83 +180,109 @@ func (c *Config) AddStructKey(key string, target interface{}) *Config {
 	return c
 }
 
+// SetFieldTracker sets the field tracker for capturing field population details
+func (c *Config) SetFieldTracker(tracker FieldTracker) *Config {
+	c.FieldTracker = tracker
+	if c.Logger != nil {
+		c.FieldTracker.SetLogger(c.Logger)
+	}
+
+	// Apply field tracking to any tracking-aware feeders
+	for _, feeder := range c.Feeders {
+		if trackingFeeder, ok := feeder.(FieldTrackingFeeder); ok {
+			trackingFeeder.SetFieldTracker(tracker)
+		}
+	}
+
+	return c
+}
+
 // Feed with validation applies defaults and validates configs after feeding
 func (c *Config) Feed() error {
 	if c.VerboseDebug && c.Logger != nil {
 		c.Logger.Debug("Starting config feed process", "structKeysCount", len(c.StructKeys), "feedersCount", len(c.Feeders))
 	}
 
-	if err := c.Config.Feed(); err != nil {
+	// If we have struct keys, feed them directly with field tracking
+	if len(c.StructKeys) > 0 {
 		if c.VerboseDebug && c.Logger != nil {
-			c.Logger.Debug("Config feed failed", "error", err)
-		}
-		return fmt.Errorf("config feed error: %w", err)
-	}
-
-	if c.VerboseDebug && c.Logger != nil {
-		c.Logger.Debug("Config feed completed, processing struct keys")
-	}
-
-	for key, target := range c.StructKeys {
-		if c.VerboseDebug && c.Logger != nil {
-			c.Logger.Debug("Processing struct key", "key", key, "targetType", reflect.TypeOf(target))
+			c.Logger.Debug("Using enhanced feeding process with field tracking")
 		}
 
-		for i, f := range c.Feeders {
+		// Feed each struct key with each feeder
+		for key, target := range c.StructKeys {
 			if c.VerboseDebug && c.Logger != nil {
-				c.Logger.Debug("Applying feeder to struct", "key", key, "feederIndex", i, "feederType", fmt.Sprintf("%T", f))
+				c.Logger.Debug("Processing struct key", "key", key, "targetType", reflect.TypeOf(target))
 			}
 
-			cf, ok := f.(ComplexFeeder)
-			if !ok {
+			for i, f := range c.Feeders {
 				if c.VerboseDebug && c.Logger != nil {
-					c.Logger.Debug("Feeder is not a ComplexFeeder, skipping", "key", key, "feederType", fmt.Sprintf("%T", f))
+					c.Logger.Debug("Applying feeder to struct", "key", key, "feederIndex", i, "feederType", fmt.Sprintf("%T", f))
 				}
-				continue
-			}
 
-			if err := cf.FeedKey(key, target); err != nil {
+				// Try to use the feeder's Feed method directly for better field tracking
+				if err := f.Feed(target); err != nil {
+					if c.VerboseDebug && c.Logger != nil {
+						c.Logger.Debug("Feeder Feed method failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+					}
+					return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+				}
+
+				// Also try ComplexFeeder if available (for instance-aware feeders)
+				if cf, ok := f.(ComplexFeeder); ok {
+					if c.VerboseDebug && c.Logger != nil {
+						c.Logger.Debug("Applying ComplexFeeder FeedKey", "key", key, "feederType", fmt.Sprintf("%T", f))
+					}
+
+					if err := cf.FeedKey(key, target); err != nil {
+						if c.VerboseDebug && c.Logger != nil {
+							c.Logger.Debug("ComplexFeeder FeedKey failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+						}
+						return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+					}
+				}
+
 				if c.VerboseDebug && c.Logger != nil {
-					c.Logger.Debug("ComplexFeeder FeedKey failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+					c.Logger.Debug("Feeder applied successfully", "key", key, "feederType", fmt.Sprintf("%T", f))
 				}
-				return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
 			}
 
+			// Apply defaults and validate config
 			if c.VerboseDebug && c.Logger != nil {
-				c.Logger.Debug("ComplexFeeder FeedKey succeeded", "key", key, "feederType", fmt.Sprintf("%T", f))
+				c.Logger.Debug("Validating config for struct key", "key", key)
 			}
-		}
 
-		if c.VerboseDebug && c.Logger != nil {
-			c.Logger.Debug("Validating config for struct key", "key", key)
-		}
-
-		// Apply defaults and validate config
-		if err := ValidateConfig(target); err != nil {
-			if c.VerboseDebug && c.Logger != nil {
-				c.Logger.Debug("Config validation failed", "key", key, "error", err)
-			}
-			return fmt.Errorf("config validation error for %s: %w", key, err)
-		}
-
-		if c.VerboseDebug && c.Logger != nil {
-			c.Logger.Debug("Config validation succeeded", "key", key)
-		}
-
-		// Call Setup if implemented
-		if setupable, ok := target.(ConfigSetup); ok {
-			if c.VerboseDebug && c.Logger != nil {
-				c.Logger.Debug("Calling Setup for config", "key", key)
-			}
-			if err := setupable.Setup(); err != nil {
+			if err := ValidateConfig(target); err != nil {
 				if c.VerboseDebug && c.Logger != nil {
-					c.Logger.Debug("Config setup failed", "key", key, "error", err)
+					c.Logger.Debug("Config validation failed", "key", key, "error", err)
 				}
-				return fmt.Errorf("%w for %s: %w", ErrConfigSetupError, key, err)
+				return fmt.Errorf("config validation error for %s: %w", key, err)
 			}
+
 			if c.VerboseDebug && c.Logger != nil {
-				c.Logger.Debug("Config setup succeeded", "key", key)
+				c.Logger.Debug("Config validation succeeded", "key", key)
 			}
+
+			// Call Setup if implemented
+			if setupable, ok := target.(ConfigSetup); ok {
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("Calling Setup for config", "key", key)
+				}
+				if err := setupable.Setup(); err != nil {
+					if c.VerboseDebug && c.Logger != nil {
+						c.Logger.Debug("Config setup failed", "key", key, "error", err)
+					}
+					return fmt.Errorf("%w for %s: %w", ErrConfigSetupError, key, err)
+				}
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("Config setup succeeded", "key", key)
+				}
+			}
+		}
+	} else {
+		// No struct keys configured - this means no explicit structures were added
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("No struct keys configured - skipping feed process")
 		}
 	}
 
@@ -368,7 +420,7 @@ func processMainConfig(app *StdApplication, cfgBuilder *Config, tempConfigs map[
 		return false
 	}
 
-	cfgBuilder.AddStruct(tempMainCfg)
+	cfgBuilder.AddStructKey(mainConfigSection, tempMainCfg)
 	tempConfigs[mainConfigSection] = mainCfgInfo
 	app.logger.Debug("Added main config for loading", "type", reflect.TypeOf(mainCfg))
 
