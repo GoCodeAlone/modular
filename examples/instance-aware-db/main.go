@@ -181,6 +181,8 @@ type AppConfig struct {
 type AppSettings struct {
 	Name        string `yaml:"name" env:"APP_NAME" default:"Instance-Aware DB Example"`
 	Environment string `yaml:"environment" env:"ENVIRONMENT" default:"development"`
+
+	Database database.Config `yaml:"database" desc:"Database configuration"`
 }
 
 // Validate implements basic validation

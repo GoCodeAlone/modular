@@ -136,6 +136,16 @@ func (f *EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructF
 				f.logger.Debug("EnvFeeder: Processing nested struct pointer", "fieldName", fieldType.Name, "structType", field.Elem().Type(), "fieldPath", fieldPath)
 			}
 			return f.processStructFields(field.Elem(), prefix, fieldPath)
+		} else {
+			// Handle pointers to primitive types or nil pointers with env tags
+			if envTag, exists := fieldType.Tag.Lookup("env"); exists {
+				if f.verboseDebug && f.logger != nil {
+					f.logger.Debug("EnvFeeder: Found env tag for pointer field", "fieldName", fieldType.Name, "envTag", envTag, "fieldPath", fieldPath)
+				}
+				return f.setPointerFieldFromEnv(field, envTag, prefix, fieldType.Name, fieldPath)
+			} else if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("EnvFeeder: No env tag found for pointer field", "fieldName", fieldType.Name, "fieldPath", fieldPath)
+			}
 		}
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
@@ -227,6 +237,94 @@ func (f *EnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, fieldNa
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: Environment variable not found or empty", "fieldName", fieldName, "envName", envName, "fieldPath", fieldPath)
+		}
+	}
+
+	return nil
+}
+
+// setPointerFieldFromEnv sets a pointer field value from an environment variable
+func (f *EnvFeeder) setPointerFieldFromEnv(field reflect.Value, envTag, prefix, fieldName, fieldPath string) error {
+	// Build environment variable name with prefix
+	envName := strings.ToUpper(envTag)
+	if prefix != "" {
+		envName = strings.ToUpper(prefix) + envName
+	}
+
+	// Track what we're searching for
+	searchKeys := []string{envName}
+
+	if f.verboseDebug && f.logger != nil {
+		f.logger.Debug("EnvFeeder: Looking up environment variable for pointer field", "fieldName", fieldName, "envName", envName, "envTag", envTag, "prefix", prefix, "fieldPath", fieldPath)
+	}
+
+	// Get and apply environment variable if exists
+	catalog := GetGlobalEnvCatalog()
+	envValue, exists := catalog.Get(envName)
+	if exists && envValue != "" {
+		if f.verboseDebug && f.logger != nil {
+			source := catalog.GetSource(envName)
+			f.logger.Debug("EnvFeeder: Environment variable found for pointer field", "fieldName", fieldName, "envName", envName, "envValue", envValue, "fieldPath", fieldPath, "source", source)
+		}
+
+		// Get the type that the pointer points to
+		elemType := field.Type().Elem()
+
+		// Create a new instance of the pointed-to type
+		newValue := reflect.New(elemType)
+
+		// Set the value using the existing setFieldValue function
+		err := setFieldValue(newValue.Elem(), envValue)
+		if err != nil {
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("EnvFeeder: Failed to set pointer field value", "fieldName", fieldName, "envName", envName, "envValue", envValue, "error", err, "fieldPath", fieldPath)
+			}
+			return err
+		}
+
+		// Set the field to point to the new value
+		field.Set(newValue)
+
+		// Record field population if tracker is available
+		if f.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:   fieldPath,
+				FieldName:   fieldName,
+				FieldType:   field.Type().String(),
+				FeederType:  "*feeders.EnvFeeder",
+				SourceType:  "env",
+				SourceKey:   envName,
+				Value:       field.Interface(),
+				InstanceKey: "",
+				SearchKeys:  searchKeys,
+				FoundKey:    envName,
+			}
+			f.fieldTracker.RecordFieldPopulation(fp)
+		}
+
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("EnvFeeder: Successfully set pointer field", "fieldName", fieldName, "envName", envName, "fieldPath", fieldPath)
+		}
+	} else {
+		// Record that we searched but didn't find
+		if f.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:   fieldPath,
+				FieldName:   fieldName,
+				FieldType:   field.Type().String(),
+				FeederType:  "*feeders.EnvFeeder",
+				SourceType:  "env",
+				SourceKey:   "",
+				Value:       nil,
+				InstanceKey: "",
+				SearchKeys:  searchKeys,
+				FoundKey:    "",
+			}
+			f.fieldTracker.RecordFieldPopulation(fp)
+		}
+
+		if f.verboseDebug && f.logger != nil {
+			f.logger.Debug("EnvFeeder: Environment variable not found or empty for pointer field", "fieldName", fieldName, "envName", envName, "fieldPath", fieldPath)
 		}
 	}
 

@@ -216,10 +216,17 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 		// Handle slices
 		return j.setSliceFromJSON(field, value, fieldPath)
 
+	case reflect.Map:
+		// Handle maps
+		if mapData, ok := value.(map[string]interface{}); ok {
+			return j.setMapFromJSON(field, mapData, fieldType.Name, fieldPath)
+		}
+		return wrapJSONMapError(fieldPath, value)
+
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
-		reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.String,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr, reflect.String,
 		reflect.UnsafePointer:
 		// Handle basic types and unsupported types
 		return j.setFieldFromJSON(field, value, fieldPath)
@@ -301,4 +308,169 @@ func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fi
 	}
 
 	return wrapJSONArrayError(fieldPath, value)
+}
+
+// setMapFromJSON sets a map field value from JSON data with support for pointer and value types
+func (j *JSONFeeder) setMapFromJSON(field reflect.Value, jsonData map[string]interface{}, fieldName, fieldPath string) error {
+	if !field.CanSet() {
+		return wrapJSONFieldCannotBeSet(fieldPath)
+	}
+
+	mapType := field.Type()
+	keyType := mapType.Key()
+	valueType := mapType.Elem()
+
+	if j.verboseDebug && j.logger != nil {
+		j.logger.Debug("JSONFeeder: Setting map from JSON", "fieldName", fieldName, "mapType", mapType, "keyType", keyType, "valueType", valueType)
+	}
+
+	// Create a new map
+	newMap := reflect.MakeMap(mapType)
+
+	// Handle different value types
+	switch valueType.Kind() {
+	case reflect.Struct:
+		// Map of structs, like map[string]DBConnection
+		for key, value := range jsonData {
+			if valueMap, ok := value.(map[string]interface{}); ok {
+				// Create a new instance of the struct type
+				structValue := reflect.New(valueType).Elem()
+
+				// Process the struct fields
+				if err := j.processStructFields(structValue, valueMap, fieldPath+"."+key); err != nil {
+					return fmt.Errorf("error processing map entry '%s': %w", key, err)
+				}
+
+				// Set the map entry
+				keyValue := reflect.ValueOf(key)
+				newMap.SetMapIndex(keyValue, structValue)
+			} else {
+				if j.verboseDebug && j.logger != nil {
+					j.logger.Debug("JSONFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
+				}
+			}
+		}
+	case reflect.Ptr:
+		// Map of pointers to structs, like map[string]*DBConnection
+		elemType := valueType.Elem()
+		if elemType.Kind() == reflect.Struct {
+			for key, value := range jsonData {
+				if value == nil {
+					// Handle null values in JSON
+					keyValue := reflect.ValueOf(key)
+					newMap.SetMapIndex(keyValue, reflect.Zero(valueType)) // Set to nil pointer
+					if j.verboseDebug && j.logger != nil {
+						j.logger.Debug("JSONFeeder: Set nil pointer for null JSON value", "key", key)
+					}
+				} else if valueMap, ok := value.(map[string]interface{}); ok {
+					// Create a new instance of the struct type
+					structValue := reflect.New(elemType).Elem()
+
+					// Process the struct fields
+					if err := j.processStructFields(structValue, valueMap, fieldPath+"."+key); err != nil {
+						return fmt.Errorf("error processing map entry '%s': %w", key, err)
+					}
+
+					// Create a pointer to the struct and set the map entry
+					ptrValue := reflect.New(elemType)
+					ptrValue.Elem().Set(structValue)
+					keyValue := reflect.ValueOf(key)
+					newMap.SetMapIndex(keyValue, ptrValue)
+
+					if j.verboseDebug && j.logger != nil {
+						j.logger.Debug("JSONFeeder: Successfully processed pointer to struct map entry", "key", key, "structType", elemType)
+					}
+				} else {
+					if j.verboseDebug && j.logger != nil {
+						j.logger.Debug("JSONFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
+					}
+				}
+			}
+		} else {
+			// Map of pointers to non-struct types - handle direct conversion
+			for key, value := range jsonData {
+				if value == nil {
+					// Handle null values
+					keyValue := reflect.ValueOf(key)
+					newMap.SetMapIndex(keyValue, reflect.Zero(valueType)) // Set to nil pointer
+				} else {
+					keyValue := reflect.ValueOf(key)
+					valueReflect := reflect.ValueOf(value)
+
+					// Create a new pointer to the element type
+					ptrValue := reflect.New(elemType)
+
+					if valueReflect.Type().ConvertibleTo(elemType) {
+						convertedValue := valueReflect.Convert(elemType)
+						ptrValue.Elem().Set(convertedValue)
+						newMap.SetMapIndex(keyValue, ptrValue)
+					} else {
+						if j.verboseDebug && j.logger != nil {
+							j.logger.Debug("JSONFeeder: Cannot convert map value for pointer type", "key", key, "valueType", valueReflect.Type(), "targetType", elemType)
+						}
+					}
+				}
+			}
+		}
+	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Slice, reflect.String,
+		reflect.UnsafePointer:
+		// Map of primitive types - use direct conversion
+		for key, value := range jsonData {
+			keyValue := reflect.ValueOf(key)
+			valueReflect := reflect.ValueOf(value)
+
+			if valueReflect.Type().ConvertibleTo(valueType) {
+				convertedValue := valueReflect.Convert(valueType)
+				newMap.SetMapIndex(keyValue, convertedValue)
+			} else {
+				if j.verboseDebug && j.logger != nil {
+					j.logger.Debug("JSONFeeder: Cannot convert map value", "key", key, "valueType", valueReflect.Type(), "targetType", valueType)
+				}
+			}
+		}
+	default:
+		// Map of primitive types - use direct conversion
+		for key, value := range jsonData {
+			keyValue := reflect.ValueOf(key)
+			valueReflect := reflect.ValueOf(value)
+
+			if valueReflect.Type().ConvertibleTo(valueType) {
+				convertedValue := valueReflect.Convert(valueType)
+				newMap.SetMapIndex(keyValue, convertedValue)
+			} else {
+				if j.verboseDebug && j.logger != nil {
+					j.logger.Debug("JSONFeeder: Cannot convert map value", "key", key, "valueType", valueReflect.Type(), "targetType", valueType)
+				}
+			}
+		}
+	}
+
+	// Set the field to the new map
+	field.Set(newMap)
+
+	// Record field population if tracker is available
+	if j.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "JSONFeeder",
+			SourceType:  "json_file",
+			SourceKey:   fieldName, // For maps, use the field name as the source key
+			Value:       field.Interface(),
+			InstanceKey: "",
+			SearchKeys:  []string{fieldName},
+			FoundKey:    fieldName,
+		}
+		j.fieldTracker.RecordFieldPopulation(fp)
+	}
+
+	if j.verboseDebug && j.logger != nil {
+		j.logger.Debug("JSONFeeder: Successfully set map field", "fieldName", fieldName, "mapSize", newMap.Len())
+	}
+
+	return nil
 }

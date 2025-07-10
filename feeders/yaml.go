@@ -407,10 +407,59 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 				}
 			}
 		}
+	case reflect.Ptr:
+		// Map of pointers to structs, like map[string]*DBConnection
+		elemType := valueType.Elem()
+		if elemType.Kind() == reflect.Struct {
+			for key, value := range yamlData {
+				if valueMap, ok := value.(map[string]interface{}); ok {
+					// Create a new instance of the struct type
+					structValue := reflect.New(elemType).Elem()
+
+					// Process the struct fields
+					if err := y.processStructFields(structValue, valueMap, fieldPath+"."+key); err != nil {
+						return fmt.Errorf("error processing map entry '%s': %w", key, err)
+					}
+
+					// Create a pointer to the struct and set the map entry
+					ptrValue := reflect.New(elemType)
+					ptrValue.Elem().Set(structValue)
+					keyValue := reflect.ValueOf(key)
+					newMap.SetMapIndex(keyValue, ptrValue)
+
+					if y.verboseDebug && y.logger != nil {
+						y.logger.Debug("YamlFeeder: Successfully processed pointer to struct map entry", "key", key, "structType", elemType)
+					}
+				} else {
+					if y.verboseDebug && y.logger != nil {
+						y.logger.Debug("YamlFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
+					}
+				}
+			}
+		} else {
+			// Map of pointers to non-struct types - handle direct conversion
+			for key, value := range yamlData {
+				keyValue := reflect.ValueOf(key)
+				valueReflect := reflect.ValueOf(value)
+
+				// Create a new pointer to the element type
+				ptrValue := reflect.New(elemType)
+
+				if valueReflect.Type().ConvertibleTo(elemType) {
+					convertedValue := valueReflect.Convert(elemType)
+					ptrValue.Elem().Set(convertedValue)
+					newMap.SetMapIndex(keyValue, ptrValue)
+				} else {
+					if y.verboseDebug && y.logger != nil {
+						y.logger.Debug("YamlFeeder: Cannot convert map value for pointer type", "key", key, "valueType", valueReflect.Type(), "targetType", elemType)
+					}
+				}
+			}
+		}
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
-		reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.String,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Slice, reflect.String,
 		reflect.UnsafePointer:
 		// Map of primitive types - use direct conversion
 		for key, value := range yamlData {

@@ -20,6 +20,7 @@ var (
 	ErrJSONCannotConvert             = errors.New("cannot convert value to field type")
 	ErrJSONCannotConvertSliceElement = errors.New("cannot convert slice element")
 	ErrJSONExpectedArrayForSlice     = errors.New("expected array for slice field")
+	ErrJSONFieldCannotBeSet          = errors.New("field cannot be set")
 )
 
 // TOML feeder errors
@@ -28,6 +29,7 @@ var (
 	ErrTomlCannotConvert             = errors.New("cannot convert value to field type")
 	ErrTomlCannotConvertSliceElement = errors.New("cannot convert slice element")
 	ErrTomlExpectedArrayForSlice     = errors.New("expected array for slice field")
+	ErrTomlFieldCannotBeSet          = errors.New("field cannot be set")
 )
 
 // YAML feeder errors
@@ -100,4 +102,14 @@ func wrapYamlTypeConversionError(fromType, toType string) error {
 
 func wrapYamlBoolConversionError(value string) error {
 	return fmt.Errorf("%w: '%s'", ErrYamlBoolConversion, value)
+}
+
+// Wrapper functions for JSON feeder errors
+func wrapJSONFieldCannotBeSet(fieldPath string) error {
+	return fmt.Errorf("%w: %s", ErrJSONFieldCannotBeSet, fieldPath)
+}
+
+// Wrapper functions for TOML feeder errors
+func wrapTomlFieldCannotBeSet(fieldPath string) error {
+	return fmt.Errorf("%w: %s", ErrTomlFieldCannotBeSet, fieldPath)
 }
