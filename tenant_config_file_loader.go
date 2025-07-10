@@ -116,7 +116,7 @@ func loadAndRegisterTenant(
 		return err
 	}
 
-	tenantCfgs, err := loadTenantConfig(app, feederSlice)
+	tenantCfgs, err := loadTenantConfig(app, feederSlice, string(tenantID))
 	if err != nil {
 		app.Logger().Error("Failed to load tenant config", "tenantID", tenantID, "error", err)
 		return fmt.Errorf("failed to load tenant config for %s: %w", tenantID, err)
@@ -149,7 +149,7 @@ func createFeederSlice(fileName, configPath string, additionalFeeders []Feeder) 
 	return feederSlice, nil
 }
 
-func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]ConfigProvider, error) {
+func loadTenantConfig(app Application, configFeeders []Feeder, tenantID string) (map[string]ConfigProvider, error) {
 	// Guard against nil application
 	if app == nil {
 		return nil, ErrApplicationNil
@@ -162,6 +162,24 @@ func loadTenantConfig(app Application, configFeeders []Feeder) (map[string]Confi
 	}
 
 	app.Logger().Debug("Loading tenant config", "configFeedersCount", len(configFeeders))
+
+	// Configure tenant-aware feeders before building the configuration
+	for _, feeder := range configFeeders {
+		if tenantFeeder, ok := feeder.(*feeders.TenantAffixedEnvFeeder); ok {
+			if tenantFeeder.SetPrefixFunc != nil {
+				tenantFeeder.SetPrefixFunc(tenantID)
+				if app.Logger() != nil {
+					app.Logger().Debug("Configured TenantAffixedEnvFeeder prefix", "tenantID", tenantID, "prefix", tenantFeeder.Prefix)
+				}
+			}
+			if tenantFeeder.SetSuffixFunc != nil {
+				tenantFeeder.SetSuffixFunc(tenantID)
+				if app.Logger() != nil {
+					app.Logger().Debug("Configured TenantAffixedEnvFeeder suffix", "tenantID", tenantID, "suffix", tenantFeeder.Suffix)
+				}
+			}
+		}
+	}
 
 	// Build the configuration
 	cfgBuilder := NewConfig()

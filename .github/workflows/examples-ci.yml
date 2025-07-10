@@ -100,7 +100,56 @@ jobs:
             
             kill $PID 2>/dev/null || true
             
-          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "multi-tenant-app" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ]; then
+          elif [ "${{ matrix.example }}" = "multi-tenant-app" ]; then
+            # Multi-tenant app needs special validation to ensure tenants are loaded
+            echo "🏢 Testing multi-tenant app with tenant validation..."
+            
+            # Run the app and capture logs
+            timeout 10s ./example > app.log 2>&1 &
+            PID=$!
+            sleep 5
+            
+            # Check if process is still running
+            if ! kill -0 $PID 2>/dev/null; then
+              echo "❌ multi-tenant-app crashed during startup"
+              cat app.log
+              exit 1
+            fi
+            
+            # Validate that tenants were loaded successfully
+            if grep -q "Successfully loaded tenant configurations" app.log; then
+              echo "✅ multi-tenant-app successfully loaded tenant configurations"
+            else
+              echo "❌ multi-tenant-app failed to load tenant configurations"
+              echo "📋 Application logs:"
+              cat app.log
+              kill $PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            # Check for any tenant loading errors
+            if grep -q "Failed to load tenant config" app.log; then
+              echo "❌ multi-tenant-app encountered tenant loading errors"
+              echo "📋 Application logs:"
+              cat app.log
+              kill $PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            # Validate that expected tenants were registered
+            if grep -q "tenantCount=2" app.log; then
+              echo "✅ multi-tenant-app loaded expected number of tenants"
+            else
+              echo "❌ multi-tenant-app did not load expected number of tenants"
+              echo "📋 Application logs:"
+              cat app.log
+              kill $PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            kill $PID 2>/dev/null || true
+            
+          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ]; then
             # These apps just need to start without immediate errors
             timeout 5s ./example &
             PID=$!
