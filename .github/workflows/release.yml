@@ -2,8 +2,10 @@ name: Release
 run-name: Release ${{ github.event.inputs.version || github.event.inputs.releaseType }}
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+  issues: read
+  pull-requests: read
 
 on:
   workflow_dispatch:
