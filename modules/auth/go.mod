@@ -6,7 +6,7 @@ require (
 	github.com/GoCodeAlone/modular v1.3.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/crypto v0.31.0
+	golang.org/x/crypto v0.35.0
 	golang.org/x/oauth2 v0.30.0
 )
 
