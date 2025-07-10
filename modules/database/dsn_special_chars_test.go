@@ -169,7 +169,7 @@ func TestDirectURLParsingFailure(t *testing.T) {
 	problematicDSN := "postgresql://someuser:7aBcdeFGhj!r7b?jk(OoL-Aen34R@cluster.us-east-1.rds.amazonaws.com/someapp"
 
 	// Test direct URL parsing without preprocessing - this should fail
-	_, err := url.Parse(problematicDSN)
+	_, err := url.Parse(problematicDSN) //nolint:staticcheck // Intentionally testing invalid URL
 	require.Error(t, err, "Direct URL parsing should fail with unencoded special characters")
 	require.Contains(t, err.Error(), "invalid port", "Error should mention invalid port")
 
@@ -245,7 +245,7 @@ func TestActualURLParsingFailure(t *testing.T) {
 
 	// This is what happens inside the postgres driver when it tries to parse the DSN
 	// The driver uses Go's url.Parse() which fails on unencoded special characters
-	_, err := url.Parse(problematicDSN)
+	_, err := url.Parse(problematicDSN) //nolint:staticcheck // Intentionally testing invalid URL
 	require.Error(t, err, "URL parsing should fail with unencoded special characters")
 	require.Contains(t, err.Error(), "invalid port", "Should fail with invalid port error")
 	require.Contains(t, err.Error(), ":8jKwouNHdI!u6a", "Should show the problematic port parsing")
@@ -268,7 +268,7 @@ func TestServiceConnectWithoutPreprocessing(t *testing.T) {
 	problematicDSN := "postgresql://someuser:7aBcdeFGhj!r7b?jk(OoL-Aen34R@cluster.us-east-1.rds.amazonaws.com/someapp"
 
 	// Confirm that this DSN fails with direct URL parsing (the root cause)
-	_, err := url.Parse(problematicDSN)
+	_, err := url.Parse(problematicDSN) //nolint:staticcheck // Intentionally testing invalid URL
 	require.Error(t, err, "Direct URL parsing should fail")
 	require.Contains(t, err.Error(), "invalid port")
 
