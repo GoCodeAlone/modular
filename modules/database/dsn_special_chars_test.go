@@ -248,7 +248,7 @@ func TestActualURLParsingFailure(t *testing.T) {
 	_, err := url.Parse(problematicDSN) //nolint:staticcheck // Intentionally testing invalid URL
 	require.Error(t, err, "URL parsing should fail with unencoded special characters")
 	require.Contains(t, err.Error(), "invalid port", "Should fail with invalid port error")
-	require.Contains(t, err.Error(), ":8jKwouNHdI!u6a", "Should show the problematic port parsing")
+	require.Contains(t, err.Error(), ":7aBcdeFGhj!r7b", "Should show the problematic port parsing")
 
 	t.Logf("Got expected error: %v", err)
 
