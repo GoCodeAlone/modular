@@ -184,23 +184,45 @@ func (f *InstanceAwareEnvFeeder) FeedInstances(instances interface{}) error {
 			f.logger.Debug("InstanceAwareEnvFeeder: Processing instance", "instanceKey", instanceKey, "instanceType", instance.Type())
 		}
 
-		// Create a pointer to the instance for modification
-		instancePtr := reflect.New(instance.Type())
-		instancePtr.Elem().Set(instance)
+		var instancePtr interface{}
+		var needsMapUpdate bool
+
+		// Handle both pointer and non-pointer map values
+		if instance.Kind() == reflect.Ptr {
+			// Map values are already pointers - use them directly
+			instancePtr = instance.Interface()
+			needsMapUpdate = false // No need to update map since we're modifying the original pointer
+
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("InstanceAwareEnvFeeder: Instance is already a pointer", "instanceKey", instanceKey)
+			}
+		} else {
+			// Map values are structs - create pointers to them for modification
+			tempPtr := reflect.New(instance.Type())
+			tempPtr.Elem().Set(instance)
+			instancePtr = tempPtr.Interface()
+			needsMapUpdate = true // Need to update map with modified value
+
+			if f.verboseDebug && f.logger != nil {
+				f.logger.Debug("InstanceAwareEnvFeeder: Created pointer to struct", "instanceKey", instanceKey)
+			}
+		}
 
 		// Feed this instance with its specific prefix
-		if err := f.FeedKey(instanceKey, instancePtr.Interface()); err != nil {
+		if err := f.FeedKey(instanceKey, instancePtr); err != nil {
 			if f.verboseDebug && f.logger != nil {
 				f.logger.Debug("InstanceAwareEnvFeeder: Failed to feed instance", "instanceKey", instanceKey, "error", err)
 			}
 			return fmt.Errorf("failed to feed instance '%s': %w", instanceKey, err)
 		}
 
-		// Update the map with the modified instance
-		instancesValue.SetMapIndex(key, instancePtr.Elem())
+		// Update the map with the modified instance if needed
+		if needsMapUpdate {
+			instancesValue.SetMapIndex(key, reflect.ValueOf(instancePtr).Elem())
+		}
 
 		if f.verboseDebug && f.logger != nil {
-			f.logger.Debug("InstanceAwareEnvFeeder: Successfully fed instance", "instanceKey", instanceKey)
+			f.logger.Debug("InstanceAwareEnvFeeder: Successfully fed instance", "instanceKey", instanceKey, "needsMapUpdate", needsMapUpdate)
 		}
 	}
 

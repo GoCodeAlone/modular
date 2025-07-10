@@ -1,10 +1,17 @@
 package modular
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
+)
+
+// Static errors for linter compliance
+var (
+	ErrRouterServiceNotFound        = errors.New("required service 'router' not found or does not implement http.Handler")
+	ErrCustomServiceNotImplementing = errors.New("required service not found or does not implement http.Handler")
 )
 
 // TestImplicitDependencyFlakiness tests the non-deterministic behavior
@@ -341,7 +348,7 @@ func (m *FlakyServerModule) Constructor() ModuleConstructor {
 			m.handler = handler
 			return m, nil
 		}
-		return nil, fmt.Errorf("required service 'router' not found or does not implement http.Handler")
+		return nil, ErrRouterServiceNotFound
 	}
 }
 
@@ -464,7 +471,7 @@ func (m *CustomServiceConsumerModule) Constructor() ModuleConstructor {
 			m.handler = handler
 			return m, nil
 		}
-		return nil, fmt.Errorf("required service '%s' not found or does not implement http.Handler", m.serviceName)
+		return nil, fmt.Errorf("required service '%s': %w", m.serviceName, ErrCustomServiceNotImplementing)
 	}
 }
 

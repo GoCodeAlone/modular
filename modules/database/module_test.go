@@ -127,7 +127,7 @@ func TestModule_Init_WithEmptyConfig(t *testing.T) {
 	// Register empty config
 	config := &Config{
 		Default:     "default",
-		Connections: map[string]ConnectionConfig{},
+		Connections: map[string]*ConnectionConfig{},
 	}
 	app.RegisterConfigSection("database", &MockConfigProvider{config: config})
 
@@ -149,7 +149,7 @@ func TestModule_Lifecycle(t *testing.T) {
 	// Register empty config to avoid initialization errors
 	config := &Config{
 		Default:     "default",
-		Connections: map[string]ConnectionConfig{},
+		Connections: map[string]*ConnectionConfig{},
 	}
 	app.RegisterConfigSection("database", &MockConfigProvider{config: config})
 
@@ -181,7 +181,7 @@ func TestModule_Services(t *testing.T) {
 	app := NewMockApplication()
 	config := &Config{
 		Default:     "default",
-		Connections: map[string]ConnectionConfig{},
+		Connections: map[string]*ConnectionConfig{},
 	}
 	app.RegisterConfigSection("database", &MockConfigProvider{config: config})
 
@@ -441,12 +441,12 @@ func TestModule_ConnectionManagement_SQLite(t *testing.T) {
 	// Set up configuration with multiple SQLite in-memory connections
 	config := &Config{
 		Default: "primary",
-		Connections: map[string]ConnectionConfig{
-			"primary": {
+		Connections: map[string]*ConnectionConfig{
+			"primary": &ConnectionConfig{
 				Driver: "sqlite",
 				DSN:    ":memory:",
 			},
-			"secondary": {
+			"secondary": &ConnectionConfig{
 				Driver: "sqlite",
 				DSN:    ":memory:",
 			},
@@ -508,8 +508,8 @@ func TestModule_ConfigErrors(t *testing.T) {
 
 		// Register config with invalid driver
 		config := &Config{
-			Connections: map[string]ConnectionConfig{
-				"invalid": {
+			Connections: map[string]*ConnectionConfig{
+				"invalid": &ConnectionConfig{
 					Driver: "nonexistent_driver",
 					DSN:    "invalid://dsn",
 				},

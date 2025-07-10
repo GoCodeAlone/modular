@@ -3,7 +3,7 @@ package database
 // Config represents database module configuration
 type Config struct {
 	// Connections contains all defined database connections
-	Connections map[string]ConnectionConfig `json:"connections" yaml:"connections"`
+	Connections map[string]*ConnectionConfig `json:"connections" yaml:"connections"`
 
 	// Default specifies the name of the default connection
 	Default string `json:"default" yaml:"default"`
@@ -19,9 +19,8 @@ func (c *Config) Validate() error {
 func (c *Config) GetInstanceConfigs() map[string]interface{} {
 	instances := make(map[string]interface{})
 	for name, connection := range c.Connections {
-		// Create a copy to avoid modifying the original
-		connCopy := connection
-		instances[name] = &connCopy
+		// Return pointers to the original connection configs so they can be modified
+		instances[name] = connection
 	}
 	return instances
 }

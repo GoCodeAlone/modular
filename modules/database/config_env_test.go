@@ -141,10 +141,10 @@ func TestMultipleDatabaseConnectionsWithEnvVars(t *testing.T) {
 	// Create configuration with multiple connections
 	config := &Config{
 		Default: "main",
-		Connections: map[string]ConnectionConfig{
-			"main":     {},
-			"readonly": {},
-			"cache":    {},
+		Connections: map[string]*ConnectionConfig{
+			"main":     &ConnectionConfig{},
+			"readonly": &ConnectionConfig{},
+			"cache":    &ConnectionConfig{},
 		},
 	}
 
@@ -153,9 +153,12 @@ func TestMultipleDatabaseConnectionsWithEnvVars(t *testing.T) {
 		return instanceKey + "_"
 	})
 
-	// Feed the connections
-	err := feeder.FeedInstances(config.Connections)
-	require.NoError(t, err)
+	// Get instances and feed them (this is how the real application does it)
+	instances := config.GetInstanceConfigs()
+	for instanceKey, instanceConfig := range instances {
+		err := feeder.FeedKey(instanceKey, instanceConfig)
+		require.NoError(t, err)
+	}
 
 	// Verify each connection was configured correctly
 	assert.Equal(t, "postgres", config.Connections["main"].Driver)

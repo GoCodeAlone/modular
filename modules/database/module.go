@@ -265,7 +265,7 @@ func (m *Module) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &Config{
 		Default:     "default",
-		Connections: make(map[string]ConnectionConfig),
+		Connections: make(map[string]*ConnectionConfig),
 	}
 
 	// Create instance-aware config provider with database-specific prefix
@@ -481,7 +481,7 @@ func (m *Module) initializeConnections() error {
 			}
 
 			// Create the database service and connect
-			dbService, err := NewDatabaseService(connConfig)
+			dbService, err := NewDatabaseService(*connConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create database service for '%s': %w", name, err)
 			}

@@ -41,6 +41,7 @@ database:
 				"DB_PRIMARY_DSN":      "./test_primary.db",
 				"DB_SECONDARY_DRIVER": "sqlite3",
 				"DB_SECONDARY_DSN":    "./test_secondary.db",
+				"DB_CACHE_DRIVER":     "sqlite3", // Explicitly set to prevent contamination
 				"DB_CACHE_DSN":        "./test_cache.db",
 			},
 			expected: map[string]string{
@@ -87,13 +88,8 @@ webapp:
 
 			// Set environment variables
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				t.Setenv(key, value)
 			}
-			defer func() {
-				for key := range tt.envVars {
-					os.Unsetenv(key)
-				}
-			}()
 
 			// Create test structures
 			var dbConfig *TestDatabaseConfig
@@ -195,13 +191,8 @@ database:
 	}
 
 	for key, value := range envVars {
-		os.Setenv(key, value)
+		t.Setenv(key, value)
 	}
-	defer func() {
-		for key := range envVars {
-			os.Unsetenv(key)
-		}
-	}()
 
 	// Create database config with empty connections (this simulates the bug)
 	dbConfig := &TestDatabaseConfig{
@@ -488,12 +479,8 @@ test:
 	defer os.Remove(tmpFile)
 
 	// Set environment variables
-	os.Setenv("TEST_INSTANCE1_VALUE", "env_value1")
-	os.Setenv("TEST_INSTANCE2_VALUE", "env_value2")
-	defer func() {
-		os.Unsetenv("TEST_INSTANCE1_VALUE")
-		os.Unsetenv("TEST_INSTANCE2_VALUE")
-	}()
+	t.Setenv("TEST_INSTANCE1_VALUE", "env_value1")
+	t.Setenv("TEST_INSTANCE2_VALUE", "env_value2")
 
 	// Create test config
 	testConfig := &TestInstanceConfig{
