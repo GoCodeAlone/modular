@@ -4,7 +4,8 @@ permissions:
   contents: write
   pull-requests: read
   issues: read
-  packages: read
+  packages: write
+
 on:
   workflow_dispatch:
     inputs:

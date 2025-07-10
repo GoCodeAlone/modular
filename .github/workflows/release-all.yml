@@ -13,6 +13,7 @@ run-name: Release All Components with Changes
 permissions:
   contents: write
   actions: write
+  packages: write
 
 on:
   workflow_dispatch:
