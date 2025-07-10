@@ -15,6 +15,7 @@ type MockApplication struct {
 	configSections map[string]modular.ConfigProvider
 	services       map[string]interface{}
 	logger         modular.Logger
+	verboseConfig  bool
 }
 
 // NewMockApplication creates a new mock application
@@ -108,6 +109,16 @@ func (m *MockApplication) Stop() error {
 // Run mocks application run
 func (m *MockApplication) Run() error {
 	return nil
+}
+
+// IsVerboseConfig returns whether verbose configuration debugging is enabled for the mock
+func (m *MockApplication) IsVerboseConfig() bool {
+	return m.verboseConfig
+}
+
+// SetVerboseConfig enables or disables verbose configuration debugging for the mock
+func (m *MockApplication) SetVerboseConfig(enabled bool) {
+	m.verboseConfig = enabled
 }
 
 // MockLogger implements a minimal logger for testing

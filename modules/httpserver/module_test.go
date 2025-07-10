@@ -99,6 +99,15 @@ func (m *MockApplication) Run() error {
 	return args.Error(0)
 }
 
+func (m *MockApplication) IsVerboseConfig() bool {
+	args := m.Called()
+	return args.Bool(0)
+}
+
+func (m *MockApplication) SetVerboseConfig(enabled bool) {
+	m.Called(enabled)
+}
+
 // MockLogger is a mock implementation of the modular.Logger interface
 type MockLogger struct {
 	mock.Mock
