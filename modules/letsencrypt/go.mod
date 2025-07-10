@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/letsencrypt
 go 1.24.2
 
 require (
-	github.com/GoCodeAlone/modular/modules/httpserver v0.0.1
+	github.com/GoCodeAlone/modular/modules/httpserver v0.0.4
 	github.com/go-acme/lego/v4 v4.23.1
 )
 
@@ -19,7 +19,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph v0.9.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.3.3 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
-	github.com/GoCodeAlone/modular v1.2.5 // indirect
+	github.com/GoCodeAlone/modular v1.3.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.29.9 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62 // indirect

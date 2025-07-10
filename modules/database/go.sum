@@ -1,6 +1,7 @@
-github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+github.com/GoCodeAlone/modular v1.3.9 h1:axglSX4ddV7xOvqbYqZGJ8/MPAE2+FBlfUfnZo4DVFA=
+github.com/GoCodeAlone/modular v1.3.9/go.mod h1:2d26ldw2xhpgyYq1MudVzyEBh/hYR+lwZLUHEaiRDZw=
 github.com/aws/aws-sdk-go-v2 v1.36.3 h1:mJoei2CxPutQVxaATCzDUjcZEjVRdpsiiXi2o38yqWM=
 github.com/aws/aws-sdk-go-v2 v1.36.3/go.mod h1:LLXuLpgzEbD766Z5ECcRmi8AzSwfZItDtmABVkRLGzg=
 github.com/aws/aws-sdk-go-v2/config v1.29.14 h1:f+eEi/2cKCg9pqKBoAIwRGzVb70MRKqWX4dg1BDcSJM=
@@ -38,12 +39,6 @@ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkp
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/golobby/cast v1.3.3 h1:s2Lawb9RMz7YyYf8IrfMQY4IFmA1R/lgfmj97Vc6fig=
 github.com/golobby/cast v1.3.3/go.mod h1:0oDO5IT84HTXcbLDf1YXuk0xtg/cRDrxhbpWKxwtJCY=
-github.com/golobby/config/v3 v3.4.2 h1:oIOSo24mC0A8f93ZTL24NDNw0hZ3Tbb34wc1ckn2CsA=
-github.com/golobby/config/v3 v3.4.2/go.mod h1:3go9UVPb3bBNrH7qidd4vd1HbsAAwIYqcQJgGmAa044=
-github.com/golobby/dotenv v1.3.2 h1:9vA8XqXXIB3cX/5xQ1CTbOCPegioHtHXIxeFng+uOqQ=
-github.com/golobby/dotenv v1.3.2/go.mod h1:9MMVXqzLNluhVxCv3X/DLYBNUb289f05tr+df1+7278=
-github.com/golobby/env/v2 v2.2.4 h1:sjdTe+bScPRWUIA1AQH95RHv52jM5Mns2XHwLyEbkzk=
-github.com/golobby/env/v2 v2.2.4/go.mod h1:HDJW+dHHwLxkb8FZMjBTBiZUFl1iAA4F9YX15kBC84c=
 github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e h1:ijClszYn+mADRFY17kjQEVQ1XRhq2/JR1M3sGqeJoxs=
 github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e/go.mod h1:boTsfXsheKC2y+lKOCMpSfarhxDeIzfZG1jqGcPl3cA=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
