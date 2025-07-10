@@ -6,7 +6,7 @@ type Config struct {
 	Connections map[string]*ConnectionConfig `json:"connections" yaml:"connections"`
 
 	// Default specifies the name of the default connection
-	Default string `json:"default" yaml:"default"`
+	Default string `json:"default" yaml:"default" env:"DEFAULT_DB_CONNECTION"`
 }
 
 // Validate implements ConfigValidator interface

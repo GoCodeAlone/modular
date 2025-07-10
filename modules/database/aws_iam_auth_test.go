@@ -2,11 +2,16 @@ package database
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 func TestAWSIAMAuthConfig(t *testing.T) {
@@ -381,4 +386,67 @@ func (m *MockAWSIAMTokenProvider) StartTokenRefresh(ctx context.Context, endpoin
 
 func (m *MockAWSIAMTokenProvider) StopTokenRefresh() {
 	// No-op for testing
+}
+
+// TestAWSIAMAuthConfigEnvVarsWithoutInstancePrefix tests that AWS IAM environment variables
+// are read exactly as they are (without instance-specific prefixes) since they are AWS-specific
+func TestAWSIAMAuthConfigEnvVarsWithoutInstancePrefix(t *testing.T) {
+	// Clear environment
+	cleanupEnvVars := []string{
+		"AWS_IAM_AUTH_ENABLED",
+		"AWS_IAM_AUTH_REGION",
+		"AWS_IAM_AUTH_DB_USER",
+		"AWS_IAM_AUTH_TOKEN_REFRESH",
+		"MAIN_DRIVER",
+		"MAIN_DSN",
+	}
+
+	for _, envVar := range cleanupEnvVars {
+		os.Unsetenv(envVar)
+	}
+
+	defer func() {
+		for _, envVar := range cleanupEnvVars {
+			os.Unsetenv(envVar)
+		}
+	}()
+
+	// Set up AWS IAM environment variables exactly as they should be named (no instance prefix)
+	require.NoError(t, os.Setenv("AWS_IAM_AUTH_ENABLED", "true"))
+	require.NoError(t, os.Setenv("AWS_IAM_AUTH_REGION", "us-east-1"))
+	require.NoError(t, os.Setenv("AWS_IAM_AUTH_DB_USER", "iam_user"))
+	require.NoError(t, os.Setenv("AWS_IAM_AUTH_TOKEN_REFRESH", "900"))
+
+	// Also set basic connection config with instance prefix
+	require.NoError(t, os.Setenv("MAIN_DRIVER", "postgres"))
+	require.NoError(t, os.Setenv("MAIN_DSN", "postgres://localhost:5432/testdb"))
+
+	// Create config structure
+	config := &ConnectionConfig{
+		AWSIAMAuth: &AWSIAMAuthConfig{},
+	}
+
+	// Use instance-aware feeder for basic connection config
+	instanceFeeder := modular.NewInstanceAwareEnvFeeder(func(instanceKey string) string {
+		return instanceKey + "_"
+	})
+
+	err := instanceFeeder.FeedKey("MAIN", config)
+	require.NoError(t, err)
+
+	// Now use regular env feeder for AWS IAM config (no instance prefix)
+	envFeeder := feeders.NewEnvFeeder()
+	err = envFeeder.Feed(config.AWSIAMAuth)
+	require.NoError(t, err)
+
+	// Verify basic connection config was set by instance feeder
+	assert.Equal(t, "postgres", config.Driver)
+	assert.Equal(t, "postgres://localhost:5432/testdb", config.DSN)
+
+	// Verify AWS IAM config was set correctly by regular env feeder (no instance prefix)
+	require.NotNil(t, config.AWSIAMAuth)
+	assert.True(t, config.AWSIAMAuth.Enabled)
+	assert.Equal(t, "us-east-1", config.AWSIAMAuth.Region)
+	assert.Equal(t, "iam_user", config.AWSIAMAuth.DBUser)
+	assert.Equal(t, 900, config.AWSIAMAuth.TokenRefreshInterval)
 }

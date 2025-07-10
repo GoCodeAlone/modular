@@ -442,11 +442,11 @@ func TestModule_ConnectionManagement_SQLite(t *testing.T) {
 	config := &Config{
 		Default: "primary",
 		Connections: map[string]*ConnectionConfig{
-			"primary": &ConnectionConfig{
+			"primary": {
 				Driver: "sqlite",
 				DSN:    ":memory:",
 			},
-			"secondary": &ConnectionConfig{
+			"secondary": {
 				Driver: "sqlite",
 				DSN:    ":memory:",
 			},
@@ -509,7 +509,7 @@ func TestModule_ConfigErrors(t *testing.T) {
 		// Register config with invalid driver
 		config := &Config{
 			Connections: map[string]*ConnectionConfig{
-				"invalid": &ConnectionConfig{
+				"invalid": {
 					Driver: "nonexistent_driver",
 					DSN:    "invalid://dsn",
 				},

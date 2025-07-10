@@ -142,9 +142,9 @@ func TestMultipleDatabaseConnectionsWithEnvVars(t *testing.T) {
 	config := &Config{
 		Default: "main",
 		Connections: map[string]*ConnectionConfig{
-			"main":     &ConnectionConfig{},
-			"readonly": &ConnectionConfig{},
-			"cache":    &ConnectionConfig{},
+			"main":     {},
+			"readonly": {},
+			"cache":    {},
 		},
 	}
 
@@ -178,7 +178,7 @@ func TestDatabaseModuleWithInstanceAwareConfig(t *testing.T) {
 }
 
 // clearTestEnvVars clears test environment variables
-func clearTestEnvVars(t *testing.T) {
+func clearTestEnvVars(_ *testing.T) {
 	envVars := []string{
 		"DRIVER", "DSN", "MAX_OPEN_CONNECTIONS", "MAX_IDLE_CONNECTIONS",
 		"CONNECTION_MAX_LIFETIME", "CONNECTION_MAX_IDLE_TIME",

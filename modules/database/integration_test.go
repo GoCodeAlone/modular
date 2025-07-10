@@ -58,9 +58,9 @@ func TestDatabaseModuleWithInstanceAwareConfiguration(t *testing.T) {
 
 	// Set up empty connections - these should be populated by the instance-aware feeder
 	config.Connections = map[string]*ConnectionConfig{
-		"main":     &ConnectionConfig{},
-		"readonly": &ConnectionConfig{},
-		"cache":    &ConnectionConfig{},
+		"main":     {},
+		"readonly": {},
+		"cache":    {},
 	}
 
 	// Test the instance-aware configuration manually
@@ -159,8 +159,8 @@ func TestInstanceAwareConfigurationIntegration(t *testing.T) {
 	config := &Config{
 		Default: "primary",
 		Connections: map[string]*ConnectionConfig{
-			"primary":   &ConnectionConfig{},
-			"secondary": &ConnectionConfig{},
+			"primary":   {},
+			"secondary": {},
 		},
 	}
 
