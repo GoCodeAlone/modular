@@ -6,7 +6,7 @@ replace github.com/GoCodeAlone/modular => ../../
 
 require (
 	github.com/GoCodeAlone/modular v1.3.0
-	github.com/go-chi/chi/v5 v5.2.1
+	github.com/go-chi/chi/v5 v5.2.2
 )
 
 require (
