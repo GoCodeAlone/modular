@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/CrisisTextLine/modular/feeders"
 )
 
 // TestTenantConfigAffixedEnvBug tests the specific bug where tenant config loading

@@ -3,7 +3,7 @@ package reverseproxy
 import (
 	"fmt"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5" // Import chi for router type assertion
 )
 

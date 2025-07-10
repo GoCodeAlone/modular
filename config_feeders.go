@@ -1,7 +1,7 @@
 package modular
 
 import (
-	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/CrisisTextLine/modular/feeders"
 )
 
 // Feeder defines the interface for configuration feeders that provide configuration data.

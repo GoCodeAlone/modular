@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 const configSection = "webserver"

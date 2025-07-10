@@ -1,8 +1,8 @@
 github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/GoCodeAlone/modular v1.3.0 h1:KVny0S447hTUXYY8Y7BltL94poN/ZtaH3v2V7jU7d3o=
-github.com/GoCodeAlone/modular v1.3.0/go.mod h1:dD1xYmBQdtYahsrdwP1DAe2Tz6SkCXA8foairMuY3Pk=
+github.com/CrisisTextLine/modular v1.3.0 h1:KVny0S447hTUXYY8Y7BltL94poN/ZtaH3v2V7jU7d3o=
+github.com/CrisisTextLine/modular v1.3.0/go.mod h1:dD1xYmBQdtYahsrdwP1DAe2Tz6SkCXA8foairMuY3Pk=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

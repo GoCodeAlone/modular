@@ -1,11 +1,11 @@
-module github.com/GoCodeAlone/modular/modules/database
+module github.com/CrisisTextLine/modular/modules/database
 
 go 1.24.2
 
-replace github.com/GoCodeAlone/modular => ../..
+replace github.com/CrisisTextLine/modular => ../..
 
 require (
-	github.com/GoCodeAlone/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.3.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.5.11

@@ -42,7 +42,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // ModuleName is the name of this module for registration and dependency resolution.

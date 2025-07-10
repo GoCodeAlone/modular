@@ -1,9 +1,9 @@
-module github.com/GoCodeAlone/modular/modules/jsonschema
+module github.com/CrisisTextLine/modular/modules/jsonschema
 
 go 1.24.2
 
 require (
-	github.com/GoCodeAlone/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.3.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
 )
 

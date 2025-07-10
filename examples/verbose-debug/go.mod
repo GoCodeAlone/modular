@@ -5,8 +5,8 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	github.com/GoCodeAlone/modular v1.3.0
-	github.com/GoCodeAlone/modular/modules/database v1.0.16
+	github.com/CrisisTextLine/modular v1.3.0
+	github.com/CrisisTextLine/modular/modules/database v1.0.16
 	modernc.org/sqlite v1.38.0
 )
 
@@ -41,7 +41,7 @@ require (
 )
 
 // Use local module for development
-replace github.com/GoCodeAlone/modular => ../..
+replace github.com/CrisisTextLine/modular => ../..
 
 // Use local database module for development
-replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database
+replace github.com/CrisisTextLine/modular/modules/database => ../../modules/database

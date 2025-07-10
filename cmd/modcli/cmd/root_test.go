@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/GoCodeAlone/modular/cmd/modcli/cmd"
+	"github.com/CrisisTextLine/modular/cmd/modcli/cmd"
 	"github.com/stretchr/testify/assert"
 )
 

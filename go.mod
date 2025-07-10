@@ -1,4 +1,4 @@
-module github.com/GoCodeAlone/modular
+module github.com/CrisisTextLine/modular
 
 go 1.23.0
 

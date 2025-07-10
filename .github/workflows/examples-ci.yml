@@ -176,7 +176,7 @@ jobs:
           # Check that replace directives point to correct paths
           if ! grep -q "replace.*=> ../../" go.mod; then
             echo "❌ Missing or incorrect replace directive in ${{ matrix.example }}/go.mod"
-            echo "Expected: replace github.com/GoCodeAlone/modular => ../../"
+            echo "Expected: replace github.com/CrisisTextLine/modular => ../../"
             cat go.mod
             exit 1
           fi

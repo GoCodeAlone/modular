@@ -2,9 +2,9 @@ module multi-tenant-app
 
 go 1.23.0
 
-replace github.com/GoCodeAlone/modular => ../../
+replace github.com/CrisisTextLine/modular => ../../
 
-require github.com/GoCodeAlone/modular v1.3.0
+require github.com/CrisisTextLine/modular v1.3.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect

@@ -1,9 +1,9 @@
-module github.com/GoCodeAlone/modular/modules/httpclient
+module github.com/CrisisTextLine/modular/modules/httpclient
 
 go 1.24.2
 
 require (
-	github.com/GoCodeAlone/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.3.0
 	github.com/stretchr/testify v1.10.0
 )
 

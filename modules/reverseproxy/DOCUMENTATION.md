@@ -39,7 +39,7 @@
 
 ## Introduction
 
-The Reverse Proxy module is a powerful and flexible API gateway component that routes HTTP requests to multiple backend services and provides advanced features for response aggregation, custom transformations, and tenant-aware routing. It's built for the [Modular](https://github.com/GoCodeAlone/modular) framework and designed to be easily configurable while supporting complex routing scenarios.
+The Reverse Proxy module is a powerful and flexible API gateway component that routes HTTP requests to multiple backend services and provides advanced features for response aggregation, custom transformations, and tenant-aware routing. It's built for the [Modular](https://github.com/CrisisTextLine/modular) framework and designed to be easily configurable while supporting complex routing scenarios.
 
 ### Key Features
 
@@ -71,7 +71,7 @@ The module works by registering HTTP handlers with the router for specified patt
 To use the Reverse Proxy module in your Go application:
 
 ```go
-go get github.com/GoCodeAlone/modular/modules/reverseproxy@v1.0.0
+go get github.com/CrisisTextLine/modular/modules/reverseproxy@v1.0.0
 ```
 
 ## Configuration

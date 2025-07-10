@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // MockLogger implements the modular.Logger interface for testing

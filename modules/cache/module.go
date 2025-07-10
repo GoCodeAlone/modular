@@ -68,7 +68,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // ModuleName is the unique identifier for the cache module.

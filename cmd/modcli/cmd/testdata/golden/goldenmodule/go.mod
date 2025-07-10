@@ -3,7 +3,7 @@ module example.com/goldenmodule
 go 1.23.5
 
 require (
-	github.com/GoCodeAlone/modular v1.3.2
+	github.com/CrisisTextLine/modular v1.3.2
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -18,4 +18,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/GoCodeAlone/modular => ../../../../../../
+replace github.com/CrisisTextLine/modular => ../../../../../../

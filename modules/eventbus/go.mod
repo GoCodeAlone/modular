@@ -1,11 +1,11 @@
-module github.com/GoCodeAlone/modular/modules/eventbus
+module github.com/CrisisTextLine/modular/modules/eventbus
 
 go 1.24.2
 
 toolchain go1.24.3
 
 require (
-	github.com/GoCodeAlone/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.3.0
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.10.0
 )

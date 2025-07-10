@@ -743,8 +743,8 @@ import (
     "fmt"
     "os"
     
-    "github.com/GoCodeAlone/modular"
-    "github.com/GoCodeAlone/modular/modules/database"
+    "github.com/CrisisTextLine/modular"
+    "github.com/CrisisTextLine/modular/modules/database"
 )
 
 func main() {
@@ -1037,7 +1037,7 @@ The Modular framework provides several debugging utilities to help diagnose comm
 Use `DebugModuleInterfaces` to check which interfaces a specific module implements:
 
 ```go
-import "github.com/GoCodeAlone/modular"
+import "github.com/CrisisTextLine/modular"
 
 // Debug a specific module
 modular.DebugModuleInterfaces(app, "your-module-name")
@@ -1148,7 +1148,7 @@ modular.CompareModuleInstances(originalModule, currentModule, "module-name")
 For detailed analysis of why a module doesn't implement Startable:
 
 ```go
-import "github.com/GoCodeAlone/modular"
+import "github.com/CrisisTextLine/modular"
 
 // Check specific module
 modular.CheckModuleStartableImplementation(yourModule)

@@ -29,7 +29,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // Static errors for err113 compliance

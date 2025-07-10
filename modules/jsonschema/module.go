@@ -143,7 +143,7 @@
 package jsonschema
 
 import (
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // Name is the unique identifier for the jsonschema module.

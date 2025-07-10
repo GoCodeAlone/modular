@@ -45,7 +45,7 @@ type ModuleOptions struct {
 const mockAppTmpl = `package {{.PackageName}}
 
 import (
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // MockApplication implements the modular.Application interface for testing
@@ -604,7 +604,7 @@ func generateModuleFile(outputDir string, options *ModuleOptions) error {
 
 import (
 	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}} {{/* Conditionally import context */}}
-	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}} {{/* Conditionally import modular */}}
+	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/CrisisTextLine/modular"{{end}} {{/* Conditionally import modular */}}
 	"log/slog"
 	{{if .HasConfig}}"fmt"{{end}} {{/* Conditionally import fmt */}}
 	{{if or .HasConfig .IsTenantAware}}"encoding/json"{{end}} {{/* For config unmarshaling */}}
@@ -1086,7 +1086,7 @@ func generateTestFiles(outputDir string, options *ModuleOptions) error {
 import (
 	{{if or .HasStartupLogic .HasShutdownLogic}}"context"{{end}} {{/* Conditionally import context */}}
 	"testing"
-	{{if or .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/GoCodeAlone/modular"{{end}} {{/* Conditionally import modular */}}
+	{{if or .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/CrisisTextLine/modular"{{end}} {{/* Conditionally import modular */}}
 	"github.com/stretchr/testify/assert"
 	{{if or .HasConfig .IsTenantAware .ProvidesServices .RequiresServices}}"github.com/stretchr/testify/require"{{end}} {{/* Conditionally import require */}}
 	{{if .IsTenantAware}}"fmt"{{end}} {{/* Import fmt for error formatting in MockTenantService */}}
@@ -1269,7 +1269,7 @@ func generateReadmeFile(outputDir string, options *ModuleOptions) error {
 	// Define the template as a raw string to avoid backtick-related syntax issues
 	readmeContent := `# {{.ModuleName}} Module
 
-A module for the [Modular](https://github.com/GoCodeAlone/modular) framework.
+A module for the [Modular](https://github.com/CrisisTextLine/modular) framework.
 
 ## Overview
 
@@ -1293,7 +1293,7 @@ go get github.com/yourusername/{{.PackageName}}
 package main
 
 import (
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/yourusername/{{.PackageName}}"
 	"log/slog"
 	"os"
@@ -1494,7 +1494,7 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 	// }
 
 	// Add requirements (adjust versions as needed)
-	newModFile.AddRequire("github.com/GoCodeAlone/modular", "v1")
+	newModFile.AddRequire("github.com/CrisisTextLine/modular", "v1")
 	if options.GenerateTests {
 		newModFile.AddRequire("github.com/stretchr/testify", "v1.10.0")
 	}
@@ -1561,11 +1561,11 @@ func generateGoldenGoMod(options *ModuleOptions, goModPath string) error {
 go 1.23.5
 
 require (
-	github.com/GoCodeAlone/modular v1
+	github.com/CrisisTextLine/modular v1
 	github.com/stretchr/testify v1.10.0
 )
 
-replace github.com/GoCodeAlone/modular => ../../../../../../
+replace github.com/CrisisTextLine/modular => ../../../../../../
 `, modulePath)
 	err := os.WriteFile(goModPath, []byte(goModContent), 0644)
 	if err != nil {
@@ -1667,7 +1667,7 @@ func findParentGoMod() (string, error) {
 		if _, err := os.Stat(goModPath); err == nil {
 			// Check if it's the root go.mod of the modular project itself, if so, skip it
 			content, errRead := os.ReadFile(goModPath)
-			if errRead == nil && strings.Contains(string(content), "module github.com/GoCodeAlone/modular\\n") {
+			if errRead == nil && strings.Contains(string(content), "module github.com/CrisisTextLine/modular\\n") {
 				// This is the main project's go.mod, continue searching upwards
 				slog.Debug("Found main project go.mod, continuing search for parent", "path", goModPath)
 			} else {

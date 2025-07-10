@@ -25,7 +25,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 const (

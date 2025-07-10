@@ -1,11 +1,11 @@
-module github.com/GoCodeAlone/modular/modules/cache
+module github.com/CrisisTextLine/modular/modules/cache
 
 go 1.24.2
 
 toolchain go1.24.3
 
 require (
-	github.com/GoCodeAlone/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.3.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/redis/go-redis/v9 v9.10.0
 	github.com/stretchr/testify v1.10.0

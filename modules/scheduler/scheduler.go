@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 )

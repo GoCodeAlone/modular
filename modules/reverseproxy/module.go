@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // ReverseProxyModule provides a modular reverse proxy implementation with support for
