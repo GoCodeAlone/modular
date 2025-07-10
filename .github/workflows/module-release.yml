@@ -1,6 +1,10 @@
 name: Module Release
 run-name: Module Release for ${{ inputs.module || github.event.inputs.module }} - ${{ inputs.releaseType || github.event.inputs.releaseType }}
-
+permissions:
+  contents: write
+  pull-requests: read
+  issues: read
+  packages: read
 on:
   workflow_dispatch:
     inputs:
