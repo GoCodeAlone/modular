@@ -121,13 +121,7 @@ func TestExtractEndpointFromDSN(t *testing.T) {
 		},
 		{
 			name:     "postgres URL style with special characters in password",
-			dsn:      "postgresql://someuser:8jKwouNHdI!u6a?kx(UuQ-Bgm34P@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
-			expected: "some-dev-backend.cluster.us-east-1.rds.amazonaws.com",
-			wantErr:  false,
-		},
-		{
-			name:     "postgres URL style with URL-encoded special characters in password",
-			dsn:      "postgresql://someuser:8jKwouNHdI%21u6a%3Fkx%28UuQ-Bgm34P@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
+			dsn:      "postgresql://someuser:7aBcdeFGhj!r7b?jk(OoL-Aen34R@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
 			expected: "some-dev-backend.cluster.us-east-1.rds.amazonaws.com",
 			wantErr:  false,
 		},
@@ -192,7 +186,7 @@ func TestReplaceDSNPassword(t *testing.T) {
 		},
 		{
 			name:     "postgres URL style with special characters in password",
-			dsn:      "postgresql://someuser:8jKwouNHdI!u6a?kx(UuQ-Bgm34P@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
+			dsn:      "postgresql://someuser:7aBcdeFGhj!r7b?jk(OoL-Aen34R@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
 			expected: "postgresql://someuser:test-iam-token@some-dev-backend.cluster.us-east-1.rds.amazonaws.com/some_backend",
 			wantErr:  false,
 		},

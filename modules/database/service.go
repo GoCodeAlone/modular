@@ -119,6 +119,13 @@ func (s *databaseServiceImpl) Connect() error {
 			return fmt.Errorf("failed to extract endpoint for token refresh: %w", err)
 		}
 		s.awsTokenProvider.StartTokenRefresh(s.ctx, endpoint)
+	} else {
+		// Only preprocess when NOT using AWS IAM auth (since AWS IAM auth does its own preprocessing)
+		var err error
+		dsn, err = preprocessDSNForParsing(dsn)
+		if err != nil {
+			return fmt.Errorf("failed to preprocess DSN: %w", err)
+		}
 	}
 
 	db, err := sql.Open(s.config.Driver, dsn)
