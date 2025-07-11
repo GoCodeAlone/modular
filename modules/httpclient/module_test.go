@@ -75,6 +75,15 @@ func (m *MockApplication) Init() error                                         {
 func (m *MockApplication) Start() error                                        { return nil }
 func (m *MockApplication) Stop() error                                         { return nil }
 
+func (m *MockApplication) IsVerboseConfig() bool {
+	args := m.Called()
+	return args.Bool(0)
+}
+
+func (m *MockApplication) SetVerboseConfig(enabled bool) {
+	m.Called(enabled)
+}
+
 // MockLogger implements modular.Logger interface for testing
 type MockLogger struct {
 	mock.Mock
