@@ -5,10 +5,10 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	github.com/CrisisTextLine/modular v1.3.0
-	github.com/CrisisTextLine/modular/modules/chimux v0.0.0
-	github.com/CrisisTextLine/modular/modules/httpserver v0.0.0
-	github.com/CrisisTextLine/modular/modules/reverseproxy v0.0.0
+	github.com/CrisisTextLine/modular v1.4.0
+	github.com/CrisisTextLine/modular/modules/chimux v1.1.0
+	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1
+	github.com/CrisisTextLine/modular/modules/reverseproxy v1.1.0
 )
 
 require (

@@ -5,7 +5,7 @@ go 1.24.2
 replace github.com/CrisisTextLine/modular => ../..
 
 require (
-	github.com/CrisisTextLine/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.4.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.5.11
@@ -29,9 +29,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/golobby/cast v1.3.3 // indirect
-	github.com/golobby/config/v3 v3.4.2 // indirect
-	github.com/golobby/dotenv v1.3.2 // indirect
-	github.com/golobby/env/v2 v2.2.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect

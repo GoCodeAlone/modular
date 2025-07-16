@@ -446,6 +446,14 @@ func (m *mockTenantApplication) WithTenant(tid modular.TenantID) (*modular.Tenan
 	return args.Get(0).(*modular.TenantContext), args.Error(1)
 }
 
+func (m *mockTenantApplication) IsVerboseConfig() bool {
+	return false
+}
+
+func (m *mockTenantApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
 type mockLogger struct{}
 
 func (m *mockLogger) Debug(msg string, args ...interface{}) {}

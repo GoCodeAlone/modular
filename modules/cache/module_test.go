@@ -85,6 +85,14 @@ func (a *mockApp) Run() error {
 	return nil
 }
 
+func (a *mockApp) IsVerboseConfig() bool {
+	return false
+}
+
+func (a *mockApp) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
 type mockConfigProvider struct{}
 
 func (m *mockConfigProvider) GetConfig() interface{} {

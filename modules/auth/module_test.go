@@ -110,6 +110,16 @@ func (m *MockApplication) Run() error {
 	return nil
 }
 
+// IsVerboseConfig returns whether verbose config is enabled (mock implementation)
+func (m *MockApplication) IsVerboseConfig() bool {
+	return false
+}
+
+// SetVerboseConfig sets the verbose config flag (mock implementation)
+func (m *MockApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
 // MockLogger implements a minimal logger for testing
 type MockLogger struct{}
 

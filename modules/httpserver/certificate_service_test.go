@@ -118,6 +118,14 @@ func (m *SimpleMockApplication) Run() error {
 	return nil // No-op for these tests
 }
 
+func (m *SimpleMockApplication) IsVerboseConfig() bool {
+	return false
+}
+
+func (m *SimpleMockApplication) SetVerboseConfig(verbose bool) {
+	// No-op for these tests
+}
+
 // SimpleMockLogger implements modular.Logger for certificate service tests
 type SimpleMockLogger struct{}
 

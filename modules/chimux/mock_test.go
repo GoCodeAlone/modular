@@ -141,6 +141,16 @@ func (m *MockApplication) SetLogger(logger modular.Logger) {
 	m.logger = logger
 }
 
+// IsVerboseConfig returns whether verbose config is enabled (mock implementation)
+func (m *MockApplication) IsVerboseConfig() bool {
+	return false
+}
+
+// SetVerboseConfig sets the verbose config flag (mock implementation)
+func (m *MockApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
 // TenantApplication interface methods
 // GetTenantService returns the application's tenant service
 func (m *MockApplication) GetTenantService() (modular.TenantService, error) {

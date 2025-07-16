@@ -5,7 +5,7 @@ go 1.23.0
 replace github.com/CrisisTextLine/modular => ../../
 
 require (
-	github.com/CrisisTextLine/modular v1.3.0
+	github.com/CrisisTextLine/modular v1.4.0
 	github.com/go-chi/chi/v5 v5.2.2
 )
 

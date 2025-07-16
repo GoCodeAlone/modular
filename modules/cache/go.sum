@@ -1,8 +1,7 @@
-github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/CrisisTextLine/modular v1.3.0 h1:KVny0S447hTUXYY8Y7BltL94poN/ZtaH3v2V7jU7d3o=
-github.com/CrisisTextLine/modular v1.3.0/go.mod h1:dD1xYmBQdtYahsrdwP1DAe2Tz6SkCXA8foairMuY3Pk=
+github.com/CrisisTextLine/modular v1.4.0 h1:h7eZPoXKKj9ufB4rEXGc1quF7uxM5aQG9FjbU6MpR2c=
+github.com/CrisisTextLine/modular v1.4.0/go.mod h1:fvO07Ke7En23BUqpyMpWRTKVq0OPsXpYzSWUYvfOnsk=
 github.com/alicebob/miniredis/v2 v2.35.0 h1:QwLphYqCEAo1eu1TqPRN2jgVMPBweeQcR21jeqDCONI=
 github.com/alicebob/miniredis/v2 v2.35.0/go.mod h1:TcL7YfarKPGDAthEtl5NBeHZfeUQj6OXMm/+iu5cLMM=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
@@ -20,12 +19,6 @@ github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f h1:lO4WD4F/r
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f/go.mod h1:cuUVRXasLTGF7a8hSLbxyZXjz+1KgoB3wDUb6vlszIc=
 github.com/golobby/cast v1.3.3 h1:s2Lawb9RMz7YyYf8IrfMQY4IFmA1R/lgfmj97Vc6fig=
 github.com/golobby/cast v1.3.3/go.mod h1:0oDO5IT84HTXcbLDf1YXuk0xtg/cRDrxhbpWKxwtJCY=
-github.com/golobby/config/v3 v3.4.2 h1:oIOSo24mC0A8f93ZTL24NDNw0hZ3Tbb34wc1ckn2CsA=
-github.com/golobby/config/v3 v3.4.2/go.mod h1:3go9UVPb3bBNrH7qidd4vd1HbsAAwIYqcQJgGmAa044=
-github.com/golobby/dotenv v1.3.2 h1:9vA8XqXXIB3cX/5xQ1CTbOCPegioHtHXIxeFng+uOqQ=
-github.com/golobby/dotenv v1.3.2/go.mod h1:9MMVXqzLNluhVxCv3X/DLYBNUb289f05tr+df1+7278=
-github.com/golobby/env/v2 v2.2.4 h1:sjdTe+bScPRWUIA1AQH95RHv52jM5Mns2XHwLyEbkzk=
-github.com/golobby/env/v2 v2.2.4/go.mod h1:HDJW+dHHwLxkb8FZMjBTBiZUFl1iAA4F9YX15kBC84c=
 github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
