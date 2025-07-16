@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // Feeder interface for common operations
@@ -247,6 +248,35 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 
 // setFieldFromJSON sets a field value from JSON data with type conversion
 func (j *JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
+	// Special handling for time.Duration
+	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		if str, ok := value.(string); ok {
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration for field %s: %w", str, fieldPath, err)
+			}
+			field.Set(reflect.ValueOf(duration))
+
+			// Record field population
+			if j.fieldTracker != nil {
+				fp := FieldPopulation{
+					FieldPath:  fieldPath,
+					FieldName:  fieldPath,
+					FieldType:  field.Type().String(),
+					FeederType: "JSONFeeder",
+					SourceType: "json_file",
+					SourceKey:  fieldPath,
+					Value:      duration,
+					SearchKeys: []string{fieldPath},
+					FoundKey:   fieldPath,
+				}
+				j.fieldTracker.RecordFieldPopulation(fp)
+			}
+			return nil
+		}
+		return wrapJSONConvertError(value, field.Type().String(), fieldPath)
+	}
+
 	// Convert and set the value
 	convertedValue := reflect.ValueOf(value)
 	if convertedValue.Type().ConvertibleTo(field.Type()) {
@@ -302,26 +332,40 @@ func (j *JSONFeeder) setPointerFromJSON(field reflect.Value, value interface{}, 
 	elemType := field.Type().Elem()
 	ptrValue := reflect.New(elemType)
 
-	// Handle different element types
-	switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
-	case reflect.Struct:
-		// Handle pointer to struct
-		if valueMap, ok := value.(map[string]interface{}); ok {
-			if err := j.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
-				return fmt.Errorf("error processing pointer to struct: %w", err)
+	// Special handling for pointer to time.Duration
+	if elemType == reflect.TypeOf(time.Duration(0)) {
+		if str, ok := value.(string); ok {
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration for field %s: %w", str, fieldPath, err)
 			}
+			ptrValue.Elem().Set(reflect.ValueOf(duration))
 			field.Set(ptrValue)
 		} else {
 			return wrapJSONConvertError(value, field.Type().String(), fieldPath)
 		}
-	default:
-		// Handle pointer to basic type
-		convertedValue := reflect.ValueOf(value)
-		if convertedValue.Type().ConvertibleTo(elemType) {
-			ptrValue.Elem().Set(convertedValue.Convert(elemType))
-			field.Set(ptrValue)
-		} else {
-			return wrapJSONConvertError(value, field.Type().String(), fieldPath)
+	} else {
+		// Handle different element types
+		switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
+		case reflect.Struct:
+			// Handle pointer to struct
+			if valueMap, ok := value.(map[string]interface{}); ok {
+				if err := j.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
+					return fmt.Errorf("error processing pointer to struct: %w", err)
+				}
+				field.Set(ptrValue)
+			} else {
+				return wrapJSONConvertError(value, field.Type().String(), fieldPath)
+			}
+		default:
+			// Handle pointer to basic type
+			convertedValue := reflect.ValueOf(value)
+			if convertedValue.Type().ConvertibleTo(elemType) {
+				ptrValue.Elem().Set(convertedValue.Convert(elemType))
+				field.Set(ptrValue)
+			} else {
+				return wrapJSONConvertError(value, field.Type().String(), fieldPath)
+			}
 		}
 	}
 
