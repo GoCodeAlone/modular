@@ -106,7 +106,7 @@ func TestEnvFeeder_TimeDuration_VerboseDebug(t *testing.T) {
 	assert.Equal(t, 30*time.Second, config.RequestTimeout)
 
 	// Check that debug logging occurred
-	assert.Greater(t, len(logger.messages), 0)
+	assert.NotEmpty(t, logger.messages)
 }
 
 func TestYamlFeeder_TimeDuration(t *testing.T) {
@@ -116,7 +116,7 @@ cache_ttl: 10m
 pointer_timeout: 2h`
 
 	yamlFile := "/tmp/test_duration.yaml"
-	err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
+	err := os.WriteFile(yamlFile, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(yamlFile)
 
@@ -135,7 +135,7 @@ func TestYamlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	yamlContent := `request_timeout: invalid_duration`
 
 	yamlFile := "/tmp/test_invalid_duration.yaml"
-	err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
+	err := os.WriteFile(yamlFile, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(yamlFile)
 
@@ -143,7 +143,7 @@ func TestYamlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	feeder := NewYamlFeeder(yamlFile)
 	err = feeder.Feed(config)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot convert string 'invalid_duration' to time.Duration")
 }
 
@@ -151,7 +151,7 @@ func TestJSONFeeder_TimeDuration(t *testing.T) {
 	jsonContent := `{"request_timeout": "1h", "cache_ttl": "15m", "pointer_timeout": "3h30m"}`
 
 	jsonFile := "/tmp/test_duration.json"
-	err := os.WriteFile(jsonFile, []byte(jsonContent), 0644)
+	err := os.WriteFile(jsonFile, []byte(jsonContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(jsonFile)
 
@@ -170,7 +170,7 @@ func TestJSONFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	jsonContent := `{"request_timeout": "bad_duration"}`
 
 	jsonFile := "/tmp/test_invalid_duration.json"
-	err := os.WriteFile(jsonFile, []byte(jsonContent), 0644)
+	err := os.WriteFile(jsonFile, []byte(jsonContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(jsonFile)
 
@@ -178,7 +178,7 @@ func TestJSONFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	feeder := NewJSONFeeder(jsonFile)
 	err = feeder.Feed(config)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot convert string 'bad_duration' to time.Duration")
 }
 
@@ -188,7 +188,7 @@ cache_ttl = "30m"
 pointer_timeout = "45m"`
 
 	tomlFile := "/tmp/test_duration.toml"
-	err := os.WriteFile(tomlFile, []byte(tomlContent), 0644)
+	err := os.WriteFile(tomlFile, []byte(tomlContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(tomlFile)
 
@@ -207,7 +207,7 @@ func TestTomlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	tomlContent := `request_timeout = "invalid"`
 
 	tomlFile := "/tmp/test_invalid_duration.toml"
-	err := os.WriteFile(tomlFile, []byte(tomlContent), 0644)
+	err := os.WriteFile(tomlFile, []byte(tomlContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(tomlFile)
 
@@ -215,7 +215,7 @@ func TestTomlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	feeder := NewTomlFeeder(tomlFile)
 	err = feeder.Feed(config)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot convert string 'invalid' to time.Duration")
 }
 
@@ -237,7 +237,7 @@ func TestAllFeeders_TimeDuration_VerboseDebug(t *testing.T) {
 	// Test YamlFeeder
 	yamlContent := `request_timeout: 20s`
 	yamlFile := "/tmp/test_verbose_debug.yaml"
-	err = os.WriteFile(yamlFile, []byte(yamlContent), 0644)
+	err = os.WriteFile(yamlFile, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(yamlFile)
 
@@ -251,7 +251,7 @@ func TestAllFeeders_TimeDuration_VerboseDebug(t *testing.T) {
 	// Test JSONFeeder
 	jsonContent := `{"request_timeout": "30s"}`
 	jsonFile := "/tmp/test_verbose_debug.json"
-	err = os.WriteFile(jsonFile, []byte(jsonContent), 0644)
+	err = os.WriteFile(jsonFile, []byte(jsonContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(jsonFile)
 
@@ -265,7 +265,7 @@ func TestAllFeeders_TimeDuration_VerboseDebug(t *testing.T) {
 	// Test TomlFeeder
 	tomlContent := `request_timeout = "40s"`
 	tomlFile := "/tmp/test_verbose_debug.toml"
-	err = os.WriteFile(tomlFile, []byte(tomlContent), 0644)
+	err = os.WriteFile(tomlFile, []byte(tomlContent), 0600)
 	require.NoError(t, err)
 	defer os.Remove(tomlFile)
 
@@ -277,7 +277,7 @@ func TestAllFeeders_TimeDuration_VerboseDebug(t *testing.T) {
 	assert.Equal(t, 40*time.Second, config4.RequestTimeout)
 
 	// Check that debug logging occurred
-	assert.Greater(t, len(logger.messages), 0)
+	assert.NotEmpty(t, logger.messages)
 }
 
 // testLogger is a simple logger implementation for testing

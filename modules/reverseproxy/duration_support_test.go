@@ -26,18 +26,18 @@ func TestReverseProxyConfig_TimeDurationSupport(t *testing.T) {
 
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewEnvFeeder()
-		
+
 		// Test with verbose debug enabled (reproducing the original issue scenario)
 		logger := &testDebugLogger{}
 		feeder.SetVerboseDebug(true, logger)
-		
+
 		err := feeder.Feed(config)
 		require.NoError(t, err)
 		assert.Equal(t, 30*time.Second, config.RequestTimeout)
 		assert.Equal(t, 5*time.Minute, config.CacheTTL)
-		
+
 		// Verify debug logging occurred
-		assert.Greater(t, len(logger.messages), 0)
+		assert.NotEmpty(t, logger.messages)
 	})
 
 	t.Run("YamlFeeder", func(t *testing.T) {
@@ -51,19 +51,19 @@ default_backend: "service1"
 cache_enabled: true
 metrics_enabled: true
 metrics_path: "/metrics"`
-		
+
 		yamlFile := "/tmp/reverseproxy_test.yaml"
-		err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
+		err := os.WriteFile(yamlFile, []byte(yamlContent), 0600)
 		require.NoError(t, err)
 		defer os.Remove(yamlFile)
-		
+
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewYamlFeeder(yamlFile)
-		
+
 		// Test with verbose debug enabled
 		logger := &testDebugLogger{}
 		feeder.SetVerboseDebug(true, logger)
-		
+
 		err = feeder.Feed(config)
 		require.NoError(t, err)
 		assert.Equal(t, 45*time.Second, config.RequestTimeout)
@@ -88,19 +88,19 @@ metrics_path: "/metrics"`
   "metrics_enabled": true,
   "metrics_path": "/metrics"
 }`
-		
+
 		jsonFile := "/tmp/reverseproxy_test.json"
-		err := os.WriteFile(jsonFile, []byte(jsonContent), 0644)
+		err := os.WriteFile(jsonFile, []byte(jsonContent), 0600)
 		require.NoError(t, err)
 		defer os.Remove(jsonFile)
-		
+
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewJSONFeeder(jsonFile)
-		
+
 		// Test with verbose debug enabled
 		logger := &testDebugLogger{}
 		feeder.SetVerboseDebug(true, logger)
-		
+
 		err = feeder.Feed(config)
 		require.NoError(t, err)
 		assert.Equal(t, 1*time.Hour, config.RequestTimeout)
@@ -121,19 +121,19 @@ service1 = "http://localhost:8080"
 
 [routes]
 "/api" = "service1"`
-		
+
 		tomlFile := "/tmp/reverseproxy_test.toml"
-		err := os.WriteFile(tomlFile, []byte(tomlContent), 0644)
+		err := os.WriteFile(tomlFile, []byte(tomlContent), 0600)
 		require.NoError(t, err)
 		defer os.Remove(tomlFile)
-		
+
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewTomlFeeder(tomlFile)
-		
+
 		// Test with verbose debug enabled
 		logger := &testDebugLogger{}
 		feeder.SetVerboseDebug(true, logger)
-		
+
 		err = feeder.Feed(config)
 		require.NoError(t, err)
 		assert.Equal(t, 2*time.Hour, config.RequestTimeout)
@@ -151,23 +151,23 @@ func TestReverseProxyConfig_TimeDurationInvalidFormat(t *testing.T) {
 		feeder := feeders.NewEnvFeeder()
 		err := feeder.Feed(config)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot convert value to type time.Duration")
 	})
 
 	t.Run("YamlFeeder_InvalidDuration", func(t *testing.T) {
 		yamlContent := `request_timeout: invalid_duration`
-		
+
 		yamlFile := "/tmp/invalid_reverseproxy_test.yaml"
-		err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
+		err := os.WriteFile(yamlFile, []byte(yamlContent), 0600)
 		require.NoError(t, err)
 		defer os.Remove(yamlFile)
-		
+
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewYamlFeeder(yamlFile)
 		err = feeder.Feed(config)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot convert string 'invalid_duration' to time.Duration")
 	})
 }
