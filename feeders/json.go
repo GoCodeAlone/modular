@@ -205,6 +205,10 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 	fieldKind := field.Kind()
 
 	switch fieldKind {
+	case reflect.Ptr:
+		// Handle pointer types
+		return j.setPointerFromJSON(field, value, fieldPath)
+
 	case reflect.Struct:
 		// Handle nested structs
 		if nestedMap, ok := value.(map[string]interface{}); ok {
@@ -216,6 +220,10 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 		// Handle slices
 		return j.setSliceFromJSON(field, value, fieldPath)
 
+	case reflect.Array:
+		// Handle arrays
+		return j.setArrayFromJSON(field, value, fieldPath)
+
 	case reflect.Map:
 		// Handle maps
 		if mapData, ok := value.(map[string]interface{}); ok {
@@ -225,8 +233,8 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
-		reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr, reflect.String,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.String,
 		reflect.UnsafePointer:
 		// Handle basic types and unsupported types
 		return j.setFieldFromJSON(field, value, fieldPath)
@@ -266,6 +274,120 @@ func (j *JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fi
 	return wrapJSONConvertError(value, field.Type().String(), fieldPath)
 }
 
+// setPointerFromJSON handles setting pointer fields from JSON data
+func (j *JSONFeeder) setPointerFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
+	if value == nil {
+		// Set nil pointer
+		field.Set(reflect.Zero(field.Type()))
+
+		// Record field population
+		if j.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldPath,
+				FieldType:  field.Type().String(),
+				FeederType: "JSONFeeder",
+				SourceType: "json_file",
+				SourceKey:  fieldPath,
+				Value:      nil,
+				SearchKeys: []string{fieldPath},
+				FoundKey:   fieldPath,
+			}
+			j.fieldTracker.RecordFieldPopulation(fp)
+		}
+		return nil
+	}
+
+	// Create a new instance of the pointed-to type
+	elemType := field.Type().Elem()
+	ptrValue := reflect.New(elemType)
+
+	// Handle different element types
+	switch elemType.Kind() {
+	case reflect.Struct:
+		// Handle pointer to struct
+		if valueMap, ok := value.(map[string]interface{}); ok {
+			if err := j.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
+				return fmt.Errorf("error processing pointer to struct: %w", err)
+			}
+			field.Set(ptrValue)
+		} else {
+			return wrapJSONConvertError(value, field.Type().String(), fieldPath)
+		}
+	default:
+		// Handle pointer to basic type
+		convertedValue := reflect.ValueOf(value)
+		if convertedValue.Type().ConvertibleTo(elemType) {
+			ptrValue.Elem().Set(convertedValue.Convert(elemType))
+			field.Set(ptrValue)
+		} else {
+			return wrapJSONConvertError(value, field.Type().String(), fieldPath)
+		}
+	}
+
+	// Record field population
+	if j.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "JSONFeeder",
+			SourceType: "json_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		}
+		j.fieldTracker.RecordFieldPopulation(fp)
+	}
+	return nil
+}
+
+// setArrayFromJSON sets an array field from JSON array data
+func (j *JSONFeeder) setArrayFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
+	// Handle array values
+	if arrayValue, ok := value.([]interface{}); ok {
+		arrayType := field.Type()
+		elemType := arrayType.Elem()
+		arrayLen := arrayType.Len()
+
+		if len(arrayValue) > arrayLen {
+			return wrapJSONArraySizeExceeded(fieldPath, len(arrayValue), arrayLen)
+		}
+
+		for i, item := range arrayValue {
+			elem := field.Index(i)
+			convertedItem := reflect.ValueOf(item)
+
+			if convertedItem.Type().ConvertibleTo(elemType) {
+				elem.Set(convertedItem.Convert(elemType))
+			} else {
+				return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
+			}
+		}
+
+		// Record field population for the array
+		if j.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldPath,
+				FieldType:  field.Type().String(),
+				FeederType: "JSONFeeder",
+				SourceType: "json_file",
+				SourceKey:  fieldPath,
+				Value:      value,
+				SearchKeys: []string{fieldPath},
+				FoundKey:   fieldPath,
+			}
+			j.fieldTracker.RecordFieldPopulation(fp)
+		}
+
+		return nil
+	}
+
+	return wrapJSONArrayError(fieldPath, value)
+}
+
 // setSliceFromJSON sets a slice field from JSON array data
 func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fieldPath string) error {
 	// Handle slice values
@@ -277,12 +399,53 @@ func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fi
 
 		for i, item := range arrayValue {
 			elem := newSlice.Index(i)
-			convertedItem := reflect.ValueOf(item)
 
-			if convertedItem.Type().ConvertibleTo(elemType) {
-				elem.Set(convertedItem.Convert(elemType))
-			} else {
-				return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
+			// Handle different element types
+			switch elemType.Kind() {
+			case reflect.Struct:
+				// Handle slice of structs
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					if err := j.processStructFields(elem, itemMap, fmt.Sprintf("%s[%d]", fieldPath, i)); err != nil {
+						return fmt.Errorf("error processing slice element %d: %w", i, err)
+					}
+				} else {
+					return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
+				}
+			case reflect.Ptr:
+				// Handle slice of pointers
+				if item == nil {
+					// Set nil pointer
+					elem.Set(reflect.Zero(elemType))
+				} else if ptrElemType := elemType.Elem(); ptrElemType.Kind() == reflect.Struct {
+					// Pointer to struct
+					if itemMap, ok := item.(map[string]interface{}); ok {
+						ptrValue := reflect.New(ptrElemType)
+						if err := j.processStructFields(ptrValue.Elem(), itemMap, fmt.Sprintf("%s[%d]", fieldPath, i)); err != nil {
+							return fmt.Errorf("error processing slice pointer element %d: %w", i, err)
+						}
+						elem.Set(ptrValue)
+					} else {
+						return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
+					}
+				} else {
+					// Pointer to basic type
+					convertedItem := reflect.ValueOf(item)
+					if convertedItem.Type().ConvertibleTo(ptrElemType) {
+						ptrValue := reflect.New(ptrElemType)
+						ptrValue.Elem().Set(convertedItem.Convert(ptrElemType))
+						elem.Set(ptrValue)
+					} else {
+						return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
+					}
+				}
+			default:
+				// Handle basic types
+				convertedItem := reflect.ValueOf(item)
+				if convertedItem.Type().ConvertibleTo(elemType) {
+					elem.Set(convertedItem.Convert(elemType))
+				} else {
+					return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
+				}
 			}
 		}
 

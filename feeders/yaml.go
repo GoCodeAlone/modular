@@ -194,6 +194,21 @@ func (y *YamlFeeder) processStructFields(rv reflect.Value, data map[string]inter
 func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.StructField, data map[string]interface{}, fieldPath string) error {
 	// Handle nested structs
 	switch field.Kind() {
+	case reflect.Ptr:
+		// Handle pointer types
+		if yamlTag, exists := fieldType.Tag.Lookup("yaml"); exists {
+			return y.setPointerFromYAML(field, yamlTag, data, fieldType.Name, fieldPath)
+		}
+	case reflect.Slice:
+		// Handle slice types
+		if yamlTag, exists := fieldType.Tag.Lookup("yaml"); exists {
+			return y.setSliceFromYAML(field, yamlTag, data, fieldType.Name, fieldPath)
+		}
+	case reflect.Array:
+		// Handle array types
+		if yamlTag, exists := fieldType.Tag.Lookup("yaml"); exists {
+			return y.setArrayFromYAML(field, yamlTag, data, fieldType.Name, fieldPath)
+		}
 	case reflect.Map:
 		if y.verboseDebug && y.logger != nil {
 			y.logger.Debug("YamlFeeder: Processing map field", "fieldName", fieldType.Name, "fieldPath", fieldPath)
@@ -241,37 +256,10 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 			// No yaml tag, use the same data map
 			return y.processStructFields(field, data, fieldPath)
 		}
-	case reflect.Pointer:
-		if !field.IsZero() && field.Elem().Kind() == reflect.Struct {
-			if y.verboseDebug && y.logger != nil {
-				y.logger.Debug("YamlFeeder: Processing nested struct pointer", "fieldName", fieldType.Name, "fieldPath", fieldPath)
-			}
-
-			// Check if there's a yaml tag for this nested struct pointer
-			if yamlTag, exists := fieldType.Tag.Lookup("yaml"); exists {
-				// Look for nested data using the yaml tag
-				if nestedData, found := data[yamlTag]; found {
-					if nestedMap, ok := nestedData.(map[string]interface{}); ok {
-						return y.processStructFields(field.Elem(), nestedMap, fieldPath)
-					} else {
-						if y.verboseDebug && y.logger != nil {
-							y.logger.Debug("YamlFeeder: Nested YAML data is not a map", "fieldName", fieldType.Name, "yamlTag", yamlTag, "dataType", reflect.TypeOf(nestedData))
-						}
-					}
-				} else {
-					if y.verboseDebug && y.logger != nil {
-						y.logger.Debug("YamlFeeder: Nested YAML data not found", "fieldName", fieldType.Name, "yamlTag", yamlTag)
-					}
-				}
-			} else {
-				// No yaml tag, use the same data map
-				return y.processStructFields(field.Elem(), data, fieldPath)
-			}
-		}
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
-		reflect.Chan, reflect.Func, reflect.Interface, reflect.Slice, reflect.String, reflect.UnsafePointer:
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.String, reflect.UnsafePointer:
 		// Check for yaml tag for primitive types and other non-struct types
 		if yamlTag, exists := fieldType.Tag.Lookup("yaml"); exists {
 			if y.verboseDebug && y.logger != nil {
@@ -291,6 +279,266 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 		} else if y.verboseDebug && y.logger != nil {
 			y.logger.Debug("YamlFeeder: No yaml tag found", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 		}
+	}
+
+	return nil
+}
+
+// setPointerFromYAML handles setting pointer fields from YAML data
+func (y *YamlFeeder) setPointerFromYAML(field reflect.Value, yamlTag string, data map[string]interface{}, fieldName, fieldPath string) error {
+	// Find the value in YAML data
+	foundValue, exists := data[yamlTag]
+
+	if !exists {
+		// Record that we searched but didn't find
+		if y.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:   fieldPath,
+				FieldName:   fieldName,
+				FieldType:   field.Type().String(),
+				FeederType:  "*feeders.YamlFeeder",
+				SourceType:  "yaml",
+				SourceKey:   "",
+				Value:       nil,
+				InstanceKey: "",
+				SearchKeys:  []string{yamlTag},
+				FoundKey:    "",
+			}
+			y.fieldTracker.RecordFieldPopulation(fp)
+		}
+		return nil
+	}
+
+	if foundValue == nil {
+		// Set nil pointer
+		field.Set(reflect.Zero(field.Type()))
+
+		// Record field population
+		if y.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:   fieldPath,
+				FieldName:   fieldName,
+				FieldType:   field.Type().String(),
+				FeederType:  "*feeders.YamlFeeder",
+				SourceType:  "yaml",
+				SourceKey:   yamlTag,
+				Value:       nil,
+				InstanceKey: "",
+				SearchKeys:  []string{yamlTag},
+				FoundKey:    yamlTag,
+			}
+			y.fieldTracker.RecordFieldPopulation(fp)
+		}
+		return nil
+	}
+
+	// Create a new instance of the pointed-to type
+	elemType := field.Type().Elem()
+	ptrValue := reflect.New(elemType)
+
+	// Handle different element types
+	switch elemType.Kind() {
+	case reflect.Struct:
+		// Handle pointer to struct
+		if valueMap, ok := foundValue.(map[string]interface{}); ok {
+			if err := y.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
+				return fmt.Errorf("error processing pointer to struct: %w", err)
+			}
+			field.Set(ptrValue)
+		} else {
+			return wrapYamlExpectedMapError(fieldPath, foundValue)
+		}
+	default:
+		// Handle pointer to basic type
+		if err := y.setFieldValue(ptrValue.Elem(), foundValue); err != nil {
+			return fmt.Errorf("error setting pointer value: %w", err)
+		}
+		field.Set(ptrValue)
+	}
+
+	// Record field population
+	if y.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   yamlTag,
+			Value:       foundValue,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    yamlTag,
+		}
+		y.fieldTracker.RecordFieldPopulation(fp)
+	}
+	return nil
+}
+
+// setSliceFromYAML handles setting slice fields from YAML data
+func (y *YamlFeeder) setSliceFromYAML(field reflect.Value, yamlTag string, data map[string]interface{}, fieldName, fieldPath string) error {
+	// Find the value in YAML data
+	foundValue, exists := data[yamlTag]
+
+	if !exists {
+		// Record that we searched but didn't find
+		if y.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:   fieldPath,
+				FieldName:   fieldName,
+				FieldType:   field.Type().String(),
+				FeederType:  "*feeders.YamlFeeder",
+				SourceType:  "yaml",
+				SourceKey:   "",
+				Value:       nil,
+				InstanceKey: "",
+				SearchKeys:  []string{yamlTag},
+				FoundKey:    "",
+			}
+			y.fieldTracker.RecordFieldPopulation(fp)
+		}
+		return nil
+	}
+
+	// Handle slice values
+	arrayValue, ok := foundValue.([]interface{})
+	if !ok {
+		return wrapYamlExpectedArrayError(fieldPath, foundValue)
+	}
+
+	sliceType := field.Type()
+	elemType := sliceType.Elem()
+
+	newSlice := reflect.MakeSlice(sliceType, len(arrayValue), len(arrayValue))
+
+	for i, item := range arrayValue {
+		elem := newSlice.Index(i)
+
+		// Handle different element types
+		switch elemType.Kind() {
+		case reflect.Struct:
+			// Handle slice of structs
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if err := y.processStructFields(elem, itemMap, fmt.Sprintf("%s[%d]", fieldPath, i)); err != nil {
+					return fmt.Errorf("error processing slice element %d: %w", i, err)
+				}
+			} else {
+				return wrapYamlExpectedMapForSliceError(fieldPath, i, item)
+			}
+		case reflect.Ptr:
+			// Handle slice of pointers
+			if item == nil {
+				// Set nil pointer
+				elem.Set(reflect.Zero(elemType))
+			} else if ptrElemType := elemType.Elem(); ptrElemType.Kind() == reflect.Struct {
+				// Pointer to struct
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					ptrValue := reflect.New(ptrElemType)
+					if err := y.processStructFields(ptrValue.Elem(), itemMap, fmt.Sprintf("%s[%d]", fieldPath, i)); err != nil {
+						return fmt.Errorf("error processing slice pointer element %d: %w", i, err)
+					}
+					elem.Set(ptrValue)
+				} else {
+					return wrapYamlExpectedMapForSliceError(fieldPath, i, item)
+				}
+			} else {
+				// Pointer to basic type
+				ptrValue := reflect.New(ptrElemType)
+				if err := y.setFieldValue(ptrValue.Elem(), item); err != nil {
+					return fmt.Errorf("error setting slice pointer element %d: %w", i, err)
+				}
+				elem.Set(ptrValue)
+			}
+		default:
+			// Handle basic types
+			if err := y.setFieldValue(elem, item); err != nil {
+				return fmt.Errorf("error setting slice element %d: %w", i, err)
+			}
+		}
+	}
+
+	field.Set(newSlice)
+
+	// Record field population for the slice
+	if y.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   yamlTag,
+			Value:       foundValue,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    yamlTag,
+		}
+		y.fieldTracker.RecordFieldPopulation(fp)
+	}
+
+	return nil
+}
+
+// setArrayFromYAML handles setting array fields from YAML data
+func (y *YamlFeeder) setArrayFromYAML(field reflect.Value, yamlTag string, data map[string]interface{}, fieldName, fieldPath string) error {
+	// Find the value in YAML data
+	foundValue, exists := data[yamlTag]
+
+	if !exists {
+		// Record that we searched but didn't find
+		if y.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:   fieldPath,
+				FieldName:   fieldName,
+				FieldType:   field.Type().String(),
+				FeederType:  "*feeders.YamlFeeder",
+				SourceType:  "yaml",
+				SourceKey:   "",
+				Value:       nil,
+				InstanceKey: "",
+				SearchKeys:  []string{yamlTag},
+				FoundKey:    "",
+			}
+			y.fieldTracker.RecordFieldPopulation(fp)
+		}
+		return nil
+	}
+
+	// Handle array values
+	arrayValue, ok := foundValue.([]interface{})
+	if !ok {
+		return wrapYamlExpectedArrayError(fieldPath, foundValue)
+	}
+
+	arrayType := field.Type()
+	arrayLen := arrayType.Len()
+
+	if len(arrayValue) > arrayLen {
+		return wrapYamlArraySizeExceeded(fieldPath, len(arrayValue), arrayLen)
+	}
+
+	for i, item := range arrayValue {
+		elem := field.Index(i)
+		if err := y.setFieldValue(elem, item); err != nil {
+			return fmt.Errorf("error setting array element %d: %w", i, err)
+		}
+	}
+
+	// Record field population for the array
+	if y.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   yamlTag,
+			Value:       foundValue,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    yamlTag,
+		}
+		y.fieldTracker.RecordFieldPopulation(fp)
 	}
 
 	return nil
