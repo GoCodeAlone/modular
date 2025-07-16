@@ -7,6 +7,7 @@
 # 
 # Use this workflow when you want to release everything that has changed.
 # Use individual workflows (release.yml, module-release.yml) for specific releases.
+#
 
 name: Release All Components with Changes
 run-name: Release All Components with Changes
