@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -776,6 +777,20 @@ func (y *YamlFeeder) setFieldValue(field reflect.Value, value interface{}) error
 	valueReflect := reflect.ValueOf(value)
 	if !valueReflect.IsValid() {
 		return nil // Skip nil values
+	}
+
+	// Special handling for time.Duration
+	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		if valueReflect.Kind() == reflect.String {
+			str := valueReflect.String()
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration: %w", str, err)
+			}
+			field.Set(reflect.ValueOf(duration))
+			return nil
+		}
+		return wrapYamlTypeConversionError(valueReflect.Type().String(), field.Type().String())
 	}
 
 	// Handle type conversion

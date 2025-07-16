@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -233,26 +234,40 @@ func (t *TomlFeeder) setPointerFromTOML(field reflect.Value, value interface{}, 
 	elemType := field.Type().Elem()
 	ptrValue := reflect.New(elemType)
 
-	// Handle different element types
-	switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
-	case reflect.Struct:
-		// Handle pointer to struct
-		if valueMap, ok := value.(map[string]interface{}); ok {
-			if err := t.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
-				return fmt.Errorf("error processing pointer to struct: %w", err)
+	// Special handling for pointer to time.Duration
+	if elemType == reflect.TypeOf(time.Duration(0)) {
+		if str, ok := value.(string); ok {
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration for field %s: %w", str, fieldPath, err)
 			}
+			ptrValue.Elem().Set(reflect.ValueOf(duration))
 			field.Set(ptrValue)
 		} else {
 			return wrapTomlConvertError(value, field.Type().String(), fieldPath)
 		}
-	default:
-		// Handle pointer to basic type
-		convertedValue := reflect.ValueOf(value)
-		if convertedValue.Type().ConvertibleTo(elemType) {
-			ptrValue.Elem().Set(convertedValue.Convert(elemType))
-			field.Set(ptrValue)
-		} else {
-			return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+	} else {
+		// Handle different element types
+		switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
+		case reflect.Struct:
+			// Handle pointer to struct
+			if valueMap, ok := value.(map[string]interface{}); ok {
+				if err := t.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
+					return fmt.Errorf("error processing pointer to struct: %w", err)
+				}
+				field.Set(ptrValue)
+			} else {
+				return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+			}
+		default:
+			// Handle pointer to basic type
+			convertedValue := reflect.ValueOf(value)
+			if convertedValue.Type().ConvertibleTo(elemType) {
+				ptrValue.Elem().Set(convertedValue.Convert(elemType))
+				field.Set(ptrValue)
+			} else {
+				return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+			}
 		}
 	}
 
@@ -321,6 +336,35 @@ func (t *TomlFeeder) setArrayFromTOML(field reflect.Value, value interface{}, fi
 
 // setFieldFromTOML sets a field value from TOML data with type conversion
 func (t *TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
+	// Special handling for time.Duration
+	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		if str, ok := value.(string); ok {
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration for field %s: %w", str, fieldPath, err)
+			}
+			field.Set(reflect.ValueOf(duration))
+
+			// Record field population
+			if t.fieldTracker != nil {
+				fp := FieldPopulation{
+					FieldPath:  fieldPath,
+					FieldName:  fieldPath,
+					FieldType:  field.Type().String(),
+					FeederType: "TomlFeeder",
+					SourceType: "toml_file",
+					SourceKey:  fieldPath,
+					Value:      duration,
+					SearchKeys: []string{fieldPath},
+					FoundKey:   fieldPath,
+				}
+				t.fieldTracker.RecordFieldPopulation(fp)
+			}
+			return nil
+		}
+		return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+	}
+
 	// Convert and set the value
 	convertedValue := reflect.ValueOf(value)
 	if convertedValue.Type().ConvertibleTo(field.Type()) {
