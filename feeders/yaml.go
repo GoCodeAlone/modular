@@ -337,7 +337,7 @@ func (y *YamlFeeder) setPointerFromYAML(field reflect.Value, yamlTag string, dat
 	ptrValue := reflect.New(elemType)
 
 	// Handle different element types
-	switch elemType.Kind() {
+	switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
 	case reflect.Struct:
 		// Handle pointer to struct
 		if valueMap, ok := foundValue.(map[string]interface{}); ok {
@@ -415,7 +415,7 @@ func (y *YamlFeeder) setSliceFromYAML(field reflect.Value, yamlTag string, data 
 		elem := newSlice.Index(i)
 
 		// Handle different element types
-		switch elemType.Kind() {
+		switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
 		case reflect.Struct:
 			// Handle slice of structs
 			if itemMap, ok := item.(map[string]interface{}); ok {

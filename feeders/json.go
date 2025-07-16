@@ -303,7 +303,7 @@ func (j *JSONFeeder) setPointerFromJSON(field reflect.Value, value interface{}, 
 	ptrValue := reflect.New(elemType)
 
 	// Handle different element types
-	switch elemType.Kind() {
+	switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
 	case reflect.Struct:
 		// Handle pointer to struct
 		if valueMap, ok := value.(map[string]interface{}); ok {
@@ -401,7 +401,7 @@ func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fi
 			elem := newSlice.Index(i)
 
 			// Handle different element types
-			switch elemType.Kind() {
+			switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
 			case reflect.Struct:
 				// Handle slice of structs
 				if itemMap, ok := item.(map[string]interface{}); ok {
