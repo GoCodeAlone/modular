@@ -46,9 +46,9 @@ func TestEnvFeeder_TimeDuration(t *testing.T) {
 			expectPointer:  func() *time.Duration { d := 500 * time.Millisecond; return &d }(),
 		},
 		{
-			name:          "invalid duration format",
+			name:           "invalid duration format",
 			requestTimeout: "invalid",
-			shouldError:   true,
+			shouldError:    true,
 		},
 	}
 
@@ -96,7 +96,7 @@ func TestEnvFeeder_TimeDuration_VerboseDebug(t *testing.T) {
 
 	config := &DurationTestConfig{}
 	feeder := NewEnvFeeder()
-	
+
 	// Create a simple logger for testing
 	logger := &testLogger{messages: make([]string, 0)}
 	feeder.SetVerboseDebug(true, logger)
@@ -104,7 +104,7 @@ func TestEnvFeeder_TimeDuration_VerboseDebug(t *testing.T) {
 	err := feeder.Feed(config)
 	require.NoError(t, err)
 	assert.Equal(t, 30*time.Second, config.RequestTimeout)
-	
+
 	// Check that debug logging occurred
 	assert.Greater(t, len(logger.messages), 0)
 }
@@ -114,7 +114,7 @@ func TestYamlFeeder_TimeDuration(t *testing.T) {
 	yamlContent := `request_timeout: 45s
 cache_ttl: 10m
 pointer_timeout: 2h`
-	
+
 	yamlFile := "/tmp/test_duration.yaml"
 	err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ pointer_timeout: 2h`
 
 func TestYamlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	yamlContent := `request_timeout: invalid_duration`
-	
+
 	yamlFile := "/tmp/test_invalid_duration.yaml"
 	err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestYamlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 
 func TestJSONFeeder_TimeDuration(t *testing.T) {
 	jsonContent := `{"request_timeout": "1h", "cache_ttl": "15m", "pointer_timeout": "3h30m"}`
-	
+
 	jsonFile := "/tmp/test_duration.json"
 	err := os.WriteFile(jsonFile, []byte(jsonContent), 0644)
 	require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestJSONFeeder_TimeDuration(t *testing.T) {
 
 func TestJSONFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	jsonContent := `{"request_timeout": "bad_duration"}`
-	
+
 	jsonFile := "/tmp/test_invalid_duration.json"
 	err := os.WriteFile(jsonFile, []byte(jsonContent), 0644)
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestTomlFeeder_TimeDuration(t *testing.T) {
 	tomlContent := `request_timeout = "2h"
 cache_ttl = "30m"
 pointer_timeout = "45m"`
-	
+
 	tomlFile := "/tmp/test_duration.toml"
 	err := os.WriteFile(tomlFile, []byte(tomlContent), 0644)
 	require.NoError(t, err)
@@ -205,7 +205,7 @@ pointer_timeout = "45m"`
 
 func TestTomlFeeder_TimeDuration_InvalidFormat(t *testing.T) {
 	tomlContent := `request_timeout = "invalid"`
-	
+
 	tomlFile := "/tmp/test_invalid_duration.toml"
 	err := os.WriteFile(tomlFile, []byte(tomlContent), 0644)
 	require.NoError(t, err)
