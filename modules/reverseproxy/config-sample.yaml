@@ -4,6 +4,28 @@ reverseproxy:
     backend2: "http://backend2.example.com"
   default_backend: "backend1"
   feature_flag_service_url: "http://featureflags.example.com"
+  # Health check configuration
+  health_check:
+    enabled: true
+    interval: "30s"
+    timeout: "5s"
+    recent_request_threshold: "60s"
+    expected_status_codes: [200, 204]
+    health_endpoints:
+      backend1: "/health"
+      backend2: "/api/health"
+    backend_health_check_config:
+      backend1:
+        enabled: true
+        interval: "15s"
+        timeout: "3s"
+        expected_status_codes: [200]
+      backend2:
+        enabled: true
+        endpoint: "/status"
+        interval: "45s"
+        timeout: "10s"
+        expected_status_codes: [200, 201]
   # Example composite routes configuration
   composite_routes:
     "/api/composite/data":

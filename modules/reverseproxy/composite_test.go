@@ -35,7 +35,9 @@ func TestStandaloneCompositeProxyHandler(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		// Write the combined response
-		json.NewEncoder(w).Encode(combinedResponse)
+		if err := json.NewEncoder(w).Encode(combinedResponse); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	})
 
 	// Create a test request
@@ -83,14 +85,14 @@ func TestTenantAwareCompositeRoutes(t *testing.T) {
 	globalBackend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"global-backend1","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"service":"global-backend1","path":"` + r.URL.Path + `"}`))
 	}))
 	defer globalBackend1.Close()
 
 	globalBackend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"global-backend2","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"service":"global-backend2","path":"` + r.URL.Path + `"}`))
 	}))
 	defer globalBackend2.Close()
 
@@ -98,14 +100,14 @@ func TestTenantAwareCompositeRoutes(t *testing.T) {
 	tenantBackend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"tenant-backend1","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"service":"tenant-backend1","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenantBackend1.Close()
 
 	tenantBackend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"tenant-backend2","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"service":"tenant-backend2","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenantBackend2.Close()
 

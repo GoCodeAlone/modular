@@ -9,6 +9,7 @@ import (
 	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // TestTenantCompositeRoutes tests that tenant-specific composite routes are properly handled
@@ -77,11 +78,11 @@ func TestTenantCompositeRoutes(t *testing.T) {
 
 	// Register config and set app
 	err := module.RegisterConfig(mockTenantApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Initialize the module
 	err = module.Init(mockTenantApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Register tenant
 	module.OnTenantRegistered(tenant1ID)
@@ -93,7 +94,7 @@ func TestTenantCompositeRoutes(t *testing.T) {
 	}
 
 	_, err = constructor(mockTenantApp, services)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Capture the routes registered with the router
 	var registeredRoutes []string
@@ -113,7 +114,7 @@ func TestTenantCompositeRoutes(t *testing.T) {
 
 	// Start the module to set up routes
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Make sure our composite routes were registered
 	assert.Contains(t, registeredRoutes, "/global/composite")

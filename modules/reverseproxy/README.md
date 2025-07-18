@@ -21,6 +21,10 @@ The Reverse Proxy module functions as a versatile API gateway that can route req
 * **Tenant Awareness**: Support for multi-tenant environments with tenant-specific routing
 * **Pattern-Based Routing**: Direct requests to specific backends based on URL patterns
 * **Custom Endpoint Mapping**: Define flexible mappings from frontend endpoints to backend services
+* **Health Checking**: Continuous monitoring of backend service availability with DNS resolution and HTTP checks
+* **Circuit Breaker**: Automatic failure detection and recovery with configurable thresholds
+* **Response Caching**: Performance optimization with TTL-based caching
+* **Metrics Collection**: Comprehensive metrics for monitoring and debugging
 
 ## Installation
 
@@ -87,6 +91,29 @@ reverseproxy:
   tenant_id_header: "X-Tenant-ID"
   require_tenant_id: false
   
+  # Health check configuration
+  health_check:
+    enabled: true
+    interval: "30s"
+    timeout: "5s"
+    recent_request_threshold: "60s"
+    expected_status_codes: [200, 204]
+    health_endpoints:
+      api: "/health"
+      auth: "/api/health"
+    backend_health_check_config:
+      api:
+        enabled: true
+        interval: "15s"
+        timeout: "3s"
+        expected_status_codes: [200]
+      auth:
+        enabled: true
+        endpoint: "/status"
+        interval: "45s"
+        timeout: "10s"
+        expected_status_codes: [200, 201]
+
   # Per-backend configuration
   backend_configs:
     api:
@@ -113,7 +140,8 @@ reverseproxy:
         hostname_handling: "use_backend"
         set_headers:
           X-Service: "auth"
-  
+
+
   # Composite routes for response aggregation
   composite_routes:
     "/api/user/profile":
@@ -125,6 +153,54 @@ reverseproxy:
 ### Advanced Features
 
 The module supports several advanced features:
+
+1. **Custom Response Transformers**: Create custom functions to transform responses from multiple backends
+2. **Custom Endpoint Mappings**: Define detailed mappings between frontend endpoints and backend services
+3. **Tenant-Specific Routing**: Route requests to different backend URLs based on tenant ID
+4. **Health Checking**: Continuous monitoring of backend service availability with configurable endpoints and intervals
+5. **Circuit Breaker**: Automatic failure detection and recovery to prevent cascading failures
+6. **Response Caching**: Performance optimization with TTL-based caching of responses
+
+### Health Check Configuration
+
+The reverseproxy module provides comprehensive health checking capabilities:
+
+```yaml
+health_check:
+  enabled: true                    # Enable health checking
+  interval: "30s"                  # Global check interval
+  timeout: "5s"                    # Global check timeout
+  recent_request_threshold: "60s"  # Skip checks if recent request within threshold
+  expected_status_codes: [200, 204] # Global expected status codes
+  
+  # Custom health endpoints per backend
+  health_endpoints:
+    api: "/health"
+    auth: "/api/health"
+  
+  # Per-backend health check configuration
+  backend_health_check_config:
+    api:
+      enabled: true
+      interval: "15s"              # Override global interval
+      timeout: "3s"                # Override global timeout
+      expected_status_codes: [200] # Override global status codes
+    auth:
+      enabled: true
+      endpoint: "/status"          # Custom health endpoint
+      interval: "45s"
+      timeout: "10s"
+      expected_status_codes: [200, 201]
+```
+
+**Health Check Features:**
+- **DNS Resolution**: Verifies that backend hostnames resolve to IP addresses
+- **HTTP Connectivity**: Tests HTTP connectivity to backends with configurable timeouts
+- **Custom Endpoints**: Supports custom health check endpoints per backend
+- **Smart Scheduling**: Skips health checks if recent requests have occurred
+- **Per-Backend Configuration**: Allows fine-grained control over health check behavior
+- **Status Monitoring**: Tracks health status, response times, and error details
+- **Metrics Integration**: Exposes health status through metrics endpoints
 
 1. **Per-Backend Configuration**: Configure path rewriting and header rewriting for each backend service
 2. **Per-Endpoint Configuration**: Override backend configuration for specific endpoints

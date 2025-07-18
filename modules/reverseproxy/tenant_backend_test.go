@@ -11,6 +11,7 @@ import (
 	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // This test verifies that a backend with empty URL in global config but valid URL in tenant config
@@ -83,12 +84,12 @@ func TestEmptyGlobalBackendWithValidTenantURL(t *testing.T) {
 
 	// Initialize module
 	err := module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Register routes with the router
 	module.router = router
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify that router.HandleFunc was called for route "/*"
 	router.AssertCalled(t, "HandleFunc", "/*", mock.AnythingOfType("http.HandlerFunc"))
@@ -97,7 +98,7 @@ func TestEmptyGlobalBackendWithValidTenantURL(t *testing.T) {
 	var capturedHandler http.HandlerFunc
 
 	// Get the captured handler from the mock calls
-	for _, call := range router.Mock.Calls {
+	for _, call := range router.Calls {
 		if call.Method == "HandleFunc" && call.Arguments[0].(string) == "/*" {
 			capturedHandler = call.Arguments[1].(http.HandlerFunc)
 			break
@@ -129,14 +130,14 @@ func TestAffiliateBackendOverrideRouting(t *testing.T) {
 	// Create a test server for the default backend
 	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("default-backend-response"))
+		_, _ = w.Write([]byte("default-backend-response"))
 	}))
 	defer defaultServer.Close()
 
 	// Create a test server for the tenant-specific backend
 	tenantServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("tenant-specific-backend-response"))
+		_, _ = w.Write([]byte("tenant-specific-backend-response"))
 	}))
 	defer tenantServer.Close()
 
@@ -212,7 +213,7 @@ func TestAffiliateBackendOverrideRouting(t *testing.T) {
 
 	// Initialize module
 	err := module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Replace the proxy handlers with test handlers
 	// This simulates what the actual proxy would do, but in a controlled test environment
@@ -220,14 +221,14 @@ func TestAffiliateBackendOverrideRouting(t *testing.T) {
 		key := "legacy_"
 		requestedURLs[key] = defaultServer.URL
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("default-response"))
+		_, _ = w.Write([]byte("default-response"))
 	})
 
 	tenantHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := "legacy_" + string(tenantID)
 		requestedURLs[key] = tenantServer.URL
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("tenant-response"))
+		_, _ = w.Write([]byte("tenant-response"))
 	})
 
 	// Register these handlers directly with the module
@@ -253,11 +254,11 @@ func TestAffiliateBackendOverrideRouting(t *testing.T) {
 	// Register routes with the router
 	module.router = router
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Get the captured handler for the root route "/" or "/*"
 	var capturedHandler http.HandlerFunc
-	for _, call := range router.Mock.Calls {
+	for _, call := range router.Calls {
 		if call.Method == "HandleFunc" && (call.Arguments[0].(string) == "/" || call.Arguments[0].(string) == "/*") {
 			capturedHandler = call.Arguments[1].(http.HandlerFunc)
 			break
@@ -349,7 +350,10 @@ func (m *mockTenantApplication) RegisterConfigSection(name string, provider modu
 
 func (m *mockTenantApplication) GetConfigSection(name string) (modular.ConfigProvider, error) {
 	args := m.Called(name)
-	return args.Get(0).(modular.ConfigProvider), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(modular.ConfigProvider), fmt.Errorf("mock get config section error: %w", err)
+	}
+	return args.Get(0).(modular.ConfigProvider), nil
 }
 
 func (m *mockTenantApplication) Logger() modular.Logger {
@@ -363,7 +367,10 @@ func (m *mockTenantApplication) SetLogger(logger modular.Logger) {
 
 func (m *mockTenantApplication) GetTenantConfig(tenantID modular.TenantID, moduleName string) (modular.ConfigProvider, error) {
 	args := m.Called(tenantID, moduleName)
-	return args.Get(0).(modular.ConfigProvider), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(modular.ConfigProvider), fmt.Errorf("mock get tenant config error: %w", err)
+	}
+	return args.Get(0).(modular.ConfigProvider), nil
 }
 
 func (m *mockTenantApplication) ConfigProvider() modular.ConfigProvider {
@@ -388,32 +395,50 @@ func (m *mockTenantApplication) SvcRegistry() modular.ServiceRegistry {
 
 func (m *mockTenantApplication) RegisterService(name string, service interface{}) error {
 	args := m.Called(name, service)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock error: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) GetService(name string, target interface{}) error {
 	args := m.Called(name, target)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock error: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) Init() error {
 	args := m.Called()
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock error: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) Start() error {
 	args := m.Called()
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock tenant application start failed: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) Stop() error {
 	args := m.Called()
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock tenant application stop failed: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) Run() error {
 	args := m.Called()
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock tenant application run failed: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) GetTenants() []modular.TenantID {
@@ -423,27 +448,42 @@ func (m *mockTenantApplication) GetTenants() []modular.TenantID {
 
 func (m *mockTenantApplication) RegisterTenant(tid modular.TenantID, configs map[string]modular.ConfigProvider) error {
 	args := m.Called(tid, configs)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock register tenant failed: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) RemoveTenant(tid modular.TenantID) error {
 	args := m.Called(tid)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock remove tenant failed: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) RegisterTenantAwareModule(module modular.TenantAwareModule) error {
 	args := m.Called(module)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("mock register tenant aware module failed: %w", err)
+	}
+	return nil
 }
 
 func (m *mockTenantApplication) GetTenantService() (modular.TenantService, error) {
 	args := m.Called()
-	return args.Get(0).(modular.TenantService), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(modular.TenantService), fmt.Errorf("mock get tenant service failed: %w", err)
+	}
+	return args.Get(0).(modular.TenantService), nil
 }
 
 func (m *mockTenantApplication) WithTenant(tid modular.TenantID) (*modular.TenantContext, error) {
 	args := m.Called(tid)
-	return args.Get(0).(*modular.TenantContext), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(*modular.TenantContext), fmt.Errorf("mock with tenant failed: %w", err)
+	}
+	return args.Get(0).(*modular.TenantContext), nil
 }
 
 func (m *mockTenantApplication) IsVerboseConfig() bool {

@@ -19,6 +19,7 @@ type ReverseProxyConfig struct {
 	MetricsEnabled         bool                            `json:"metrics_enabled" yaml:"metrics_enabled" toml:"metrics_enabled" env:"METRICS_ENABLED"`
 	MetricsPath            string                          `json:"metrics_path" yaml:"metrics_path" toml:"metrics_path" env:"METRICS_PATH"`
 	MetricsEndpoint        string                          `json:"metrics_endpoint" yaml:"metrics_endpoint" toml:"metrics_endpoint" env:"METRICS_ENDPOINT"`
+	HealthCheck            HealthCheckConfig               `json:"health_check" yaml:"health_check" toml:"health_check"`
 	// BackendConfigs defines per-backend configurations including path rewriting and header rewriting
 	BackendConfigs map[string]BackendServiceConfig `json:"backend_configs" yaml:"backend_configs" toml:"backend_configs"`
 }
@@ -158,4 +159,24 @@ type RetryConfig struct {
 	Jitter               float64       `json:"jitter" yaml:"jitter"`
 	Timeout              time.Duration `json:"timeout" yaml:"timeout"`
 	RetryableStatusCodes []int         `json:"retryable_status_codes" yaml:"retryable_status_codes"`
+}
+
+// HealthCheckConfig provides configuration for backend health checking.
+type HealthCheckConfig struct {
+	Enabled                  bool                           `json:"enabled" yaml:"enabled" toml:"enabled" env:"ENABLED" default:"false" desc:"Enable health checking for backend services"`
+	Interval                 time.Duration                  `json:"interval" yaml:"interval" toml:"interval" env:"INTERVAL" default:"30s" desc:"Interval between health checks"`
+	Timeout                  time.Duration                  `json:"timeout" yaml:"timeout" toml:"timeout" env:"TIMEOUT" default:"5s" desc:"Timeout for health check requests"`
+	RecentRequestThreshold   time.Duration                  `json:"recent_request_threshold" yaml:"recent_request_threshold" toml:"recent_request_threshold" env:"RECENT_REQUEST_THRESHOLD" default:"60s" desc:"Skip health check if a request to the backend occurred within this time"`
+	HealthEndpoints          map[string]string              `json:"health_endpoints" yaml:"health_endpoints" toml:"health_endpoints" env:"HEALTH_ENDPOINTS" desc:"Custom health check endpoints for specific backends (defaults to base URL)"`
+	ExpectedStatusCodes      []int                          `json:"expected_status_codes" yaml:"expected_status_codes" toml:"expected_status_codes" env:"EXPECTED_STATUS_CODES" default:"[200]" desc:"HTTP status codes considered healthy"`
+	BackendHealthCheckConfig map[string]BackendHealthConfig `json:"backend_health_check_config" yaml:"backend_health_check_config" toml:"backend_health_check_config" desc:"Per-backend health check configuration"`
+}
+
+// BackendHealthConfig provides per-backend health check configuration.
+type BackendHealthConfig struct {
+	Enabled             bool          `json:"enabled" yaml:"enabled" toml:"enabled" env:"ENABLED" default:"true" desc:"Enable health checking for this backend"`
+	Endpoint            string        `json:"endpoint" yaml:"endpoint" toml:"endpoint" env:"ENDPOINT" desc:"Custom health check endpoint (defaults to base URL)"`
+	Interval            time.Duration `json:"interval" yaml:"interval" toml:"interval" env:"INTERVAL" desc:"Override global interval for this backend"`
+	Timeout             time.Duration `json:"timeout" yaml:"timeout" toml:"timeout" env:"TIMEOUT" desc:"Override global timeout for this backend"`
+	ExpectedStatusCodes []int         `json:"expected_status_codes" yaml:"expected_status_codes" toml:"expected_status_codes" env:"EXPECTED_STATUS_CODES" desc:"Override global expected status codes for this backend"`
 }

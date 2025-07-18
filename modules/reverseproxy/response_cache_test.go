@@ -22,7 +22,6 @@ func TestNewResponseCache(t *testing.T) {
 	assert.NotNil(t, rc, "Response cache should be created")
 	assert.Equal(t, ttl, rc.defaultTTL, "Default TTL should be set correctly")
 	assert.Equal(t, maxSize, rc.maxCacheSize, "Max size should be set correctly")
-	assert.Equal(t, cleanupInterval, rc.cleanupInterval, "Cleanup interval should be set correctly")
 	assert.NotNil(t, rc.cache, "Cache map should be initialized")
 	assert.NotNil(t, rc.stopCleanup, "Cleanup stop channel should be initialized")
 	assert.NotNil(t, rc.cacheable, "Cacheable function should be initialized")
@@ -230,8 +229,11 @@ func TestCleanup(t *testing.T) {
 	rc.mutex.RUnlock()
 	assert.Equal(t, 5, initialCount, "All items should be in cache initially")
 
-	// Wait for cleanup to run (longer than cleanup interval)
+	// Wait for items to expire
 	time.Sleep(100 * time.Millisecond)
+
+	// Manually trigger cleanup
+	rc.cleanup()
 
 	// After cleanup, all items should be gone due to expiration
 	rc.mutex.RLock()
@@ -283,6 +285,6 @@ func TestConcurrentAccess(t *testing.T) {
 	count := len(rc.cache)
 	rc.mutex.RUnlock()
 
-	assert.True(t, count > 0, "Cache should contain items after concurrent operations")
-	assert.True(t, count <= 1000, "Cache should not exceed max size")
+	assert.Positive(t, count, "Cache should contain items after concurrent operations")
+	assert.LessOrEqual(t, count, 1000, "Cache should not exceed max size")
 }

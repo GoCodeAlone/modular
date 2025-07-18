@@ -29,7 +29,7 @@ func testSetup() (*httptest.Server, *httptest.Server, *ReverseProxyModule, *test
 			"path":   r.URL.Path,
 			"query":  r.URL.RawQuery,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 
 	// Create mock API2 server
@@ -42,7 +42,7 @@ func testSetup() (*httptest.Server, *httptest.Server, *ReverseProxyModule, *test
 			"path":   r.URL.Path,
 			"query":  r.URL.RawQuery,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 
 	// Create a test router for the module
@@ -89,7 +89,7 @@ func TestAPI1Route(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "API1")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"server":"API1","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"server":"API1","path":"` + r.URL.Path + `"}`))
 	})
 
 	// Register our handler to the router directly
@@ -142,7 +142,7 @@ func TestPathMatcher(t *testing.T) {
 	assert.Equal(t, "api1", pm.MatchBackend("/api/v1"))
 
 	// Test patterns that should not match anything
-	assert.Equal(t, "", pm.MatchBackend("/api/v3/resource"))
+	assert.Empty(t, pm.MatchBackend("/api/v3/resource"))
 }
 
 // TestProxyModule tests the proxy module with actual backends
@@ -158,10 +158,12 @@ func TestProxyModule(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "API1")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"server": "API1",
 			"path":   r.URL.Path,
-		})
+		}); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}
 
 	// Start the module to set up routes
@@ -232,18 +234,22 @@ func TestTenantAwareRouting(t *testing.T) {
 			// Simulate tenant-specific response
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Server", "API2")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
 				"server": "API2",
 				"path":   r.URL.Path,
-			})
+			}); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		} else {
 			// Default response
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Server", "API1")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
 				"server": "API1",
 				"path":   r.URL.Path,
-			})
+			}); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		}
 	}
 
@@ -314,7 +320,7 @@ func TestCompositeRouteHandlers(t *testing.T) {
 	testRouter.routes["/api/composite"] = func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"server":"API1","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"server":"API1","path":"` + r.URL.Path + `"}`))
 	}
 
 	// Verify composite route was registered
@@ -402,11 +408,11 @@ func TestTenantAwareCompositeRouting(t *testing.T) {
 		if tenantIDStr == string(tenantID) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"server":"API2","path":"` + r.URL.Path + `"}`))
+			_, _ = w.Write([]byte(`{"server":"API2","path":"` + r.URL.Path + `"}`))
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"server":"API1","path":"` + r.URL.Path + `"}`))
+			_, _ = w.Write([]byte(`{"server":"API1","path":"` + r.URL.Path + `"}`))
 		}
 	}
 
@@ -481,22 +487,26 @@ func TestCustomTenantHeader(t *testing.T) {
 			// Simulate tenant-specific response
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Server", "API2")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
 				"server":      "API2",
 				"path":        r.URL.Path,
 				"tenant":      tenantIDStr,
 				"tenantFound": true,
-			})
+			}); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		} else {
 			// Default response
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Server", "API1")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
 				"server":      "API1",
 				"path":        r.URL.Path,
 				"tenant":      tenantIDStr,
 				"tenantFound": hasTenant,
-			})
+			}); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		}
 	}
 

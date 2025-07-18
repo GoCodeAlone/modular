@@ -1,11 +1,14 @@
 package reverseproxy
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5" // Import chi for router type assertion
 )
+
+var ErrMockConfigNotFound = errors.New("mock config not found for tenant")
 
 // MockApplication implements the modular.Application interface for testing
 type MockApplication struct {
@@ -226,7 +229,7 @@ func (m *MockTenantService) GetTenantConfig(tid modular.TenantID, section string
 			return provider, nil
 		}
 	}
-	return nil, fmt.Errorf("mock config not found for tenant %s, section %s", tid, section)
+	return nil, fmt.Errorf("mock config not found for tenant %s, section %s: %w", tid, section, ErrMockConfigNotFound)
 }
 
 func (m *MockTenantService) GetTenants() []modular.TenantID {

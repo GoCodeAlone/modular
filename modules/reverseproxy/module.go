@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -62,6 +63,9 @@ type ReverseProxyModule struct {
 	// Metrics collection
 	metrics       *MetricsCollector
 	enableMetrics bool
+
+	// Health checking
+	healthChecker *HealthChecker
 }
 
 // NewModule creates a new ReverseProxyModule with default settings.
@@ -240,6 +244,26 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 	// Set default backend for the module
 	m.defaultBackend = m.config.DefaultBackend
 
+	// Initialize health checker if enabled
+	if m.config.HealthCheck.Enabled {
+		// Convert logger to slog.Logger
+		var logger *slog.Logger
+		if slogLogger, ok := app.Logger().(*slog.Logger); ok {
+			logger = slogLogger
+		} else {
+			// Create a new slog logger if conversion fails
+			logger = slog.Default()
+		}
+
+		m.healthChecker = NewHealthChecker(
+			&m.config.HealthCheck,
+			m.config.BackendServices,
+			m.httpClient,
+			logger,
+		)
+		app.Logger().Info("Health checker initialized", "backends", len(m.config.BackendServices))
+	}
+
 	return nil
 }
 
@@ -248,7 +272,7 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 func (m *ReverseProxyModule) validateConfig() error {
 	// If no config, return error
 	if m.config == nil {
-		return fmt.Errorf("configuration is nil")
+		return ErrConfigurationNil
 	}
 
 	// Set default request timeout if not specified
@@ -281,7 +305,7 @@ func (m *ReverseProxyModule) validateConfig() error {
 		_, exists := m.config.BackendServices[m.config.DefaultBackend]
 		if !exists {
 			// The default backend must be defined in the backend services map
-			return fmt.Errorf("default backend '%s' is not defined in backend_services", m.config.DefaultBackend)
+			return fmt.Errorf("%w: %s", ErrDefaultBackendNotDefined, m.config.DefaultBackend)
 		}
 
 		// Even if the URL is empty in global config, we'll allow it as it might be provided by a tenant
@@ -302,7 +326,7 @@ func (m *ReverseProxyModule) validateConfig() error {
 
 	// Validate tenant header is set if tenant ID is required
 	if m.config.RequireTenantID && m.config.TenantIDHeader == "" {
-		return fmt.Errorf("tenant ID is required but TenantIDHeader is not set")
+		return ErrTenantIDRequired
 	}
 
 	return nil
@@ -316,7 +340,7 @@ func (m *ReverseProxyModule) Constructor() modular.ModuleConstructor {
 		// Get the required router service
 		handleFuncSvc, ok := services["router"].(routerService)
 		if !ok {
-			return nil, fmt.Errorf("service %s does not implement HandleFunc interface", "router")
+			return nil, fmt.Errorf("%w: %s", ErrServiceNotHandleFunc, "router")
 		}
 		m.router = handleFuncSvc
 
@@ -333,7 +357,7 @@ func (m *ReverseProxyModule) Constructor() modular.ModuleConstructor {
 
 // Start sets up all routes for the module and registers them with the router.
 // This includes backend routes, composite routes, and any custom endpoints.
-func (m *ReverseProxyModule) Start(context.Context) error {
+func (m *ReverseProxyModule) Start(ctx context.Context) error {
 	// Load tenant-specific configurations
 	m.loadTenantConfigs()
 
@@ -353,7 +377,16 @@ func (m *ReverseProxyModule) Start(context.Context) error {
 	}
 
 	// Register routes with router
-	m.registerRoutes()
+	if err := m.registerRoutes(); err != nil {
+		return fmt.Errorf("failed to register routes: %w", err)
+	}
+
+	// Start health checker if enabled
+	if m.healthChecker != nil {
+		if err := m.healthChecker.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start health checker: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -364,6 +397,14 @@ func (m *ReverseProxyModule) Stop(ctx context.Context) error {
 	// Log that we're shutting down
 	if m.app != nil && m.app.Logger() != nil {
 		m.app.Logger().Info("Shutting down reverseproxy module")
+	}
+
+	// Stop health checker if running
+	if m.healthChecker != nil {
+		m.healthChecker.Stop()
+		if m.app != nil && m.app.Logger() != nil {
+			m.app.Logger().Debug("Health checker stopped")
+		}
 	}
 
 	// If we have an HTTP client with a Transport, close idle connections
@@ -461,9 +502,7 @@ func (m *ReverseProxyModule) loadTenantConfigs() {
 // It removes the tenant's configuration and any associated resources.
 func (m *ReverseProxyModule) OnTenantRemoved(tenantID modular.TenantID) {
 	// Clean up tenant-specific resources
-	if _, ok := m.tenants[tenantID]; ok {
-		delete(m.tenants, tenantID)
-	}
+	delete(m.tenants, tenantID)
 	m.app.Logger().Info("Tenant removed from reverseproxy module", "tenantID", tenantID)
 }
 
@@ -645,7 +684,7 @@ func (m *ReverseProxyModule) setupCompositeRoutes() error {
 func (m *ReverseProxyModule) registerRoutes() error {
 	// Ensure we have a router
 	if m.router == nil {
-		return fmt.Errorf("cannot register routes: router is nil")
+		return ErrCannotRegisterRoutes
 	}
 
 	// Case 1: No tenants - register basic and composite routes as usual
@@ -1137,6 +1176,11 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 		tenantHeader := m.config.TenantIDHeader
 		tenantID := modular.TenantID(r.Header.Get(tenantHeader))
 
+		// Record request to backend for health checking
+		if m.healthChecker != nil {
+			m.healthChecker.RecordBackendRequest(backend)
+		}
+
 		// Get the appropriate proxy for this backend and tenant
 		proxy, exists := m.getProxyForBackendAndTenant(backend, tenantID)
 		if !exists {
@@ -1204,7 +1248,11 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte(`{"error":"Service temporarily unavailable","code":"CIRCUIT_OPEN"}`))
+				if _, err := w.Write([]byte(`{"error":"Service temporarily unavailable","code":"CIRCUIT_OPEN"}`)); err != nil {
+					if m.app != nil && m.app.Logger() != nil {
+						m.app.Logger().Error("Failed to write circuit breaker response", "error", err)
+					}
+				}
 				return
 			} else if err != nil {
 				// Some other error occurred
@@ -1221,7 +1269,11 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 			w.WriteHeader(resp.StatusCode)
 			if resp.Body != nil {
 				defer resp.Body.Close()
-				io.Copy(w, resp.Body)
+				_, err := io.Copy(w, resp.Body)
+				if err != nil {
+					// Log error but continue processing
+					m.app.Logger().Error("Failed to copy response body", "error", err)
+				}
 			}
 		} else {
 			// No circuit breaker, use the proxy directly
@@ -1258,6 +1310,11 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Record request to backend for health checking
+		if m.healthChecker != nil {
+			m.healthChecker.RecordBackendRequest(backend)
+		}
+
 		if !proxyExists {
 			http.Error(w, fmt.Sprintf("Backend %s not found", backend), http.StatusInternalServerError)
 			return
@@ -1302,7 +1359,11 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte(`{"error":"Service temporarily unavailable","code":"CIRCUIT_OPEN"}`))
+				if _, err := w.Write([]byte(`{"error":"Service temporarily unavailable","code":"CIRCUIT_OPEN"}`)); err != nil {
+					if m.app != nil && m.app.Logger() != nil {
+						m.app.Logger().Error("Failed to write circuit breaker response", "error", err)
+					}
+				}
 				return
 			} else if err != nil {
 				// Some other error occurred
@@ -1319,7 +1380,11 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 			w.WriteHeader(resp.StatusCode)
 			if resp.Body != nil {
 				defer resp.Body.Close()
-				io.Copy(w, resp.Body)
+				_, err := io.Copy(w, resp.Body)
+				if err != nil {
+					// Log error but continue processing
+					m.app.Logger().Error("Failed to copy response body", "error", err)
+				}
 			}
 		} else {
 			// No circuit breaker, use the proxy directly
@@ -1358,13 +1423,13 @@ func (m *ReverseProxyModule) AddBackendRoute(backendID, routePattern string) err
 	proxy, ok := m.backendProxies[backendID]
 	if !ok {
 		m.app.Logger().Error("Backend not found", "backend", backendID)
-		return fmt.Errorf("backend %s not found", backendID)
+		return fmt.Errorf("%w: %s", ErrBackendNotFound, backendID)
 	}
 
 	// If proxy is nil, log the error and return
 	if proxy == nil {
 		m.app.Logger().Error("Backend proxy is nil", "backend", backendID)
-		return fmt.Errorf("backend proxy for %s is nil", backendID)
+		return fmt.Errorf("%w: %s", ErrBackendProxyNil, backendID)
 	}
 
 	// Create the handler function
@@ -1484,7 +1549,7 @@ func (m *ReverseProxyModule) RegisterCustomEndpoint(pattern string, mapping Endp
 			targetURL.Path = path.Join(targetURL.Path, endpoint.Path)
 
 			// Add query parameters if specified
-			if endpoint.QueryParams != nil && len(endpoint.QueryParams) > 0 {
+			if len(endpoint.QueryParams) > 0 {
 				q := targetURL.Query()
 				for key, value := range endpoint.QueryParams {
 					q.Set(key, value)
@@ -1517,14 +1582,14 @@ func (m *ReverseProxyModule) RegisterCustomEndpoint(pattern string, mapping Endp
 			}
 
 			// Execute the request
-			resp, err := m.httpClient.Do(req)
+			resp, err := m.httpClient.Do(req) //nolint:bodyclose // Response body is closed in defer cleanup
 			if err != nil {
 				m.app.Logger().Error("Failed to execute request", "backend", endpoint.Backend, "error", err)
 				continue
 			}
 
-			// Add to the list of responses that need to be closed
-			responsesToClose = append(responsesToClose, resp)
+			// Add to the list of responses that need to be closed immediately
+			responsesToClose = append(responsesToClose, resp) //nolint:bodyclose // Response body is closed in defer cleanup
 
 			// Store the response
 			responses[endpoint.Backend] = resp
@@ -1552,7 +1617,11 @@ func (m *ReverseProxyModule) RegisterCustomEndpoint(pattern string, mapping Endp
 
 		// Write status code and body
 		w.WriteHeader(result.StatusCode)
-		w.Write(result.Body)
+		if _, err := w.Write(result.Body); err != nil {
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Error("Failed to write response body", "error", err)
+			}
+		}
 	}
 
 	// Register the handler with the router
@@ -1683,6 +1752,13 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 		}
 	}
 
+	// Health check config - prefer tenant's if specified
+	if tenant.HealthCheck.Enabled {
+		merged.HealthCheck = tenant.HealthCheck
+	} else {
+		merged.HealthCheck = global.HealthCheck
+	}
+
 	// Merge backend configurations - tenant settings override global ones
 	for backendID, globalConfig := range global.BackendConfigs {
 		merged.BackendConfigs[backendID] = globalConfig
@@ -1695,6 +1771,8 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 }
 
 // getBackendMap returns a map of backend IDs to their URLs from the global configuration.
+//
+//nolint:unused
 func (m *ReverseProxyModule) getBackendMap() map[string]string {
 	if m.config == nil || m.config.BackendServices == nil {
 		return map[string]string{}
@@ -1703,6 +1781,8 @@ func (m *ReverseProxyModule) getBackendMap() map[string]string {
 }
 
 // getTenantBackendMap returns a map of backend IDs to their URLs for a specific tenant.
+//
+//nolint:unused
 func (m *ReverseProxyModule) getTenantBackendMap(tenantID modular.TenantID) map[string]string {
 	if m.tenants == nil {
 		return map[string]string{}
@@ -1717,11 +1797,15 @@ func (m *ReverseProxyModule) getTenantBackendMap(tenantID modular.TenantID) map[
 }
 
 // getBackendURLsByTenant returns all backend URLs for a specific tenant.
+//
+//nolint:unused
 func (m *ReverseProxyModule) getBackendURLsByTenant(tenantID modular.TenantID) map[string]string {
 	return m.getTenantBackendMap(tenantID)
 }
 
 // getBackendByPathAndTenant returns the backend URL for a specific path and tenant.
+//
+//nolint:unused
 func (m *ReverseProxyModule) getBackendByPathAndTenant(path string, tenantID modular.TenantID) (string, bool) {
 	// Get the tenant-specific backend map
 	backendMap := m.getTenantBackendMap(tenantID)
@@ -1771,7 +1855,11 @@ func (m *ReverseProxyModule) registerMetricsEndpoint(endpoint string) {
 		// Set content type and write response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(jsonData)
+		if _, err := w.Write(jsonData); err != nil {
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Error("Failed to write metrics response", "error", err)
+			}
+		}
 	}
 
 	// Register the metrics endpoint with the router
@@ -1779,31 +1867,31 @@ func (m *ReverseProxyModule) registerMetricsEndpoint(endpoint string) {
 		m.router.HandleFunc(endpoint, metricsHandler)
 		m.app.Logger().Info("Registered metrics endpoint", "endpoint", endpoint)
 	}
-}
 
-// createRouteHeadersMiddleware creates a middleware for tenant-specific routing
-// This creates a middleware that routes based on header values
-func (m *ReverseProxyModule) createRouteHeadersMiddleware(tenantID modular.TenantID, routeMap map[string]http.Handler) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if this request has the tenant header
-			headerValue := r.Header.Get(m.config.TenantIDHeader)
+	// Register health check endpoint if health checking is enabled
+	if m.healthChecker != nil {
+		healthEndpoint := endpoint + "/health"
+		healthHandler := func(w http.ResponseWriter, r *http.Request) {
+			status := m.healthChecker.GetHealthStatus()
 
-			// If header matches this tenant, use tenant-specific routing
-			if headerValue == string(tenantID) {
-				// Find the appropriate handler for this route from the tenant's route map
-				for route, handler := range routeMap {
-					if route == "/*" || r.URL.Path == route {
-						handler.ServeHTTP(w, r)
-						return
-					}
-				}
-				// If no specific route found, fall through to next handler
+			// Convert to JSON
+			jsonData, err := json.Marshal(status)
+			if err != nil {
+				m.app.Logger().Error("Failed to marshal health status data", "error", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
 			}
 
-			// Continue with the default handler chain
-			next.ServeHTTP(w, r)
-		})
+			// Set content type and write response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write(jsonData); err != nil {
+				m.app.Logger().Error("Failed to write health status response", "error", err)
+			}
+		}
+
+		m.router.HandleFunc(healthEndpoint, healthHandler)
+		m.app.Logger().Info("Registered health check endpoint", "endpoint", healthEndpoint)
 	}
 }
 
@@ -1912,4 +2000,25 @@ func (m *ReverseProxyModule) createTenantAwareCatchAllHandler() http.HandlerFunc
 		// No default backend available
 		http.NotFound(w, r)
 	}
+}
+
+// GetHealthStatus returns the health status of all backends.
+func (m *ReverseProxyModule) GetHealthStatus() map[string]*HealthStatus {
+	if m.healthChecker == nil {
+		return nil
+	}
+	return m.healthChecker.GetHealthStatus()
+}
+
+// GetBackendHealthStatus returns the health status of a specific backend.
+func (m *ReverseProxyModule) GetBackendHealthStatus(backendID string) (*HealthStatus, bool) {
+	if m.healthChecker == nil {
+		return nil, false
+	}
+	return m.healthChecker.GetBackendHealthStatus(backendID)
+}
+
+// IsHealthCheckEnabled returns whether health checking is enabled.
+func (m *ReverseProxyModule) IsHealthCheckEnabled() bool {
+	return m.config.HealthCheck.Enabled
 }
