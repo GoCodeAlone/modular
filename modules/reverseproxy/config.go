@@ -19,6 +19,8 @@ type ReverseProxyConfig struct {
 	MetricsEnabled         bool                            `json:"metrics_enabled" yaml:"metrics_enabled" toml:"metrics_enabled" env:"METRICS_ENABLED"`
 	MetricsPath            string                          `json:"metrics_path" yaml:"metrics_path" toml:"metrics_path" env:"METRICS_PATH"`
 	MetricsEndpoint        string                          `json:"metrics_endpoint" yaml:"metrics_endpoint" toml:"metrics_endpoint" env:"METRICS_ENDPOINT"`
+	// BackendConfigs defines per-backend configurations including path rewriting and header rewriting
+	BackendConfigs map[string]BackendServiceConfig `json:"backend_configs" yaml:"backend_configs" toml:"backend_configs"`
 }
 
 // CompositeRoute defines a route that combines responses from multiple backends.
@@ -27,6 +29,89 @@ type CompositeRoute struct {
 	Backends []string `json:"backends" yaml:"backends" toml:"backends" env:"BACKENDS"`
 	Strategy string   `json:"strategy" yaml:"strategy" toml:"strategy" env:"STRATEGY"`
 }
+
+// PathRewritingConfig defines configuration for path rewriting rules.
+type PathRewritingConfig struct {
+	// StripBasePath removes the specified base path from all requests before forwarding to backends
+	StripBasePath string `json:"strip_base_path" yaml:"strip_base_path" toml:"strip_base_path" env:"STRIP_BASE_PATH"`
+
+	// BasePathRewrite replaces the base path with a new path for all requests
+	BasePathRewrite string `json:"base_path_rewrite" yaml:"base_path_rewrite" toml:"base_path_rewrite" env:"BASE_PATH_REWRITE"`
+
+	// EndpointRewrites defines per-endpoint path rewriting rules
+	EndpointRewrites map[string]EndpointRewriteRule `json:"endpoint_rewrites" yaml:"endpoint_rewrites" toml:"endpoint_rewrites"`
+}
+
+// EndpointRewriteRule defines a rewrite rule for a specific endpoint pattern.
+type EndpointRewriteRule struct {
+	// Pattern is the incoming request pattern to match (e.g., "/api/v1/users")
+	Pattern string `json:"pattern" yaml:"pattern" toml:"pattern" env:"PATTERN"`
+
+	// Replacement is the new path to use when forwarding to backend (e.g., "/users")
+	Replacement string `json:"replacement" yaml:"replacement" toml:"replacement" env:"REPLACEMENT"`
+
+	// Backend specifies which backend this rule applies to (optional, applies to all if empty)
+	Backend string `json:"backend" yaml:"backend" toml:"backend" env:"BACKEND"`
+
+	// StripQueryParams removes query parameters from the request when forwarding
+	StripQueryParams bool `json:"strip_query_params" yaml:"strip_query_params" toml:"strip_query_params" env:"STRIP_QUERY_PARAMS"`
+}
+
+// BackendServiceConfig defines configuration for a specific backend service.
+type BackendServiceConfig struct {
+	// URL is the base URL for the backend service
+	URL string `json:"url" yaml:"url" toml:"url" env:"URL"`
+
+	// PathRewriting defines path rewriting rules specific to this backend
+	PathRewriting PathRewritingConfig `json:"path_rewriting" yaml:"path_rewriting" toml:"path_rewriting"`
+
+	// HeaderRewriting defines header rewriting rules specific to this backend
+	HeaderRewriting HeaderRewritingConfig `json:"header_rewriting" yaml:"header_rewriting" toml:"header_rewriting"`
+
+	// Endpoints defines endpoint-specific configurations
+	Endpoints map[string]EndpointConfig `json:"endpoints" yaml:"endpoints" toml:"endpoints"`
+}
+
+// EndpointConfig defines configuration for a specific endpoint within a backend service.
+type EndpointConfig struct {
+	// Pattern is the URL pattern that this endpoint matches (e.g., "/api/v1/users/*")
+	Pattern string `json:"pattern" yaml:"pattern" toml:"pattern" env:"PATTERN"`
+
+	// PathRewriting defines path rewriting rules specific to this endpoint
+	PathRewriting PathRewritingConfig `json:"path_rewriting" yaml:"path_rewriting" toml:"path_rewriting"`
+
+	// HeaderRewriting defines header rewriting rules specific to this endpoint
+	HeaderRewriting HeaderRewritingConfig `json:"header_rewriting" yaml:"header_rewriting" toml:"header_rewriting"`
+}
+
+// HeaderRewritingConfig defines configuration for header rewriting rules.
+type HeaderRewritingConfig struct {
+	// HostnameHandling controls how the Host header is handled
+	HostnameHandling HostnameHandlingMode `json:"hostname_handling" yaml:"hostname_handling" toml:"hostname_handling" env:"HOSTNAME_HANDLING"`
+
+	// CustomHostname sets a custom hostname to use instead of the original or backend hostname
+	CustomHostname string `json:"custom_hostname" yaml:"custom_hostname" toml:"custom_hostname" env:"CUSTOM_HOSTNAME"`
+
+	// SetHeaders defines headers to set or override on the request
+	SetHeaders map[string]string `json:"set_headers" yaml:"set_headers" toml:"set_headers"`
+
+	// RemoveHeaders defines headers to remove from the request
+	RemoveHeaders []string `json:"remove_headers" yaml:"remove_headers" toml:"remove_headers"`
+}
+
+// HostnameHandlingMode defines how the Host header should be handled when forwarding requests.
+type HostnameHandlingMode string
+
+const (
+	// HostnamePreserveOriginal preserves the original client's Host header (default)
+	HostnamePreserveOriginal HostnameHandlingMode = "preserve_original"
+
+	// HostnameUseBackend uses the backend service's hostname
+	HostnameUseBackend HostnameHandlingMode = "use_backend"
+
+	// HostnameUseCustom uses a custom hostname specified in CustomHostname
+	HostnameUseCustom HostnameHandlingMode = "use_custom"
+)
 
 // Config provides configuration options for the ReverseProxyModule.
 // This is the original Config struct which is being phased out in favor of ReverseProxyConfig.

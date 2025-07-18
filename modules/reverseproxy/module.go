@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	"github.com/gobwas/glob"
 )
 
 // ReverseProxyModule provides a modular reverse proxy implementation with support for
@@ -209,7 +210,7 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 				continue
 			}
 
-			proxy := m.createReverseProxy(backendURL)
+			proxy := m.createReverseProxyForBackend(backendURL, backendID, "")
 
 			// Ensure tenant map exists for this backend
 			if _, exists := m.tenantBackendProxies[tenantID]; !exists {
@@ -802,9 +803,8 @@ func (m *ReverseProxyModule) SetHttpClient(client *http.Client) {
 	}
 }
 
-// createReverseProxy is a helper method that creates a new reverse proxy with the module's configured transport.
-// This ensures that all proxies use the same transport settings, even if created after SetHttpClient is called.
-func (m *ReverseProxyModule) createReverseProxy(target *url.URL) *httputil.ReverseProxy {
+// createReverseProxyForBackend creates a reverse proxy for a specific backend with per-backend configuration.
+func (m *ReverseProxyModule) createReverseProxyForBackend(target *url.URL, backendID string, endpoint string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
 	// Use the module's custom transport if available
@@ -815,33 +815,65 @@ func (m *ReverseProxyModule) createReverseProxy(target *url.URL) *httputil.Rever
 	// Store the original target for use in the director function
 	originalTarget := *target
 
-	// If a custom director factory is available, use it
+	// Create a custom director that handles hostname forwarding and path rewriting
+	proxy.Director = func(req *http.Request) {
+		// Extract tenant ID from the request header if available
+		var tenantIDStr string
+		var hasTenant bool
+		if m.config != nil {
+			tenantIDStr, hasTenant = TenantIDFromRequest(m.config.TenantIDHeader, req)
+		}
+
+		// Get the appropriate configuration (tenant-specific or global)
+		var config *ReverseProxyConfig
+		if m.config != nil && hasTenant && m.tenants != nil {
+			tenantID := modular.TenantID(tenantIDStr)
+			if tenantCfg, ok := m.tenants[tenantID]; ok && tenantCfg != nil {
+				config = tenantCfg
+			} else {
+				config = m.config
+			}
+		} else {
+			config = m.config
+		}
+
+		// Apply path rewriting if configured
+		rewrittenPath := m.applyPathRewritingForBackend(req.URL.Path, config, backendID, endpoint)
+
+		// Set up the request URL
+		req.URL.Scheme = originalTarget.Scheme
+		req.URL.Host = originalTarget.Host
+		req.URL.Path = singleJoiningSlash(originalTarget.Path, rewrittenPath)
+
+		// Handle query parameters
+		if originalTarget.RawQuery != "" && req.URL.RawQuery != "" {
+			req.URL.RawQuery = originalTarget.RawQuery + "&" + req.URL.RawQuery
+		} else if originalTarget.RawQuery != "" {
+			req.URL.RawQuery = originalTarget.RawQuery
+		}
+
+		// Apply header rewriting
+		m.applyHeaderRewritingForBackend(req, config, backendID, endpoint, &originalTarget)
+	}
+
+	// If a custom director factory is available, use it (this is for advanced use cases)
 	if m.directorFactory != nil {
 		// Get the backend ID from the target URL host
 		backend := originalTarget.Host
+		originalDirector := proxy.Director
 
 		// Create a custom director that handles the backend routing
 		proxy.Director = func(req *http.Request) {
-			// Extract tenant ID from the request header if available
-			tenantIDStr, hasTenant := TenantIDFromRequest(m.config.TenantIDHeader, req)
+			// Apply our standard director first
+			originalDirector(req)
 
-			// Create a default director that sets up the request URL
-			defaultDirector := func(req *http.Request) {
-				req.URL.Scheme = originalTarget.Scheme
-				req.URL.Host = originalTarget.Host
-				req.URL.Path = singleJoiningSlash(originalTarget.Path, req.URL.Path)
-				if originalTarget.RawQuery != "" && req.URL.RawQuery != "" {
-					req.URL.RawQuery = originalTarget.RawQuery + "&" + req.URL.RawQuery
-				} else if originalTarget.RawQuery != "" {
-					req.URL.RawQuery = originalTarget.RawQuery
-				}
-				// Set host header if not already set
-				if _, ok := req.Header["Host"]; !ok {
-					req.Host = originalTarget.Host
-				}
+			// Then apply custom director if available
+			var tenantIDStr string
+			var hasTenant bool
+			if m.config != nil {
+				tenantIDStr, hasTenant = TenantIDFromRequest(m.config.TenantIDHeader, req)
 			}
 
-			// Apply custom director based on tenant ID if available
 			if hasTenant {
 				tenantID := modular.TenantID(tenantIDStr)
 				customDirector := m.directorFactory(backend, tenantID)
@@ -851,16 +883,12 @@ func (m *ReverseProxyModule) createReverseProxy(target *url.URL) *httputil.Rever
 				}
 			}
 
-			// If no tenant-specific director was applied (or if it was nil),
-			// try with the default (empty) tenant ID
+			// If no tenant-specific director was applied, try with empty tenant ID
 			emptyTenantDirector := m.directorFactory(backend, "")
 			if emptyTenantDirector != nil {
 				emptyTenantDirector(req)
 				return
 			}
-
-			// Fall back to default director if no custom directors worked
-			defaultDirector(req)
 		}
 	}
 
@@ -870,14 +898,29 @@ func (m *ReverseProxyModule) createReverseProxy(target *url.URL) *httputil.Rever
 // createBackendProxy creates a reverse proxy for the specified backend ID and service URL.
 // It parses the URL, creates the proxy, and stores it in the backendProxies map.
 func (m *ReverseProxyModule) createBackendProxy(backendID, serviceURL string) error {
-	// Create reverse proxy for this backend
-	backendURL, err := url.Parse(serviceURL)
+	// Check if we have backend-specific configuration
+	var backendURL *url.URL
+	var err error
+
+	if m.config.BackendConfigs != nil {
+		if backendConfig, exists := m.config.BackendConfigs[backendID]; exists && backendConfig.URL != "" {
+			// Use URL from backend configuration
+			backendURL, err = url.Parse(backendConfig.URL)
+		} else {
+			// Fall back to service URL from BackendServices
+			backendURL, err = url.Parse(serviceURL)
+		}
+	} else {
+		// Use service URL from BackendServices
+		backendURL, err = url.Parse(serviceURL)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to parse %s URL %s: %w", backendID, serviceURL, err)
 	}
 
 	// Set up proxy for this backend
-	proxy := m.createReverseProxy(backendURL)
+	proxy := m.createReverseProxyForBackend(backendURL, backendID, "")
 
 	// Store the proxy for this backend
 	m.backendProxies[backendID] = proxy
@@ -896,6 +939,194 @@ func singleJoiningSlash(a, b string) string {
 		return a + "/" + b
 	}
 	return a + b
+}
+
+// applyPathRewritingForBackend applies path rewriting rules for a specific backend and endpoint
+func (m *ReverseProxyModule) applyPathRewritingForBackend(originalPath string, config *ReverseProxyConfig, backendID string, endpoint string) string {
+	if config == nil {
+		return originalPath
+	}
+
+	rewrittenPath := originalPath
+
+	// Check if we have backend-specific configuration
+	if config.BackendConfigs != nil && backendID != "" {
+		if backendConfig, exists := config.BackendConfigs[backendID]; exists {
+			// Apply backend-specific path rewriting first
+			rewrittenPath = m.applySpecificPathRewriting(rewrittenPath, &backendConfig.PathRewriting)
+
+			// Then check for endpoint-specific configuration
+			if endpoint != "" && backendConfig.Endpoints != nil {
+				if endpointConfig, exists := backendConfig.Endpoints[endpoint]; exists {
+					// Apply endpoint-specific path rewriting
+					rewrittenPath = m.applySpecificPathRewriting(rewrittenPath, &endpointConfig.PathRewriting)
+				}
+			}
+
+			return rewrittenPath
+		}
+	}
+
+	// No specific configuration found, return original path
+	return originalPath
+}
+
+// applySpecificPathRewriting applies path rewriting rules from a specific PathRewritingConfig
+func (m *ReverseProxyModule) applySpecificPathRewriting(originalPath string, config *PathRewritingConfig) string {
+	if config == nil {
+		return originalPath
+	}
+
+	rewrittenPath := originalPath
+
+	// Apply base path stripping first
+	if config.StripBasePath != "" {
+		if strings.HasPrefix(rewrittenPath, config.StripBasePath) {
+			rewrittenPath = rewrittenPath[len(config.StripBasePath):]
+			// Ensure the path starts with /
+			if !strings.HasPrefix(rewrittenPath, "/") {
+				rewrittenPath = "/" + rewrittenPath
+			}
+		}
+	}
+
+	// Apply base path rewriting
+	if config.BasePathRewrite != "" {
+		// If there's a base path rewrite, prepend it to the path
+		rewrittenPath = singleJoiningSlash(config.BasePathRewrite, rewrittenPath)
+	}
+
+	// Apply endpoint-specific rewriting rules
+	if config.EndpointRewrites != nil {
+		for _, rule := range config.EndpointRewrites {
+			if rule.Pattern != "" && rule.Replacement != "" {
+				// Check if the path matches the pattern
+				if m.matchesPattern(rewrittenPath, rule.Pattern) {
+					// Apply the replacement
+					rewrittenPath = m.applyPatternReplacement(rewrittenPath, rule.Pattern, rule.Replacement)
+					break // Apply only the first matching rule
+				}
+			}
+		}
+	}
+
+	return rewrittenPath
+}
+
+// applyHeaderRewritingForBackend applies header rewriting rules for a specific backend and endpoint
+func (m *ReverseProxyModule) applyHeaderRewritingForBackend(req *http.Request, config *ReverseProxyConfig, backendID string, endpoint string, target *url.URL) {
+	if config == nil {
+		return
+	}
+
+	// Check if we have backend-specific configuration
+	if config.BackendConfigs != nil && backendID != "" {
+		if backendConfig, exists := config.BackendConfigs[backendID]; exists {
+			// Apply backend-specific header rewriting first
+			m.applySpecificHeaderRewriting(req, &backendConfig.HeaderRewriting, target)
+
+			// Then check for endpoint-specific configuration
+			if endpoint != "" && backendConfig.Endpoints != nil {
+				if endpointConfig, exists := backendConfig.Endpoints[endpoint]; exists {
+					// Apply endpoint-specific header rewriting (this overrides backend-specific)
+					m.applySpecificHeaderRewriting(req, &endpointConfig.HeaderRewriting, target)
+				}
+			}
+
+			return
+		}
+	}
+
+	// Fall back to default hostname handling (preserve original)
+	// This preserves the original request's Host header, which is what we want by default
+	// If the original request doesn't have a Host header, it will be set by the HTTP client
+	// based on the request URL during request execution.
+}
+
+// applySpecificHeaderRewriting applies header rewriting rules from a specific HeaderRewritingConfig
+func (m *ReverseProxyModule) applySpecificHeaderRewriting(req *http.Request, config *HeaderRewritingConfig, target *url.URL) {
+	if config == nil {
+		return
+	}
+
+	// Handle hostname configuration
+	switch config.HostnameHandling {
+	case HostnameUseBackend:
+		// Set the Host header to the backend's hostname
+		req.Host = target.Host
+	case HostnameUseCustom:
+		// Set the Host header to the custom hostname
+		if config.CustomHostname != "" {
+			req.Host = config.CustomHostname
+		}
+	case HostnamePreserveOriginal:
+		fallthrough
+	default:
+		// Do nothing - preserve the original Host header
+		// This is the default behavior
+	}
+
+	// Apply custom header setting
+	if config.SetHeaders != nil {
+		for headerName, headerValue := range config.SetHeaders {
+			req.Header.Set(headerName, headerValue)
+		}
+	}
+
+	// Apply header removal
+	if config.RemoveHeaders != nil {
+		for _, headerName := range config.RemoveHeaders {
+			req.Header.Del(headerName)
+		}
+	}
+}
+
+// matchesPattern checks if a path matches a pattern using glob pattern matching
+func (m *ReverseProxyModule) matchesPattern(path, pattern string) bool {
+	// Use glob library for more efficient and feature-complete pattern matching
+	g, err := glob.Compile(pattern)
+	if err != nil {
+		// Fallback to simple string matching if glob compilation fails
+		return path == pattern
+	}
+	return g.Match(path)
+}
+
+// applyPatternReplacement applies a pattern replacement to a path
+func (m *ReverseProxyModule) applyPatternReplacement(path, pattern, replacement string) string {
+	// If pattern is an exact match, replace entirely
+	if path == pattern {
+		return replacement
+	}
+
+	// Use glob to match and extract parts for replacement
+	g, err := glob.Compile(pattern)
+	if err != nil {
+		// Fallback to simple replacement if glob compilation fails
+		return replacement
+	}
+
+	if !g.Match(path) {
+		return path
+	}
+
+	// Handle common patterns efficiently
+	if strings.HasSuffix(pattern, "/*") {
+		prefix := pattern[:len(pattern)-2]
+		if strings.HasPrefix(path, prefix) {
+			suffix := path[len(prefix):]
+			return singleJoiningSlash(replacement, suffix)
+		}
+	} else if strings.HasSuffix(pattern, "*") {
+		prefix := pattern[:len(pattern)-1]
+		if strings.HasPrefix(path, prefix) {
+			suffix := path[len(prefix):]
+			return replacement + suffix
+		}
+	}
+
+	// For exact matches or simple patterns, use replacement
+	return replacement
 }
 
 // createBackendProxyHandler creates an http.HandlerFunc that handles proxying requests
@@ -1341,6 +1572,7 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 		Routes:                 make(map[string]string),
 		CompositeRoutes:        make(map[string]CompositeRoute),
 		BackendCircuitBreakers: make(map[string]CircuitBreakerConfig),
+		BackendConfigs:         make(map[string]BackendServiceConfig),
 	}
 
 	// Copy global backend services
@@ -1449,6 +1681,14 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 		for backend, config := range tenant.BackendCircuitBreakers {
 			merged.BackendCircuitBreakers[backend] = config
 		}
+	}
+
+	// Merge backend configurations - tenant settings override global ones
+	for backendID, globalConfig := range global.BackendConfigs {
+		merged.BackendConfigs[backendID] = globalConfig
+	}
+	for backendID, tenantConfig := range tenant.BackendConfigs {
+		merged.BackendConfigs[backendID] = tenantConfig
 	}
 
 	return merged

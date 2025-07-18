@@ -1,0 +1,230 @@
+# Reverse Proxy Configuration Example
+#
+# This file demonstrates all available configuration options for the reverseproxy module.
+# It shows both global configuration and the new per-backend configuration capabilities.
+
+reverseproxy:
+  # Backend service URLs - maps service names to their URLs
+  backend_services:
+    api: "http://api.internal.com:8080"
+    user: "http://user.internal.com:8080"
+    notification: "http://notification.internal.com:8080"
+    legacy: "http://legacy.internal.com:8080"
+
+  # Routes - maps URL patterns to backend services
+  routes:
+    "/api/": "api"
+    "/user/": "user"
+    "/legacy/": "legacy"
+
+  # Default backend when no route matches
+  default_backend: "api"
+
+  # Tenant configuration
+  tenant_id_header: "X-Tenant-ID"
+  require_tenant_id: false
+
+  # Cache configuration
+  cache_enabled: true
+  cache_ttl: "5m"
+
+  # Request timeout
+  request_timeout: "30s"
+
+  # Metrics configuration
+  metrics_enabled: true
+  metrics_path: "/metrics"
+  metrics_endpoint: "/reverseproxy/metrics"
+
+  # Circuit breaker configuration (global)
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    success_threshold: 3
+    open_timeout: "30s"
+    half_open_allowed_requests: 3
+    window_size: 10
+    success_rate_threshold: 0.6
+
+  # Per-backend circuit breaker configuration
+  backend_circuit_breakers:
+    api:
+      enabled: true
+      failure_threshold: 3
+      success_threshold: 2
+      open_timeout: "15s"
+    legacy:
+      enabled: true
+      failure_threshold: 10
+      success_threshold: 5
+      open_timeout: "60s"
+
+  # Composite routes that combine responses from multiple backends
+  composite_routes:
+    dashboard:
+      pattern: "/dashboard"
+      backends: ["api", "user", "notification"]
+      strategy: "merge"
+
+  # Per-backend configuration (NEW FEATURE)
+  backend_configs:
+    api:
+      url: "http://api.internal.com:8080"  # Optional: can override backend_services URL
+      
+      # Path rewriting configuration for API backend
+      path_rewriting:
+        strip_base_path: "/api/v1"
+        base_path_rewrite: "/internal/api"
+        endpoint_rewrites:
+          health:
+            pattern: "/health"
+            replacement: "/internal/health"
+      
+      # Header rewriting configuration for API backend
+      header_rewriting:
+        hostname_handling: "preserve_original"  # preserve_original, use_backend, use_custom
+        set_headers:
+          X-API-Version: "v1"
+          X-Service: "api"
+          X-Internal-Auth: "internal-token"
+        remove_headers:
+          - "X-Client-Version"
+          - "X-Debug-Mode"
+      
+      # Endpoint-specific configuration
+      endpoints:
+        users:
+          pattern: "/users/*"
+          path_rewriting:
+            base_path_rewrite: "/internal/users"
+          header_rewriting:
+            hostname_handling: "use_custom"
+            custom_hostname: "users.api.internal.com"
+            set_headers:
+              X-Endpoint: "users"
+              X-Auth-Required: "true"
+        
+        public:
+          pattern: "/public/*"
+          path_rewriting:
+            base_path_rewrite: "/internal/public"
+          header_rewriting:
+            set_headers:
+              X-Endpoint: "public"
+              X-Auth-Required: "false"
+            remove_headers:
+              - "X-Internal-Auth"  # Remove internal auth for public endpoints
+
+    user:
+      url: "http://user.internal.com:8080"
+      
+      # Different path rewriting for user service
+      path_rewriting:
+        strip_base_path: "/user/v1"
+        base_path_rewrite: "/internal/user"
+      
+      # Different header handling for user service
+      header_rewriting:
+        hostname_handling: "use_backend"  # Use backend's hostname
+        set_headers:
+          X-Service: "user"
+          X-User-API-Version: "v1"
+        remove_headers:
+          - "X-Client-Session"
+
+    notification:
+      url: "http://notification.internal.com:8080"
+      
+      # Minimal path rewriting for notification service
+      path_rewriting:
+        strip_base_path: "/notification/v1"
+      
+      # Custom hostname for notifications
+      header_rewriting:
+        hostname_handling: "use_custom"
+        custom_hostname: "notifications.internal.com"
+        set_headers:
+          X-Service: "notification"
+          X-Priority: "high"
+
+    legacy:
+      url: "http://legacy.internal.com:8080"
+      
+      # Legacy service with different API structure
+      path_rewriting:
+        strip_base_path: "/legacy"
+        base_path_rewrite: "/old-api"
+      
+      # Legacy service header handling
+      header_rewriting:
+        hostname_handling: "preserve_original"
+        set_headers:
+          X-Service: "legacy"
+          X-Legacy-Mode: "true"
+          X-API-Version: "legacy"
+        remove_headers:
+          - "X-Modern-Feature"
+          - "X-New-Auth"
+
+  # Global path rewriting configuration (DEPRECATED - use backend_configs instead)
+  # This is kept for backward compatibility
+  path_rewriting:
+    strip_base_path: "/api/v1"
+    base_path_rewrite: "/internal"
+    endpoint_rewrites:
+      health:
+        pattern: "/health"
+        replacement: "/status"
+        backend: "api"
+
+# Tenant-specific configuration example
+tenants:
+  premium:
+    reverseproxy:
+      backend_configs:
+        api:
+          path_rewriting:
+            strip_base_path: "/api/v2"  # Premium tenants use v2 API
+            base_path_rewrite: "/premium/api"
+          header_rewriting:
+            set_headers:
+              X-Tenant-Type: "premium"
+              X-Rate-Limit: "10000"
+              X-Features: "advanced"
+        
+        user:
+          header_rewriting:
+            set_headers:
+              X-Tenant-Type: "premium"
+              X-User-Limits: "unlimited"
+
+  basic:
+    reverseproxy:
+      backend_configs:
+        api:
+          header_rewriting:
+            set_headers:
+              X-Tenant-Type: "basic"
+              X-Rate-Limit: "1000"
+              X-Features: "basic"
+        
+        user:
+          header_rewriting:
+            set_headers:
+              X-Tenant-Type: "basic"
+              X-User-Limits: "limited"
+
+  enterprise:
+    reverseproxy:
+      backend_configs:
+        api:
+          path_rewriting:
+            strip_base_path: "/api/enterprise"
+            base_path_rewrite: "/enterprise/api"
+          header_rewriting:
+            hostname_handling: "use_custom"
+            custom_hostname: "enterprise.api.internal.com"
+            set_headers:
+              X-Tenant-Type: "enterprise"
+              X-Rate-Limit: "unlimited"
+              X-Features: "enterprise,advanced,beta"
