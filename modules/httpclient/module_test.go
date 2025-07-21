@@ -279,7 +279,7 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 
 	// Create logging transport
 	mockLogger.On("Info", mock.Anything, mock.Anything).Return()
-	mockLogger.On("Debug", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debug", mock.Anything, mock.Anything).Return().Maybe() // Debug calls are optional with new logging
 
 	transport := &loggingTransport{
 		Transport:      http.DefaultTransport,
