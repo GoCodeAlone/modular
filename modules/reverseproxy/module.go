@@ -71,6 +71,14 @@ type ReverseProxyModule struct {
 	featureFlagEvaluator FeatureFlagEvaluator
 }
 
+// Compile-time assertions to ensure interface compliance
+var _ modular.Module = (*ReverseProxyModule)(nil)
+var _ modular.Constructable = (*ReverseProxyModule)(nil)
+var _ modular.ServiceAware = (*ReverseProxyModule)(nil)
+var _ modular.TenantAwareModule = (*ReverseProxyModule)(nil)
+var _ modular.Startable = (*ReverseProxyModule)(nil)
+var _ modular.Stoppable = (*ReverseProxyModule)(nil)
+
 // NewModule creates a new ReverseProxyModule with default settings.
 // This is the primary constructor for the reverseproxy module and should be used
 // when registering the module with the application.
@@ -348,16 +356,30 @@ func (m *ReverseProxyModule) Constructor() modular.ModuleConstructor {
 		m.router = handleFuncSvc
 
 		// Get the optional httpclient service
-		if clientService, ok := services["httpclient"].(*http.Client); ok {
-			// Use the provided HTTP client
-			m.httpClient = clientService
-			app.Logger().Info("Using HTTP client from httpclient service")
+		if httpClientInstance, exists := services["httpclient"]; exists {
+			if client, ok := httpClientInstance.(*http.Client); ok {
+				m.httpClient = client
+				app.Logger().Info("Using HTTP client from httpclient service")
+			} else {
+				app.Logger().Warn("httpclient service found but is not *http.Client",
+					"type", fmt.Sprintf("%T", httpClientInstance))
+			}
 		}
 
 		// Get the optional feature flag evaluator service
-		if ffService, ok := services["featureFlagEvaluator"].(FeatureFlagEvaluator); ok {
-			m.featureFlagEvaluator = ffService
-			app.Logger().Info("Using feature flag evaluator service")
+		if featureFlagSvc, exists := services["featureFlagEvaluator"]; exists {
+			if evaluator, ok := featureFlagSvc.(FeatureFlagEvaluator); ok {
+				m.featureFlagEvaluator = evaluator
+				app.Logger().Info("Using feature flag evaluator from service")
+			} else {
+				app.Logger().Warn("featureFlagEvaluator service found but does not implement FeatureFlagEvaluator",
+					"type", fmt.Sprintf("%T", featureFlagSvc))
+			}
+		}
+
+		// If no HTTP client service was found, we'll create a default one in Init()
+		if m.httpClient == nil {
+			app.Logger().Info("No httpclient service available, will create default client")
 		}
 
 		return m, nil
@@ -410,7 +432,7 @@ func (m *ReverseProxyModule) Stop(ctx context.Context) error {
 
 	// Stop health checker if running
 	if m.healthChecker != nil {
-		m.healthChecker.Stop()
+		m.healthChecker.Stop(ctx)
 		if m.app != nil && m.app.Logger() != nil {
 			m.app.Logger().Debug("Health checker stopped")
 		}
@@ -545,8 +567,8 @@ func (m *ReverseProxyModule) RequiresServices() []modular.ServiceDependency {
 		{
 			Name:               "httpclient",
 			Required:           false, // Optional dependency
-			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*http.Client)(nil)).Elem(),
+			MatchByInterface:   false, // Use name-based matching
+			SatisfiesInterface: nil,
 		},
 		{
 			Name:               "featureFlagEvaluator",

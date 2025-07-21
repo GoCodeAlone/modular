@@ -327,13 +327,13 @@ func (m *HTTPClientModule) ProvidesServices() []modular.ServiceProvider {
 	return []modular.ServiceProvider{
 		{
 			Name:        ServiceName,
-			Description: "HTTP client service for making HTTP requests",
-			Instance:    m,
+			Description: "HTTP client (*http.Client) for direct usage",
+			Instance:    m.httpClient, // Provide the actual *http.Client instance
 		},
 		{
-			Name:        "http.Client",
-			Description: "HTTP client service for making HTTP requests",
-			Instance:    m.httpClient,
+			Name:        "httpclient-service",
+			Description: "HTTP client service interface (ClientService) for advanced features",
+			Instance:    m, // Provide the service interface for modules that need additional features
 		},
 	}
 }
@@ -431,7 +431,7 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			"url", req.URL.String(),
 			"error", err,
 		)
-		return resp, err
+		return resp, fmt.Errorf("http request failed: %w", err)
 	}
 
 	// Log the response
@@ -479,7 +479,10 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 	}
 
-	return resp, err
+	if err != nil {
+		return resp, fmt.Errorf("http request completion failed: %w", err)
+	}
+	return resp, nil
 }
 
 // logRequest logs detailed information about the request.

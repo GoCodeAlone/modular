@@ -2,8 +2,14 @@
 package httpclient
 
 import (
+	"errors"
 	"fmt"
 	"time"
+)
+
+var (
+	// ErrLogFilePathRequired is returned when log_to_file is enabled but log_file_path is not specified
+	ErrLogFilePathRequired = errors.New("log_file_path must be specified when log_to_file is enabled")
 )
 
 // Config defines the configuration for the HTTP client module.
@@ -160,7 +166,7 @@ func (c *Config) Validate() error {
 
 	// Validate verbose log file path if logging to file is enabled
 	if c.Verbose && c.VerboseOptions != nil && c.VerboseOptions.LogToFile && c.VerboseOptions.LogFilePath == "" {
-		return fmt.Errorf("log_file_path must be specified when log_to_file is enabled")
+		return fmt.Errorf("config validation error: %w", ErrLogFilePathRequired)
 	}
 
 	return nil

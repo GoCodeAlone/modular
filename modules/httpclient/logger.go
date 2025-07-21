@@ -50,13 +50,19 @@ func NewFileLogger(baseDir string, logger modular.Logger) (*FileLogger, error) {
 // LogRequest writes request data to a file.
 func (f *FileLogger) LogRequest(id string, data []byte) error {
 	requestFile := filepath.Join(f.requestDir, fmt.Sprintf("request_%s_%d.log", id, time.Now().UnixNano()))
-	return os.WriteFile(requestFile, data, 0644)
+	if err := os.WriteFile(requestFile, data, 0600); err != nil {
+		return fmt.Errorf("failed to write request log file %s: %w", requestFile, err)
+	}
+	return nil
 }
 
 // LogResponse writes response data to a file.
 func (f *FileLogger) LogResponse(id string, data []byte) error {
 	responseFile := filepath.Join(f.responseDir, fmt.Sprintf("response_%s_%d.log", id, time.Now().UnixNano()))
-	return os.WriteFile(responseFile, data, 0644)
+	if err := os.WriteFile(responseFile, data, 0600); err != nil {
+		return fmt.Errorf("failed to write response log file %s: %w", responseFile, err)
+	}
+	return nil
 }
 
 // LogTransactionToFile logs both request and response data to a single file for easier analysis.
@@ -83,19 +89,19 @@ func (f *FileLogger) LogTransactionToFile(id string, reqData, respData []byte, d
 
 	// Write transaction metadata
 	if _, err := fmt.Fprintf(file, "Transaction ID: %s\n", id); err != nil {
-		return err
+		return fmt.Errorf("failed to write transaction ID to log file: %w", err)
 	}
 	if _, err := fmt.Fprintf(file, "URL: %s\n", url); err != nil {
-		return err
+		return fmt.Errorf("failed to write URL to log file: %w", err)
 	}
 	if _, err := fmt.Fprintf(file, "Time: %s\n", time.Now().Format(time.RFC3339)); err != nil {
-		return err
+		return fmt.Errorf("failed to write timestamp to log file: %w", err)
 	}
 	if _, err := fmt.Fprintf(file, "Duration: %d ms\n", duration.Milliseconds()); err != nil {
-		return err
+		return fmt.Errorf("failed to write duration to log file: %w", err)
 	}
 	if _, err := fmt.Fprintf(file, "\n----- REQUEST -----\n\n"); err != nil {
-		return err
+		return fmt.Errorf("failed to write request separator to log file: %w", err)
 	}
 
 	// Write request data
@@ -105,7 +111,7 @@ func (f *FileLogger) LogTransactionToFile(id string, reqData, respData []byte, d
 
 	// Write response data with a separator
 	if _, err := fmt.Fprintf(file, "\n\n----- RESPONSE -----\n\n"); err != nil {
-		return err
+		return fmt.Errorf("failed to write response separator to log file: %w", err)
 	}
 	if _, err := file.Write(respData); err != nil {
 		return fmt.Errorf("failed to write response data: %w", err)

@@ -87,7 +87,7 @@ func TestHealthChecker_StartStop(t *testing.T) {
 	assert.Positive(t, status["backend1"].TotalChecks)
 
 	// Test stopping
-	hc.Stop()
+	hc.Stop(ctx)
 	assert.False(t, hc.IsRunning())
 
 	// Test that we can start again
@@ -95,7 +95,7 @@ func TestHealthChecker_StartStop(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hc.IsRunning())
 
-	hc.Stop()
+	hc.Stop(ctx)
 	assert.False(t, hc.IsRunning())
 }
 
@@ -118,20 +118,20 @@ func TestHealthChecker_DNSResolution(t *testing.T) {
 	hc := NewHealthChecker(config, backends, client, logger)
 
 	// Test DNS resolution for valid host
-	dnsResolved, resolvedIPs, err := hc.performDNSCheck("http://localhost:8080")
+	dnsResolved, resolvedIPs, err := hc.performDNSCheck(context.Background(), "http://localhost:8080")
 	assert.True(t, dnsResolved)
 	require.NoError(t, err)
 	assert.NotEmpty(t, resolvedIPs)
 
 	// Test DNS resolution for invalid host
 	// Use RFC 2606 reserved domain that should not resolve
-	dnsResolved, resolvedIPs, err = hc.performDNSCheck("http://nonexistent.example.invalid:8080")
+	dnsResolved, resolvedIPs, err = hc.performDNSCheck(context.Background(), "http://nonexistent.example.invalid:8080")
 	assert.False(t, dnsResolved)
 	require.Error(t, err)
 	assert.Empty(t, resolvedIPs)
 
 	// Test invalid URL
-	dnsResolved, resolvedIPs, err = hc.performDNSCheck("://invalid-url")
+	dnsResolved, resolvedIPs, err = hc.performDNSCheck(context.Background(), "://invalid-url")
 	assert.False(t, dnsResolved)
 	require.Error(t, err)
 	assert.Empty(t, resolvedIPs)
@@ -377,7 +377,7 @@ func TestHealthChecker_UpdateBackends(t *testing.T) {
 		"backend3": "http://backend3.example.com",
 	}
 
-	hc.UpdateBackends(updatedBackends)
+	hc.UpdateBackends(context.Background(), updatedBackends)
 
 	// Check updated status
 	status = hc.GetHealthStatus()
@@ -475,7 +475,7 @@ func TestHealthChecker_FullIntegration(t *testing.T) {
 	ctx := context.Background()
 	err := hc.Start(ctx)
 	require.NoError(t, err)
-	defer hc.Stop()
+	defer hc.Stop(ctx)
 
 	// Wait for health checks to complete
 	time.Sleep(100 * time.Millisecond)

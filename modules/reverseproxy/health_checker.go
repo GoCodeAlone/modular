@@ -98,12 +98,12 @@ func (hc *HealthChecker) Start(ctx context.Context) error {
 		go hc.runPeriodicHealthCheck(ctx, backendID, baseURL)
 	}
 
-	hc.logger.Info("Health checker started", "backends", len(hc.backends))
+	hc.logger.InfoContext(ctx, "Health checker started", "backends", len(hc.backends))
 	return nil
 }
 
 // Stop stops the health checking process.
-func (hc *HealthChecker) Stop() {
+func (hc *HealthChecker) Stop(ctx context.Context) {
 	hc.runningMutex.Lock()
 	if !hc.running {
 		hc.runningMutex.Unlock()
@@ -121,7 +121,7 @@ func (hc *HealthChecker) Stop() {
 	}
 
 	hc.wg.Wait()
-	hc.logger.Info("Health checker stopped")
+	hc.logger.InfoContext(ctx, "Health checker stopped")
 }
 
 // IsRunning returns whether the health checker is currently running.
@@ -238,7 +238,7 @@ func (hc *HealthChecker) performHealthCheck(ctx context.Context, backendID, base
 	hc.statusMutex.Unlock()
 
 	// Perform DNS resolution check
-	dnsResolved, resolvedIPs, dnsErr := hc.performDNSCheck(baseURL)
+	dnsResolved, resolvedIPs, dnsErr := hc.performDNSCheck(ctx, baseURL)
 
 	// Perform HTTP health check
 	healthy, responseTime, httpErr := hc.performHTTPCheck(ctx, backendID, baseURL)
@@ -247,7 +247,7 @@ func (hc *HealthChecker) performHealthCheck(ctx context.Context, backendID, base
 	hc.updateHealthStatus(backendID, healthy, responseTime, dnsResolved, resolvedIPs, dnsErr, httpErr)
 
 	duration := time.Since(start)
-	hc.logger.Debug("Health check completed",
+	hc.logger.DebugContext(ctx, "Health check completed",
 		"backend", backendID,
 		"healthy", healthy,
 		"dns_resolved", dnsResolved,
@@ -274,7 +274,7 @@ func (hc *HealthChecker) shouldSkipHealthCheck(backendID string) bool {
 }
 
 // performDNSCheck performs DNS resolution check for a backend URL.
-func (hc *HealthChecker) performDNSCheck(baseURL string) (bool, []string, error) {
+func (hc *HealthChecker) performDNSCheck(ctx context.Context, baseURL string) (bool, []string, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
 		return false, nil, fmt.Errorf("invalid URL: %w", err)
@@ -285,15 +285,16 @@ func (hc *HealthChecker) performDNSCheck(baseURL string) (bool, []string, error)
 		return false, nil, ErrNoHostname
 	}
 
-	// Perform DNS lookup
-	ips, err := net.LookupIP(host)
+	// Perform DNS lookup using context-aware resolver
+	resolver := &net.Resolver{}
+	ips, err := resolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return false, nil, fmt.Errorf("DNS lookup failed: %w", err)
 	}
 
 	resolvedIPs := make([]string, len(ips))
 	for i, ip := range ips {
-		resolvedIPs[i] = ip.String()
+		resolvedIPs[i] = ip.IP.String()
 	}
 
 	return true, resolvedIPs, nil
@@ -449,7 +450,7 @@ func (hc *HealthChecker) isBackendHealthCheckEnabled(backendID string) bool {
 }
 
 // UpdateBackends updates the list of backends to monitor.
-func (hc *HealthChecker) UpdateBackends(backends map[string]string) {
+func (hc *HealthChecker) UpdateBackends(ctx context.Context, backends map[string]string) {
 	hc.statusMutex.Lock()
 	defer hc.statusMutex.Unlock()
 
@@ -457,7 +458,7 @@ func (hc *HealthChecker) UpdateBackends(backends map[string]string) {
 	for backendID := range hc.healthStatus {
 		if _, exists := backends[backendID]; !exists {
 			delete(hc.healthStatus, backendID)
-			hc.logger.Debug("Removed health status for backend", "backend", backendID)
+			hc.logger.DebugContext(ctx, "Removed health status for backend", "backend", backendID)
 		}
 	}
 
@@ -475,7 +476,7 @@ func (hc *HealthChecker) UpdateBackends(backends map[string]string) {
 				ResolvedIPs: []string{},
 				LastRequest: time.Time{},
 			}
-			hc.logger.Debug("Added health status for new backend", "backend", backendID)
+			hc.logger.DebugContext(ctx, "Added health status for new backend", "backend", backendID)
 		}
 	}
 

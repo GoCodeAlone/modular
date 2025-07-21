@@ -12,17 +12,9 @@ import (
 
 func TestReverseProxyConfig_TimeDurationSupport(t *testing.T) {
 	t.Run("EnvFeeder", func(t *testing.T) {
-		// Clean up environment
-		os.Unsetenv("REQUEST_TIMEOUT")
-		os.Unsetenv("CACHE_TTL")
-
-		// Set environment variables
-		os.Setenv("REQUEST_TIMEOUT", "30s")
-		os.Setenv("CACHE_TTL", "5m")
-		defer func() {
-			os.Unsetenv("REQUEST_TIMEOUT")
-			os.Unsetenv("CACHE_TTL")
-		}()
+		// Set environment variables using t.Setenv for proper test isolation
+		t.Setenv("REQUEST_TIMEOUT", "30s")
+		t.Setenv("CACHE_TTL", "5m")
 
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewEnvFeeder()
@@ -144,8 +136,7 @@ service1 = "http://localhost:8080"
 
 func TestReverseProxyConfig_TimeDurationInvalidFormat(t *testing.T) {
 	t.Run("EnvFeeder_InvalidDuration", func(t *testing.T) {
-		os.Setenv("REQUEST_TIMEOUT", "invalid_duration")
-		defer os.Unsetenv("REQUEST_TIMEOUT")
+		t.Setenv("REQUEST_TIMEOUT", "invalid_duration")
 
 		config := &ReverseProxyConfig{}
 		feeder := feeders.NewEnvFeeder()
