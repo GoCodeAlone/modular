@@ -1,6 +1,7 @@
 package reverseproxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -131,6 +132,11 @@ func (m *MockApplication) IsVerboseConfig() bool {
 // SetVerboseConfig sets the verbose config flag (mock implementation)
 func (m *MockApplication) SetVerboseConfig(verbose bool) {
 	// No-op in mock
+}
+
+// Context returns a context for the mock application
+func (m *MockApplication) Context() context.Context {
+	return context.Background()
 }
 
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider

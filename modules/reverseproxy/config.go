@@ -7,6 +7,7 @@ import "time"
 type ReverseProxyConfig struct {
 	BackendServices        map[string]string               `json:"backend_services" yaml:"backend_services" toml:"backend_services" env:"BACKEND_SERVICES"`
 	Routes                 map[string]string               `json:"routes" yaml:"routes" toml:"routes" env:"ROUTES"`
+	RouteConfigs           map[string]RouteConfig          `json:"route_configs" yaml:"route_configs" toml:"route_configs"`
 	DefaultBackend         string                          `json:"default_backend" yaml:"default_backend" toml:"default_backend" env:"DEFAULT_BACKEND"`
 	CircuitBreakerConfig   CircuitBreakerConfig            `json:"circuit_breaker" yaml:"circuit_breaker" toml:"circuit_breaker"`
 	BackendCircuitBreakers map[string]CircuitBreakerConfig `json:"backend_circuit_breakers" yaml:"backend_circuit_breakers" toml:"backend_circuit_breakers"`
@@ -22,6 +23,18 @@ type ReverseProxyConfig struct {
 	HealthCheck            HealthCheckConfig               `json:"health_check" yaml:"health_check" toml:"health_check"`
 	// BackendConfigs defines per-backend configurations including path rewriting and header rewriting
 	BackendConfigs map[string]BackendServiceConfig `json:"backend_configs" yaml:"backend_configs" toml:"backend_configs"`
+}
+
+// RouteConfig defines feature flag-controlled routing configuration for specific routes.
+// This allows routes to be dynamically controlled by feature flags, with fallback to alternative backends.
+type RouteConfig struct {
+	// FeatureFlagID is the ID of the feature flag that controls whether this route uses the primary backend
+	// If specified and the feature flag evaluates to false, requests will be routed to the alternative backend
+	FeatureFlagID string `json:"feature_flag_id" yaml:"feature_flag_id" toml:"feature_flag_id" env:"FEATURE_FLAG_ID"`
+
+	// AlternativeBackend specifies the backend to use when the feature flag is disabled
+	// If FeatureFlagID is specified and evaluates to false, requests will be routed to this backend instead
+	AlternativeBackend string `json:"alternative_backend" yaml:"alternative_backend" toml:"alternative_backend" env:"ALTERNATIVE_BACKEND"`
 }
 
 // CompositeRoute defines a route that combines responses from multiple backends.

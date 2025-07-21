@@ -765,7 +765,7 @@ func (m *ReverseProxyModule) registerRoutes() error {
 func (m *ReverseProxyModule) registerBasicRoutes() error {
 	registeredPaths := make(map[string]bool)
 
-	// Register explicit routes from configuration
+	// Register explicit routes from configuration with feature flag support
 	for routePath, backendID := range m.config.Routes {
 		// Check if this backend exists
 		defaultProxy, exists := m.backendProxies[backendID]
@@ -774,8 +774,38 @@ func (m *ReverseProxyModule) registerBasicRoutes() error {
 			continue
 		}
 
-		// Create and register the handler
-		handler := m.createBackendProxyHandler(backendID)
+		// Create a handler that considers route configs for feature flag evaluation
+		handler := func(routePath, backendID string) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				// Check if this route has feature flag configuration
+				if m.config.RouteConfigs != nil {
+					if routeConfig, ok := m.config.RouteConfigs[routePath]; ok && routeConfig.FeatureFlagID != "" {
+						if !m.evaluateFeatureFlag(routeConfig.FeatureFlagID, r) {
+							// Feature flag is disabled, use alternative backend
+							alternativeBackend := m.getAlternativeBackend(routeConfig.AlternativeBackend)
+							if alternativeBackend != "" {
+								m.app.Logger().Debug("Feature flag disabled for route, using alternative backend",
+									"route", routePath, "flagID", routeConfig.FeatureFlagID,
+									"primary", backendID, "alternative", alternativeBackend)
+								// Create handler for alternative backend
+								altHandler := m.createBackendProxyHandler(alternativeBackend)
+								altHandler(w, r)
+								return
+							} else {
+								// No alternative backend available
+								http.Error(w, "Backend temporarily unavailable", http.StatusServiceUnavailable)
+								return
+							}
+						}
+					}
+				}
+
+				// Use primary backend (feature flag enabled or no feature flag)
+				primaryHandler := m.createBackendProxyHandler(backendID)
+				primaryHandler(w, r)
+			}
+		}(routePath, backendID)
+
 		m.router.HandleFunc(routePath, handler)
 		registeredPaths[routePath] = true
 
@@ -1725,6 +1755,7 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 	merged := &ReverseProxyConfig{
 		BackendServices:        make(map[string]string),
 		Routes:                 make(map[string]string),
+		RouteConfigs:           make(map[string]RouteConfig),
 		CompositeRoutes:        make(map[string]CompositeRoute),
 		BackendCircuitBreakers: make(map[string]CircuitBreakerConfig),
 		BackendConfigs:         make(map[string]BackendServiceConfig),
@@ -1759,6 +1790,16 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 	if tenant.Routes != nil {
 		for pattern, backend := range tenant.Routes {
 			merged.Routes[pattern] = backend
+		}
+	}
+
+	// Merge route configs - tenant route configs override global route configs
+	for pattern, routeConfig := range global.RouteConfigs {
+		merged.RouteConfigs[pattern] = routeConfig
+	}
+	if tenant.RouteConfigs != nil {
+		for pattern, routeConfig := range tenant.RouteConfigs {
+			merged.RouteConfigs[pattern] = routeConfig
 		}
 	}
 
@@ -1986,6 +2027,68 @@ func (m *ReverseProxyModule) createTenantAwareHandler(path string) http.HandlerF
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract tenant ID from request
 		tenantIDStr, hasTenant := TenantIDFromRequest(m.config.TenantIDHeader, r)
+
+		// Get the appropriate configuration (tenant-specific or global)
+		var effectiveConfig *ReverseProxyConfig
+		if hasTenant {
+			tenantID := modular.TenantID(tenantIDStr)
+			if tenantCfg, exists := m.tenants[tenantID]; exists && tenantCfg != nil {
+				effectiveConfig = tenantCfg
+			} else {
+				effectiveConfig = m.config
+			}
+		} else {
+			effectiveConfig = m.config
+		}
+
+		// First priority: Check route configs with feature flag evaluation
+		if effectiveConfig.RouteConfigs != nil {
+			if routeConfig, ok := effectiveConfig.RouteConfigs[path]; ok {
+				// Get the primary backend from the static routes
+				if primaryBackend, routeExists := effectiveConfig.Routes[path]; routeExists {
+					// Evaluate feature flag to determine which backend to use
+					if routeConfig.FeatureFlagID != "" {
+						if !m.evaluateFeatureFlag(routeConfig.FeatureFlagID, r) {
+							// Feature flag is disabled, use alternative backend
+							alternativeBackend := m.getAlternativeBackend(routeConfig.AlternativeBackend)
+							if alternativeBackend != "" {
+								m.app.Logger().Debug("Feature flag disabled for route, using alternative backend",
+									"path", path, "flagID", routeConfig.FeatureFlagID,
+									"primary", primaryBackend, "alternative", alternativeBackend)
+
+								if hasTenant {
+									handler := m.createBackendProxyHandlerForTenant(modular.TenantID(tenantIDStr), alternativeBackend)
+									handler(w, r)
+									return
+								} else {
+									handler := m.createBackendProxyHandler(alternativeBackend)
+									handler(w, r)
+									return
+								}
+							} else {
+								// No alternative backend available
+								http.Error(w, "Backend temporarily unavailable", http.StatusServiceUnavailable)
+								return
+							}
+						} else {
+							// Feature flag is enabled, use primary backend
+							m.app.Logger().Debug("Feature flag enabled for route, using primary backend",
+								"path", path, "flagID", routeConfig.FeatureFlagID, "backend", primaryBackend)
+						}
+					}
+					// Use primary backend (either feature flag was enabled or no feature flag specified)
+					if hasTenant {
+						handler := m.createBackendProxyHandlerForTenant(modular.TenantID(tenantIDStr), primaryBackend)
+						handler(w, r)
+						return
+					} else {
+						handler := m.createBackendProxyHandler(primaryBackend)
+						handler(w, r)
+						return
+					}
+				}
+			}
+		}
 
 		if hasTenant {
 			tenantID := modular.TenantID(tenantIDStr)
