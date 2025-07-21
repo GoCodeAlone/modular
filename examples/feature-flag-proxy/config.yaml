@@ -1,0 +1,62 @@
+# HTTP Server Configuration
+httpserver:
+  port: 8080
+  host: "localhost"
+
+# Chi Router Configuration  
+chimux:
+  enable_cors: true
+  cors_allowed_origins: ["*"]
+  cors_allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  cors_allowed_headers: ["*"]
+
+# Reverse Proxy Configuration with Feature Flags
+reverseproxy:
+  # Backend services
+  backend_services:
+    default: "http://localhost:9001"
+    alternative: "http://localhost:9002"
+    new-feature: "http://localhost:9003"
+    api: "http://localhost:9004"
+  
+  # Default backend
+  default_backend: "default"
+  
+  # Tenant configuration
+  tenant_id_header: "X-Tenant-ID"
+  require_tenant_id: false
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    interval: "30s"
+    timeout: "5s"
+    expected_status_codes: [200]
+  
+  # Backend configurations with feature flags
+  backend_configs:
+    # This backend is controlled by a feature flag
+    default:
+      feature_flag_id: "beta-feature"
+      alternative_backend: "alternative"
+    
+    # This backend is enabled by feature flag
+    new-feature:
+      feature_flag_id: "new-backend"
+      alternative_backend: "default"
+  
+  # Routes configuration
+  routes:
+    "/api/new": "new-feature"  # Will use alternative if new-backend flag is off
+    "/api/beta": "default"     # Will use alternative if beta-feature flag is off
+  
+  # Composite routes with feature flags
+  composite_routes:
+    "/api/composite":
+      pattern: "/api/composite"
+      backends:
+        - "default"
+        - "api" 
+      strategy: "merge"
+      feature_flag_id: "composite-route"
+      alternative_backend: "default"

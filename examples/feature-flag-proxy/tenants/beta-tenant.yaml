@@ -1,0 +1,39 @@
+# Tenant-specific configuration for beta-tenant
+# This file demonstrates how tenant configurations can override global settings
+
+reverseproxy:
+  # Override default backend for this tenant
+  default_backend: "beta-backend"
+  
+  # Tenant-specific backend services
+  backend_services:
+    beta-backend: "http://localhost:9005"
+    premium-api: "http://localhost:9006"
+    
+  # Tenant-specific backend configurations with feature flags
+  backend_configs:
+    # Override the global beta-feature flag behavior for this tenant
+    default:
+      feature_flag_id: "beta-feature" 
+      alternative_backend: "beta-backend"  # Use beta backend instead of alternative
+    
+    # Premium features only available to beta tenant
+    premium-api:
+      feature_flag_id: "premium-features"
+      alternative_backend: "beta-backend"
+      
+  # Tenant-specific routes
+  routes:
+    "/api/premium": "premium-api"    # Only available to beta tenant
+    "/api/beta": "default"           # Will use beta-specific configuration
+    
+  # Tenant-specific composite routes
+  composite_routes:
+    "/api/tenant-composite":
+      pattern: "/api/tenant-composite"
+      backends:
+        - "beta-backend"
+        - "premium-api"
+      strategy: "merge"
+      feature_flag_id: "tenant-composite-route"
+      alternative_backend: "beta-backend"

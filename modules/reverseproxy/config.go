@@ -29,6 +29,14 @@ type CompositeRoute struct {
 	Pattern  string   `json:"pattern" yaml:"pattern" toml:"pattern" env:"PATTERN"`
 	Backends []string `json:"backends" yaml:"backends" toml:"backends" env:"BACKENDS"`
 	Strategy string   `json:"strategy" yaml:"strategy" toml:"strategy" env:"STRATEGY"`
+
+	// FeatureFlagID is the ID of the feature flag that controls whether this composite route is enabled
+	// If specified and the feature flag evaluates to false, this route will return 404
+	FeatureFlagID string `json:"feature_flag_id" yaml:"feature_flag_id" toml:"feature_flag_id" env:"FEATURE_FLAG_ID"`
+
+	// AlternativeBackend specifies an alternative single backend to use when the feature flag is disabled
+	// If FeatureFlagID is specified and evaluates to false, requests will be routed to this backend instead
+	AlternativeBackend string `json:"alternative_backend" yaml:"alternative_backend" toml:"alternative_backend" env:"ALTERNATIVE_BACKEND"`
 }
 
 // PathRewritingConfig defines configuration for path rewriting rules.
@@ -71,6 +79,14 @@ type BackendServiceConfig struct {
 
 	// Endpoints defines endpoint-specific configurations
 	Endpoints map[string]EndpointConfig `json:"endpoints" yaml:"endpoints" toml:"endpoints"`
+
+	// FeatureFlagID is the ID of the feature flag that controls whether this backend is enabled
+	// If specified and the feature flag evaluates to false, requests to this backend will fail or use alternative
+	FeatureFlagID string `json:"feature_flag_id" yaml:"feature_flag_id" toml:"feature_flag_id" env:"FEATURE_FLAG_ID"`
+
+	// AlternativeBackend specifies an alternative backend to use when the feature flag is disabled
+	// If FeatureFlagID is specified and evaluates to false, requests will be routed to this backend instead
+	AlternativeBackend string `json:"alternative_backend" yaml:"alternative_backend" toml:"alternative_backend" env:"ALTERNATIVE_BACKEND"`
 }
 
 // EndpointConfig defines configuration for a specific endpoint within a backend service.
@@ -83,6 +99,14 @@ type EndpointConfig struct {
 
 	// HeaderRewriting defines header rewriting rules specific to this endpoint
 	HeaderRewriting HeaderRewritingConfig `json:"header_rewriting" yaml:"header_rewriting" toml:"header_rewriting"`
+
+	// FeatureFlagID is the ID of the feature flag that controls whether this endpoint is enabled
+	// If specified and the feature flag evaluates to false, this endpoint will be skipped
+	FeatureFlagID string `json:"feature_flag_id" yaml:"feature_flag_id" toml:"feature_flag_id" env:"FEATURE_FLAG_ID"`
+
+	// AlternativeBackend specifies an alternative backend to use when the feature flag is disabled
+	// If FeatureFlagID is specified and evaluates to false, requests will be routed to this backend instead
+	AlternativeBackend string `json:"alternative_backend" yaml:"alternative_backend" toml:"alternative_backend" env:"ALTERNATIVE_BACKEND"`
 }
 
 // HeaderRewritingConfig defines configuration for header rewriting rules.

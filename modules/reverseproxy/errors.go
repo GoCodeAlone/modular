@@ -17,4 +17,5 @@ var (
 	ErrCannotRegisterRoutes     = errors.New("cannot register routes: router is nil")
 	ErrBackendNotFound          = errors.New("backend not found")
 	ErrBackendProxyNil          = errors.New("backend proxy is nil")
+	ErrFeatureFlagNotFound      = errors.New("feature flag not found")
 )

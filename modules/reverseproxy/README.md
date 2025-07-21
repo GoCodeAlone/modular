@@ -13,6 +13,7 @@ The Reverse Proxy module functions as a versatile API gateway that can route req
 * **Multi-Backend Routing**: Route HTTP requests to any number of configurable backend services
 * **Per-Backend Configuration**: Configure path rewriting and header rewriting for each backend service
 * **Per-Endpoint Configuration**: Override backend configuration for specific endpoints within a backend
+* **Feature Flag Support**: Control backend and route behavior using feature flags with optional alternatives
 * **Hostname Handling**: Control how the Host header is handled (preserve original, use backend, or use custom)
 * **Header Rewriting**: Add, modify, or remove headers before forwarding requests
 * **Path Rewriting**: Transform request paths before forwarding to backends
@@ -160,6 +161,56 @@ The module supports several advanced features:
 4. **Health Checking**: Continuous monitoring of backend service availability with configurable endpoints and intervals
 5. **Circuit Breaker**: Automatic failure detection and recovery to prevent cascading failures
 6. **Response Caching**: Performance optimization with TTL-based caching of responses
+7. **Feature Flags**: Control backend and route behavior dynamically using feature flag evaluation
+
+### Feature Flag Support
+
+The reverse proxy module supports feature flags to control routing behavior dynamically. Feature flags can be used to:
+
+- Enable/disable specific backends
+- Route to alternative backends when features are disabled  
+- Control composite route availability
+- Support A/B testing and gradual rollouts
+- Provide tenant-specific feature access
+
+#### Feature Flag Configuration
+
+```yaml
+reverseproxy:
+  # Backend configurations with feature flags
+  backend_configs:
+    api-v2:
+      feature_flag_id: "api-v2-enabled"     # Feature flag to check
+      alternative_backend: "api-v1"         # Fallback when disabled
+    
+    beta-features:
+      feature_flag_id: "beta-features"
+      alternative_backend: "stable-api"
+  
+  # Composite routes with feature flags
+  composite_routes:
+    "/api/enhanced":
+      backends: ["api-v2", "analytics"]
+      strategy: "merge"
+      feature_flag_id: "enhanced-api"       # Feature flag for composite route
+      alternative_backend: "api-v1"         # Single backend fallback
+```
+
+#### Feature Flag Evaluator Service
+
+To use feature flags, register a `FeatureFlagEvaluator` service with your application:
+
+```go
+// Create feature flag evaluator (file-based example)
+evaluator := reverseproxy.NewFileBasedFeatureFlagEvaluator()
+evaluator.SetFlag("api-v2-enabled", true)
+evaluator.SetTenantFlag("beta-tenant", "beta-features", true)
+
+// Register as service
+app.RegisterService("featureFlagEvaluator", evaluator)
+```
+
+The evaluator interface allows integration with external feature flag services like LaunchDarkly, Split.io, or custom implementations.
 
 ### Health Check Configuration
 

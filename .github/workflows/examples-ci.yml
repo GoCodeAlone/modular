@@ -28,6 +28,7 @@ jobs:
           - multi-tenant-app
           - instance-aware-db
           - verbose-debug
+          - feature-flag-proxy
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -149,7 +150,7 @@ jobs:
             
             kill $PID 2>/dev/null || true
             
-          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ]; then
+          elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ] || [ "${{ matrix.example }}" = "feature-flag-proxy" ]; then
             # These apps just need to start without immediate errors
             timeout 5s ./example &
             PID=$!

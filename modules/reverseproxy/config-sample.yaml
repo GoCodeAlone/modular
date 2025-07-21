@@ -3,7 +3,6 @@ reverseproxy:
     backend1: "http://backend1.example.com"
     backend2: "http://backend2.example.com"
   default_backend: "backend1"
-  feature_flag_service_url: "http://featureflags.example.com"
   # Health check configuration
   health_check:
     enabled: true
@@ -26,7 +25,15 @@ reverseproxy:
         interval: "45s"
         timeout: "10s"
         expected_status_codes: [200, 201]
-  # Example composite routes configuration
+  # Backend configurations with feature flags
+  backend_configs:
+    backend1:
+      feature_flag_id: "backend1-feature"  # Feature flag that controls this backend
+      alternative_backend: "backend2"      # Fall back to backend2 if flag is disabled
+    backend2:
+      feature_flag_id: "backend2-feature"
+      alternative_backend: "backend1"
+  # Example composite routes configuration with feature flags
   composite_routes:
     "/api/composite/data":
       pattern: "/api/composite/data"
@@ -34,3 +41,5 @@ reverseproxy:
         - "backend1"
         - "backend2"
       strategy: "merge"
+      feature_flag_id: "composite-feature"  # Feature flag for this composite route
+      alternative_backend: "backend1"        # Fall back to single backend if disabled

@@ -402,3 +402,41 @@ func (m *ReverseProxyModule) createCompositeHandler(routeConfig CompositeRoute, 
 
 	return handler, nil
 }
+
+// createFeatureFlagAwareCompositeHandlerFunc creates a http.HandlerFunc that evaluates feature flags
+// before delegating to the composite handler.
+func (m *ReverseProxyModule) createFeatureFlagAwareCompositeHandlerFunc(routeConfig CompositeRoute, tenantConfig *ReverseProxyConfig) (http.HandlerFunc, error) {
+	// Create the underlying composite handler
+	compositeHandler, err := m.createCompositeHandler(routeConfig, tenantConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return a wrapper function that checks feature flags
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Check if this composite route is controlled by a feature flag
+		if routeConfig.FeatureFlagID != "" && !m.evaluateFeatureFlag(routeConfig.FeatureFlagID, r) {
+			// Feature flag is disabled, use alternative backend if available
+			alternativeBackend := m.getAlternativeBackend(routeConfig.AlternativeBackend)
+			if alternativeBackend != "" {
+				// Route to alternative backend instead of composite route
+				m.app.Logger().Debug("Composite route feature flag disabled, using alternative backend",
+					"route", routeConfig.Pattern, "alternative", alternativeBackend, "flagID", routeConfig.FeatureFlagID)
+
+				// Create a simple proxy handler for the alternative backend
+				altHandler := m.createBackendProxyHandler(alternativeBackend)
+				altHandler(w, r)
+				return
+			} else {
+				// No alternative, return 404
+				m.app.Logger().Debug("Composite route feature flag disabled, no alternative available",
+					"route", routeConfig.Pattern, "flagID", routeConfig.FeatureFlagID)
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		// Feature flag is enabled or not specified, proceed with composite logic
+		compositeHandler.ServeHTTP(w, r)
+	}, nil
+}
