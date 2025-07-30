@@ -585,6 +585,75 @@ if err != nil {
 
 Multiple feeders can be chained, with later feeders overriding values from earlier ones.
 
+### Module-Aware Environment Variable Resolution
+
+The modular framework includes intelligent environment variable resolution that automatically searches for module-specific environment variables to prevent naming conflicts between modules. When a module registers configuration with `env` tags, the framework searches for environment variables in the following priority order:
+
+1. `MODULENAME_ENV_VAR` (module name prefix - highest priority)
+2. `ENV_VAR_MODULENAME` (module name suffix - medium priority)  
+3. `ENV_VAR` (original variable name - lowest priority)
+
+This allows different modules to use the same configuration field names without conflicts.
+
+#### Example
+
+Consider a reverse proxy module with this configuration:
+
+```go
+type ReverseProxyConfig struct {
+    DefaultBackend string `env:"DEFAULT_BACKEND"`
+    RequestTimeout int    `env:"REQUEST_TIMEOUT"`
+}
+```
+
+The framework will search for environment variables in this order:
+
+```bash
+# For the reverseproxy module's DEFAULT_BACKEND field:
+REVERSEPROXY_DEFAULT_BACKEND=http://api.example.com    # Highest priority
+DEFAULT_BACKEND_REVERSEPROXY=http://alt.example.com    # Medium priority
+DEFAULT_BACKEND=http://fallback.example.com            # Lowest priority
+```
+
+If `REVERSEPROXY_DEFAULT_BACKEND` is set, it will be used. If not, the framework falls back to `DEFAULT_BACKEND_REVERSEPROXY`, and finally to `DEFAULT_BACKEND`.
+
+#### Benefits
+
+- **🚫 No Naming Conflicts**: Different modules can use the same field names safely
+- **🔧 Module-Specific Overrides**: Easily configure specific modules without affecting others
+- **⬅️ Backward Compatibility**: Existing environment variable configurations continue to work
+- **📦 Automatic Resolution**: No code changes required in modules - works automatically
+- **🎯 Predictable Patterns**: Consistent naming conventions across all modules
+
+#### Multiple Modules Example
+
+```bash
+# Database module configuration
+DATABASE_HOST=db.internal.example.com     # Specific to database module
+DATABASE_PORT=5432
+DATABASE_TIMEOUT=120
+
+# HTTP server module configuration  
+HTTPSERVER_HOST=api.external.example.com  # Specific to HTTP server
+HTTPSERVER_PORT=8080
+HTTPSERVER_TIMEOUT=30
+
+# Fallback values (used by any module if specific values not found)
+HOST=localhost
+PORT=8000
+TIMEOUT=60
+```
+
+In this example, the database module gets its specific configuration, the HTTP server gets its specific configuration, and any other modules would use the fallback values.
+
+#### Module Name Resolution
+
+The module name used for environment variable prefixes comes from the module's `Name()` method and is automatically converted to uppercase. For example:
+
+- Module name `"reverseproxy"` → Environment prefix `REVERSEPROXY_`
+- Module name `"httpserver"` → Environment prefix `HTTPSERVER_`
+- Module name `"database"` → Environment prefix `DATABASE_`
+
 ### Instance-Aware Configuration
 
 Instance-aware configuration is a powerful feature that allows you to manage multiple instances of the same configuration type using environment variables with instance-specific prefixes. This is particularly useful for scenarios like multiple database connections, cache instances, or service endpoints where each instance needs separate configuration.

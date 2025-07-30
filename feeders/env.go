@@ -42,8 +42,14 @@ func (f *EnvFeeder) SetFieldTracker(tracker FieldTracker) {
 
 // Feed implements the Feeder interface with optional verbose logging
 func (f *EnvFeeder) Feed(structure interface{}) error {
+	// Use the FeedWithModuleContext method with empty module name for backward compatibility
+	return f.FeedWithModuleContext(structure, "")
+}
+
+// FeedWithModuleContext implements module-aware feeding that searches for module-prefixed environment variables
+func (f *EnvFeeder) FeedWithModuleContext(structure interface{}, moduleName string) error {
 	if f.verboseDebug && f.logger != nil {
-		f.logger.Debug("EnvFeeder: Starting feed process", "structureType", reflect.TypeOf(structure))
+		f.logger.Debug("EnvFeeder: Starting feed process", "structureType", reflect.TypeOf(structure), "moduleName", moduleName)
 	}
 
 	inputType := reflect.TypeOf(structure)
@@ -72,7 +78,7 @@ func (f *EnvFeeder) Feed(structure interface{}) error {
 		f.logger.Debug("EnvFeeder: Processing struct fields", "structType", inputType.Elem())
 	}
 
-	err := f.processStructFields(reflect.ValueOf(structure).Elem(), "", "")
+	err := f.processStructFieldsWithModule(reflect.ValueOf(structure).Elem(), "", "", moduleName)
 
 	if f.verboseDebug && f.logger != nil {
 		if err != nil {
@@ -85,12 +91,12 @@ func (f *EnvFeeder) Feed(structure interface{}) error {
 	return err
 }
 
-// processStructFields processes all fields in a struct with optional verbose logging
-func (f *EnvFeeder) processStructFields(rv reflect.Value, prefix, parentPath string) error {
+// processStructFieldsWithModule processes all fields in a struct with module awareness
+func (f *EnvFeeder) processStructFieldsWithModule(rv reflect.Value, prefix, parentPath, moduleName string) error {
 	structType := rv.Type()
 
 	if f.verboseDebug && f.logger != nil {
-		f.logger.Debug("EnvFeeder: Processing struct", "structType", structType, "numFields", rv.NumField(), "prefix", prefix, "parentPath", parentPath)
+		f.logger.Debug("EnvFeeder: Processing struct", "structType", structType, "numFields", rv.NumField(), "prefix", prefix, "parentPath", parentPath, "moduleName", moduleName)
 	}
 
 	for i := 0; i < rv.NumField(); i++ {
@@ -107,7 +113,7 @@ func (f *EnvFeeder) processStructFields(rv reflect.Value, prefix, parentPath str
 			f.logger.Debug("EnvFeeder: Processing field", "fieldName", fieldType.Name, "fieldType", fieldType.Type, "fieldKind", field.Kind(), "fieldPath", fieldPath)
 		}
 
-		if err := f.processField(field, &fieldType, prefix, fieldPath); err != nil {
+		if err := f.processFieldWithModule(field, &fieldType, prefix, fieldPath, moduleName); err != nil {
 			if f.verboseDebug && f.logger != nil {
 				f.logger.Debug("EnvFeeder: Field processing failed", "fieldName", fieldType.Name, "error", err)
 			}
@@ -121,28 +127,28 @@ func (f *EnvFeeder) processStructFields(rv reflect.Value, prefix, parentPath str
 	return nil
 }
 
-// processField handles a single struct field with optional verbose logging
-func (f *EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructField, prefix, fieldPath string) error {
+// processFieldWithModule handles a single struct field with module awareness
+func (f *EnvFeeder) processFieldWithModule(field reflect.Value, fieldType *reflect.StructField, prefix, fieldPath, moduleName string) error {
 	// Handle nested structs
 	switch field.Kind() {
 	case reflect.Struct:
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: Processing nested struct", "fieldName", fieldType.Name, "structType", field.Type(), "fieldPath", fieldPath)
 		}
-		return f.processStructFields(field, prefix, fieldPath)
+		return f.processStructFieldsWithModule(field, prefix, fieldPath, moduleName)
 	case reflect.Pointer:
 		if !field.IsZero() && field.Elem().Kind() == reflect.Struct {
 			if f.verboseDebug && f.logger != nil {
 				f.logger.Debug("EnvFeeder: Processing nested struct pointer", "fieldName", fieldType.Name, "structType", field.Elem().Type(), "fieldPath", fieldPath)
 			}
-			return f.processStructFields(field.Elem(), prefix, fieldPath)
+			return f.processStructFieldsWithModule(field.Elem(), prefix, fieldPath, moduleName)
 		} else {
 			// Handle pointers to primitive types or nil pointers with env tags
 			if envTag, exists := fieldType.Tag.Lookup("env"); exists {
 				if f.verboseDebug && f.logger != nil {
 					f.logger.Debug("EnvFeeder: Found env tag for pointer field", "fieldName", fieldType.Name, "envTag", envTag, "fieldPath", fieldPath)
 				}
-				return f.setPointerFieldFromEnv(field, envTag, prefix, fieldType.Name, fieldPath)
+				return f.setPointerFieldFromEnvWithModule(field, envTag, prefix, fieldType.Name, fieldPath, moduleName)
 			} else if f.verboseDebug && f.logger != nil {
 				f.logger.Debug("EnvFeeder: No env tag found for pointer field", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 			}
@@ -156,7 +162,7 @@ func (f *EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructF
 			if f.verboseDebug && f.logger != nil {
 				f.logger.Debug("EnvFeeder: Found env tag", "fieldName", fieldType.Name, "envTag", envTag, "fieldPath", fieldPath)
 			}
-			return f.setFieldFromEnv(field, envTag, prefix, fieldType.Name, fieldPath)
+			return f.setFieldFromEnvWithModule(field, envTag, prefix, fieldType.Name, fieldPath, moduleName)
 		} else if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: No env tag found", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 		}
@@ -165,34 +171,45 @@ func (f *EnvFeeder) processField(field reflect.Value, fieldType *reflect.StructF
 	return nil
 }
 
-// setFieldFromEnv sets a field value from an environment variable with optional verbose logging and field tracking
-func (f *EnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, fieldName, fieldPath string) error {
+// setFieldFromEnvWithModule sets a field value from an environment variable with module-aware searching
+func (f *EnvFeeder) setFieldFromEnvWithModule(field reflect.Value, envTag, prefix, fieldName, fieldPath, moduleName string) error {
 	// Build environment variable name with prefix
 	envName := strings.ToUpper(envTag)
 	if prefix != "" {
 		envName = strings.ToUpper(prefix) + envName
 	}
 
-	// Track what we're searching for
-	searchKeys := []string{envName}
+	// Build search keys in priority order (module-aware searching)
+	searchKeys := f.buildSearchKeys(envName, moduleName)
 
 	if f.verboseDebug && f.logger != nil {
-		f.logger.Debug("EnvFeeder: Looking up environment variable", "fieldName", fieldName, "envName", envName, "envTag", envTag, "prefix", prefix, "fieldPath", fieldPath)
+		f.logger.Debug("EnvFeeder: Looking up environment variable", "fieldName", fieldName, "envTag", envTag, "prefix", prefix, "fieldPath", fieldPath, "moduleName", moduleName, "searchKeys", searchKeys)
 	}
 
-	// Get and apply environment variable if exists
+	// Search for environment variables in priority order
 	catalog := GetGlobalEnvCatalog()
-	envValue, exists := catalog.Get(envName)
+	var foundKey string
+	var envValue string
+	var exists bool
+
+	for _, searchKey := range searchKeys {
+		envValue, exists = catalog.Get(searchKey)
+		if exists && envValue != "" {
+			foundKey = searchKey
+			break
+		}
+	}
+
 	if exists && envValue != "" {
 		if f.verboseDebug && f.logger != nil {
-			source := catalog.GetSource(envName)
-			f.logger.Debug("EnvFeeder: Environment variable found", "fieldName", fieldName, "envName", envName, "envValue", envValue, "fieldPath", fieldPath, "source", source)
+			source := catalog.GetSource(foundKey)
+			f.logger.Debug("EnvFeeder: Environment variable found", "fieldName", fieldName, "foundKey", foundKey, "envValue", envValue, "fieldPath", fieldPath, "source", source)
 		}
 
 		err := setFieldValue(field, envValue)
 		if err != nil {
 			if f.verboseDebug && f.logger != nil {
-				f.logger.Debug("EnvFeeder: Failed to set field value", "fieldName", fieldName, "envName", envName, "envValue", envValue, "error", err, "fieldPath", fieldPath)
+				f.logger.Debug("EnvFeeder: Failed to set field value", "fieldName", fieldName, "foundKey", foundKey, "envValue", envValue, "error", err, "fieldPath", fieldPath)
 			}
 			return err
 		}
@@ -205,17 +222,17 @@ func (f *EnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, fieldNa
 				FieldType:   field.Type().String(),
 				FeederType:  "*feeders.EnvFeeder",
 				SourceType:  "env",
-				SourceKey:   envName,
+				SourceKey:   foundKey,
 				Value:       field.Interface(),
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
-				FoundKey:    envName,
+				FoundKey:    foundKey,
 			}
 			f.fieldTracker.RecordFieldPopulation(fp)
 		}
 
 		if f.verboseDebug && f.logger != nil {
-			f.logger.Debug("EnvFeeder: Successfully set field value", "fieldName", fieldName, "envName", envName, "envValue", envValue, "fieldPath", fieldPath)
+			f.logger.Debug("EnvFeeder: Successfully set field value", "fieldName", fieldName, "foundKey", foundKey, "envValue", envValue, "fieldPath", fieldPath)
 		}
 	} else {
 		// Record that we searched but didn't find
@@ -236,35 +253,68 @@ func (f *EnvFeeder) setFieldFromEnv(field reflect.Value, envTag, prefix, fieldNa
 		}
 
 		if f.verboseDebug && f.logger != nil {
-			f.logger.Debug("EnvFeeder: Environment variable not found or empty", "fieldName", fieldName, "envName", envName, "fieldPath", fieldPath)
+			f.logger.Debug("EnvFeeder: Environment variable not found or empty", "fieldName", fieldName, "searchKeys", searchKeys, "fieldPath", fieldPath)
 		}
 	}
 
 	return nil
 }
 
-// setPointerFieldFromEnv sets a pointer field value from an environment variable
-func (f *EnvFeeder) setPointerFieldFromEnv(field reflect.Value, envTag, prefix, fieldName, fieldPath string) error {
+// buildSearchKeys creates a list of environment variable names to search in priority order
+// Implements the search pattern: MODULE_ENV_VAR, ENV_VAR_MODULE, ENV_VAR
+func (f *EnvFeeder) buildSearchKeys(envName, moduleName string) []string {
+	var searchKeys []string
+
+	// If we have a module name, build module-aware search keys
+	if moduleName != "" && strings.TrimSpace(moduleName) != "" {
+		moduleUpper := strings.ToUpper(strings.TrimSpace(moduleName))
+
+		// 1. MODULE_ENV_VAR (prefix)
+		searchKeys = append(searchKeys, moduleUpper+"_"+envName)
+
+		// 2. ENV_VAR_MODULE (suffix)
+		searchKeys = append(searchKeys, envName+"_"+moduleUpper)
+	}
+
+	// 3. ENV_VAR (original behavior)
+	searchKeys = append(searchKeys, envName)
+
+	return searchKeys
+}
+
+// setPointerFieldFromEnvWithModule sets a pointer field value from an environment variable with module awareness
+func (f *EnvFeeder) setPointerFieldFromEnvWithModule(field reflect.Value, envTag, prefix, fieldName, fieldPath, moduleName string) error {
 	// Build environment variable name with prefix
 	envName := strings.ToUpper(envTag)
 	if prefix != "" {
 		envName = strings.ToUpper(prefix) + envName
 	}
 
-	// Track what we're searching for
-	searchKeys := []string{envName}
+	// Build search keys in priority order (module-aware searching)
+	searchKeys := f.buildSearchKeys(envName, moduleName)
 
 	if f.verboseDebug && f.logger != nil {
-		f.logger.Debug("EnvFeeder: Looking up environment variable for pointer field", "fieldName", fieldName, "envName", envName, "envTag", envTag, "prefix", prefix, "fieldPath", fieldPath)
+		f.logger.Debug("EnvFeeder: Looking up environment variable for pointer field", "fieldName", fieldName, "envTag", envTag, "prefix", prefix, "fieldPath", fieldPath, "moduleName", moduleName, "searchKeys", searchKeys)
 	}
 
-	// Get and apply environment variable if exists
+	// Search for environment variables in priority order
 	catalog := GetGlobalEnvCatalog()
-	envValue, exists := catalog.Get(envName)
+	var foundKey string
+	var envValue string
+	var exists bool
+
+	for _, searchKey := range searchKeys {
+		envValue, exists = catalog.Get(searchKey)
+		if exists && envValue != "" {
+			foundKey = searchKey
+			break
+		}
+	}
+
 	if exists && envValue != "" {
 		if f.verboseDebug && f.logger != nil {
-			source := catalog.GetSource(envName)
-			f.logger.Debug("EnvFeeder: Environment variable found for pointer field", "fieldName", fieldName, "envName", envName, "envValue", envValue, "fieldPath", fieldPath, "source", source)
+			source := catalog.GetSource(foundKey)
+			f.logger.Debug("EnvFeeder: Environment variable found for pointer field", "fieldName", fieldName, "foundKey", foundKey, "envValue", envValue, "fieldPath", fieldPath, "source", source)
 		}
 
 		// Get the type that the pointer points to
@@ -277,7 +327,7 @@ func (f *EnvFeeder) setPointerFieldFromEnv(field reflect.Value, envTag, prefix, 
 		err := setFieldValue(newValue.Elem(), envValue)
 		if err != nil {
 			if f.verboseDebug && f.logger != nil {
-				f.logger.Debug("EnvFeeder: Failed to set pointer field value", "fieldName", fieldName, "envName", envName, "envValue", envValue, "error", err, "fieldPath", fieldPath)
+				f.logger.Debug("EnvFeeder: Failed to set pointer field value", "fieldName", fieldName, "foundKey", foundKey, "envValue", envValue, "error", err, "fieldPath", fieldPath)
 			}
 			return err
 		}
@@ -293,17 +343,17 @@ func (f *EnvFeeder) setPointerFieldFromEnv(field reflect.Value, envTag, prefix, 
 				FieldType:   field.Type().String(),
 				FeederType:  "*feeders.EnvFeeder",
 				SourceType:  "env",
-				SourceKey:   envName,
+				SourceKey:   foundKey,
 				Value:       field.Interface(),
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
-				FoundKey:    envName,
+				FoundKey:    foundKey,
 			}
 			f.fieldTracker.RecordFieldPopulation(fp)
 		}
 
 		if f.verboseDebug && f.logger != nil {
-			f.logger.Debug("EnvFeeder: Successfully set pointer field", "fieldName", fieldName, "envName", envName, "fieldPath", fieldPath)
+			f.logger.Debug("EnvFeeder: Successfully set pointer field", "fieldName", fieldName, "foundKey", foundKey, "fieldPath", fieldPath)
 		}
 	} else {
 		// Record that we searched but didn't find
@@ -324,7 +374,7 @@ func (f *EnvFeeder) setPointerFieldFromEnv(field reflect.Value, envTag, prefix, 
 		}
 
 		if f.verboseDebug && f.logger != nil {
-			f.logger.Debug("EnvFeeder: Environment variable not found or empty for pointer field", "fieldName", fieldName, "envName", envName, "fieldPath", fieldPath)
+			f.logger.Debug("EnvFeeder: Environment variable not found or empty for pointer field", "fieldName", fieldName, "searchKeys", searchKeys, "fieldPath", fieldPath)
 		}
 	}
 
