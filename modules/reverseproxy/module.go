@@ -412,6 +412,27 @@ func (m *ReverseProxyModule) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to register routes: %w", err)
 	}
 
+	// Create and configure feature flag evaluator if none was provided via service
+	if m.featureFlagEvaluator == nil && m.config.FeatureFlags.Enabled {
+		// Convert the logger to *slog.Logger
+		var logger *slog.Logger
+		if slogLogger, ok := m.app.Logger().(*slog.Logger); ok {
+			logger = slogLogger
+		} else {
+			// Fallback to a default logger if conversion fails
+			logger = slog.Default()
+		}
+
+		//nolint:contextcheck // Constructor doesn't need context, it creates the evaluator for later use
+		evaluator, err := NewFileBasedFeatureFlagEvaluator(m.app, logger)
+		if err != nil {
+			return fmt.Errorf("failed to create feature flag evaluator: %w", err)
+		}
+		m.featureFlagEvaluator = evaluator
+
+		m.app.Logger().Info("Created built-in feature flag evaluator using tenant-aware configuration")
+	}
+
 	// Start health checker if enabled
 	if m.healthChecker != nil {
 		if err := m.healthChecker.Start(ctx); err != nil {
@@ -538,9 +559,19 @@ func (m *ReverseProxyModule) OnTenantRemoved(tenantID modular.TenantID) {
 }
 
 // ProvidesServices returns the services provided by this module.
-// Currently, this module does not provide any services.
+// This module can provide a featureFlagEvaluator service if configured to do so.
 func (m *ReverseProxyModule) ProvidesServices() []modular.ServiceProvider {
-	return nil
+	var services []modular.ServiceProvider
+
+	// Only provide the feature flag evaluator service if we have one and it's enabled in config
+	if m.featureFlagEvaluator != nil && m.config != nil && m.config.FeatureFlags.Enabled {
+		services = append(services, modular.ServiceProvider{
+			Name:     "featureFlagEvaluator",
+			Instance: m.featureFlagEvaluator,
+		})
+	}
+
+	return services
 }
 
 // routerService defines the interface for a service that can register

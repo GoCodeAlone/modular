@@ -2,6 +2,12 @@
 # This demonstrates a different tenant with different feature flag settings
 
 reverseproxy:
+  # Override feature flags for this tenant
+  feature_flags:
+    flags:
+      beta-feature: true               # Enable for enterprise tenant (was false globally)
+      enterprise-analytics: true      # Enable analytics for enterprise (was false globally)
+
   # Override default backend for enterprise tenant
   default_backend: "enterprise-backend"
   

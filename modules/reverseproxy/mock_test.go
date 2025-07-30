@@ -84,6 +84,11 @@ func (m *MockApplication) GetService(name string, target interface{}) error {
 			*ptr = router
 			return nil
 		}
+	case *modular.TenantService:
+		if tenantService, ok := service.(modular.TenantService); ok {
+			*ptr = tenantService
+			return nil
+		}
 	case *interface{}:
 		*ptr = service
 		return nil

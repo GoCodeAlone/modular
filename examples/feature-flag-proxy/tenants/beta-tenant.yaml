@@ -2,6 +2,12 @@
 # This file demonstrates how tenant configurations can override global settings
 
 reverseproxy:
+  # Override feature flags for this tenant
+  feature_flags:
+    flags:
+      beta-feature: true         # Enable for beta tenant (was false globally)
+      premium-features: true     # Enable premium for beta tenant (was false globally)
+
   # Override default backend for this tenant
   default_backend: "beta-backend"
   

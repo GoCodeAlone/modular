@@ -12,7 +12,7 @@ type ReverseProxyConfig struct {
 	CircuitBreakerConfig   CircuitBreakerConfig            `json:"circuit_breaker" yaml:"circuit_breaker" toml:"circuit_breaker"`
 	BackendCircuitBreakers map[string]CircuitBreakerConfig `json:"backend_circuit_breakers" yaml:"backend_circuit_breakers" toml:"backend_circuit_breakers"`
 	CompositeRoutes        map[string]CompositeRoute       `json:"composite_routes" yaml:"composite_routes" toml:"composite_routes"`
-	TenantIDHeader         string                          `json:"tenant_id_header" yaml:"tenant_id_header" toml:"tenant_id_header" env:"TENANT_ID_HEADER"`
+	TenantIDHeader         string                          `json:"tenant_id_header" yaml:"tenant_id_header" toml:"tenant_id_header" env:"TENANT_ID_HEADER" default:"X-Tenant-ID"`
 	RequireTenantID        bool                            `json:"require_tenant_id" yaml:"require_tenant_id" toml:"require_tenant_id" env:"REQUIRE_TENANT_ID"`
 	CacheEnabled           bool                            `json:"cache_enabled" yaml:"cache_enabled" toml:"cache_enabled" env:"CACHE_ENABLED"`
 	CacheTTL               time.Duration                   `json:"cache_ttl" yaml:"cache_ttl" toml:"cache_ttl" env:"CACHE_TTL"`
@@ -23,6 +23,15 @@ type ReverseProxyConfig struct {
 	HealthCheck            HealthCheckConfig               `json:"health_check" yaml:"health_check" toml:"health_check"`
 	// BackendConfigs defines per-backend configurations including path rewriting and header rewriting
 	BackendConfigs map[string]BackendServiceConfig `json:"backend_configs" yaml:"backend_configs" toml:"backend_configs"`
+
+	// Debug endpoints configuration
+	DebugEndpoints DebugEndpointsConfig `json:"debug_endpoints" yaml:"debug_endpoints" toml:"debug_endpoints"`
+
+	// Dry-run configuration
+	DryRun DryRunConfig `json:"dry_run" yaml:"dry_run" toml:"dry_run"`
+
+	// Feature flag configuration
+	FeatureFlags FeatureFlagsConfig `json:"feature_flags" yaml:"feature_flags" toml:"feature_flags"`
 }
 
 // RouteConfig defines feature flag-controlled routing configuration for specific routes.
@@ -35,6 +44,14 @@ type RouteConfig struct {
 	// AlternativeBackend specifies the backend to use when the feature flag is disabled
 	// If FeatureFlagID is specified and evaluates to false, requests will be routed to this backend instead
 	AlternativeBackend string `json:"alternative_backend" yaml:"alternative_backend" toml:"alternative_backend" env:"ALTERNATIVE_BACKEND"`
+
+	// DryRun enables dry-run mode for this route, sending requests to both backends and comparing responses
+	// When true, requests are sent to both the primary and alternative backends, but only the alternative backend's response is returned
+	DryRun bool `json:"dry_run" yaml:"dry_run" toml:"dry_run" env:"DRY_RUN"`
+
+	// DryRunBackend specifies the backend to compare against in dry-run mode
+	// If not specified, uses the AlternativeBackend for comparison
+	DryRunBackend string `json:"dry_run_backend" yaml:"dry_run_backend" toml:"dry_run_backend" env:"DRY_RUN_BACKEND"`
 }
 
 // CompositeRoute defines a route that combines responses from multiple backends.
@@ -216,4 +233,13 @@ type BackendHealthConfig struct {
 	Interval            time.Duration `json:"interval" yaml:"interval" toml:"interval" env:"INTERVAL" desc:"Override global interval for this backend"`
 	Timeout             time.Duration `json:"timeout" yaml:"timeout" toml:"timeout" env:"TIMEOUT" desc:"Override global timeout for this backend"`
 	ExpectedStatusCodes []int         `json:"expected_status_codes" yaml:"expected_status_codes" toml:"expected_status_codes" env:"EXPECTED_STATUS_CODES" desc:"Override global expected status codes for this backend"`
+}
+
+// FeatureFlagsConfig provides configuration for the built-in feature flag evaluator.
+type FeatureFlagsConfig struct {
+	// Enabled determines whether to create and expose the built-in FileBasedFeatureFlagEvaluator service
+	Enabled bool `json:"enabled" yaml:"enabled" toml:"enabled" env:"ENABLED" default:"false" desc:"Enable the built-in file-based feature flag evaluator service"`
+
+	// Flags defines default values for feature flags. Tenant-specific overrides come from tenant config files.
+	Flags map[string]bool `json:"flags" yaml:"flags" toml:"flags" desc:"Default values for feature flags"`
 }

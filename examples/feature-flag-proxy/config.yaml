@@ -12,6 +12,18 @@ chimux:
 
 # Reverse Proxy Configuration with Feature Flags
 reverseproxy:
+  # Feature flags configuration
+  feature_flags:
+    enabled: true
+    flags:
+      beta-feature: false              # Disabled globally
+      new-backend: true               # Enabled globally
+      composite-route: true           # Enabled globally
+      premium-features: false         # Premium features disabled globally
+      enterprise-analytics: false     # Enterprise analytics disabled globally
+      tenant-composite-route: true    # Tenant composite routes enabled
+      enterprise-dashboard: true      # Enterprise dashboard enabled
+
   # Backend services
   backend_services:
     default: "http://localhost:9001"

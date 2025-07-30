@@ -29,6 +29,7 @@ jobs:
           - instance-aware-db
           - verbose-debug
           - feature-flag-proxy
+          - testing-scenarios
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -149,6 +150,40 @@ jobs:
             fi
             
             kill $PID 2>/dev/null || true
+            
+          elif [ "${{ matrix.example }}" = "testing-scenarios" ]; then
+            # Testing scenarios example has comprehensive validation scripts
+            echo "🧪 Testing testing-scenarios with validation scripts..."
+            
+            # Make scripts executable
+            chmod +x *.sh
+            
+            # Run the demo script (includes comprehensive testing)
+            echo "Running demo.sh for rapid validation..."
+            if timeout 60s ./demo.sh; then
+              echo "✅ testing-scenarios demo script passed"
+            else
+              echo "❌ testing-scenarios demo script failed"
+              exit 1
+            fi
+            
+            # Run health check validation
+            echo "Running health check validation..."
+            if timeout 30s ./test-health-checks.sh; then
+              echo "✅ testing-scenarios health check validation passed"
+            else
+              echo "❌ testing-scenarios health check validation failed" 
+              exit 1
+            fi
+            
+            # Run feature flag testing
+            echo "Running feature flag validation..."
+            if timeout 30s ./test-feature-flags.sh; then
+              echo "✅ testing-scenarios feature flag validation passed"
+            else
+              echo "❌ testing-scenarios feature flag validation failed"
+              exit 1
+            fi
             
           elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ] || [ "${{ matrix.example }}" = "feature-flag-proxy" ]; then
             # These apps just need to start without immediate errors

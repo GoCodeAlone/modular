@@ -2,6 +2,8 @@ package reverseproxy
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/CrisisTextLine/modular"
@@ -21,55 +23,102 @@ type FeatureFlagEvaluator interface {
 	EvaluateFlagWithDefault(ctx context.Context, flagID string, tenantID modular.TenantID, req *http.Request, defaultValue bool) bool
 }
 
-// FileBasedFeatureFlagEvaluator implements a simple file-based feature flag evaluator.
-// This is primarily intended for testing and examples.
+// FileBasedFeatureFlagEvaluator implements a feature flag evaluator that integrates
+// with the Modular framework's tenant-aware configuration system.
 type FileBasedFeatureFlagEvaluator struct {
-	// flags maps feature flag IDs to their enabled state
-	flags map[string]bool
+	// app provides access to the application and its services
+	app modular.Application
 
-	// tenantFlags maps tenant IDs to their specific feature flag overrides
-	tenantFlags map[modular.TenantID]map[string]bool
+	// tenantAwareConfig provides tenant-aware access to feature flag configuration
+	tenantAwareConfig *modular.TenantAwareConfig
+
+	// logger for debug and error logging
+	logger *slog.Logger
 }
 
-// NewFileBasedFeatureFlagEvaluator creates a new file-based feature flag evaluator.
-func NewFileBasedFeatureFlagEvaluator() *FileBasedFeatureFlagEvaluator {
+// NewFileBasedFeatureFlagEvaluator creates a new tenant-aware feature flag evaluator.
+func NewFileBasedFeatureFlagEvaluator(app modular.Application, logger *slog.Logger) (*FileBasedFeatureFlagEvaluator, error) {
+	// Validate parameters
+	if app == nil {
+		return nil, ErrApplicationNil
+	}
+	if logger == nil {
+		return nil, ErrLoggerNil
+	}
+	// Get tenant service
+	var tenantService modular.TenantService
+	if err := app.GetService("tenantService", &tenantService); err != nil {
+		logger.WarnContext(context.Background(), "TenantService not available, feature flags will use default configuration only", "error", err)
+		tenantService = nil
+	}
+
+	// Get the default configuration from the application
+	var defaultConfigProvider modular.ConfigProvider
+	if configProvider, err := app.GetConfigSection("reverseproxy"); err == nil {
+		defaultConfigProvider = configProvider
+	} else {
+		// Fallback to empty config if no section is registered
+		defaultConfigProvider = modular.NewStdConfigProvider(&ReverseProxyConfig{})
+	}
+
+	// Create tenant-aware config for feature flags
+	// This will use the "reverseproxy" section from configurations
+	tenantAwareConfig := modular.NewTenantAwareConfig(
+		defaultConfigProvider,
+		tenantService,
+		"reverseproxy",
+	)
+
 	return &FileBasedFeatureFlagEvaluator{
-		flags:       make(map[string]bool),
-		tenantFlags: make(map[modular.TenantID]map[string]bool),
-	}
+		app:               app,
+		tenantAwareConfig: tenantAwareConfig,
+		logger:            logger,
+	}, nil
 }
 
-// SetFlag sets a global feature flag value.
-func (f *FileBasedFeatureFlagEvaluator) SetFlag(flagID string, enabled bool) {
-	f.flags[flagID] = enabled
-}
-
-// SetTenantFlag sets a tenant-specific feature flag value.
-func (f *FileBasedFeatureFlagEvaluator) SetTenantFlag(tenantID modular.TenantID, flagID string, enabled bool) {
-	if f.tenantFlags[tenantID] == nil {
-		f.tenantFlags[tenantID] = make(map[string]bool)
-	}
-	f.tenantFlags[tenantID][flagID] = enabled
-}
-
-// EvaluateFlag evaluates a feature flag for the given context and request.
+// EvaluateFlag evaluates a feature flag using tenant-aware configuration.
+// It follows the standard Modular framework pattern where:
+// 1. Default flags come from the main configuration
+// 2. Tenant-specific overrides come from tenant configuration files
+// 3. During request processing, tenant context determines which configuration to use
+//
+//nolint:contextcheck // Skipping context check because this code intentionally creates a new tenant context if one does not exist, enabling tenant-aware configuration lookup.
 func (f *FileBasedFeatureFlagEvaluator) EvaluateFlag(ctx context.Context, flagID string, tenantID modular.TenantID, req *http.Request) (bool, error) {
-	// Check tenant-specific flags first
+	// Create context with tenant ID if provided and not already a tenant context
 	if tenantID != "" {
-		if tenantFlagMap, exists := f.tenantFlags[tenantID]; exists {
-			if value, exists := tenantFlagMap[flagID]; exists {
-				return value, nil
-			}
+		if _, hasTenant := modular.GetTenantIDFromContext(ctx); !hasTenant {
+			ctx = modular.NewTenantContext(ctx, tenantID)
 		}
 	}
 
-	// Fall back to global flags
-	if value, exists := f.flags[flagID]; exists {
-		return value, nil
+	// Get tenant-aware configuration
+	config := f.tenantAwareConfig.GetConfigWithContext(ctx).(*ReverseProxyConfig)
+	if config == nil {
+		f.logger.DebugContext(ctx, "No feature flag configuration available", "flag", flagID)
+		return false, fmt.Errorf("feature flag %s not found: %w", flagID, ErrFeatureFlagNotFound)
 	}
 
-	// Flag not found, return error to indicate flag doesn't exist
-	return false, ErrFeatureFlagNotFound
+	// Check if feature flags are enabled
+	if !config.FeatureFlags.Enabled {
+		f.logger.DebugContext(ctx, "Feature flags are disabled", "flag", flagID)
+		return false, fmt.Errorf("feature flags disabled: %w", ErrFeatureFlagNotFound)
+	}
+
+	// Look up the flag value
+	if config.FeatureFlags.Flags != nil {
+		if value, exists := config.FeatureFlags.Flags[flagID]; exists {
+			f.logger.DebugContext(ctx, "Feature flag evaluated",
+				"flag", flagID,
+				"tenant", tenantID,
+				"value", value)
+			return value, nil
+		}
+	}
+
+	f.logger.DebugContext(ctx, "Feature flag not found in configuration",
+		"flag", flagID,
+		"tenant", tenantID)
+	return false, fmt.Errorf("feature flag %s not found: %w", flagID, ErrFeatureFlagNotFound)
 }
 
 // EvaluateFlagWithDefault evaluates a feature flag with a default value.

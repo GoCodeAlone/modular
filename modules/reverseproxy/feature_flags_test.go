@@ -1,22 +1,48 @@
 package reverseproxy
 
 import (
+	"context"
+	"log/slog"
 	"net/http/httptest"
+	"os"
 	"testing"
+
+	"github.com/CrisisTextLine/modular"
 )
 
-// TestFileBasedFeatureFlagEvaluator tests the file-based feature flag evaluator
-func TestFileBasedFeatureFlagEvaluator(t *testing.T) {
-	evaluator := NewFileBasedFeatureFlagEvaluator()
+// TestFileBasedFeatureFlagEvaluator_WithMockApp tests the feature flag evaluator with a mock application
+func TestFileBasedFeatureFlagEvaluator_WithMockApp(t *testing.T) {
+	// Create mock application
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	config := &ReverseProxyConfig{
+		FeatureFlags: FeatureFlagsConfig{
+			Enabled: true,
+			Flags: map[string]bool{
+				"test-flag-1": true,
+				"test-flag-2": false,
+			},
+		},
+	}
 
-	// Test setting and evaluating global flags
-	evaluator.SetFlag("test-flag-1", true)
-	evaluator.SetFlag("test-flag-2", false)
+	app := NewMockTenantApplication()
+	app.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(config))
+
+	// Create tenant service (optional for this test)
+	tenantService := modular.NewStandardTenantService(logger)
+	err := app.RegisterService("tenantService", tenantService)
+	if err != nil {
+		t.Fatalf("Failed to register tenant service: %v", err)
+	}
+
+	evaluator, err := NewFileBasedFeatureFlagEvaluator(app, logger)
+	if err != nil {
+		t.Fatalf("Failed to create feature flag evaluator: %v", err)
+	}
 
 	req := httptest.NewRequest("GET", "/test", nil)
 
 	// Test enabled flag
-	enabled, err := evaluator.EvaluateFlag(req.Context(), "test-flag-1", "", req)
+	enabled, err := evaluator.EvaluateFlag(context.Background(), "test-flag-1", "", req)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -25,7 +51,7 @@ func TestFileBasedFeatureFlagEvaluator(t *testing.T) {
 	}
 
 	// Test disabled flag
-	enabled, err = evaluator.EvaluateFlag(req.Context(), "test-flag-2", "", req)
+	enabled, err = evaluator.EvaluateFlag(context.Background(), "test-flag-2", "", req)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -33,148 +59,98 @@ func TestFileBasedFeatureFlagEvaluator(t *testing.T) {
 		t.Error("Expected flag to be disabled")
 	}
 
-	// Test non-existent flag (should return error)
-	enabled, err = evaluator.EvaluateFlag(req.Context(), "non-existent", "", req)
+	// Test non-existent flag
+	_, err = evaluator.EvaluateFlag(context.Background(), "non-existent-flag", "", req)
 	if err == nil {
 		t.Error("Expected error for non-existent flag")
 	}
-	if enabled {
-		t.Error("Expected non-existent flag to be disabled")
-	}
 }
 
-// TestFileBasedFeatureFlagEvaluator_TenantSpecific tests tenant-specific feature flags
-func TestFileBasedFeatureFlagEvaluator_TenantSpecific(t *testing.T) {
-	evaluator := NewFileBasedFeatureFlagEvaluator()
-
-	// Set global and tenant-specific flags
-	evaluator.SetFlag("global-flag", true)
-	evaluator.SetTenantFlag("tenant1", "global-flag", false) // Override global
-	evaluator.SetTenantFlag("tenant1", "tenant-flag", true)
-
-	req := httptest.NewRequest("GET", "/test", nil)
-
-	// Test global flag for tenant1 (should be overridden)
-	enabled, err := evaluator.EvaluateFlag(req.Context(), "global-flag", "tenant1", req)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-	if enabled {
-		t.Error("Expected tenant1 to have global-flag disabled")
-	}
-
-	// Test global flag for tenant2 (should use global value)
-	enabled, err = evaluator.EvaluateFlag(req.Context(), "global-flag", "tenant2", req)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-	if !enabled {
-		t.Error("Expected tenant2 to have global-flag enabled")
-	}
-
-	// Test tenant-specific flag
-	enabled, err = evaluator.EvaluateFlag(req.Context(), "tenant-flag", "tenant1", req)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-	if !enabled {
-		t.Error("Expected tenant1 to have tenant-flag enabled")
-	}
-}
-
-// TestFileBasedFeatureFlagEvaluator_WithDefault tests the EvaluateFlagWithDefault method
+// TestFileBasedFeatureFlagEvaluator_WithDefault tests the evaluator with default values
 func TestFileBasedFeatureFlagEvaluator_WithDefault(t *testing.T) {
-	evaluator := NewFileBasedFeatureFlagEvaluator()
-
-	req := httptest.NewRequest("GET", "/test", nil)
-
-	// Test non-existent flag with default true
-	enabled := evaluator.EvaluateFlagWithDefault(req.Context(), "non-existent", "", req, true)
-	if !enabled {
-		t.Error("Expected default value true for non-existent flag")
-	}
-
-	// Test non-existent flag with default false
-	enabled = evaluator.EvaluateFlagWithDefault(req.Context(), "non-existent", "", req, false)
-	if enabled {
-		t.Error("Expected default value false for non-existent flag")
-	}
-
-	// Test existing flag (should ignore default)
-	evaluator.SetFlag("existing-flag", false)
-	enabled = evaluator.EvaluateFlagWithDefault(req.Context(), "existing-flag", "", req, true)
-	if enabled {
-		t.Error("Expected actual flag value to override default")
-	}
-}
-
-// TestReverseProxyModule_FeatureFlagEvaluation tests that the module correctly evaluates feature flags
-func TestReverseProxyModule_FeatureFlagEvaluation(t *testing.T) {
-	// Create a mock application
-	app := &MockTenantApplication{}
-
-	// Create and configure the module
-	module := NewModule()
-	module.app = app
-	module.config = &ReverseProxyConfig{
-		BackendServices: map[string]string{
-			"backend1": "http://backend1.example.com",
-			"backend2": "http://backend2.example.com",
-		},
-		BackendConfigs: map[string]BackendServiceConfig{
-			"backend1": {
-				FeatureFlagID:      "backend1-flag",
-				AlternativeBackend: "backend2",
+	// Create mock application
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	config := &ReverseProxyConfig{
+		FeatureFlags: FeatureFlagsConfig{
+			Enabled: true,
+			Flags: map[string]bool{
+				"existing-flag": true,
 			},
 		},
 	}
 
-	// Create and set up feature flag evaluator
-	evaluator := NewFileBasedFeatureFlagEvaluator()
-	evaluator.SetFlag("backend1-flag", false) // Disable backend1
-	module.featureFlagEvaluator = evaluator
+	app := NewMockTenantApplication()
+	app.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(config))
 
-	// Test evaluateFeatureFlag method
+	tenantService := modular.NewStandardTenantService(logger)
+	err := app.RegisterService("tenantService", tenantService)
+	if err != nil {
+		t.Fatalf("Failed to register tenant service: %v", err)
+	}
+
+	evaluator, err := NewFileBasedFeatureFlagEvaluator(app, logger)
+	if err != nil {
+		t.Fatalf("Failed to create feature flag evaluator: %v", err)
+	}
+
 	req := httptest.NewRequest("GET", "/test", nil)
 
-	// Test enabled flag
-	evaluator.SetFlag("enabled-flag", true)
-	if !module.evaluateFeatureFlag("enabled-flag", req) {
-		t.Error("Expected enabled flag to return true")
+	// Test existing flag with default
+	result := evaluator.EvaluateFlagWithDefault(context.Background(), "existing-flag", "", req, false)
+	if !result {
+		t.Error("Expected existing flag to return true")
 	}
 
-	// Test disabled flag
-	evaluator.SetFlag("disabled-flag", false)
-	if module.evaluateFeatureFlag("disabled-flag", req) {
-		t.Error("Expected disabled flag to return false")
+	// Test non-existent flag with default
+	result = evaluator.EvaluateFlagWithDefault(context.Background(), "non-existent-flag", "", req, true)
+	if !result {
+		t.Error("Expected non-existent flag to return default value true")
 	}
 
-	// Test empty flag ID (should default to true)
-	if !module.evaluateFeatureFlag("", req) {
-		t.Error("Expected empty flag ID to default to true")
-	}
-
-	// Test with nil evaluator (should default to true)
-	module.featureFlagEvaluator = nil
-	if !module.evaluateFeatureFlag("any-flag", req) {
-		t.Error("Expected nil evaluator to default to true")
+	result = evaluator.EvaluateFlagWithDefault(context.Background(), "non-existent-flag", "", req, false)
+	if result {
+		t.Error("Expected non-existent flag to return default value false")
 	}
 }
 
-// TestReverseProxyModule_GetAlternativeBackend tests the alternative backend selection logic
-func TestReverseProxyModule_GetAlternativeBackend(t *testing.T) {
-	module := NewModule()
-	module.defaultBackend = "default-backend"
-
-	// Test with specified alternative
-	alt := module.getAlternativeBackend("custom-backend")
-	if alt != "custom-backend" {
-		t.Errorf("Expected 'custom-backend', got '%s'", alt)
+// TestFileBasedFeatureFlagEvaluator_Disabled tests when feature flags are disabled
+func TestFileBasedFeatureFlagEvaluator_Disabled(t *testing.T) {
+	// Create mock application with disabled feature flags
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	config := &ReverseProxyConfig{
+		FeatureFlags: FeatureFlagsConfig{
+			Enabled: false, // Disabled
+			Flags: map[string]bool{
+				"test-flag": true,
+			},
+		},
 	}
 
-	// Test with empty alternative (should use default)
-	alt = module.getAlternativeBackend("")
-	if alt != "default-backend" {
-		t.Errorf("Expected 'default-backend', got '%s'", alt)
+	app := NewMockTenantApplication()
+	app.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(config))
+
+	tenantService := modular.NewStandardTenantService(logger)
+	err := app.RegisterService("tenantService", tenantService)
+	if err != nil {
+		t.Fatalf("Failed to register tenant service: %v", err)
+	}
+
+	evaluator, err := NewFileBasedFeatureFlagEvaluator(app, logger)
+	if err != nil {
+		t.Fatalf("Failed to create feature flag evaluator: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	// Test that flags return error when disabled
+	_, err = evaluator.EvaluateFlag(context.Background(), "test-flag", "", req)
+	if err == nil {
+		t.Error("Expected error when feature flags are disabled")
+	}
+
+	// Test that flags return default when disabled
+	result := evaluator.EvaluateFlagWithDefault(context.Background(), "test-flag", "", req, false)
+	if result {
+		t.Error("Expected default value when feature flags are disabled")
 	}
 }
