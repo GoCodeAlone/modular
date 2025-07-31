@@ -272,7 +272,41 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 			m.httpClient,
 			logger,
 		)
+
+		// Set up circuit breaker provider for health checker
+		m.healthChecker.SetCircuitBreakerProvider(func(backendID string) *HealthCircuitBreakerInfo {
+			if cb, exists := m.circuitBreakers[backendID]; exists {
+				return &HealthCircuitBreakerInfo{
+					IsOpen:       cb.IsOpen(),
+					State:        cb.GetState().String(),
+					FailureCount: cb.GetFailureCount(),
+				}
+			}
+			return nil
+		})
+
 		app.Logger().Info("Health checker initialized", "backends", len(m.config.BackendServices))
+	}
+
+	// Initialize circuit breakers for all backends if enabled
+	if m.config.CircuitBreakerConfig.Enabled {
+		for backendID := range m.config.BackendServices {
+			// Check for backend-specific circuit breaker config
+			var cbConfig CircuitBreakerConfig
+			if backendCB, exists := m.config.BackendCircuitBreakers[backendID]; exists {
+				cbConfig = backendCB
+			} else {
+				cbConfig = m.config.CircuitBreakerConfig
+			}
+
+			// Create circuit breaker for this backend
+			cb := NewCircuitBreakerWithConfig(backendID, cbConfig, m.metrics)
+			m.circuitBreakers[backendID] = cb
+
+			app.Logger().Debug("Initialized circuit breaker", "backend", backendID,
+				"failure_threshold", cbConfig.FailureThreshold, "open_timeout", cbConfig.OpenTimeout)
+		}
+		app.Logger().Info("Circuit breakers initialized", "backends", len(m.circuitBreakers))
 	}
 
 	return nil
@@ -2030,19 +2064,27 @@ func (m *ReverseProxyModule) registerMetricsEndpoint(endpoint string) {
 	if m.healthChecker != nil {
 		healthEndpoint := endpoint + "/health"
 		healthHandler := func(w http.ResponseWriter, r *http.Request) {
-			status := m.healthChecker.GetHealthStatus()
+			// Get overall health status including circuit breaker information
+			overallHealth := m.healthChecker.GetOverallHealthStatus(true)
 
 			// Convert to JSON
-			jsonData, err := json.Marshal(status)
+			jsonData, err := json.Marshal(overallHealth)
 			if err != nil {
 				m.app.Logger().Error("Failed to marshal health status data", "error", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 
-			// Set content type and write response
+			// Set content type
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
+
+			// Set status code based on overall health
+			if overallHealth.Healthy {
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}
+
 			if _, err := w.Write(jsonData); err != nil {
 				m.app.Logger().Error("Failed to write health status response", "error", err)
 			}
@@ -2050,6 +2092,38 @@ func (m *ReverseProxyModule) registerMetricsEndpoint(endpoint string) {
 
 		m.router.HandleFunc(healthEndpoint, healthHandler)
 		m.app.Logger().Info("Registered health check endpoint", "endpoint", healthEndpoint)
+
+		// Register overall service health endpoint
+		overallHealthEndpoint := "/health"
+		overallHealthHandler := func(w http.ResponseWriter, r *http.Request) {
+			// Get overall health status without detailed backend information
+			overallHealth := m.healthChecker.GetOverallHealthStatus(false)
+
+			// Convert to JSON
+			jsonData, err := json.Marshal(overallHealth)
+			if err != nil {
+				m.app.Logger().Error("Failed to marshal overall health data", "error", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			// Set content type
+			w.Header().Set("Content-Type", "application/json")
+
+			// Set status code based on overall health
+			if overallHealth.Healthy {
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}
+
+			if _, err := w.Write(jsonData); err != nil {
+				m.app.Logger().Error("Failed to write overall health response", "error", err)
+			}
+		}
+
+		m.router.HandleFunc(overallHealthEndpoint, overallHealthHandler)
+		m.app.Logger().Info("Registered overall health endpoint", "endpoint", overallHealthEndpoint)
 	}
 }
 
@@ -2241,6 +2315,18 @@ func (m *ReverseProxyModule) GetBackendHealthStatus(backendID string) (*HealthSt
 // IsHealthCheckEnabled returns whether health checking is enabled.
 func (m *ReverseProxyModule) IsHealthCheckEnabled() bool {
 	return m.config.HealthCheck.Enabled
+}
+
+// GetOverallHealthStatus returns the overall health status of all backends.
+func (m *ReverseProxyModule) GetOverallHealthStatus(includeDetails bool) *OverallHealthStatus {
+	if m.healthChecker == nil {
+		return &OverallHealthStatus{
+			Healthy:       false,
+			TotalBackends: 0,
+			LastCheck:     time.Now(),
+		}
+	}
+	return m.healthChecker.GetOverallHealthStatus(includeDetails)
 }
 
 // evaluateFeatureFlag evaluates a feature flag for the given request context.

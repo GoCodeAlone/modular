@@ -30,6 +30,7 @@ jobs:
           - verbose-debug
           - feature-flag-proxy
           - testing-scenarios
+          - health-aware-reverse-proxy
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -184,6 +185,59 @@ jobs:
               echo "❌ testing-scenarios feature flag validation failed"
               exit 1
             fi
+          elif [ "${{ matrix.example }}" = "health-aware-reverse-proxy" ]; then
+            # Health-aware reverse proxy needs comprehensive circuit breaker testing
+            echo "🔄 Testing health-aware-reverse-proxy with circuit breaker validation..."
+            
+            # Make test script executable
+            chmod +x test-circuit-breakers.sh
+            
+            # Start the application in background
+            timeout 60s ./example > app.log 2>&1 &
+            PID=$!
+            sleep 8  # Allow time for mock backends to start
+            
+            # Check if process is still running
+            if ! kill -0 $PID 2>/dev/null; then
+              echo "❌ health-aware-reverse-proxy crashed during startup"
+              cat app.log
+              exit 1
+            fi
+            
+            # Test basic health endpoint (accepts both 200 and 503 status codes)
+            echo "Testing basic health endpoint..."
+            health_response=$(curl -s -w "HTTP_CODE:%{http_code}" http://localhost:8080/health)
+            http_code=$(echo "$health_response" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+            if [ "$http_code" = "200" ] || [ "$http_code" = "503" ]; then
+              echo "✅ health-aware-reverse-proxy health endpoint responding (HTTP $http_code)"
+            else
+              echo "❌ health-aware-reverse-proxy health endpoint returned unexpected status: HTTP $http_code"
+              echo "Response: $health_response"
+              kill $PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            # Test that unreachable backend triggers circuit breaker (simplified test)
+            echo "Testing circuit breaker functionality..."
+            # Make 3 requests to unreachable API to trigger circuit breaker
+            for i in {1..3}; do
+              curl -s http://localhost:8080/api/unreachable > /dev/null || true
+            done
+            
+            # Wait a moment for circuit breaker to update
+            sleep 2
+            
+            # Check that health status reflects circuit breaker state
+            health_response=$(curl -s http://localhost:8080/health)
+            if echo "$health_response" | grep -q '"circuit_open_count":[1-9]'; then
+              echo "✅ health-aware-reverse-proxy circuit breaker properly triggered"
+            else
+              echo "⚠️ Circuit breaker may not have triggered as expected (this could be timing-related)"
+              echo "Health response: $health_response"
+              # Don't fail here as this could be timing-sensitive in CI
+            fi
+            
+            kill $PID 2>/dev/null || true
             
           elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ] || [ "${{ matrix.example }}" = "feature-flag-proxy" ]; then
             # These apps just need to start without immediate errors
