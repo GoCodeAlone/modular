@@ -3,6 +3,10 @@
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Application Builder API](#application-builder-api)
+  - [Builder Pattern](#builder-pattern)
+  - [Functional Options](#functional-options)
+  - [Decorator Pattern](#decorator-pattern)
 - [Core Concepts](#core-concepts)
   - [Application](#application)
   - [Modules](#modules)
@@ -10,6 +14,10 @@
     - [Optional Module Interfaces](#optional-module-interfaces)
   - [Service Registry](#service-registry)
   - [Configuration Management](#configuration-management)
+- [Observer Pattern Integration](#observer-pattern-integration)
+  - [CloudEvents Support](#cloudevents-support)
+  - [Functional Observers](#functional-observers)
+  - [Observable Decorators](#observable-decorators)
 - [Module Lifecycle](#module-lifecycle)
   - [Registration](#registration)
   - [Configuration](#configuration)
@@ -53,6 +61,102 @@
 ## Introduction
 
 The Modular framework provides a structured approach to building modular Go applications. This document offers in-depth explanations of the framework's features and capabilities, providing developers with the knowledge they need to build robust, maintainable applications.
+
+## Application Builder API
+
+### Builder Pattern
+
+The Modular framework v2.0 introduces a powerful builder pattern for constructing applications. This provides a clean, composable way to configure applications with various decorators and options.
+
+#### Basic Usage
+
+```go
+app, err := modular.NewApplication(
+    modular.WithLogger(logger),
+    modular.WithConfigProvider(configProvider),
+    modular.WithModules(
+        &DatabaseModule{},
+        &APIModule{},
+    ),
+)
+if err != nil {
+    return err
+}
+```
+
+### Functional Options
+
+The builder uses functional options to provide flexibility and extensibility:
+
+#### Core Options
+
+- **`WithLogger(logger)`**: Sets the application logger (required)
+- **`WithConfigProvider(provider)`**: Sets the main configuration provider
+- **`WithBaseApplication(app)`**: Wraps an existing application with decorators
+- **`WithModules(modules...)`**: Registers multiple modules at construction time
+
+#### Configuration Options
+
+- **`WithConfigDecorators(decorators...)`**: Applies configuration decorators for enhanced config processing
+- **`InstanceAwareConfig()`**: Enables instance-aware configuration decoration
+- **`TenantAwareConfigDecorator(loader)`**: Enables tenant-specific configuration overrides
+
+#### Enhanced Functionality Options
+
+- **`WithTenantAware(loader)`**: Adds multi-tenant capabilities with automatic tenant resolution
+- **`WithObserver(observers...)`**: Adds event observers for application lifecycle and custom events
+
+### Decorator Pattern
+
+The framework uses the decorator pattern to add cross-cutting concerns without modifying core application logic:
+
+#### TenantAwareDecorator
+
+Wraps applications to add multi-tenant functionality:
+
+```go
+app, err := modular.NewApplication(
+    modular.WithLogger(logger),
+    modular.WithConfigProvider(configProvider),
+    modular.WithTenantAware(&MyTenantLoader{}),
+    modular.WithModules(modules...),
+)
+```
+
+Features:
+- Automatic tenant resolution during startup
+- Tenant-scoped configuration and services
+- Integration with tenant-aware modules
+
+#### ObservableDecorator
+
+Adds observer pattern capabilities with CloudEvents integration:
+
+```go
+eventObserver := func(ctx context.Context, event cloudevents.Event) error {
+    log.Printf("Event: %s from %s", event.Type(), event.Source())
+    return nil
+}
+
+app, err := modular.NewApplication(
+    modular.WithLogger(logger),
+    modular.WithConfigProvider(configProvider),
+    modular.WithObserver(eventObserver),
+    modular.WithModules(modules...),
+)
+```
+
+Features:
+- Automatic emission of application lifecycle events
+- CloudEvents specification compliance
+- Multiple observer support with error isolation
+
+#### Benefits of Decorator Pattern
+
+1. **Separation of Concerns**: Cross-cutting functionality is isolated in decorators
+2. **Composability**: Multiple decorators can be combined as needed
+3. **Flexibility**: Applications can be enhanced without changing core logic
+4. **Testability**: Decorators can be tested independently
 
 ## Core Concepts
 

@@ -30,6 +30,7 @@ jobs:
           - verbose-debug
           - feature-flag-proxy
           - testing-scenarios
+          - observer-pattern
           - health-aware-reverse-proxy
     steps:
       - name: Checkout code
@@ -238,6 +239,45 @@ jobs:
             fi
             
             kill $PID 2>/dev/null || true
+            
+          elif [ "${{ matrix.example }}" = "observer-pattern" ]; then
+            # Observer pattern example needs to complete its demo and show success message
+            echo "🔍 Testing observer-pattern example completion..."
+            
+            # Run the observer pattern demo and capture output
+            timeout 30s ./example > app.log 2>&1
+            EXIT_CODE=$?
+            
+            # Check if the demo completed successfully
+            if [ $EXIT_CODE -eq 0 ] && grep -q "Observer Pattern Demo completed successfully" app.log; then
+              echo "✅ observer-pattern demo completed successfully"
+              
+              # Verify key events were logged
+              if grep -q "module.registered" app.log && grep -q "service.registered" app.log; then
+                echo "✅ observer-pattern logged expected lifecycle events"
+              else
+                echo "❌ observer-pattern missing expected lifecycle events"
+                echo "📋 Application logs:"
+                cat app.log
+                exit 1
+              fi
+              
+              # Verify CloudEvents functionality was tested
+              if grep -q "CloudEvent emitted successfully" app.log; then
+                echo "✅ observer-pattern CloudEvents functionality verified"
+              else
+                echo "❌ observer-pattern CloudEvents functionality not verified"
+                echo "📋 Application logs:"
+                cat app.log
+                exit 1
+              fi
+              
+            else
+              echo "❌ observer-pattern demo failed to complete successfully"
+              echo "📋 Application logs:"
+              cat app.log
+              exit 1
+            fi
             
           elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ] || [ "${{ matrix.example }}" = "feature-flag-proxy" ]; then
             # These apps just need to start without immediate errors
