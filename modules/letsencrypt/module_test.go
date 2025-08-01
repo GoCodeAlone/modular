@@ -1,6 +1,7 @@
 package letsencrypt
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -190,4 +191,278 @@ func createMockCertificate(t *testing.T, domain string) ([]byte, []byte) {
 	})
 
 	return certPEM, keyPEM
+}
+
+// Additional tests to improve coverage
+func TestLetsEncryptModule_Name(t *testing.T) {
+	module := &LetsEncryptModule{}
+	name := module.Name()
+	if name != ModuleName {
+		t.Errorf("Expected module name %s, got %s", ModuleName, name)
+	}
+}
+
+func TestLetsEncryptModule_Config(t *testing.T) {
+	config := &LetsEncryptConfig{
+		Email:   "test@example.com",
+		Domains: []string{"example.com"},
+	}
+	module := &LetsEncryptModule{config: config}
+	
+	result := module.Config()
+	if result != config {
+		t.Error("Config method should return the module's config")
+	}
+}
+
+func TestLetsEncryptModule_StartStop(t *testing.T) {
+	config := &LetsEncryptConfig{
+		Email:        "test@example.com",
+		Domains:      []string{"example.com"},
+		StoragePath:  "/tmp/test-letsencrypt",
+		AutoRenew:    false,
+		UseStaging:   true,
+		HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
+	}
+	
+	module, err := New(config)
+	if err != nil {
+		t.Fatalf("Failed to create module: %v", err)
+	}
+	
+	// Test Stop when not started (should not error)
+	err = module.Stop(context.Background())
+	if err != nil {
+		t.Errorf("Stop should not error when not started: %v", err)
+	}
+	
+	// Note: We can't easily test Start as it requires ACME server interaction
+}
+
+func TestLetsEncryptModule_GetCertificateForDomain(t *testing.T) {
+	// Create a test directory for certificates  
+	testDir, err := os.MkdirTemp("", "letsencrypt-test2")
+	if err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+	
+	config := &LetsEncryptConfig{
+		Email:        "test@example.com",
+		Domains:      []string{"example.com"},
+		StoragePath:  testDir,
+		UseStaging:   true,
+		HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
+	}
+	
+	module, err := New(config)
+	if err != nil {
+		t.Fatalf("Failed to create module: %v", err)
+	}
+	
+	// Create mock certificate
+	certPEM, keyPEM := createMockCertificate(t, "example.com")
+	
+	// Create certificate storage and save certificate
+	storage, err := newCertificateStorage(testDir)
+	if err != nil {
+		t.Fatalf("Failed to create certificate storage: %v", err)
+	}
+	
+	certResource := &certificate.Resource{
+		Domain:      "example.com",
+		Certificate: certPEM,
+		PrivateKey:  keyPEM,
+	}
+	
+	if err := storage.SaveCertificate("example.com", certResource); err != nil {
+		t.Fatalf("Failed to save certificate: %v", err)
+	}
+	
+	// Initialize certificates map and load certificate
+	module.certificates = make(map[string]*tls.Certificate)
+	tlsCert, err := storage.LoadCertificate("example.com")
+	if err != nil {
+		t.Fatalf("Failed to load certificate: %v", err)
+	}
+	module.certificates["example.com"] = tlsCert
+	
+	// Test GetCertificateForDomain for existing domain
+	cert, err := module.GetCertificateForDomain("example.com")
+	if err != nil {
+		t.Errorf("GetCertificateForDomain failed: %v", err)
+	}
+	if cert == nil {
+		t.Error("Expected certificate for example.com")
+	}
+	
+	// Test GetCertificateForDomain for non-existing domain
+	cert, err = module.GetCertificateForDomain("nonexistent.com")
+	if err == nil {
+		t.Error("Expected error for non-existent domain")
+	}
+	if cert != nil {
+		t.Error("Expected nil certificate for non-existent domain")
+	}
+}
+
+func TestLetsEncryptConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *LetsEncryptConfig
+		wantErr bool
+	}{
+		{
+			name: "valid config",
+			config: &LetsEncryptConfig{
+				Email:        "test@example.com",
+				Domains:      []string{"example.com"},
+				StoragePath:  "/tmp/test",
+				HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing email",
+			config: &LetsEncryptConfig{
+				Domains:     []string{"example.com"},
+				StoragePath: "/tmp/test",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing domains",
+			config: &LetsEncryptConfig{
+				Email:       "test@example.com",
+				StoragePath: "/tmp/test",
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty domains",
+			config: &LetsEncryptConfig{
+				Email:       "test@example.com",
+				Domains:     []string{},
+				StoragePath: "/tmp/test",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing storage path - sets default",
+			config: &LetsEncryptConfig{
+				Email:   "test@example.com",
+				Domains: []string{"example.com"},
+				// StoragePath is omitted to test default behavior
+			},
+			wantErr: false, // Should not error, just set default
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCertificateStorage_ListCertificates(t *testing.T) {
+	testDir, err := os.MkdirTemp("", "cert-storage-test")
+	if err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+	
+	storage, err := newCertificateStorage(testDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	
+	// Test empty directory
+	certs, err := storage.ListCertificates()
+	if err != nil {
+		t.Errorf("ListCertificates failed: %v", err)
+	}
+	if len(certs) != 0 {
+		t.Errorf("Expected 0 certificates, got %d", len(certs))
+	}
+}
+
+func TestCertificateStorage_IsCertificateExpiringSoon(t *testing.T) {
+	testDir, err := os.MkdirTemp("", "cert-expiry-test")
+	if err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+	
+	storage, err := newCertificateStorage(testDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	
+	// Test non-existent certificate
+	isExpiring, err := storage.IsCertificateExpiringSoon("nonexistent.com", 30)
+	if err == nil {
+		t.Error("Expected error for non-existent certificate")
+	}
+	if isExpiring {
+		t.Error("Non-existent certificate should not be expiring")
+	}
+}
+
+func TestSanitizeDomain(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"example.com", "example_com"},
+		{"sub.example.com", "sub_example_com"},
+		{"test-domain.com", "test-domain_com"},
+		{"simple", "simple"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := sanitizeDomain(tt.input)
+			if result != tt.expected {
+				t.Errorf("sanitizeDomain(%s) = %s, expected %s", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDesanitizeDomain(t *testing.T) {
+	result := desanitizeDomain("example_com")
+	expected := "example.com"
+	if result != expected {
+		t.Errorf("desanitizeDomain(example_com) = %s, expected %s", result, expected)
+	}
+}
+
+func TestUser_Interface(t *testing.T) {
+	user := &User{
+		Email:        "test@example.com",
+		Registration: nil,
+		Key:          nil,
+	}
+	
+	// Test GetEmail
+	email := user.GetEmail()
+	if email != "test@example.com" {
+		t.Errorf("GetEmail() = %s, expected test@example.com", email)
+	}
+	
+	// Test GetRegistration 
+	reg := user.GetRegistration()
+	if reg != nil {
+		t.Error("Expected nil registration")
+	}
+	
+	// Test GetPrivateKey
+	key := user.GetPrivateKey()
+	if key != nil {
+		t.Error("Expected nil private key")
+	}
 }
