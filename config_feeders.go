@@ -39,6 +39,17 @@ type VerboseLogger interface {
 	Debug(msg string, args ...any)
 }
 
+// ModuleAwareFeeder provides functionality for feeders that can receive module context
+// during configuration feeding. This allows feeders to customize behavior based on
+// which module's configuration is being processed.
+type ModuleAwareFeeder interface {
+	Feeder
+	// FeedWithModuleContext feeds configuration with module context information.
+	// The moduleName parameter provides the name of the module whose configuration
+	// is being processed, allowing the feeder to customize its behavior accordingly.
+	FeedWithModuleContext(structure interface{}, moduleName string) error
+}
+
 // InstancePrefixFunc is a function that generates a prefix for an instance key
 type InstancePrefixFunc = feeders.InstancePrefixFunc
 

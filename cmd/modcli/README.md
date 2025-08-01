@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml)
 [![Release](https://github.com/GoCodeAlone/modular/actions/workflows/cli-release.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/cli-release.yml)
-[![codecov](https://codecov.io/gh/GoCodeAlone/modular/branch/main/graph/badge.svg?flag=cli)](https://codecov.io/gh/GoCodeAlone/modular)
+[![codecov](https://codecov.io/gh/CrisisTextLine/modular/branch/main/graph/badge.svg?flag=cli)](https://codecov.io/gh/CrisisTextLine/modular)
 [![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/cmd/modcli.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/cmd/modcli)
 [![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
 

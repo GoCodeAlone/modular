@@ -1,7 +1,7 @@
 package reverseproxy
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"net/http"
@@ -20,31 +20,28 @@ type CachedResponse struct {
 
 // responseCache implements a simple cache for HTTP responses
 type responseCache struct {
-	cache           map[string]*CachedResponse
-	mutex           sync.RWMutex
-	defaultTTL      time.Duration
-	maxCacheSize    int
-	cacheable       func(r *http.Request, statusCode int) bool
-	cleanupInterval time.Duration
-	stopCleanup     chan struct{}
+	cache        map[string]*CachedResponse
+	mutex        sync.RWMutex
+	defaultTTL   time.Duration
+	maxCacheSize int
+	cacheable    func(r *http.Request, statusCode int) bool
+	stopCleanup  chan struct{}
 }
 
 // newResponseCache creates a new response cache with the specified TTL and max size
+//
+//nolint:unused // Used in tests
 func newResponseCache(defaultTTL time.Duration, maxCacheSize int, cleanupInterval time.Duration) *responseCache {
 	rc := &responseCache{
-		cache:           make(map[string]*CachedResponse),
-		defaultTTL:      defaultTTL,
-		maxCacheSize:    maxCacheSize,
-		cleanupInterval: cleanupInterval,
-		stopCleanup:     make(chan struct{}),
+		cache:        make(map[string]*CachedResponse),
+		defaultTTL:   defaultTTL,
+		maxCacheSize: maxCacheSize,
+		stopCleanup:  make(chan struct{}),
 		cacheable: func(r *http.Request, statusCode int) bool {
 			// Only cache GET requests with 200 OK responses by default
 			return r.Method == http.MethodGet && statusCode == http.StatusOK
 		},
 	}
-
-	// Start periodic cleanup
-	go rc.periodicCleanup()
 
 	return rc
 }
@@ -108,16 +105,16 @@ func (rc *responseCache) Get(key string) (*CachedResponse, bool) {
 // GenerateKey creates a cache key from an HTTP request
 func (rc *responseCache) GenerateKey(r *http.Request) string {
 	// Create a hash of the method, URL, and relevant headers
-	h := md5.New()
-	io.WriteString(h, r.Method)
-	io.WriteString(h, r.URL.String())
+	h := sha256.New()
+	_, _ = io.WriteString(h, r.Method)
+	_, _ = io.WriteString(h, r.URL.String())
 
 	// Include relevant caching headers like Accept and Accept-Encoding
 	if accept := r.Header.Get("Accept"); accept != "" {
-		io.WriteString(h, accept)
+		_, _ = io.WriteString(h, accept)
 	}
 	if acceptEncoding := r.Header.Get("Accept-Encoding"); acceptEncoding != "" {
-		io.WriteString(h, acceptEncoding)
+		_, _ = io.WriteString(h, acceptEncoding)
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
@@ -173,20 +170,6 @@ func (rc *responseCache) cleanup() {
 }
 
 // periodicCleanup runs a cleanup on the cache at regular intervals
-func (rc *responseCache) periodicCleanup() {
-	ticker := time.NewTicker(rc.cleanupInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			rc.cleanup()
-		case <-rc.stopCleanup:
-			return
-		}
-	}
-}
-
 // Close stops the periodic cleanup goroutine
 func (rc *responseCache) Close() {
 	close(rc.stopCleanup)

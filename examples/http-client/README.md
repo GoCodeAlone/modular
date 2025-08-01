@@ -1,6 +1,14 @@
 # HTTP Client Example
 
-This example demonstrates the integration of the HTTP client module with other modules in a reverse proxy setup, showcasing advanced HTTP client features and configuration.
+This example demonstrates the integration of the `httpclient` and `reverseproxy` modules, showcasing how the reverseproxy module properly uses the httpclient service for making HTTP requests with verbose logging.
+
+## Features Demonstrated
+
+- **Service Integration**: Shows how the reverseproxy module automatically uses the httpclient service when available
+- **Verbose HTTP Logging**: Demonstrates detailed request/response logging through the httpclient service
+- **File Logging**: Captures HTTP request/response details to files for analysis
+- **Modular Architecture**: Clean separation of concerns between routing (reverseproxy) and HTTP client functionality (httpclient)
+- **Service Dependency Resolution**: Example of how modules can depend on services provided by other modules
 
 ## What it demonstrates
 
@@ -8,7 +16,7 @@ This example demonstrates the integration of the HTTP client module with other m
 - **Advanced HTTP Client Configuration**: Connection pooling, timeouts, and performance tuning
 - **Reverse Proxy with Custom Client**: Using a configured HTTP client for proxying requests
 - **Module Service Dependencies**: How modules can provide services to other modules
-- **Verbose Logging Options**: Basic HTTP client logging capabilities
+- **Verbose Logging Options**: Advanced HTTP client logging capabilities with file output
 
 ## Features
 
@@ -18,6 +26,7 @@ This example demonstrates the integration of the HTTP client module with other m
 - ChiMux router with CORS support
 - HTTP server for receiving requests
 - Compression and keep-alive settings
+- **NEW**: Comprehensive HTTP request/response logging to files
 
 ## Running the Example
 
@@ -39,24 +48,26 @@ The server will start on `localhost:8080` and act as a reverse proxy that uses t
 ```yaml
 httpclient:
   # Connection pooling settings
-  max_idle_conns: 50
-  max_idle_conns_per_host: 5
-  idle_conn_timeout: 60
+  max_idle_conns: 100
+  max_idle_conns_per_host: 10
+  idle_conn_timeout: 90
   
   # Timeout settings
-  request_timeout: 15
-  tls_timeout: 5
+  request_timeout: 30
+  tls_timeout: 10
   
   # Other settings
   disable_compression: false
   disable_keep_alives: false
   verbose: true
   
-  # Verbose logging options
+  # Verbose logging options (enable for demonstration)
   verbose_options:
-    log_headers: false
-    log_body: false
-    max_body_log_size: 1024
+    log_headers: true
+    log_body: true
+    max_body_log_size: 2048
+    log_to_file: true
+    log_file_path: "./http_client_logs"
 ```
 
 ### Reverse Proxy Integration
@@ -81,6 +92,14 @@ curl http://localhost:8080/proxy/httpbin/headers
 curl http://localhost:8080/proxy/httpbin/user-agent
 ```
 
+## Verification
+
+When the example runs correctly, you should see:
+
+1. **Service Integration Success**: Log message showing `"Using HTTP client from httpclient service"` instead of `"Using default HTTP client (no httpclient service available)"`
+2. **Verbose Logging**: Detailed HTTP request/response logs including timing information
+3. **File Logging**: HTTP transaction logs saved to the `./http_client_logs` directory
+
 ## Key Features Demonstrated
 
 1. **Connection Pooling**: Efficient reuse of HTTP connections
@@ -89,6 +108,7 @@ curl http://localhost:8080/proxy/httpbin/user-agent
 4. **Compression Handling**: Configurable request/response compression
 5. **Keep-Alive Control**: Connection persistence management
 6. **Verbose Logging**: Request/response logging for debugging
+7. **File-Based Logging**: Persistent HTTP transaction logs for analysis
 
 ## Module Architecture
 
@@ -99,6 +119,7 @@ HTTP Request → ChiMux Router → ReverseProxy Module → HTTP Client Module �
                             - Connection pooling
                             - Custom timeouts
                             - Logging capabilities
+                            - File-based transaction logs
 ```
 
 ## Use Cases
@@ -109,5 +130,6 @@ This example is ideal for:
 - Services needing detailed HTTP client monitoring
 - Applications with strict timeout requirements
 - Systems requiring HTTP client telemetry
+- Debugging and troubleshooting HTTP integrations
 
 The HTTP client module provides enterprise-grade HTTP client functionality that can be shared across multiple modules in your application.

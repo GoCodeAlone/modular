@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [ main ]
 
-permissions:
-  contents: read
-
 env:
   GO_VERSION: '^1.23.5'
 
@@ -41,7 +38,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
         
       - name: CTRF Test Output
         run: |
@@ -83,7 +80,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           directory: cmd/modcli/
           files: cli-coverage.txt
           flags: cli

@@ -42,10 +42,9 @@ func (m *MockCertificateService) AddCertificate(domain string, cert *tls.Certifi
 
 // SimpleMockApplication is a minimal implementation for the certificate service tests
 type SimpleMockApplication struct {
-	config        map[string]modular.ConfigProvider
-	logger        modular.Logger
-	defaultCfg    modular.ConfigProvider
-	verboseConfig bool
+	config     map[string]modular.ConfigProvider
+	logger     modular.Logger
+	defaultCfg modular.ConfigProvider
 }
 
 func NewSimpleMockApplication() *SimpleMockApplication {
@@ -119,14 +118,12 @@ func (m *SimpleMockApplication) Run() error {
 	return nil // No-op for these tests
 }
 
-// IsVerboseConfig returns whether verbose configuration debugging is enabled
 func (m *SimpleMockApplication) IsVerboseConfig() bool {
-	return m.verboseConfig
+	return false
 }
 
-// SetVerboseConfig enables or disables verbose configuration debugging
-func (m *SimpleMockApplication) SetVerboseConfig(enabled bool) {
-	m.verboseConfig = enabled
+func (m *SimpleMockApplication) SetVerboseConfig(verbose bool) {
+	// No-op for these tests
 }
 
 // SimpleMockLogger implements modular.Logger for certificate service tests

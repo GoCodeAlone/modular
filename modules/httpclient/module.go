@@ -122,6 +122,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
@@ -327,8 +328,13 @@ func (m *HTTPClientModule) ProvidesServices() []modular.ServiceProvider {
 	return []modular.ServiceProvider{
 		{
 			Name:        ServiceName,
-			Description: "HTTP client service for making HTTP requests",
-			Instance:    m,
+			Description: "HTTP client (*http.Client) for direct usage",
+			Instance:    m.httpClient, // Provide the actual *http.Client instance
+		},
+		{
+			Name:        "httpclient-service",
+			Description: "HTTP client service interface (ClientService) for advanced features",
+			Instance:    m, // Provide the service interface for modules that need additional features
 		},
 	}
 }
@@ -390,159 +396,120 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	requestID := fmt.Sprintf("%p", req)
 	startTime := time.Now()
 
-	var reqDump []byte
-	// Capture request dump if file logging is enabled
-	if t.LogToFile && t.FileLogger != nil && (t.LogHeaders || t.LogBody) {
-		dumpBody := t.LogBody
-		var err error
-		reqDump, err = httputil.DumpRequestOut(req, dumpBody)
-		if err != nil {
-			t.Logger.Error("Failed to dump request for transaction logging",
-				"id", requestID,
-				"error", err,
-			)
-		}
-	}
-
 	// Log the request
 	t.logRequest(requestID, req)
 
 	// Execute the actual request
 	resp, err := t.Transport.RoundTrip(req)
 
-	// Log timing information
+	// Calculate timing
 	duration := time.Since(startTime)
-	t.Logger.Info("Request timing",
-		"id", requestID,
-		"url", req.URL.String(),
-		"method", req.Method,
-		"duration_ms", duration.Milliseconds(),
-	)
 
 	// Log error if any occurred
 	if err != nil {
 		t.Logger.Error("Request failed",
 			"id", requestID,
 			"url", req.URL.String(),
+			"method", req.Method,
+			"duration_ms", duration.Milliseconds(),
 			"error", err,
 		)
-		return resp, err
+		return resp, fmt.Errorf("http request failed: %w", err)
 	}
 
-	// Log the response
-	t.logResponse(requestID, req.URL.String(), resp)
+	// Log the response (timing will be included in response log)
+	t.logResponse(requestID, req.URL.String(), resp, duration)
 
-	// Create a transaction log with both request and response if file logging is enabled
-	if t.LogToFile && t.FileLogger != nil && reqDump != nil && resp != nil {
-		var respDump []byte
-		if t.LogBody && resp.Body != nil {
-			// We need to read the body for logging and then restore it
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Logger.Error("Failed to read response body for transaction logging",
-					"id", requestID,
-					"error", err,
-				)
-			} else {
-				// Restore the body for the caller
-				resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-				// Create the response dump manually
-				respDump = append([]byte(fmt.Sprintf("HTTP %s\r\n", resp.Status)), []byte{}...)
-				for k, v := range resp.Header {
-					respDump = append(respDump, []byte(fmt.Sprintf("%s: %s\r\n", k, v[0]))...)
-				}
-				respDump = append(respDump, []byte("\r\n")...)
-				respDump = append(respDump, bodyBytes...)
-			}
-		} else {
-			// If we don't need the body or there is no body
-			respDump, _ = httputil.DumpResponse(resp, false)
-		}
-
-		if respDump != nil {
-			if err := t.FileLogger.LogTransactionToFile(requestID, reqDump, respDump, duration, req.URL.String()); err != nil {
-				t.Logger.Error("Failed to write transaction to log file",
-					"id", requestID,
-					"error", err,
-				)
-			} else {
-				t.Logger.Debug("Transaction logged to file",
-					"id", requestID,
-				)
-			}
-		}
+	// Handle file logging if enabled
+	if t.LogToFile && t.FileLogger != nil {
+		t.handleFileLogging(requestID, req, resp, duration)
 	}
 
-	return resp, err
+	return resp, nil
 }
 
 // logRequest logs detailed information about the request.
 func (t *loggingTransport) logRequest(id string, req *http.Request) {
-	t.Logger.Info("Outgoing request",
-		"id", id,
-		"method", req.Method,
-		"url", req.URL.String(),
-	)
+	// Basic request information that's always useful
+	basicInfo := fmt.Sprintf("%s %s", req.Method, req.URL.String())
 
-	// Dump full request if needed
+	// If detailed logging is enabled, try to get more information
 	if t.LogHeaders || t.LogBody {
 		dumpBody := t.LogBody
 		reqDump, err := httputil.DumpRequestOut(req, dumpBody)
 		if err != nil {
-			t.Logger.Error("Failed to dump request",
+			// If dump fails, log basic info with error
+			t.Logger.Info("Outgoing request (dump failed)",
 				"id", id,
+				"request", basicInfo,
 				"error", err,
 			)
 		} else {
 			if t.LogToFile && t.FileLogger != nil {
 				// Log to file using our FileLogger
+				t.Logger.Info("Outgoing request (logged to file)",
+					"id", id,
+					"request", basicInfo,
+				)
 				if err := t.FileLogger.LogRequest(id, reqDump); err != nil {
 					t.Logger.Error("Failed to write request to log file",
 						"id", id,
 						"error", err,
 					)
-				} else {
-					t.Logger.Debug("Request logged to file",
-						"id", id,
-					)
 				}
 			} else {
-				// Log to application logger
-				if len(reqDump) > t.MaxBodyLogSize {
-					t.Logger.Debug("Request dump (truncated)",
+				// Log to application logger with smart truncation
+				dumpStr := string(reqDump)
+				if t.MaxBodyLogSize > 0 && len(reqDump) > t.MaxBodyLogSize {
+					// Smart truncation: try to include the request line and headers
+					truncated := t.smartTruncateRequest(dumpStr, t.MaxBodyLogSize)
+					t.Logger.Info("Outgoing request",
 						"id", id,
-						"dump", string(reqDump[:t.MaxBodyLogSize])+"...",
+						"request", basicInfo,
+						"details", truncated+" [truncated]",
 					)
 				} else {
-					t.Logger.Debug("Request dump",
+					t.Logger.Info("Outgoing request",
 						"id", id,
-						"dump", string(reqDump),
+						"request", basicInfo,
+						"details", dumpStr,
 					)
 				}
 			}
 		}
+	} else {
+		// Even when detailed logging is disabled, show useful basic information
+		headers := make(map[string]string)
+		for key, values := range req.Header {
+			if len(values) > 0 && t.isImportantHeader(key) {
+				headers[key] = values[0]
+			}
+		}
+
+		t.Logger.Info("Outgoing request",
+			"id", id,
+			"request", basicInfo,
+			"content_length", req.ContentLength,
+			"important_headers", headers,
+		)
 	}
 }
 
 // logResponse logs detailed information about the response.
-func (t *loggingTransport) logResponse(id, url string, resp *http.Response) {
+func (t *loggingTransport) logResponse(id, url string, resp *http.Response, duration time.Duration) {
 	if resp == nil {
 		t.Logger.Warn("Nil response received",
 			"id", id,
 			"url", url,
+			"duration_ms", duration.Milliseconds(),
 		)
 		return
 	}
 
-	t.Logger.Info("Received response",
-		"id", id,
-		"url", url,
-		"status", resp.Status,
-		"status_code", resp.StatusCode,
-	)
+	// Basic response information that's always useful
+	basicInfo := fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 
-	// Dump full response if needed
+	// If detailed logging is enabled, try to get more information
 	if t.LogHeaders || t.LogBody {
 		// If we need to log the body, we must read it and restore it for the caller
 		var respDump []byte
@@ -553,10 +520,14 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response) {
 			// Read body for logging
 			bodyBytes, err = io.ReadAll(resp.Body)
 			if err != nil {
-				t.Logger.Error("Failed to read response body for logging",
+				t.Logger.Info("Received response (body read failed)",
 					"id", id,
+					"response", basicInfo,
+					"url", url,
+					"duration_ms", duration.Milliseconds(),
 					"error", err,
 				)
+				return
 			}
 
 			// Restore the body for the caller
@@ -578,39 +549,268 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response) {
 		}
 
 		if err != nil {
-			t.Logger.Error("Failed to dump response",
+			// If dump fails, log basic info with error
+			t.Logger.Info("Received response (dump failed)",
 				"id", id,
+				"response", basicInfo,
+				"url", url,
+				"duration_ms", duration.Milliseconds(),
 				"error", err,
 			)
 		} else {
 			if t.LogToFile && t.FileLogger != nil {
 				// Log the response to file using our FileLogger
+				t.Logger.Info("Received response (logged to file)",
+					"id", id,
+					"response", basicInfo,
+					"url", url,
+					"duration_ms", duration.Milliseconds(),
+				)
 				if err := t.FileLogger.LogResponse(id, respDump); err != nil {
 					t.Logger.Error("Failed to write response to log file",
 						"id", id,
 						"error", err,
 					)
-				} else {
-					t.Logger.Debug("Response logged to file",
-						"id", id,
-					)
-					// Store the response for potential transaction logging
-					// We don't do transaction logging here as we don't have the request
 				}
 			} else {
-				// Log to application logger
-				if len(respDump) > t.MaxBodyLogSize {
-					t.Logger.Debug("Response dump (truncated)",
+				// Log to application logger with smart truncation
+				dumpStr := string(respDump)
+				if t.MaxBodyLogSize > 0 && len(respDump) > t.MaxBodyLogSize {
+					// Smart truncation: try to include the status line and headers
+					truncated := t.smartTruncateResponse(dumpStr, t.MaxBodyLogSize)
+					t.Logger.Info("Received response",
 						"id", id,
-						"dump", string(respDump[:t.MaxBodyLogSize])+"...",
+						"response", basicInfo,
+						"url", url,
+						"duration_ms", duration.Milliseconds(),
+						"details", truncated+" [truncated]",
 					)
 				} else {
-					t.Logger.Debug("Response dump",
+					t.Logger.Info("Received response",
 						"id", id,
-						"dump", string(respDump),
+						"response", basicInfo,
+						"url", url,
+						"duration_ms", duration.Milliseconds(),
+						"details", dumpStr,
 					)
 				}
 			}
 		}
+	} else {
+		// Even when detailed logging is disabled, show useful basic information
+		headers := make(map[string]string)
+		for key, values := range resp.Header {
+			if len(values) > 0 && t.isImportantHeader(key) {
+				headers[key] = values[0]
+			}
+		}
+
+		t.Logger.Info("Received response",
+			"id", id,
+			"response", basicInfo,
+			"url", url,
+			"duration_ms", duration.Milliseconds(),
+			"content_length", resp.ContentLength,
+			"important_headers", headers,
+		)
+	}
+}
+
+// smartTruncateRequest intelligently truncates a request dump to fit within maxSize
+// while preserving the most important information (request line and key headers).
+func (t *loggingTransport) smartTruncateRequest(dump string, maxSize int) string {
+	if maxSize <= 0 {
+		// Extract just the request line and essential headers
+		lines := strings.Split(dump, "\n")
+		if len(lines) == 0 {
+			return ""
+		}
+
+		result := lines[0] // Request line (e.g., "POST /api/test HTTP/1.1")
+
+		// Add key headers if space permits
+		for _, line := range lines[1:] {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				break // End of headers
+			}
+			if t.isImportantHeaderLine(line) && len(result)+len(line)+2 < 200 {
+				result += "\n" + line
+			}
+		}
+
+		return result
+	}
+
+	if len(dump) <= maxSize {
+		return dump
+	}
+
+	// Try to include headers by finding the body separator
+	headerEnd := strings.Index(dump, "\n\n")
+	if headerEnd == -1 {
+		headerEnd = strings.Index(dump, "\r\n\r\n")
+		if headerEnd != -1 {
+			headerEnd += 2
+		}
+	}
+
+	if headerEnd > 0 && headerEnd <= maxSize {
+		// Include headers and part of body
+		remaining := maxSize - headerEnd - 2
+		if remaining > 0 && len(dump) > headerEnd+2 {
+			bodyStart := headerEnd + 2
+			if bodyStart+remaining < len(dump) {
+				return dump[:bodyStart+remaining]
+			}
+		}
+		return dump[:headerEnd]
+	}
+
+	// Fallback: just truncate
+	return dump[:maxSize]
+}
+
+// smartTruncateResponse intelligently truncates a response dump to fit within maxSize
+// while preserving the most important information (status line and key headers).
+func (t *loggingTransport) smartTruncateResponse(dump string, maxSize int) string {
+	if maxSize <= 0 {
+		// Extract just the status line and essential headers
+		lines := strings.Split(dump, "\n")
+		if len(lines) == 0 {
+			return ""
+		}
+
+		result := lines[0] // Status line (e.g., "HTTP/1.1 200 OK")
+
+		// Add key headers if space permits
+		for _, line := range lines[1:] {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				break // End of headers
+			}
+			if t.isImportantHeaderLine(line) && len(result)+len(line)+2 < 200 {
+				result += "\n" + line
+			}
+		}
+
+		return result
+	}
+
+	if len(dump) <= maxSize {
+		return dump
+	}
+
+	// Try to include headers by finding the body separator
+	headerEnd := strings.Index(dump, "\n\n")
+	if headerEnd == -1 {
+		headerEnd = strings.Index(dump, "\r\n\r\n")
+		if headerEnd != -1 {
+			headerEnd += 2
+		}
+	}
+
+	if headerEnd > 0 && headerEnd <= maxSize {
+		// Include headers and part of body
+		remaining := maxSize - headerEnd - 2
+		if remaining > 0 && len(dump) > headerEnd+2 {
+			bodyStart := headerEnd + 2
+			if bodyStart+remaining < len(dump) {
+				return dump[:bodyStart+remaining]
+			}
+		}
+		return dump[:headerEnd]
+	}
+
+	// Fallback: just truncate
+	return dump[:maxSize]
+}
+
+// isImportantHeader determines if a header is important enough to show
+// even when detailed logging is disabled.
+func (t *loggingTransport) isImportantHeader(headerName string) bool {
+	important := []string{
+		"content-type", "content-length", "authorization", "user-agent",
+		"accept", "cache-control", "x-request-id", "x-correlation-id",
+		"x-trace-id", "location", "set-cookie",
+	}
+
+	headerLower := strings.ToLower(headerName)
+	for _, imp := range important {
+		if headerLower == imp {
+			return true
+		}
+	}
+	return false
+}
+
+// isImportantHeaderLine determines if a header line is important based on its content.
+func (t *loggingTransport) isImportantHeaderLine(line string) bool {
+	colonIndex := strings.Index(line, ":")
+	if colonIndex <= 0 {
+		return false
+	}
+	headerName := line[:colonIndex]
+	return t.isImportantHeader(headerName)
+}
+
+// handleFileLogging handles file-based logging for transactions.
+func (t *loggingTransport) handleFileLogging(requestID string, req *http.Request, resp *http.Response, duration time.Duration) {
+	if !t.LogHeaders && !t.LogBody {
+		return // No detailed logging requested
+	}
+
+	// Get request dump
+	dumpBody := t.LogBody
+	reqDump, err := httputil.DumpRequestOut(req, dumpBody)
+	if err != nil {
+		t.Logger.Error("Failed to dump request for transaction logging",
+			"id", requestID,
+			"error", err,
+		)
+		return
+	}
+
+	// Get response dump
+	var respDump []byte
+	if t.LogBody && resp.Body != nil {
+		// We need to read the body for logging and then restore it
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Logger.Error("Failed to read response body for transaction logging",
+				"id", requestID,
+				"error", err,
+			)
+			return
+		}
+
+		// Restore the body for the caller
+		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		// Create the response dump manually
+		respDump = append([]byte(fmt.Sprintf("HTTP %s\r\n", resp.Status)), []byte{}...)
+		for k, v := range resp.Header {
+			respDump = append(respDump, []byte(fmt.Sprintf("%s: %s\r\n", k, v[0]))...)
+		}
+		respDump = append(respDump, []byte("\r\n")...)
+		respDump = append(respDump, bodyBytes...)
+	} else {
+		// If we don't need the body or there is no body
+		respDump, err = httputil.DumpResponse(resp, false)
+		if err != nil {
+			t.Logger.Error("Failed to dump response for transaction logging",
+				"id", requestID,
+				"error", err,
+			)
+			return
+		}
+	}
+
+	// Write transaction log
+	if err := t.FileLogger.LogTransactionToFile(requestID, reqDump, respDump, duration, req.URL.String()); err != nil {
+		t.Logger.Error("Failed to write transaction to log file",
+			"id", requestID,
+			"error", err,
+		)
 	}
 }

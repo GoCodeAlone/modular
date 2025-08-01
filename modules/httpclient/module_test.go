@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockApplication implements modular.Application interface for testing
@@ -20,7 +22,10 @@ type MockApplication struct {
 
 func (m *MockApplication) GetConfigSection(name string) (modular.ConfigProvider, error) {
 	args := m.Called(name)
-	return args.Get(0).(modular.ConfigProvider), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(modular.ConfigProvider), fmt.Errorf("failed to get config section %s: %w", name, err)
+	}
+	return args.Get(0).(modular.ConfigProvider), nil
 }
 
 func (m *MockApplication) RegisterConfigSection(name string, provider modular.ConfigProvider) {
@@ -53,12 +58,18 @@ func (m *MockApplication) ConfigSections() map[string]modular.ConfigProvider {
 
 func (m *MockApplication) RegisterService(name string, service any) error {
 	args := m.Called(name, service)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("failed to register service %s: %w", name, err)
+	}
+	return nil
 }
 
 func (m *MockApplication) GetService(name string, target any) error {
 	args := m.Called(name, target)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return fmt.Errorf("failed to get service %s: %w", name, err)
+	}
+	return nil
 }
 
 // Add other required methods to satisfy the interface
@@ -76,12 +87,11 @@ func (m *MockApplication) Start() error                                        {
 func (m *MockApplication) Stop() error                                         { return nil }
 
 func (m *MockApplication) IsVerboseConfig() bool {
-	args := m.Called()
-	return args.Bool(0)
+	return false
 }
 
-func (m *MockApplication) SetVerboseConfig(enabled bool) {
-	m.Called(enabled)
+func (m *MockApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
 }
 
 // MockLogger implements modular.Logger interface for testing
@@ -152,7 +162,7 @@ func TestHTTPClientModule_Init(t *testing.T) {
 	err := module.Init(mockApp)
 
 	// Assertions
-	assert.NoError(t, err, "Init should not return an error")
+	require.NoError(t, err, "Init should not return an error")
 	assert.NotNil(t, module.httpClient, "HTTP client should not be nil")
 	assert.Equal(t, 30*time.Second, module.httpClient.Timeout, "Timeout should be set correctly")
 
@@ -206,7 +216,7 @@ func TestHTTPClientModule_RequestModifier(t *testing.T) {
 	}
 
 	// Create a test request
-	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://example.com", nil)
 
 	// Apply the modifier
 	modifiedReq := module.RequestModifier()(req)
@@ -229,7 +239,7 @@ func TestHTTPClientModule_SetRequestModifier(t *testing.T) {
 	})
 
 	// Create a test request
-	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://example.com", nil)
 
 	// Apply the modifier
 	modifiedReq := module.modifier(req)
@@ -255,7 +265,7 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 	}()
 
 	fileLogger, err := NewFileLogger(tmpDir, mockLogger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Setup test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -269,7 +279,7 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 
 	// Create logging transport
 	mockLogger.On("Info", mock.Anything, mock.Anything).Return()
-	mockLogger.On("Debug", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debug", mock.Anything, mock.Anything).Return().Maybe() // Debug calls are optional with new logging
 
 	transport := &loggingTransport{
 		Transport:      http.DefaultTransport,
@@ -287,11 +297,11 @@ func TestHTTPClientModule_LoggingTransport(t *testing.T) {
 	}
 
 	// Make a request
-	req, _ := http.NewRequest("GET", server.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
 	resp, err := client.Do(req)
 
 	// Assertions
-	assert.NoError(t, err, "Request should not fail")
+	require.NoError(t, err, "Request should not fail")
 	assert.NotNil(t, resp, "Response should not be nil")
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Status code should be 200")
 
@@ -333,14 +343,14 @@ func TestHTTPClientModule_IntegrationWithServer(t *testing.T) {
 	}
 
 	// Create request
-	req, _ := http.NewRequest("GET", server.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
 
 	// Apply modifier and make the request
 	req = module.RequestModifier()(req)
 	resp, err := module.Client().Do(req)
 
 	// Assertions
-	assert.NoError(t, err, "Request should not fail")
+	require.NoError(t, err, "Request should not fail")
 	assert.NotNil(t, resp, "Response should not be nil")
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Status code should be 200")
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"), "Content-Type should be application/json")

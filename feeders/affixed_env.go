@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/golobby/cast"
 )
@@ -220,6 +221,16 @@ func (f *AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, fieldType *refle
 
 // setFieldValue converts and sets a field value
 func setFieldValue(field reflect.Value, strValue string) error {
+	// Special handling for time.Duration
+	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		duration, err := time.ParseDuration(strValue)
+		if err != nil {
+			return fmt.Errorf("cannot convert value to type %v: %w", field.Type(), err)
+		}
+		field.Set(reflect.ValueOf(duration))
+		return nil
+	}
+
 	convertedValue, err := cast.FromType(strValue, field.Type())
 	if err != nil {
 		return fmt.Errorf("cannot convert value to type %v: %w", field.Type(), err)

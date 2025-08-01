@@ -1,0 +1,45 @@
+# Tenant-specific configuration for enterprise-tenant  
+# This demonstrates a different tenant with different feature flag settings
+
+reverseproxy:
+  # Override feature flags for this tenant
+  feature_flags:
+    flags:
+      beta-feature: true               # Enable for enterprise tenant (was false globally)
+      enterprise-analytics: true      # Enable analytics for enterprise (was false globally)
+
+  # Override default backend for enterprise tenant
+  default_backend: "enterprise-backend"
+  
+  # Enterprise-specific backend services
+  backend_services:
+    enterprise-backend: "http://localhost:9007"
+    analytics-api: "http://localhost:9008"
+    
+  # Enterprise-specific backend configurations
+  backend_configs:
+    # Enterprise gets beta features enabled by default
+    default:
+      feature_flag_id: "beta-feature"
+      alternative_backend: "enterprise-backend"
+      
+    # Advanced analytics only for enterprise
+    analytics-api:
+      feature_flag_id: "enterprise-analytics"
+      alternative_backend: "enterprise-backend"
+      
+  # Enterprise-specific routes  
+  routes:
+    "/api/analytics": "analytics-api"    # Enterprise analytics endpoint
+    "/api/reports": "enterprise-backend" # Enterprise reporting
+    
+  # Enterprise composite routes with multiple data sources
+  composite_routes:
+    "/api/dashboard":
+      pattern: "/api/dashboard"
+      backends:
+        - "enterprise-backend"
+        - "analytics-api" 
+      strategy: "merge"
+      feature_flag_id: "enterprise-dashboard"
+      alternative_backend: "enterprise-backend"

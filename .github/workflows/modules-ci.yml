@@ -1,8 +1,5 @@
 name: Modules CI
 
-permissions:
-  contents: read
-
 on:
   push:
     branches: [ main ]
@@ -122,7 +119,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           directory: modules/${{ matrix.module }}/
           files: ${{ matrix.module }}-coverage.txt
           flags: ${{ matrix.module }}

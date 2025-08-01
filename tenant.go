@@ -193,6 +193,21 @@ type TenantService interface {
 //	        delete(m.tenantConnections, tenantID)
 //	    }
 //	}
+
+// Tenant represents a tenant in the system with basic information
+type Tenant struct {
+	ID   TenantID `json:"id"`
+	Name string   `json:"name"`
+}
+
+// TenantLoader is an interface for loading tenant information.
+// Implementations can load tenants from various sources like databases,
+// configuration files, APIs, etc.
+type TenantLoader interface {
+	// LoadTenants loads and returns all available tenants
+	LoadTenants() ([]Tenant, error)
+}
+
 type TenantAwareModule interface {
 	Module
 

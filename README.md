@@ -1,7 +1,7 @@
 # modular
 Modular Go
 
-[![GitHub License](https://img.shields.io/github/license/GoCodeAlone/modular)](https://github.com/GoCodeAlone/modular/blob/main/LICENSE)
+[![GitHub License](https://img.shields.io/github/license/CrisisTextLine/modular)](https://github.com/GoCodeAlone/modular/blob/main/LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular)
 [![CodeQL](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql)
 [![Dependabot Updates](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates)
@@ -9,7 +9,7 @@ Modular Go
 [![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
 [![Examples CI](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
-[![codecov](https://codecov.io/gh/GoCodeAlone/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/GoCodeAlone/modular)
+[![codecov](https://codecov.io/gh/CrisisTextLine/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/CrisisTextLine/modular)
 
 ## Overview
 Modular is a package that provides a structured way to create modular applications in Go. It allows you to build applications as collections of modules that can be easily added, removed, or replaced. Key features include:
@@ -22,6 +22,7 @@ Modular is a package that provides a structured way to create modular applicatio
 - **Sample config generation**: Generate sample configuration files in various formats
 - **Dependency injection**: Inject required services into modules
 - **Multi-tenancy support**: Build applications that serve multiple tenants with isolated configurations
+- **Observer pattern**: Event-driven communication with CloudEvents support for standardized event handling
 
 ## 🧩 Available Modules
 
@@ -34,6 +35,7 @@ Modular comes with a rich ecosystem of pre-built modules that you can easily int
 | [chimux](./modules/chimux)         | Chi router integration with middleware support | Yes | [Documentation](./modules/chimux/README.md) |
 | [database](./modules/database)     | Database connectivity and SQL operations with multiple driver support | Yes | [Documentation](./modules/database/README.md) |
 | [eventbus](./modules/eventbus)     | Asynchronous event handling and pub/sub messaging | Yes | [Documentation](./modules/eventbus/README.md) |
+| [eventlogger](./modules/eventlogger) | Structured logging for Observer pattern events with CloudEvents support | Yes | [Documentation](./modules/eventlogger/README.md) |
 | [httpclient](./modules/httpclient) | Configurable HTTP client with connection pooling, timeouts, and verbose logging | Yes | [Documentation](./modules/httpclient/README.md) |
 | [httpserver](./modules/httpserver) | HTTP/HTTPS server with TLS support, graceful shutdown, and configurable timeouts | Yes | [Documentation](./modules/httpserver/README.md) |
 | [jsonschema](./modules/jsonschema) | JSON Schema validation services          | No | [Documentation](./modules/jsonschema/README.md) |
@@ -49,6 +51,45 @@ Each module is designed to be:
 
 > 📖 For detailed information about each module, see the [modules directory](modules/README.md) or click on the individual module links above.
 
+## 🌩️ Observer Pattern with CloudEvents Support
+
+Modular includes a powerful Observer pattern implementation with CloudEvents specification support, enabling event-driven communication between components while maintaining full backward compatibility.
+
+### Key Features
+
+- **Traditional Observer Pattern**: Subject/Observer interfaces for event emission and handling
+- **CloudEvents Integration**: Industry-standard event format with built-in validation and serialization
+- **Dual Event Support**: Emit and handle both traditional ObserverEvents and CloudEvents
+- **ObservableApplication**: Enhanced application with automatic lifecycle event emission
+- **EventLogger Module**: Structured logging for all events with multiple output targets
+- **Transport Independence**: Events ready for HTTP, gRPC, AMQP, and other transports
+
+### Quick Example
+
+```go
+// Create observable application with CloudEvents support
+app := modular.NewObservableApplication(configProvider, logger)
+
+// Register event logger for structured logging
+app.RegisterModule(eventlogger.NewModule())
+
+// Emit CloudEvents using standardized format
+event := modular.NewCloudEvent(
+    "com.myapp.user.created",   // Type
+    "user-service",             // Source  
+    userData,                   // Data
+    metadata,                   // Extensions
+)
+err := app.NotifyCloudEventObservers(context.Background(), event)
+```
+
+### Documentation
+
+- **[CloudEvents Integration Guide](./CLOUDEVENTS.md)**: Comprehensive documentation for CloudEvents support
+- **[Observer Pattern Guide](./OBSERVER_PATTERN.md)**: Traditional Observer pattern documentation  
+- **[EventLogger Module](./modules/eventlogger/README.md)**: Structured event logging
+- **[Observer Pattern Example](./examples/observer-pattern/)**: Complete working example with CloudEvents
+
 ## Examples
 
 The `examples/` directory contains complete, working examples that demonstrate how to use Modular with different patterns and module combinations:
@@ -59,6 +100,7 @@ The `examples/` directory contains complete, working examples that demonstrate h
 | [**reverse-proxy**](./examples/reverse-proxy/) | HTTP reverse proxy server | Load balancing, backend routing, CORS |
 | [**http-client**](./examples/http-client/) | HTTP client with proxy backend | HTTP client integration, request routing |
 | [**advanced-logging**](./examples/advanced-logging/) | Advanced HTTP client logging | Verbose logging, file output, request/response inspection |
+| [**observer-pattern**](./examples/observer-pattern/) | Event-driven architecture demo | Observer pattern, CloudEvents, event logging, real-time events |
 
 ### Quick Start with Examples
 
@@ -78,6 +120,7 @@ Visit the [examples directory](./examples/) for detailed documentation, configur
 - **Try [reverse-proxy](./examples/reverse-proxy/)** to see advanced routing and CORS configuration
 - **Explore [http-client](./examples/http-client/)** for HTTP client integration patterns
 - **Study [advanced-logging](./examples/advanced-logging/)** for debugging and monitoring techniques
+- **Learn [observer-pattern](./examples/observer-pattern/)** for event-driven architecture with CloudEvents
 
 ## Installation
 
