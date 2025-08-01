@@ -26,6 +26,7 @@ The Reverse Proxy module functions as a versatile API gateway that can route req
 * **Circuit Breaker**: Automatic failure detection and recovery with configurable thresholds
 * **Response Caching**: Performance optimization with TTL-based caching
 * **Metrics Collection**: Comprehensive metrics for monitoring and debugging
+* **Dry Run Mode**: Compare responses between different backends for testing and validation
 
 ## Installation
 
@@ -211,6 +212,103 @@ app.RegisterService("featureFlagEvaluator", evaluator)
 ```
 
 The evaluator interface allows integration with external feature flag services like LaunchDarkly, Split.io, or custom implementations.
+
+### Dry Run Mode
+
+Dry run mode enables you to compare responses between different backends, which is particularly useful for testing new services, validating migrations, or A/B testing. When dry run is enabled for a route, requests are sent to both the primary and comparison backends, but only one response is returned to the client while differences are logged for analysis.
+
+#### Basic Dry Run Configuration
+
+```yaml
+reverseproxy:
+  backend_services:
+    legacy: "http://legacy.service.com"
+    v2: "http://new.service.com"
+  
+  routes:
+    "/api/users": "v2"  # Primary route goes to v2
+  
+  route_configs:
+    "/api/users":
+      feature_flag_id: "v2-users-api"
+      alternative_backend: "legacy"
+      dry_run: true
+      dry_run_backend: "v2"  # Backend to compare against
+  
+  dry_run:
+    enabled: true
+    log_responses: true
+    max_response_size: 1048576  # 1MB
+```
+
+#### Dry Run with Feature Flags
+
+The most powerful use case combines dry run with feature flags:
+
+```yaml
+feature_flags:
+  enabled: true
+  flags:
+    v2-users-api: false  # Feature flag disabled
+
+route_configs:
+  "/api/users":
+    feature_flag_id: "v2-users-api"
+    alternative_backend: "legacy"
+    dry_run: true
+    dry_run_backend: "v2"
+```
+
+**Behavior when feature flag is disabled:**
+- Returns response from `alternative_backend` (legacy)
+- Compares with `dry_run_backend` (v2) in background
+- Logs differences for analysis
+
+**Behavior when feature flag is enabled:**
+- Returns response from primary backend (v2)  
+- Compares with `dry_run_backend` or `alternative_backend`
+- Logs differences for analysis
+
+#### Dry Run Configuration Options
+
+```yaml
+dry_run:
+  enabled: true                          # Enable dry run globally
+  log_responses: true                    # Log response bodies (can be verbose)
+  max_response_size: 1048576            # Maximum response size to compare
+  compare_headers: ["Content-Type"]      # Specific headers to compare
+  ignore_headers: ["Date", "X-Request-ID"]  # Headers to ignore in comparison
+  default_response_backend: "primary"   # Which response to return ("primary" or "secondary")
+```
+
+#### Use Cases
+
+1. **Service Migration**: Test new service implementations while serving traffic from stable backend
+2. **A/B Testing**: Compare different service versions with real traffic
+3. **Validation**: Ensure new services produce equivalent responses to legacy systems
+4. **Performance Testing**: Compare response times between different backends
+5. **Gradual Rollout**: Safely test new features while maintaining fallback options
+
+#### Monitoring Dry Run Results
+
+Dry run comparisons are logged with detailed information:
+
+```json
+{
+  "operation": "dry-run",
+  "endpoint": "/api/users", 
+  "primaryBackend": "legacy",
+  "secondaryBackend": "v2",
+  "statusCodeMatch": true,
+  "headersMatch": false,
+  "bodyMatch": false,
+  "differences": ["Response body content differs"],
+  "primaryResponseTime": "45ms",
+  "secondaryResponseTime": "32ms"
+}
+```
+
+Use these logs to identify discrepancies and validate that your new services work correctly before fully switching over.
 
 ### Health Check Configuration
 
