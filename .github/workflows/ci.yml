@@ -38,7 +38,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CrisisTextLine/modular
+          slug: GoCodeAlone/modular
         
       - name: CTRF Test Output
         run: |
@@ -80,7 +80,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CrisisTextLine/modular
+          slug: GoCodeAlone/modular
           directory: cmd/modcli/
           files: cli-coverage.txt
           flags: cli
