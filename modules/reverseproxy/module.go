@@ -69,6 +69,8 @@ type ReverseProxyModule struct {
 
 	// Feature flag evaluation
 	featureFlagEvaluator FeatureFlagEvaluator
+	// Track whether the evaluator was provided externally or created internally
+	featureFlagEvaluatorProvided bool
 }
 
 // Compile-time assertions to ensure interface compliance
@@ -404,6 +406,7 @@ func (m *ReverseProxyModule) Constructor() modular.ModuleConstructor {
 		if featureFlagSvc, exists := services["featureFlagEvaluator"]; exists {
 			if evaluator, ok := featureFlagSvc.(FeatureFlagEvaluator); ok {
 				m.featureFlagEvaluator = evaluator
+				m.featureFlagEvaluatorProvided = true
 				app.Logger().Info("Using feature flag evaluator from service")
 			} else {
 				app.Logger().Warn("featureFlagEvaluator service found but does not implement FeatureFlagEvaluator",
@@ -444,6 +447,13 @@ func (m *ReverseProxyModule) Start(ctx context.Context) error {
 	// Register routes with router
 	if err := m.registerRoutes(); err != nil {
 		return fmt.Errorf("failed to register routes: %w", err)
+	}
+
+	// Register debug endpoints if enabled
+	if m.config.DebugEndpoints.Enabled {
+		if err := m.registerDebugEndpoints(); err != nil {
+			return fmt.Errorf("failed to register debug endpoints: %w", err)
+		}
 	}
 
 	// Create and configure feature flag evaluator if none was provided via service
@@ -593,11 +603,14 @@ func (m *ReverseProxyModule) OnTenantRemoved(tenantID modular.TenantID) {
 }
 
 // ProvidesServices returns the services provided by this module.
-// This module can provide a featureFlagEvaluator service if configured to do so.
+// This module can provide a featureFlagEvaluator service if configured to do so,
+// whether the evaluator was created internally or provided externally.
+// This allows other modules to discover and use the evaluator.
 func (m *ReverseProxyModule) ProvidesServices() []modular.ServiceProvider {
 	var services []modular.ServiceProvider
 
-	// Only provide the feature flag evaluator service if we have one and it's enabled in config
+	// Provide the feature flag evaluator service if we have one and feature flags are enabled.
+	// This includes both internally created and externally provided evaluators so other modules can use them.
 	if m.featureFlagEvaluator != nil && m.config != nil && m.config.FeatureFlags.Enabled {
 		services = append(services, modular.ServiceProvider{
 			Name:     "featureFlagEvaluator",
@@ -895,17 +908,56 @@ func (m *ReverseProxyModule) registerBasicRoutes() error {
 			return nil
 		}
 
-		// Create a catch-all route handler for the default backend
-		handler := m.createBackendProxyHandler(m.defaultBackend)
+		// Create a selective catch-all route handler that excludes health/metrics endpoints
+		handler := func(w http.ResponseWriter, r *http.Request) {
+			// Check if this is a health or metrics path that should not be proxied
+			if m.shouldExcludeFromProxy(r.URL.Path) {
+				// Let other handlers handle this (health/metrics endpoints)
+				http.NotFound(w, r)
+				return
+			}
 
-		// Register the catch-all default route
+			// Use the default backend proxy handler
+			backendHandler := m.createBackendProxyHandler(m.defaultBackend)
+			backendHandler(w, r)
+		}
+
+		// Register the selective catch-all default route
 		m.router.HandleFunc("/*", handler)
 		if m.app != nil && m.app.Logger() != nil {
-			m.app.Logger().Info("Registered default backend", "backend", m.defaultBackend)
+			m.app.Logger().Info("Registered selective catch-all route for default backend", "backend", m.defaultBackend)
 		}
 	}
 
 	return nil
+}
+
+// shouldExcludeFromProxy checks if a request path should be excluded from proxying
+// to allow health/metrics/debug endpoints to be handled by internal handlers.
+func (m *ReverseProxyModule) shouldExcludeFromProxy(path string) bool {
+	// Health endpoint
+	if path == "/health" || path == "/health/" {
+		return true
+	}
+
+	// Metrics endpoints
+	if m.config != nil && m.config.MetricsEndpoint != "" {
+		metricsEndpoint := m.config.MetricsEndpoint
+		if path == metricsEndpoint || path == metricsEndpoint+"/" {
+			return true
+		}
+		// Health endpoint under metrics
+		if path == metricsEndpoint+"/health" || path == metricsEndpoint+"/health/" {
+			return true
+		}
+	}
+
+	// Debug endpoints (if they are configured)
+	if strings.HasPrefix(path, "/debug/") {
+		return true
+	}
+
+	return false
 }
 
 // registerTenantAwareRoutes registers routes when tenants are configured
@@ -946,8 +998,19 @@ func (m *ReverseProxyModule) registerTenantAwareRoutes() error {
 
 	// Register the catch-all route if not already registered
 	if !allPaths["/*"] {
-		// Create a tenant-aware catch-all handler
-		catchAllHandler := m.createTenantAwareCatchAllHandler()
+		// Create a selective tenant-aware catch-all handler that excludes health/metrics endpoints
+		catchAllHandler := func(w http.ResponseWriter, r *http.Request) {
+			// Check if this is a path that should not be proxied
+			if m.shouldExcludeFromProxy(r.URL.Path) {
+				// Let other handlers handle this (health/metrics endpoints)
+				http.NotFound(w, r)
+				return
+			}
+
+			// Use the tenant-aware handler
+			tenantHandler := m.createTenantAwareCatchAllHandler()
+			tenantHandler(w, r)
+		}
 		m.router.HandleFunc("/*", catchAllHandler)
 
 		if m.app != nil && m.app.Logger() != nil {
@@ -2092,39 +2155,75 @@ func (m *ReverseProxyModule) registerMetricsEndpoint(endpoint string) {
 
 		m.router.HandleFunc(healthEndpoint, healthHandler)
 		m.app.Logger().Info("Registered health check endpoint", "endpoint", healthEndpoint)
-
-		// Register overall service health endpoint
-		overallHealthEndpoint := "/health"
-		overallHealthHandler := func(w http.ResponseWriter, r *http.Request) {
-			// Get overall health status without detailed backend information
-			overallHealth := m.healthChecker.GetOverallHealthStatus(false)
-
-			// Convert to JSON
-			jsonData, err := json.Marshal(overallHealth)
-			if err != nil {
-				m.app.Logger().Error("Failed to marshal overall health data", "error", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-
-			// Set content type
-			w.Header().Set("Content-Type", "application/json")
-
-			// Set status code based on overall health
-			if overallHealth.Healthy {
-				w.WriteHeader(http.StatusOK)
-			} else {
-				w.WriteHeader(http.StatusServiceUnavailable)
-			}
-
-			if _, err := w.Write(jsonData); err != nil {
-				m.app.Logger().Error("Failed to write overall health response", "error", err)
-			}
-		}
-
-		m.router.HandleFunc(overallHealthEndpoint, overallHealthHandler)
-		m.app.Logger().Info("Registered overall health endpoint", "endpoint", overallHealthEndpoint)
 	}
+}
+
+// registerDebugEndpoints registers debug endpoints if they are enabled
+func (m *ReverseProxyModule) registerDebugEndpoints() error {
+	if m.router == nil {
+		return ErrCannotRegisterRoutes
+	}
+
+	// Get tenant service if available
+	var tenantService modular.TenantService
+	if m.app != nil {
+		err := m.app.GetService("tenantService", &tenantService)
+		if err != nil {
+			m.app.Logger().Warn("TenantService not available for debug endpoints", "error", err)
+		}
+	}
+
+	// Create debug handler
+	debugHandler := NewDebugHandler(
+		m.config.DebugEndpoints,
+		m.featureFlagEvaluator,
+		m.config,
+		tenantService,
+		m.app.Logger(),
+	)
+
+	// Set circuit breakers and health checkers for debugging
+	if len(m.circuitBreakers) > 0 {
+		debugHandler.SetCircuitBreakers(m.circuitBreakers)
+	}
+	if m.healthChecker != nil {
+		// Create a map with the health checker
+		healthCheckers := map[string]*HealthChecker{
+			"reverseproxy": m.healthChecker,
+		}
+		debugHandler.SetHealthCheckers(healthCheckers)
+	}
+
+	// Register debug endpoints individually since our routerService doesn't support http.ServeMux
+	basePath := m.config.DebugEndpoints.BasePath
+
+	// Feature flags debug endpoint
+	flagsEndpoint := basePath + "/flags"
+	m.router.HandleFunc(flagsEndpoint, debugHandler.HandleFlags)
+	m.app.Logger().Info("Registered debug endpoint", "endpoint", flagsEndpoint)
+
+	// General debug info endpoint
+	infoEndpoint := basePath + "/info"
+	m.router.HandleFunc(infoEndpoint, debugHandler.HandleInfo)
+	m.app.Logger().Info("Registered debug endpoint", "endpoint", infoEndpoint)
+
+	// Backend status endpoint
+	backendsEndpoint := basePath + "/backends"
+	m.router.HandleFunc(backendsEndpoint, debugHandler.HandleBackends)
+	m.app.Logger().Info("Registered debug endpoint", "endpoint", backendsEndpoint)
+
+	// Circuit breaker status endpoint
+	circuitBreakersEndpoint := basePath + "/circuit-breakers"
+	m.router.HandleFunc(circuitBreakersEndpoint, debugHandler.HandleCircuitBreakers)
+	m.app.Logger().Info("Registered debug endpoint", "endpoint", circuitBreakersEndpoint)
+
+	// Health check status endpoint
+	healthChecksEndpoint := basePath + "/health-checks"
+	m.router.HandleFunc(healthChecksEndpoint, debugHandler.HandleHealthChecks)
+	m.app.Logger().Info("Registered debug endpoint", "endpoint", healthChecksEndpoint)
+
+	m.app.Logger().Info("Debug endpoints registered", "basePath", basePath)
+	return nil
 }
 
 // createTenantAwareHandler creates a handler that routes based on tenant-specific configuration for a specific path

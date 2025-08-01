@@ -94,25 +94,25 @@ func (d *DebugHandler) RegisterRoutes(mux *http.ServeMux) {
 	}
 
 	// Feature flags debug endpoint
-	mux.HandleFunc(d.config.BasePath+"/flags", d.handleFlags)
+	mux.HandleFunc(d.config.BasePath+"/flags", d.HandleFlags)
 
 	// General debug info endpoint
-	mux.HandleFunc(d.config.BasePath+"/info", d.handleInfo)
+	mux.HandleFunc(d.config.BasePath+"/info", d.HandleInfo)
 
 	// Backend status endpoint
-	mux.HandleFunc(d.config.BasePath+"/backends", d.handleBackends)
+	mux.HandleFunc(d.config.BasePath+"/backends", d.HandleBackends)
 
 	// Circuit breaker status endpoint
-	mux.HandleFunc(d.config.BasePath+"/circuit-breakers", d.handleCircuitBreakers)
+	mux.HandleFunc(d.config.BasePath+"/circuit-breakers", d.HandleCircuitBreakers)
 
 	// Health check status endpoint
-	mux.HandleFunc(d.config.BasePath+"/health-checks", d.handleHealthChecks)
+	mux.HandleFunc(d.config.BasePath+"/health-checks", d.HandleHealthChecks)
 
 	d.logger.Info("Debug endpoints registered", "basePath", d.config.BasePath)
 }
 
-// handleFlags handles the feature flags debug endpoint.
-func (d *DebugHandler) handleFlags(w http.ResponseWriter, r *http.Request) {
+// HandleFlags handles the feature flags debug endpoint.
+func (d *DebugHandler) HandleFlags(w http.ResponseWriter, r *http.Request) {
 	if !d.checkAuth(w, r) {
 		return
 	}
@@ -163,8 +163,8 @@ func (d *DebugHandler) handleFlags(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleInfo handles the general debug info endpoint.
-func (d *DebugHandler) handleInfo(w http.ResponseWriter, r *http.Request) {
+// HandleInfo handles the general debug info endpoint.
+func (d *DebugHandler) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	if !d.checkAuth(w, r) {
 		return
 	}
@@ -229,8 +229,8 @@ func (d *DebugHandler) handleInfo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleBackends handles the backends debug endpoint.
-func (d *DebugHandler) handleBackends(w http.ResponseWriter, r *http.Request) {
+// HandleBackends handles the backends debug endpoint.
+func (d *DebugHandler) HandleBackends(w http.ResponseWriter, r *http.Request) {
 	if !d.checkAuth(w, r) {
 		return
 	}
@@ -249,8 +249,8 @@ func (d *DebugHandler) handleBackends(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleCircuitBreakers handles the circuit breakers debug endpoint.
-func (d *DebugHandler) handleCircuitBreakers(w http.ResponseWriter, r *http.Request) {
+// HandleCircuitBreakers handles the circuit breakers debug endpoint.
+func (d *DebugHandler) HandleCircuitBreakers(w http.ResponseWriter, r *http.Request) {
 	if !d.checkAuth(w, r) {
 		return
 	}
@@ -277,8 +277,8 @@ func (d *DebugHandler) handleCircuitBreakers(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// handleHealthChecks handles the health checks debug endpoint.
-func (d *DebugHandler) handleHealthChecks(w http.ResponseWriter, r *http.Request) {
+// HandleHealthChecks handles the health checks debug endpoint.
+func (d *DebugHandler) HandleHealthChecks(w http.ResponseWriter, r *http.Request) {
 	if !d.checkAuth(w, r) {
 		return
 	}

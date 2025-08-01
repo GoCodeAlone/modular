@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -40,6 +42,7 @@ func main() {
 
 	// Register the modules in dependency order
 	app.RegisterModule(chimux.NewChiMuxModule())
+	app.RegisterModule(&HealthModule{}) // Custom module to register health endpoint
 	app.RegisterModule(reverseproxy.NewModule())
 	app.RegisterModule(httpserver.NewHTTPServerModule())
 
@@ -122,4 +125,65 @@ func startMockBackends() {
 	// Unreachable backend simulation - we won't start this one
 	// This will demonstrate DNS/connection failures
 	fmt.Println("Unreachable backend (unreachable-api) will not be started - simulating unreachable service")
+}
+
+// HealthModule provides a simple application health endpoint
+type HealthModule struct {
+	app modular.Application
+}
+
+// Name implements modular.Module
+func (h *HealthModule) Name() string {
+	return "health"
+}
+
+// RegisterConfig implements modular.Configurable
+func (h *HealthModule) RegisterConfig(app modular.Application) error {
+	// No configuration needed for this simple module
+	return nil
+}
+
+// Constructor implements modular.ModuleConstructor
+func (h *HealthModule) Constructor() modular.ModuleConstructor {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
+		return &HealthModule{
+			app: app,
+		}, nil
+	}
+}
+
+// Init implements modular.Module
+func (h *HealthModule) Init(app modular.Application) error {
+	h.app = app
+	return nil
+}
+
+// Start implements modular.Startable
+func (h *HealthModule) Start(ctx context.Context) error {
+	// Get the router service using the proper chimux interface
+	var router chimux.BasicRouter
+	if err := h.app.GetService("router", &router); err != nil {
+		return fmt.Errorf("failed to get router service: %w", err)
+	}
+
+	// Register health endpoint that responds with application health, not backend health
+	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		
+		// Simple health response indicating the reverse proxy application is running
+		response := map[string]interface{}{
+			"status":    "healthy",
+			"service":   "health-aware-reverse-proxy",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"version":   "1.0.0",
+		}
+		
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			h.app.Logger().Error("Failed to encode health response", "error", err)
+		}
+	})
+	
+	h.app.Logger().Info("Registered application health endpoint", "endpoint", "/health")
+	return nil
 }

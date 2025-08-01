@@ -56,7 +56,7 @@ func TestDebugHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "/debug/info", nil)
 			w := httptest.NewRecorder()
 
-			debugHandler.handleInfo(w, req)
+			debugHandler.HandleInfo(w, req)
 
 			assert.Equal(t, http.StatusUnauthorized, w.Code)
 		})
@@ -67,7 +67,7 @@ func TestDebugHandler(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer test-token")
 			w := httptest.NewRecorder()
 
-			debugHandler.handleInfo(w, req)
+			debugHandler.HandleInfo(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -97,7 +97,7 @@ func TestDebugHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "/debug/info", nil)
 			w := httptest.NewRecorder()
 
-			debugHandler.handleInfo(w, req)
+			debugHandler.HandleInfo(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -116,7 +116,7 @@ func TestDebugHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "/debug/backends", nil)
 			w := httptest.NewRecorder()
 
-			debugHandler.handleBackends(w, req)
+			debugHandler.HandleBackends(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -139,7 +139,7 @@ func TestDebugHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "/debug/flags", nil)
 			w := httptest.NewRecorder()
 
-			debugHandler.handleFlags(w, req)
+			debugHandler.HandleFlags(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -156,7 +156,7 @@ func TestDebugHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "/debug/circuit-breakers", nil)
 			w := httptest.NewRecorder()
 
-			debugHandler.handleCircuitBreakers(w, req)
+			debugHandler.HandleCircuitBreakers(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -173,7 +173,7 @@ func TestDebugHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "/debug/health-checks", nil)
 			w := httptest.NewRecorder()
 
-			debugHandler.handleHealthChecks(w, req)
+			debugHandler.HandleHealthChecks(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -266,7 +266,7 @@ func TestDebugHandler(t *testing.T) {
 			req.Header.Set("X-Tenant-ID", "test-tenant")
 			w := httptest.NewRecorder()
 
-			debugHandler.handleInfo(w, req)
+			debugHandler.HandleInfo(w, req)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 
@@ -311,7 +311,7 @@ func TestDebugHandlerWithMocks(t *testing.T) {
 		req := httptest.NewRequest("GET", "/debug/info", nil)
 		w := httptest.NewRecorder()
 
-		debugHandler.handleInfo(w, req)
+		debugHandler.HandleInfo(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
@@ -338,7 +338,7 @@ func TestDebugHandlerWithMocks(t *testing.T) {
 		req := httptest.NewRequest("GET", "/debug/info", nil)
 		w := httptest.NewRecorder()
 
-		debugHandler.handleInfo(w, req)
+		debugHandler.HandleInfo(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
