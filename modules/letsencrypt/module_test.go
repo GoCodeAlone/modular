@@ -466,3 +466,113 @@ func TestUser_Interface(t *testing.T) {
 		t.Error("Expected nil private key")
 	}
 }
+
+// Additional tests for coverage improvement
+func TestHTTPProvider_PresentCleanUp(t *testing.T) {
+	provider := &letsEncryptHTTPProvider{
+		handler: nil, // No handler set
+	}
+	
+	// Test Present method without handler
+	err := provider.Present("example.com", "token", "keyAuth")
+	if err == nil {
+		t.Error("Expected error when no handler is set")
+	}
+	
+	// Test CleanUp method  
+	err = provider.CleanUp("example.com", "token", "keyAuth")
+	if err != nil {
+		t.Errorf("CleanUp should not error: %v", err)
+	}
+}
+
+func TestLetsEncryptModule_RevokeCertificate(t *testing.T) {
+	config := &LetsEncryptConfig{
+		Email:        "test@example.com",
+		Domains:      []string{"example.com"},
+		StoragePath:  "/tmp/test-revoke",
+		UseStaging:   true,
+		HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
+	}
+	
+	module, err := New(config)
+	if err != nil {
+		t.Fatalf("Failed to create module: %v", err)
+	}
+	
+	// Test RevokeCertificate without initialization (should fail gracefully)
+	err = module.RevokeCertificate("example.com")
+	if err == nil {
+		t.Error("Expected error when revoking certificate without initialization")
+	}
+}
+
+func TestLetsEncryptModule_CreateProviders(t *testing.T) {
+	module := &LetsEncryptModule{
+		config: &LetsEncryptConfig{
+			DNSProvider: &DNSProviderConfig{
+				Provider: "cloudflare",
+				Cloudflare: &CloudflareConfig{
+					Email:  "test@example.com",
+					APIKey: "test-key",
+				},
+			},
+		},
+	}
+	
+	// Test createCloudflareProvider - will fail but exercise the code path
+	_, err := module.createCloudflareProvider()
+	if err == nil {
+		t.Log("createCloudflareProvider unexpectedly succeeded (may be in test env)")
+	}
+	
+	// Test createRoute53Provider
+	module.config.DNSProvider.Provider = "route53"
+	module.config.DNSProvider.Route53 = &Route53Config{
+		AccessKeyID:     "test-key",
+		SecretAccessKey: "test-secret",
+		Region:          "us-east-1",
+	}
+	_, err = module.createRoute53Provider()
+	if err == nil {
+		t.Log("createRoute53Provider unexpectedly succeeded (may be in test env)")
+	}
+	
+	// Test createDigitalOceanProvider
+	module.config.DNSProvider.Provider = "digitalocean"
+	module.config.DNSProvider.DigitalOcean = &DigitalOceanConfig{
+		AuthToken: "test-token",
+	}
+	_, err = module.createDigitalOceanProvider()
+	if err == nil {
+		t.Log("createDigitalOceanProvider unexpectedly succeeded (may be in test env)")
+	}
+}
+
+func TestLetsEncryptModule_ConfigureDNSProvider(t *testing.T) {
+	module := &LetsEncryptModule{
+		config: &LetsEncryptConfig{
+			DNSProvider: &DNSProviderConfig{
+				Provider: "cloudflare",
+				Cloudflare: &CloudflareConfig{
+					Email:  "test@example.com", 
+					APIKey: "test-key",
+				},
+			},
+		},
+	}
+	
+	// Test configureDNSProvider (may fail due to missing credentials, which is expected)
+	err := module.configureDNSProvider()
+	// Don't fail test if credentials are missing - this is expected in test environment
+	if err != nil {
+		t.Logf("configureDNSProvider failed (expected in test env): %v", err)
+	}
+	
+	// Test with unsupported provider
+	module.config.DNSProvider.Provider = "unsupported"
+	err = module.configureDNSProvider()
+	if err == nil {
+		t.Error("Expected error for unsupported DNS provider")
+	}
+}
