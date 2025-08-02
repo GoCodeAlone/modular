@@ -3,8 +3,10 @@ package reverseproxy
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
 	"strconv"
 	"time"
 )
@@ -104,7 +106,14 @@ func (p RetryPolicy) CalculateBackoff(attempt int) time.Duration {
 
 	// Add jitter to prevent synchronized retries
 	if p.Jitter > 0 {
-		jitter := (rand.Float64()*2 - 1) * p.Jitter * backoff
+		// Use crypto/rand for secure random number generation
+		randomBig, err := rand.Int(rand.Reader, big.NewInt(1000000))
+		if err != nil {
+			// Fall back to no jitter if crypto/rand fails
+			return time.Duration(backoff)
+		}
+		random := float64(randomBig.Int64()) / 1000000.0
+		jitter := (random*2 - 1) * p.Jitter * backoff
 		backoff += jitter
 	}
 
@@ -169,7 +178,7 @@ func RetryWithPolicy(ctx context.Context, policy RetryPolicy, fn RetryFunc, metr
 			// Continue with next attempt
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, statusCode, ctx.Err()
+			return nil, statusCode, fmt.Errorf("request cancelled: %w", ctx.Err())
 		}
 	}
 

@@ -21,6 +21,7 @@ var (
 	ErrJSONCannotConvertSliceElement = errors.New("cannot convert slice element")
 	ErrJSONExpectedArrayForSlice     = errors.New("expected array for slice field")
 	ErrJSONFieldCannotBeSet          = errors.New("field cannot be set")
+	ErrJSONArraySizeExceeded         = errors.New("array size exceeded")
 )
 
 // TOML feeder errors
@@ -30,6 +31,7 @@ var (
 	ErrTomlCannotConvertSliceElement = errors.New("cannot convert slice element")
 	ErrTomlExpectedArrayForSlice     = errors.New("expected array for slice field")
 	ErrTomlFieldCannotBeSet          = errors.New("field cannot be set")
+	ErrTomlArraySizeExceeded         = errors.New("array size exceeded")
 )
 
 // YAML feeder errors
@@ -38,6 +40,10 @@ var (
 	ErrYamlUnsupportedFieldType = errors.New("unsupported field type")
 	ErrYamlTypeConversion       = errors.New("type conversion error")
 	ErrYamlBoolConversion       = errors.New("cannot convert string to bool")
+	ErrYamlExpectedMap          = errors.New("expected map for field")
+	ErrYamlExpectedArray        = errors.New("expected array for field")
+	ErrYamlArraySizeExceeded    = errors.New("array size exceeded")
+	ErrYamlExpectedMapForSlice  = errors.New("expected map for slice element")
 )
 
 // General feeder errors
@@ -112,4 +118,29 @@ func wrapJSONFieldCannotBeSet(fieldPath string) error {
 // Wrapper functions for TOML feeder errors
 func wrapTomlFieldCannotBeSet(fieldPath string) error {
 	return fmt.Errorf("%w: %s", ErrTomlFieldCannotBeSet, fieldPath)
+}
+
+func wrapTomlArraySizeExceeded(fieldPath string, arraySize, maxSize int) error {
+	return fmt.Errorf("%w: array %s has %d elements but field can only hold %d", ErrTomlArraySizeExceeded, fieldPath, arraySize, maxSize)
+}
+
+func wrapJSONArraySizeExceeded(fieldPath string, arraySize, maxSize int) error {
+	return fmt.Errorf("%w: array %s has %d elements but field can only hold %d", ErrJSONArraySizeExceeded, fieldPath, arraySize, maxSize)
+}
+
+// Additional YAML error wrapper functions
+func wrapYamlExpectedMapError(fieldPath string, got interface{}) error {
+	return fmt.Errorf("%w %s, got %T", ErrYamlExpectedMap, fieldPath, got)
+}
+
+func wrapYamlExpectedArrayError(fieldPath string, got interface{}) error {
+	return fmt.Errorf("%w %s, got %T", ErrYamlExpectedArray, fieldPath, got)
+}
+
+func wrapYamlArraySizeExceeded(fieldPath string, arraySize, maxSize int) error {
+	return fmt.Errorf("%w: array %s has %d elements but field can only hold %d", ErrYamlArraySizeExceeded, fieldPath, arraySize, maxSize)
+}
+
+func wrapYamlExpectedMapForSliceError(fieldPath string, index int, got interface{}) error {
+	return fmt.Errorf("%w %d in field %s, got %T", ErrYamlExpectedMapForSlice, index, fieldPath, got)
 }

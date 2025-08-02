@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -165,6 +166,10 @@ func (t *TomlFeeder) processField(field reflect.Value, fieldType reflect.StructF
 	fieldKind := field.Kind()
 
 	switch fieldKind {
+	case reflect.Ptr:
+		// Handle pointer types
+		return t.setPointerFromTOML(field, value, fieldPath)
+
 	case reflect.Struct:
 		// Handle nested structs
 		if nestedMap, ok := value.(map[string]interface{}); ok {
@@ -176,6 +181,10 @@ func (t *TomlFeeder) processField(field reflect.Value, fieldType reflect.StructF
 		// Handle slices
 		return t.setSliceFromTOML(field, value, fieldPath)
 
+	case reflect.Array:
+		// Handle arrays
+		return t.setArrayFromTOML(field, value, fieldPath)
+
 	case reflect.Map:
 		// Handle maps
 		if mapData, ok := value.(map[string]interface{}); ok {
@@ -185,8 +194,8 @@ func (t *TomlFeeder) processField(field reflect.Value, fieldType reflect.StructF
 
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Array,
-		reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr, reflect.String,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.String,
 		reflect.UnsafePointer:
 		// Handle basic types and unsupported types
 		return t.setFieldFromTOML(field, value, fieldPath)
@@ -197,8 +206,165 @@ func (t *TomlFeeder) processField(field reflect.Value, fieldType reflect.StructF
 	}
 }
 
+// setPointerFromTOML handles setting pointer fields from TOML data
+func (t *TomlFeeder) setPointerFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
+	if value == nil {
+		// Set nil pointer
+		field.Set(reflect.Zero(field.Type()))
+
+		// Record field population
+		if t.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldPath,
+				FieldType:  field.Type().String(),
+				FeederType: "TomlFeeder",
+				SourceType: "toml_file",
+				SourceKey:  fieldPath,
+				Value:      nil,
+				SearchKeys: []string{fieldPath},
+				FoundKey:   fieldPath,
+			}
+			t.fieldTracker.RecordFieldPopulation(fp)
+		}
+		return nil
+	}
+
+	// Create a new instance of the pointed-to type
+	elemType := field.Type().Elem()
+	ptrValue := reflect.New(elemType)
+
+	// Special handling for pointer to time.Duration
+	if elemType == reflect.TypeOf(time.Duration(0)) {
+		if str, ok := value.(string); ok {
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration for field %s: %w", str, fieldPath, err)
+			}
+			ptrValue.Elem().Set(reflect.ValueOf(duration))
+			field.Set(ptrValue)
+		} else {
+			return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+		}
+	} else {
+		// Handle different element types
+		switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
+		case reflect.Struct:
+			// Handle pointer to struct
+			if valueMap, ok := value.(map[string]interface{}); ok {
+				if err := t.processStructFields(ptrValue.Elem(), valueMap, fieldPath); err != nil {
+					return fmt.Errorf("error processing pointer to struct: %w", err)
+				}
+				field.Set(ptrValue)
+			} else {
+				return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+			}
+		default:
+			// Handle pointer to basic type
+			convertedValue := reflect.ValueOf(value)
+			if convertedValue.Type().ConvertibleTo(elemType) {
+				ptrValue.Elem().Set(convertedValue.Convert(elemType))
+				field.Set(ptrValue)
+			} else {
+				return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+			}
+		}
+	}
+
+	// Record field population
+	if t.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "TomlFeeder",
+			SourceType: "toml_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		}
+		t.fieldTracker.RecordFieldPopulation(fp)
+	}
+	return nil
+}
+
+// setArrayFromTOML sets an array field from TOML array data
+func (t *TomlFeeder) setArrayFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
+	// Handle array values
+	if arrayValue, ok := value.([]interface{}); ok {
+		arrayType := field.Type()
+		elemType := arrayType.Elem()
+		arrayLen := arrayType.Len()
+
+		if len(arrayValue) > arrayLen {
+			return wrapTomlArraySizeExceeded(fieldPath, len(arrayValue), arrayLen)
+		}
+
+		for i, item := range arrayValue {
+			elem := field.Index(i)
+			convertedItem := reflect.ValueOf(item)
+
+			if convertedItem.Type().ConvertibleTo(elemType) {
+				elem.Set(convertedItem.Convert(elemType))
+			} else {
+				return wrapTomlSliceElementError(item, elemType.String(), fieldPath, i)
+			}
+		}
+
+		// Record field population for the array
+		if t.fieldTracker != nil {
+			fp := FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldPath,
+				FieldType:  field.Type().String(),
+				FeederType: "TomlFeeder",
+				SourceType: "toml_file",
+				SourceKey:  fieldPath,
+				Value:      value,
+				SearchKeys: []string{fieldPath},
+				FoundKey:   fieldPath,
+			}
+			t.fieldTracker.RecordFieldPopulation(fp)
+		}
+
+		return nil
+	}
+
+	return wrapTomlArrayError(fieldPath, value)
+}
+
 // setFieldFromTOML sets a field value from TOML data with type conversion
 func (t *TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
+	// Special handling for time.Duration
+	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		if str, ok := value.(string); ok {
+			duration, err := time.ParseDuration(str)
+			if err != nil {
+				return fmt.Errorf("cannot convert string '%s' to time.Duration for field %s: %w", str, fieldPath, err)
+			}
+			field.Set(reflect.ValueOf(duration))
+
+			// Record field population
+			if t.fieldTracker != nil {
+				fp := FieldPopulation{
+					FieldPath:  fieldPath,
+					FieldName:  fieldPath,
+					FieldType:  field.Type().String(),
+					FeederType: "TomlFeeder",
+					SourceType: "toml_file",
+					SourceKey:  fieldPath,
+					Value:      duration,
+					SearchKeys: []string{fieldPath},
+					FoundKey:   fieldPath,
+				}
+				t.fieldTracker.RecordFieldPopulation(fp)
+			}
+			return nil
+		}
+		return wrapTomlConvertError(value, field.Type().String(), fieldPath)
+	}
+
 	// Convert and set the value
 	convertedValue := reflect.ValueOf(value)
 	if convertedValue.Type().ConvertibleTo(field.Type()) {
@@ -228,46 +394,98 @@ func (t *TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fi
 
 // setSliceFromTOML sets a slice field from TOML array data
 func (t *TomlFeeder) setSliceFromTOML(field reflect.Value, value interface{}, fieldPath string) error {
-	// Handle slice values
-	if arrayValue, ok := value.([]interface{}); ok {
-		sliceType := field.Type()
-		elemType := sliceType.Elem()
+	// Handle slice values - TOML can return different types
+	var arrayValue []interface{}
 
-		newSlice := reflect.MakeSlice(sliceType, len(arrayValue), len(arrayValue))
+	switch v := value.(type) {
+	case []interface{}:
+		arrayValue = v
+	case []map[string]interface{}:
+		// TOML often returns this for array of tables
+		arrayValue = make([]interface{}, len(v))
+		for i, item := range v {
+			arrayValue[i] = item
+		}
+	default:
+		return wrapTomlArrayError(fieldPath, value)
+	}
 
-		for i, item := range arrayValue {
-			elem := newSlice.Index(i)
+	sliceType := field.Type()
+	elemType := sliceType.Elem()
+
+	newSlice := reflect.MakeSlice(sliceType, len(arrayValue), len(arrayValue))
+
+	for i, item := range arrayValue {
+		elem := newSlice.Index(i)
+
+		// Handle different element types
+		switch elemType.Kind() { //nolint:exhaustive // default case handles all other types
+		case reflect.Struct:
+			// Handle slice of structs
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if err := t.processStructFields(elem, itemMap, fmt.Sprintf("%s[%d]", fieldPath, i)); err != nil {
+					return fmt.Errorf("error processing slice element %d: %w", i, err)
+				}
+			} else {
+				return wrapTomlSliceElementError(item, elemType.String(), fieldPath, i)
+			}
+		case reflect.Ptr:
+			// Handle slice of pointers
+			if item == nil {
+				// Set nil pointer
+				elem.Set(reflect.Zero(elemType))
+			} else if ptrElemType := elemType.Elem(); ptrElemType.Kind() == reflect.Struct {
+				// Pointer to struct
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					ptrValue := reflect.New(ptrElemType)
+					if err := t.processStructFields(ptrValue.Elem(), itemMap, fmt.Sprintf("%s[%d]", fieldPath, i)); err != nil {
+						return fmt.Errorf("error processing slice pointer element %d: %w", i, err)
+					}
+					elem.Set(ptrValue)
+				} else {
+					return wrapTomlSliceElementError(item, elemType.String(), fieldPath, i)
+				}
+			} else {
+				// Pointer to basic type
+				convertedItem := reflect.ValueOf(item)
+				if convertedItem.Type().ConvertibleTo(ptrElemType) {
+					ptrValue := reflect.New(ptrElemType)
+					ptrValue.Elem().Set(convertedItem.Convert(ptrElemType))
+					elem.Set(ptrValue)
+				} else {
+					return wrapTomlSliceElementError(item, elemType.String(), fieldPath, i)
+				}
+			}
+		default:
+			// Handle basic types
 			convertedItem := reflect.ValueOf(item)
-
 			if convertedItem.Type().ConvertibleTo(elemType) {
 				elem.Set(convertedItem.Convert(elemType))
 			} else {
 				return wrapTomlSliceElementError(item, elemType.String(), fieldPath, i)
 			}
 		}
-
-		field.Set(newSlice)
-
-		// Record field population for the slice
-		if t.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "TomlFeeder",
-				SourceType: "toml_file",
-				SourceKey:  fieldPath,
-				Value:      value,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			t.fieldTracker.RecordFieldPopulation(fp)
-		}
-
-		return nil
 	}
 
-	return wrapTomlArrayError(fieldPath, value)
+	field.Set(newSlice)
+
+	// Record field population for the slice
+	if t.fieldTracker != nil {
+		fp := FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "TomlFeeder",
+			SourceType: "toml_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		}
+		t.fieldTracker.RecordFieldPopulation(fp)
+	}
+
+	return nil
 }
 
 // setMapFromTOML sets a map field value from TOML data with support for pointer and value types

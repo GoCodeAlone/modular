@@ -83,6 +83,14 @@ func (a *mockApp) Run() error {
 	return nil
 }
 
+func (a *mockApp) IsVerboseConfig() bool {
+	return false
+}
+
+func (a *mockApp) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
 type mockLogger struct{}
 
 func (l *mockLogger) Debug(msg string, args ...interface{}) {}
@@ -111,7 +119,7 @@ func TestEventBusModule(t *testing.T) {
 
 	// Test services provided
 	services := module.(*EventBusModule).ProvidesServices()
-	assert.Equal(t, 1, len(services))
+	assert.Len(t, services, 1)
 	assert.Equal(t, ServiceName, services[0].Name)
 
 	// Test module lifecycle

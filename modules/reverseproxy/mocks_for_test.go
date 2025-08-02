@@ -2,6 +2,7 @@
 package reverseproxy
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/GoCodeAlone/modular"
@@ -65,11 +66,17 @@ func NewMockTenantApplicationWithMock() *MockTenantApplicationWithMock {
 // GetConfigSection retrieves a configuration section from the mock with testify/mock support
 func (m *MockTenantApplicationWithMock) GetConfigSection(section string) (modular.ConfigProvider, error) {
 	args := m.Called(section)
-	return args.Get(0).(modular.ConfigProvider), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(modular.ConfigProvider), fmt.Errorf("mock GetConfigSection error: %w", err)
+	}
+	return args.Get(0).(modular.ConfigProvider), nil
 }
 
 // GetTenantConfig retrieves tenant-specific configuration with testify/mock support
 func (m *MockTenantApplicationWithMock) GetTenantConfig(tid modular.TenantID, section string) (modular.ConfigProvider, error) {
 	args := m.Called(tid, section)
-	return args.Get(0).(modular.ConfigProvider), args.Error(1)
+	if err := args.Error(1); err != nil {
+		return args.Get(0).(modular.ConfigProvider), fmt.Errorf("mock GetTenantConfig error: %w", err)
+	}
+	return args.Get(0).(modular.ConfigProvider), nil
 }

@@ -22,7 +22,7 @@ func TestStandaloneBackendProxyHandler(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "Backend1")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"server":"Backend1","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"server":"Backend1","path":"` + r.URL.Path + `"}`))
 	})
 
 	// Create a test request
@@ -63,13 +63,14 @@ func TestDefaultBackendRouting(t *testing.T) {
 
 	// Initialize the module with the mock application
 	err = module.Init(mockApp) // Pass mockApp which is also a modular.Application
+	require.NoError(t, err, "Init should not fail")
 
 	// Setup backend servers
 	defaultBackendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "DefaultBackend")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"server":"DefaultBackend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"server":"DefaultBackend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer defaultBackendServer.Close()
 
@@ -77,7 +78,7 @@ func TestDefaultBackendRouting(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "SpecificBackend")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"server":"SpecificBackend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"server":"SpecificBackend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer specificBackendServer.Close()
 

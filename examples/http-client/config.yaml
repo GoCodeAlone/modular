@@ -33,11 +33,13 @@ httpclient:
   disable_keep_alives: false
   verbose: true
   
-  # Verbose logging options
+  # Verbose logging options (enable for demonstration)
   verbose_options:
-    log_headers: false
-    log_body: false
-    max_body_log_size: 1024
+    log_headers: true
+    log_body: true
+    max_body_log_size: 2048
+    log_to_file: true
+    log_file_path: "./http_client_logs"
 
 # HTTP Server configuration  
 httpserver:

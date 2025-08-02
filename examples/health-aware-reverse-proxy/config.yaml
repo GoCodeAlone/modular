@@ -1,0 +1,111 @@
+# Health-Aware Reverse Proxy Example Configuration
+
+# Reverse Proxy configuration with comprehensive health checking
+reverseproxy:
+  backend_services:
+    healthy-api: "http://localhost:9001"
+    intermittent-api: "http://localhost:9002"
+    slow-api: "http://localhost:9003"
+    unreachable-api: "http://localhost:9999"  # Will be unreachable
+  
+  default_backend: "healthy-api"
+  
+  # Enable metrics with health endpoints
+  metrics_enabled: true
+  metrics_endpoint: "/metrics/reverseproxy"
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    interval: "10s"                    # Check every 10 seconds
+    timeout: "3s"                      # 3 second timeout for health checks
+    recent_request_threshold: "30s"    # Skip health checks if recent request within 30s
+    expected_status_codes: [200, 204]  # Expected healthy status codes
+    
+    # Custom health endpoints per backend
+    health_endpoints:
+      healthy-api: "/health"
+      intermittent-api: "/health"
+      slow-api: "/health"
+      unreachable-api: "/health"
+    
+    # Per-backend health check configuration
+    backend_health_check_config:
+      healthy-api:
+        enabled: true
+        interval: "5s"                 # More frequent checks for primary API
+        timeout: "2s"
+        expected_status_codes: [200]
+      
+      intermittent-api:
+        enabled: true
+        interval: "15s"                # Less frequent for intermittent service
+        timeout: "5s"
+        expected_status_codes: [200]
+      
+      slow-api:
+        enabled: true
+        interval: "20s"                # Less frequent for slow service
+        timeout: "8s"                  # Longer timeout for slow service
+        expected_status_codes: [200]
+      
+      unreachable-api:
+        enabled: true
+        interval: "30s"                # Infrequent checks for unreachable
+        timeout: "3s"
+        expected_status_codes: [200]
+
+  # Circuit breaker configuration
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 3               # Open circuit after 3 failures
+    open_timeout: "30s"                # Keep circuit open for 30 seconds
+  
+  # Per-backend circuit breaker overrides
+  backend_circuit_breakers:
+    intermittent-api:
+      enabled: true
+      failure_threshold: 2             # More sensitive for unreliable service
+      open_timeout: "15s"              # Shorter recovery time
+    
+    slow-api:
+      enabled: true
+      failure_threshold: 5             # Less sensitive for slow but reliable service
+      open_timeout: "60s"              # Longer recovery time
+    
+    unreachable-api:
+      enabled: true
+      failure_threshold: 1             # Very sensitive for unreachable service
+      open_timeout: "120s"             # Long recovery time
+
+  # Route configuration with circuit breaker awareness
+  routes:
+    "/api/healthy": "healthy-api"
+    "/api/intermittent": "intermittent-api"
+    "/api/slow": "slow-api"
+    "/api/unreachable": "unreachable-api"
+
+# ChiMux router configuration
+chimux:
+  basepath: ""
+  allowed_origins:
+    - "*"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+  allow_credentials: false
+  max_age: 300
+
+# HTTP Server configuration  
+httpserver:
+  host: "localhost"
+  port: 8080
+  read_timeout: 30
+  write_timeout: 30
+  idle_timeout: 120

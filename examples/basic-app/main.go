@@ -38,17 +38,27 @@ func main() {
 		feeders.NewEnvFeeder(),
 	}
 
-	app := modular.NewStdApplication(
-		modular.NewStdConfigProvider(&AppConfig{}),
-		slog.New(slog.NewTextHandler(
-			os.Stdout,
-			&slog.HandlerOptions{},
-		)),
+	// Create logger
+	logger := slog.New(slog.NewTextHandler(
+		os.Stdout,
+		&slog.HandlerOptions{},
+	))
+
+	// Create application using new builder API
+	app, err := modular.NewApplication(
+		modular.WithLogger(logger),
+		modular.WithConfigProvider(modular.NewStdConfigProvider(&AppConfig{})),
+		modular.WithModules(
+			webserver.NewWebServer(),
+			router.NewRouter(),
+			api.NewAPIModule(),
+		),
 	)
 
-	app.RegisterModule(webserver.NewWebServer())
-	app.RegisterModule(router.NewRouter())
-	app.RegisterModule(api.NewAPIModule())
+	if err != nil {
+		logger.Error("Failed to create application", "error", err)
+		os.Exit(1)
+	}
 
 	// Run application with lifecycle management
 	if err := app.Run(); err != nil {

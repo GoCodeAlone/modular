@@ -19,21 +19,21 @@ func TestTenantDefaultBackendOverride(t *testing.T) {
 	globalDefaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"global-default","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"global-default","path":"` + r.URL.Path + `"}`))
 	}))
 	defer globalDefaultServer.Close()
 
 	tenantDefaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"tenant-default","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"tenant-default","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenantDefaultServer.Close()
 
 	specificBackendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"specific-backend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"specific-backend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer specificBackendServer.Close()
 
@@ -102,24 +102,25 @@ func TestTenantDefaultBackendOverride(t *testing.T) {
 
 	// Initialize module
 	err := module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Register routes with the router
 	module.router = router
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Get the captured handler for the specific route and catch-all
 	var specificRouteHandler, catchAllHandler http.HandlerFunc
 
-	for _, call := range router.Mock.Calls {
+	for _, call := range router.Calls {
 		if call.Method == "HandleFunc" {
 			pattern := call.Arguments[0].(string)
 			handler := call.Arguments[1].(http.HandlerFunc)
 
-			if pattern == "/api/specific" {
+			switch pattern {
+			case "/api/specific":
 				specificRouteHandler = handler
-			} else if pattern == "/*" {
+			case "/*":
 				catchAllHandler = handler
 			}
 		}
@@ -212,7 +213,7 @@ func TestTenantDefaultBackendWithEmptyGlobalDefault(t *testing.T) {
 	tenantDefaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"tenant-default","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"tenant-default","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenantDefaultServer.Close()
 
@@ -276,17 +277,17 @@ func TestTenantDefaultBackendWithEmptyGlobalDefault(t *testing.T) {
 
 	// Initialize module
 	err := module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Register routes with the router
 	module.router = router
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	t.Run("TenantDefaultBackendUsedWhenGlobalEmpty", func(t *testing.T) {
 		// Find the catch-all handler
 		var catchAllHandler http.HandlerFunc
-		for _, call := range router.Mock.Calls {
+		for _, call := range router.Calls {
 			if call.Method == "HandleFunc" && call.Arguments[0].(string) == "/*" {
 				catchAllHandler = call.Arguments[1].(http.HandlerFunc)
 				break
@@ -313,21 +314,21 @@ func TestMultipleTenantDefaultBackends(t *testing.T) {
 	tenant1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"tenant1-backend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"tenant1-backend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenant1Server.Close()
 
 	tenant2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"tenant2-backend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"tenant2-backend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenant2Server.Close()
 
 	globalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"backend":"global-backend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"backend":"global-backend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer globalServer.Close()
 
@@ -408,12 +409,12 @@ func TestMultipleTenantDefaultBackends(t *testing.T) {
 
 	// Initialize module
 	err := module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Register routes
 	module.router = router
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	t.Run("DifferentTenantsShouldUseDifferentDefaults", func(t *testing.T) {
 		// Debug: Check what tenants are registered
@@ -434,7 +435,7 @@ func TestMultipleTenantDefaultBackends(t *testing.T) {
 
 		// Find the catch-all handler (get the LAST one registered, which should be tenant-aware)
 		var catchAllHandler http.HandlerFunc
-		for _, call := range router.Mock.Calls {
+		for _, call := range router.Calls {
 			if call.Method == "HandleFunc" && call.Arguments[0].(string) == "/*" {
 				catchAllHandler = call.Arguments[1].(http.HandlerFunc)
 			}

@@ -1,0 +1,44 @@
+appName: Observer Pattern Demo
+environment: demo
+
+# Event Logger Configuration - demonstrates comprehensive logging setup
+eventlogger:
+  enabled: true
+  logLevel: DEBUG
+  format: structured
+  bufferSize: 50
+  flushInterval: 2s
+  includeMetadata: true
+  includeStackTrace: false
+  
+  # Log specific event types (uncomment to filter)
+  # eventTypeFilters:
+  #   - module.registered
+  #   - service.registered
+  #   - user.created
+  #   - user.login
+  
+  outputTargets:
+    # Console output with colors and timestamps
+    - type: console
+      level: DEBUG
+      format: structured
+      console:
+        useColor: true
+        timestamps: true
+    
+    # File output for persistent logging (uncomment to enable)
+    # - type: file
+    #   level: INFO
+    #   format: json
+    #   file:
+    #     path: ./observer-events.log
+    #     maxSize: 10
+    #     maxBackups: 3
+    #     maxAge: 7
+    #     compress: true
+
+# User Module Configuration
+userModule:
+  maxUsers: 100
+  logLevel: INFO

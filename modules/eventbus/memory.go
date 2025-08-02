@@ -2,7 +2,6 @@ package eventbus
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -124,7 +123,7 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 	case <-done:
 		// All workers exited gracefully
 	case <-ctx.Done():
-		return fmt.Errorf("event bus shutdown timed out")
+		return ErrEventBusShutdownTimedOut
 	}
 
 	m.isStarted = false
@@ -134,7 +133,7 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 // Publish sends an event to the specified topic
 func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	if !m.isStarted {
-		return fmt.Errorf("event bus not started")
+		return ErrEventBusNotStarted
 	}
 
 	// Fill in event metadata
@@ -196,11 +195,11 @@ func (m *MemoryEventBus) SubscribeAsync(ctx context.Context, topic string, handl
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
 	if !m.isStarted {
-		return nil, fmt.Errorf("event bus not started")
+		return nil, ErrEventBusNotStarted
 	}
 
 	if handler == nil {
-		return nil, fmt.Errorf("event handler cannot be nil")
+		return nil, ErrEventHandlerNil
 	}
 
 	// Create a new subscription
@@ -232,12 +231,12 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 // Unsubscribe removes a subscription
 func (m *MemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
 	if !m.isStarted {
-		return fmt.Errorf("event bus not started")
+		return ErrEventBusNotStarted
 	}
 
 	sub, ok := subscription.(*memorySubscription)
 	if !ok {
-		return fmt.Errorf("invalid subscription type")
+		return ErrInvalidSubscriptionType
 	}
 
 	// Cancel the subscription
@@ -316,7 +315,7 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 
 				if err != nil {
 					// Log error but continue processing
-					slog.Error("Event handler failed", "error", err, "topic", event.Topic)
+					slog.ErrorContext(m.ctx, "Event handler failed", "error", err, "topic", event.Topic)
 				}
 			}
 		}
@@ -339,7 +338,7 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 
 		if err != nil {
 			// Log error but continue processing
-			slog.Error("Event handler failed", "error", err, "topic", event.Topic)
+			slog.ErrorContext(m.ctx, "Event handler failed", "error", err, "topic", event.Topic)
 		}
 	}:
 		// Successfully queued

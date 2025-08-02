@@ -1,0 +1,9 @@
+reverseproxy:
+  default_backend: "primary"
+  backend_services:
+    primary: "http://localhost:9001"
+  feature_flags:
+    flags:
+      beta-features: true
+      enhanced-ui: true
+      performance-mode: true

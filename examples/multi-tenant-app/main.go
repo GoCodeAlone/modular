@@ -23,14 +23,30 @@ func main() {
 		&slog.HandlerOptions{Level: slog.LevelDebug},
 	))
 
-	app := modular.NewStdApplication(
-		modular.NewStdConfigProvider(&AppConfig{}),
-		logger,
+	// Create application using new builder API
+	app, err := modular.NewApplication(
+		modular.WithLogger(logger),
+		modular.WithConfigProvider(modular.NewStdConfigProvider(&AppConfig{})),
+		modular.WithModules(
+			NewWebServer(logger),
+			NewRouter(logger),
+			NewAPIModule(logger),
+			NewContentManager(logger),
+			NewNotificationManager(logger),
+		),
 	)
 
-	// Initialize TenantService
+	if err != nil {
+		logger.Error("Failed to create application", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize TenantService (advanced setup still manual for now)
 	tenantService := modular.NewStandardTenantService(app.Logger())
-	app.RegisterService("tenantService", tenantService)
+	if err := app.RegisterService("tenantService", tenantService); err != nil {
+		logger.Error("Failed to register tenant service", "error", err)
+		os.Exit(1)
+	}
 
 	// Register tenant config loader
 	tenantConfigLoader := modular.NewFileBasedTenantConfigLoader(modular.TenantConfigParams{
@@ -42,16 +58,10 @@ func main() {
 			}, func(s string) string { return "" }),
 		},
 	})
-	app.RegisterService("tenantConfigLoader", tenantConfigLoader)
-
-	// Register standard modules
-	app.RegisterModule(NewWebServer(app.Logger()))
-	app.RegisterModule(NewRouter(app.Logger()))
-	app.RegisterModule(NewAPIModule(app.Logger()))
-
-	// Register tenant-aware module
-	app.RegisterModule(NewContentManager(app.Logger()))
-	app.RegisterModule(NewNotificationManager(app.Logger()))
+	if err := app.RegisterService("tenantConfigLoader", tenantConfigLoader); err != nil {
+		logger.Error("Failed to register tenant config loader", "error", err)
+		os.Exit(1)
+	}
 
 	// Run application with lifecycle management
 	if err := app.Run(); err != nil {

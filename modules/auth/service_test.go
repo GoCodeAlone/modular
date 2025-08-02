@@ -302,7 +302,7 @@ func TestService_VerifyPassword(t *testing.T) {
 
 	// Correct password should verify
 	err = service.VerifyPassword(hash, password)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Wrong password should fail
 	err = service.VerifyPassword(hash, "wrongpassword")

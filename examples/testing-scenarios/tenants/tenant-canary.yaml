@@ -1,0 +1,9 @@
+reverseproxy:
+  default_backend: "canary"
+  backend_services:
+    canary: "http://localhost:9003"
+  feature_flags:
+    flags:
+      canary-deployments: true
+      experimental-features: true
+      early-access: true

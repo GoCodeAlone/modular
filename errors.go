@@ -23,6 +23,7 @@ var (
 	ErrApplicationNil        = errors.New("application is nil")
 	ErrConfigProviderNil     = errors.New("failed to load app config: config provider is nil")
 	ErrConfigSectionError    = errors.New("failed to load app config: error triggered by section")
+	ErrLoggerNotSet          = errors.New("logger not set in application builder")
 
 	// Config validation errors - problems with configuration structure and values
 	ErrConfigNil                  = errors.New("config is nil")

@@ -171,7 +171,7 @@ func (m *Module) Constructor() modular.ModuleConstructor {
 			if userStoreImpl, ok := us.(UserStore); ok {
 				userStore = userStoreImpl
 			} else {
-				return nil, fmt.Errorf("user_store service does not implement UserStore interface")
+				return nil, ErrUserStoreInvalid
 			}
 		} else {
 			userStore = NewMemoryUserStore()
@@ -183,7 +183,7 @@ func (m *Module) Constructor() modular.ModuleConstructor {
 			if sessionStoreImpl, ok := ss.(SessionStore); ok {
 				sessionStore = sessionStoreImpl
 			} else {
-				return nil, fmt.Errorf("session_store service does not implement SessionStore interface")
+				return nil, ErrSessionStoreInvalid
 			}
 		} else {
 			sessionStore = NewMemorySessionStore()

@@ -4,6 +4,31 @@ import (
 	"net/http"
 )
 
+// HTTPDoer defines the minimal interface for making HTTP requests.
+// This interface is implemented by http.Client and provides a simple
+// abstraction for modules that only need to make HTTP requests without
+// the additional features provided by ClientService.
+//
+// Use this interface when you only need to make HTTP requests:
+//
+//	type MyModule struct {
+//	    httpClient HTTPDoer
+//	}
+//
+//	func (m *MyModule) RequiresServices() []modular.ServiceDependency {
+//	    return []modular.ServiceDependency{
+//	        {
+//	            Name:               "http-doer",
+//	            Required:           true,
+//	            MatchByInterface:   true,
+//	            SatisfiesInterface: reflect.TypeOf((*HTTPDoer)(nil)).Elem(),
+//	        },
+//	    }
+//	}
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // ClientService defines the interface for the HTTP client service.
 // This interface provides access to configured HTTP clients and request
 // modification capabilities. Any module that needs to make HTTP requests

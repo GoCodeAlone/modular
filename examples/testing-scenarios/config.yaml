@@ -1,0 +1,318 @@
+# Testing Scenarios Configuration
+# Comprehensive configuration for all reverse proxy testing scenarios including
+# LaunchDarkly integration, debug endpoints, and dry-run functionality
+
+# Application configuration
+testing_mode: true
+scenario_runner: true
+metrics_enabled: true
+log_level: "debug"
+
+# ChiMux configuration
+chimux:
+  basepath: ""
+  allowed_origins: ["*"]
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+  allowed_headers: ["Content-Type", "Authorization", "X-Tenant-ID", "X-Affiliate-ID", "X-Test-Scenario", "X-Feature-Flag", "X-Request-ID"]
+  allow_credentials: false
+  max_age: 300
+
+# HTTP Server configuration
+httpserver:
+  host: "localhost"
+  port: 8080
+  read_timeout: 30
+  write_timeout: 30
+  idle_timeout: 120
+
+# Reverse Proxy configuration - comprehensive testing setup with LaunchDarkly integration
+reverseproxy:
+  # Backend services for different testing scenarios
+  backend_services:
+    primary: "http://localhost:9001"          # Main backend for health/load testing
+    secondary: "http://localhost:9002"        # Secondary backend for failover testing
+    canary: "http://localhost:9003"           # Canary backend for feature flag testing
+    legacy: "http://localhost:9004"           # Legacy backend for migration testing
+    monitoring: "http://localhost:9005"       # Monitoring backend with metrics endpoint
+    unstable: "http://localhost:9006"         # Unstable backend for circuit breaker testing
+    slow: "http://localhost:9007"             # Slow backend for performance testing
+    chimera: "http://localhost:9008"          # Chimera API backend for LaunchDarkly scenarios
+
+  # Route configuration for different test scenarios matching Chimera Facade patterns
+  # Note: /health endpoint is handled directly by the application, not proxied to backends
+  routes:
+    "/api/v1/*": "primary"                    # Main API routes
+    "/api/v2/*": "canary"                     # Canary API routes
+    "/legacy/*": "legacy"                     # Legacy API routes
+    "/metrics/*": "monitoring"                # Monitoring routes
+    "/slow/*": "slow"                         # Performance testing routes
+
+  # Route-level feature flag configuration for testing LaunchDarkly scenarios
+  route_configs:
+    "/api/v1/toolkit/toolbox":
+      feature_flag_id: "toolkit-toolbox-api"
+      alternative_backend: "legacy"
+      dry_run: false
+    "/api/v1/authentication/oauth/token":
+      feature_flag_id: "oauth-token-api"
+      alternative_backend: "legacy"
+      dry_run: false
+    "/api/v1/authentication/oauth/introspect":
+      feature_flag_id: "oauth-introspect-api"
+      alternative_backend: "legacy"
+      dry_run: false
+    "/api/v1/test/dryrun":
+      feature_flag_id: "test-dryrun-api"
+      alternative_backend: "legacy"
+      dry_run: true
+      dry_run_backend: "chimera"
+
+  # Default backend for unmatched routes
+  default_backend: "primary"
+
+  # Tenant configuration for multi-tenant testing
+  tenant_id_header: "X-Affiliate-ID"
+  require_tenant_id: false
+
+  # LaunchDarkly integration configuration
+  launchdarkly:
+    sdk_key: ""  # Set via LAUNCHDARKLY_SDK_KEY environment variable
+    environment: "local"
+    timeout: "5s"
+    offline: false
+
+  # Debug endpoints configuration
+  debug_endpoints:
+    enabled: true
+    base_path: "/debug"
+    require_auth: false
+    auth_token: ""
+
+  # Dry-run configuration
+  dry_run:
+    enabled: true
+    log_responses: true
+    max_response_size: 1048576  # 1MB
+    compare_headers: ["Content-Type", "X-API-Version"]
+    ignore_headers: ["Date", "X-Request-ID", "X-Trace-ID"]
+
+  # Health check configuration for testing scenarios
+  health_check:
+    enabled: true
+    interval: "10s"                           # Fast interval for testing
+    timeout: "3s"
+    recent_request_threshold: "30s"           # Allow more frequent health checks
+    expected_status_codes: [200, 204]
+    
+    # Custom health endpoints per backend
+    health_endpoints:
+      primary: "/health"
+      secondary: "/health"
+      canary: "/health"
+      legacy: "/status"                       # Different endpoint for legacy
+      monitoring: "/health"
+      unstable: "/health"
+      slow: "/health"
+      chimera: "/health"
+    
+    # Per-backend health check configuration
+    backend_health_check_config:
+      primary:
+        enabled: true
+        interval: "5s"                        # More frequent for primary
+        timeout: "2s"
+        expected_status_codes: [200]
+      
+      secondary:
+        enabled: true
+        interval: "10s"
+        timeout: "3s"
+        expected_status_codes: [200]
+      
+      canary:
+        enabled: true
+        interval: "15s"                       # Less frequent for canary
+        timeout: "5s"
+        expected_status_codes: [200, 204]
+      
+      legacy:
+        enabled: true
+        endpoint: "/status"                   # Custom endpoint
+        interval: "30s"                       # Legacy systems check less frequently
+        timeout: "10s"
+        expected_status_codes: [200, 201]
+      
+      unstable:
+        enabled: true
+        interval: "5s"                        # Frequent checks for unstable backend
+        timeout: "2s"
+        expected_status_codes: [200]
+      
+      slow:
+        enabled: true
+        interval: "20s"
+        timeout: "15s"                        # Longer timeout for slow backend
+        expected_status_codes: [200]
+      
+      chimera:
+        enabled: true
+        interval: "10s"
+        timeout: "5s"
+        expected_status_codes: [200]
+
+  # Circuit breaker configuration for failover testing
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 3                      # Low threshold for testing
+    success_threshold: 2
+    open_timeout: "30s"                       # Short timeout for testing
+    half_open_allowed_requests: 3
+    window_size: 10
+    success_rate_threshold: 0.6
+
+  # Per-backend circuit breaker configuration
+  backend_circuit_breakers:
+    primary:
+      enabled: true
+      failure_threshold: 5
+      success_threshold: 3
+      open_timeout: "15s"
+    
+    secondary:
+      enabled: true
+      failure_threshold: 3
+      success_threshold: 2
+      open_timeout: "20s"
+    
+    canary:
+      enabled: true
+      failure_threshold: 2                    # More sensitive for canary
+      success_threshold: 3
+      open_timeout: "10s"
+    
+    unstable:
+      enabled: true
+      failure_threshold: 1                    # Very sensitive for unstable backend
+      success_threshold: 5                    # Harder to recover
+      open_timeout: "60s"
+    
+    slow:
+      enabled: true
+      failure_threshold: 10                   # More tolerant of slow responses
+      success_threshold: 2
+      open_timeout: "45s"
+
+  # Request timeout configuration
+  request_timeout: "30s"
+
+  # Cache configuration for performance testing
+  cache_enabled: true
+  cache_ttl: "5m"
+
+  # Metrics configuration
+  metrics_enabled: true
+  metrics_path: "/metrics"
+  metrics_endpoint: "/reverseproxy/metrics"
+
+  # Feature flags configuration with default values
+  feature_flags:
+    enabled: true
+    flags:
+      api-v1-enabled: true
+      api-v2-enabled: false
+      canary-enabled: false
+      toolkit-toolbox-api: true
+      oauth-token-api: true
+      oauth-introspect-api: true
+      test-dryrun-api: true
+
+  # Composite routes for testing multi-backend responses
+  composite_routes:
+    "/api/dashboard":
+      pattern: "/api/dashboard"
+      backends: ["primary", "monitoring"]
+      strategy: "merge"
+      feature_flag_id: "dashboard-composite"
+      alternative_backend: "primary"
+    
+    "/api/health-summary":
+      pattern: "/api/health-summary"
+      backends: ["primary", "secondary", "canary"]
+      strategy: "merge"
+
+  # Per-backend configuration for advanced testing
+  backend_configs:
+    primary:
+      # Path rewriting for primary backend
+      path_rewriting:
+        strip_base_path: "/api/v1"
+        base_path_rewrite: "/internal/api"
+        endpoint_rewrites:
+          health:
+            pattern: "/health"
+            replacement: "/internal/health"
+      
+      # Header rewriting for primary backend
+      header_rewriting:
+        hostname_handling: "preserve_original"
+        set_headers:
+          X-Backend: "primary"
+          X-Service-Version: "v1"
+          X-Load-Test: "true"
+        remove_headers:
+          - "X-Debug-Token"
+    
+    canary:
+      # Different configuration for canary backend
+      path_rewriting:
+        strip_base_path: "/api/v2"
+        base_path_rewrite: "/canary/api"
+      
+      header_rewriting:
+        hostname_handling: "use_backend"
+        set_headers:
+          X-Backend: "canary"
+          X-Service-Version: "v2"
+          X-Canary-Deployment: "true"
+    
+    legacy:
+      # Legacy backend configuration
+      path_rewriting:
+        strip_base_path: "/legacy"
+        base_path_rewrite: "/old-api"
+      
+      header_rewriting:
+        hostname_handling: "preserve_original"
+        set_headers:
+          X-Backend: "legacy"
+          X-Legacy-Mode: "true"
+          X-API-Version: "legacy"
+        remove_headers:
+          - "X-Modern-Feature"
+    
+    monitoring:
+      # Monitoring backend configuration
+      header_rewriting:
+        hostname_handling: "use_custom"
+        custom_hostname: "monitoring.internal"
+        set_headers:
+          X-Backend: "monitoring"
+          X-Metrics-Collection: "enabled"
+    
+    slow:
+      # Slow backend with longer timeouts
+      header_rewriting:
+        set_headers:
+          X-Backend: "slow"
+          X-Performance-Test: "true"
+          X-Expected-Delay: "high"
+    
+    chimera:
+      # Chimera API backend configuration
+      header_rewriting:
+        hostname_handling: "preserve_original"
+        set_headers:
+          X-Backend: "chimera"
+          X-API-Type: "modern"
+          X-Feature-Flags: "enabled"
+

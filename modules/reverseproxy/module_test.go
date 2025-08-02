@@ -84,7 +84,7 @@ func TestModule_Start(t *testing.T) {
 
 	// Initialize module
 	err := module.RegisterConfig(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Directly set config and routes
 	module.config = testConfig
@@ -119,7 +119,7 @@ func TestModule_Start(t *testing.T) {
 
 	// Test Start
 	err = module.Start(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify routes were registered
 	assert.NotEmpty(t, mockRouter.routes, "Should register routes with the router")
@@ -166,12 +166,13 @@ func TestOnTenantRegistered(t *testing.T) {
 	tenantID := modular.TenantID("tenant1")
 
 	// Register tenant config
-	mockApp.RegisterTenant(tenantID, map[string]modular.ConfigProvider{
+	err := mockApp.RegisterTenant(tenantID, map[string]modular.ConfigProvider{
 		"reverseproxy": NewStdConfigProvider(tenantConfig),
 	})
+	require.NoError(t, err)
 
-	err := module.RegisterConfig(mockApp)
-	assert.NoError(t, err)
+	err = module.RegisterConfig(mockApp)
+	require.NoError(t, err)
 
 	// Test tenant registration
 	module.OnTenantRegistered(tenantID)
@@ -188,7 +189,7 @@ func TestOnTenantRemoved(t *testing.T) {
 	mockApp := NewMockTenantApplication()
 
 	err := module.RegisterConfig(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Register tenant first
 	tenantID := modular.TenantID("tenant1")
@@ -212,16 +213,17 @@ func TestRegisterCustomEndpoint(t *testing.T) {
 		customHeader := r.Header.Get("X-Custom-Header")
 
 		// Check the request path
-		if r.URL.Path == "/api/data" {
+		switch r.URL.Path {
+		case "/api/data":
 			w.Header().Set("Content-Type", "application/json")
 			// Include received headers in the response for verification
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(fmt.Sprintf(`{"service":"service1","data":{"id":123,"name":"Test Item"},"received_headers":{"auth":"%s","custom":"%s"}}`, authHeader, customHeader)))
-		} else if r.URL.Path == "/api/timeout" {
+			fmt.Fprintf(w, `{"service":"service1","data":{"id":123,"name":"Test Item"},"received_headers":{"auth":"%s","custom":"%s"}}`, authHeader, customHeader)
+		case "/api/timeout":
 			// Simulate a timeout
 			time.Sleep(200 * time.Millisecond)
 			w.WriteHeader(http.StatusGatewayTimeout)
-		} else {
+		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -235,18 +237,19 @@ func TestRegisterCustomEndpoint(t *testing.T) {
 		}
 
 		// Check the request path
-		if r.URL.Path == "/api/more-data" {
+		switch r.URL.Path {
+		case "/api/more-data":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"service":"service2","metadata":{"tags":["important","featured"],"views":1024}}`))
-		} else if r.URL.Path == "/api/error" {
+			_, _ = w.Write([]byte(`{"service":"service2","metadata":{"tags":["important","featured"],"views":1024}}`))
+		case "/api/error":
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error":"Internal server error"}`))
-		} else if r.URL.Path == "/api/redirect" {
+			_, _ = w.Write([]byte(`{"error":"Internal server error"}`))
+		case "/api/redirect":
 			// Test handling of redirects
 			w.Header().Set("Location", "/api/more-data")
 			w.WriteHeader(http.StatusTemporaryRedirect)
-		} else {
+		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -576,7 +579,7 @@ func TestRegisterCustomEndpoint(t *testing.T) {
 		if r.URL.Path == "/api/data" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"service":"tenant-service","data":{"tenant_id":"test-tenant"}}`))
+			_, _ = w.Write([]byte(`{"service":"tenant-service","data":{"tenant_id":"test-tenant"}}`))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -632,7 +635,7 @@ func TestAddBackendRoute(t *testing.T) {
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"default-backend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"service":"default-backend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer backendServer.Close()
 
@@ -640,7 +643,7 @@ func TestAddBackendRoute(t *testing.T) {
 	tenantBackendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"tenant-backend","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"service":"tenant-backend","path":"` + r.URL.Path + `"}`))
 	}))
 	defer tenantBackendServer.Close()
 
@@ -707,7 +710,8 @@ func TestAddBackendRoute(t *testing.T) {
 
 	// Test 1: Add a route for the Twitter backend
 	twitterPattern := "/api/twitter/*"
-	module.AddBackendRoute("twitter", twitterPattern)
+	err = module.AddBackendRoute("twitter", twitterPattern)
+	require.NoError(t, err)
 
 	// Verify that the route was registered
 	handler, exists := mockRouter.routes[twitterPattern]
@@ -734,7 +738,8 @@ func TestAddBackendRoute(t *testing.T) {
 
 	// Test 2: Add a route for the GitHub backend
 	githubPattern := "/api/github/*"
-	module.AddBackendRoute("github", githubPattern)
+	err = module.AddBackendRoute("github", githubPattern)
+	require.NoError(t, err)
 
 	// Verify that the route was registered
 	githubHandler, githubExists := mockRouter.routes[githubPattern]
@@ -764,7 +769,8 @@ func TestAddBackendRoute(t *testing.T) {
 	}
 
 	// Test 4: Test with a non-existent backend
-	module.AddBackendRoute("nonexistent", "/api/nonexistent/*")
+	err = module.AddBackendRoute("nonexistent", "/api/nonexistent/*")
+	require.Error(t, err, "AddBackendRoute should return an error for non-existent backend")
 
 	// This should log an error but not panic, and no route should be registered
 	_, nonexistentExists := mockRouter.routes["/api/nonexistent/*"]
@@ -779,7 +785,8 @@ func TestAddBackendRoute(t *testing.T) {
 	module.config = invalidConfig
 
 	// This should log an error but not panic
-	module.AddBackendRoute("invalid", "/api/invalid/*")
+	err = module.AddBackendRoute("invalid", "/api/invalid/*")
+	require.Error(t, err, "AddBackendRoute should return an error for invalid URL")
 	_, invalidExists := mockRouter.routes["/api/invalid/*"]
 	assert.False(t, invalidExists, "No route should be registered for invalid URL")
 }
@@ -819,13 +826,14 @@ func TestTenantConfigMerging(t *testing.T) {
 	}
 
 	// Register tenant config
-	mockApp.RegisterTenant(tenant1ID, map[string]modular.ConfigProvider{
+	err := mockApp.RegisterTenant(tenant1ID, map[string]modular.ConfigProvider{
 		"reverseproxy": NewStdConfigProvider(tenant1Config),
 	})
+	require.NoError(t, err)
 
 	// Initialize module
-	err := module.RegisterConfig(mockApp)
-	assert.NoError(t, err)
+	err = module.RegisterConfig(mockApp)
+	require.NoError(t, err)
 	module.config = globalConfig // Set global config directly
 
 	// Register tenant
@@ -868,9 +876,10 @@ func TestTenantConfigMerging(t *testing.T) {
 	}
 
 	// Register second tenant
-	mockApp.RegisterTenant(tenant2ID, map[string]modular.ConfigProvider{
+	err = mockApp.RegisterTenant(tenant2ID, map[string]modular.ConfigProvider{
 		"reverseproxy": NewStdConfigProvider(tenant2Config),
 	})
+	require.NoError(t, err)
 
 	// Register and load second tenant
 	module.OnTenantRegistered(tenant2ID)
@@ -882,7 +891,7 @@ func TestTenantConfigMerging(t *testing.T) {
 	assert.NotNil(t, tenant2Cfg)
 
 	// Check services - should have both global and tenant-specific ones
-	assert.Equal(t, 3, len(tenant2Cfg.BackendServices), "Should have 3 backend services")
+	assert.Len(t, tenant2Cfg.BackendServices, 3, "Should have 3 backend services")
 	assert.Equal(t, "http://legacy-tenant2.example.com", tenant2Cfg.BackendServices["legacy"])
 	assert.Equal(t, "http://chimera-global.example.com", tenant2Cfg.BackendServices["chimera"])
 	assert.Equal(t, "http://tenant2-specific.example.com", tenant2Cfg.BackendServices["tenant-only"])
