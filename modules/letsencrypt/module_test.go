@@ -208,7 +208,7 @@ func TestLetsEncryptModule_Config(t *testing.T) {
 		Domains: []string{"example.com"},
 	}
 	module := &LetsEncryptModule{config: config}
-	
+
 	result := module.Config()
 	if result != config {
 		t.Error("Config method should return the module's config")
@@ -224,29 +224,29 @@ func TestLetsEncryptModule_StartStop(t *testing.T) {
 		UseStaging:   true,
 		HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
 	}
-	
+
 	module, err := New(config)
 	if err != nil {
 		t.Fatalf("Failed to create module: %v", err)
 	}
-	
+
 	// Test Stop when not started (should not error)
 	err = module.Stop(context.Background())
 	if err != nil {
 		t.Errorf("Stop should not error when not started: %v", err)
 	}
-	
+
 	// Note: We can't easily test Start as it requires ACME server interaction
 }
 
 func TestLetsEncryptModule_GetCertificateForDomain(t *testing.T) {
-	// Create a test directory for certificates  
+	// Create a test directory for certificates
 	testDir, err := os.MkdirTemp("", "letsencrypt-test2")
 	if err != nil {
 		t.Fatalf("Failed to create test directory: %v", err)
 	}
 	defer os.RemoveAll(testDir)
-	
+
 	config := &LetsEncryptConfig{
 		Email:        "test@example.com",
 		Domains:      []string{"example.com"},
@@ -254,31 +254,31 @@ func TestLetsEncryptModule_GetCertificateForDomain(t *testing.T) {
 		UseStaging:   true,
 		HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
 	}
-	
+
 	module, err := New(config)
 	if err != nil {
 		t.Fatalf("Failed to create module: %v", err)
 	}
-	
+
 	// Create mock certificate
 	certPEM, keyPEM := createMockCertificate(t, "example.com")
-	
+
 	// Create certificate storage and save certificate
 	storage, err := newCertificateStorage(testDir)
 	if err != nil {
 		t.Fatalf("Failed to create certificate storage: %v", err)
 	}
-	
+
 	certResource := &certificate.Resource{
 		Domain:      "example.com",
 		Certificate: certPEM,
 		PrivateKey:  keyPEM,
 	}
-	
+
 	if err := storage.SaveCertificate("example.com", certResource); err != nil {
 		t.Fatalf("Failed to save certificate: %v", err)
 	}
-	
+
 	// Initialize certificates map and load certificate
 	module.certificates = make(map[string]*tls.Certificate)
 	tlsCert, err := storage.LoadCertificate("example.com")
@@ -286,7 +286,7 @@ func TestLetsEncryptModule_GetCertificateForDomain(t *testing.T) {
 		t.Fatalf("Failed to load certificate: %v", err)
 	}
 	module.certificates["example.com"] = tlsCert
-	
+
 	// Test GetCertificateForDomain for existing domain
 	cert, err := module.GetCertificateForDomain("example.com")
 	if err != nil {
@@ -295,7 +295,7 @@ func TestLetsEncryptModule_GetCertificateForDomain(t *testing.T) {
 	if cert == nil {
 		t.Error("Expected certificate for example.com")
 	}
-	
+
 	// Test GetCertificateForDomain for non-existing domain
 	cert, err = module.GetCertificateForDomain("nonexistent.com")
 	if err == nil {
@@ -357,7 +357,7 @@ func TestLetsEncryptConfig_Validate(t *testing.T) {
 			wantErr: false, // Should not error, just set default
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
@@ -374,12 +374,12 @@ func TestCertificateStorage_ListCertificates(t *testing.T) {
 		t.Fatalf("Failed to create test directory: %v", err)
 	}
 	defer os.RemoveAll(testDir)
-	
+
 	storage, err := newCertificateStorage(testDir)
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	
+
 	// Test empty directory
 	certs, err := storage.ListCertificates()
 	if err != nil {
@@ -396,12 +396,12 @@ func TestCertificateStorage_IsCertificateExpiringSoon(t *testing.T) {
 		t.Fatalf("Failed to create test directory: %v", err)
 	}
 	defer os.RemoveAll(testDir)
-	
+
 	storage, err := newCertificateStorage(testDir)
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	
+
 	// Test non-existent certificate
 	isExpiring, err := storage.IsCertificateExpiringSoon("nonexistent.com", 30)
 	if err == nil {
@@ -422,7 +422,7 @@ func TestSanitizeDomain(t *testing.T) {
 		{"test-domain.com", "test-domain_com"},
 		{"simple", "simple"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result := sanitizeDomain(tt.input)
@@ -447,19 +447,19 @@ func TestUser_Interface(t *testing.T) {
 		Registration: nil,
 		Key:          nil,
 	}
-	
+
 	// Test GetEmail
 	email := user.GetEmail()
 	if email != "test@example.com" {
 		t.Errorf("GetEmail() = %s, expected test@example.com", email)
 	}
-	
-	// Test GetRegistration 
+
+	// Test GetRegistration
 	reg := user.GetRegistration()
 	if reg != nil {
 		t.Error("Expected nil registration")
 	}
-	
+
 	// Test GetPrivateKey
 	key := user.GetPrivateKey()
 	if key != nil {
@@ -472,14 +472,14 @@ func TestHTTPProvider_PresentCleanUp(t *testing.T) {
 	provider := &letsEncryptHTTPProvider{
 		handler: nil, // No handler set
 	}
-	
+
 	// Test Present method without handler
 	err := provider.Present("example.com", "token", "keyAuth")
 	if err == nil {
 		t.Error("Expected error when no handler is set")
 	}
-	
-	// Test CleanUp method  
+
+	// Test CleanUp method
 	err = provider.CleanUp("example.com", "token", "keyAuth")
 	if err != nil {
 		t.Errorf("CleanUp should not error: %v", err)
@@ -494,12 +494,12 @@ func TestLetsEncryptModule_RevokeCertificate(t *testing.T) {
 		UseStaging:   true,
 		HTTPProvider: &HTTPProviderConfig{UseBuiltIn: true},
 	}
-	
+
 	module, err := New(config)
 	if err != nil {
 		t.Fatalf("Failed to create module: %v", err)
 	}
-	
+
 	// Test RevokeCertificate without initialization (should fail gracefully)
 	err = module.RevokeCertificate("example.com")
 	if err == nil {
@@ -519,13 +519,13 @@ func TestLetsEncryptModule_CreateProviders(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Test createCloudflareProvider - will fail but exercise the code path
 	_, err := module.createCloudflareProvider()
 	if err == nil {
 		t.Log("createCloudflareProvider unexpectedly succeeded (may be in test env)")
 	}
-	
+
 	// Test createRoute53Provider
 	module.config.DNSProvider.Provider = "route53"
 	module.config.DNSProvider.Route53 = &Route53Config{
@@ -537,7 +537,7 @@ func TestLetsEncryptModule_CreateProviders(t *testing.T) {
 	if err == nil {
 		t.Log("createRoute53Provider unexpectedly succeeded (may be in test env)")
 	}
-	
+
 	// Test createDigitalOceanProvider
 	module.config.DNSProvider.Provider = "digitalocean"
 	module.config.DNSProvider.DigitalOcean = &DigitalOceanConfig{
@@ -555,20 +555,20 @@ func TestLetsEncryptModule_ConfigureDNSProvider(t *testing.T) {
 			DNSProvider: &DNSProviderConfig{
 				Provider: "cloudflare",
 				Cloudflare: &CloudflareConfig{
-					Email:  "test@example.com", 
+					Email:  "test@example.com",
 					APIKey: "test-key",
 				},
 			},
 		},
 	}
-	
+
 	// Test configureDNSProvider (may fail due to missing credentials, which is expected)
 	err := module.configureDNSProvider()
 	// Don't fail test if credentials are missing - this is expected in test environment
 	if err != nil {
 		t.Logf("configureDNSProvider failed (expected in test env): %v", err)
 	}
-	
+
 	// Test with unsupported provider
 	module.config.DNSProvider.Provider = "unsupported"
 	err = module.configureDNSProvider()

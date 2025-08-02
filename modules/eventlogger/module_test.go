@@ -463,18 +463,18 @@ func TestEventLoggerModule_RegisterObservers(t *testing.T) {
 	module := NewModule().(*EventLoggerModule)
 	module.config = &EventLoggerConfig{Enabled: true}
 	module.logger = &MockLogger{}
-	
+
 	// Create a mock observable application
 	mockApp := &MockObservableApplication{
 		observers: make(map[string][]modular.Observer),
 	}
-	
+
 	// Register observers
 	err := module.RegisterObservers(mockApp)
 	if err != nil {
 		t.Errorf("RegisterObservers failed: %v", err)
 	}
-	
+
 	// Check that the observer was registered
 	if len(mockApp.observers[module.ObserverID()]) != 1 {
 		t.Error("Expected observer to be registered")
@@ -483,7 +483,7 @@ func TestEventLoggerModule_RegisterObservers(t *testing.T) {
 
 func TestEventLoggerModule_EmitEvent(t *testing.T) {
 	module := NewModule().(*EventLoggerModule)
-	
+
 	// Test EmitEvent (should always return error)
 	event := modular.NewCloudEvent("test.event", "test", nil, nil)
 	err := module.EmitEvent(context.Background(), event)
@@ -493,18 +493,18 @@ func TestEventLoggerModule_EmitEvent(t *testing.T) {
 }
 
 func TestOutputTargetError_Methods(t *testing.T) {
-	originalErr := errors.New("original error")
+	originalErr := ErrFileNotOpen // Use existing static error
 	err := NewOutputTargetError(1, originalErr)
-	
+
 	// Test Error method
 	errorStr := err.Error()
 	if !contains(errorStr, "output target 1") {
 		t.Errorf("Error string should contain 'output target 1': %s", errorStr)
 	}
-	
+
 	// Test Unwrap method
 	unwrapped := err.Unwrap()
-	if unwrapped != originalErr {
+	if !errors.Is(unwrapped, originalErr) {
 		t.Errorf("Unwrap should return original error, got %v", unwrapped)
 	}
 }
@@ -519,7 +519,7 @@ func TestConsoleOutput_FormatText(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create a LogEntry (this is what formatText expects)
 	logEntry := &LogEntry{
 		Timestamp: time.Now(),
@@ -529,12 +529,12 @@ func TestConsoleOutput_FormatText(t *testing.T) {
 		Data:      "test data",
 		Metadata:  make(map[string]interface{}),
 	}
-	
+
 	formatted, err := output.formatText(logEntry)
 	if err != nil {
 		t.Errorf("formatText failed: %v", err)
 	}
-	
+
 	if len(formatted) == 0 {
 		t.Error("Expected non-empty formatted text")
 	}
@@ -543,14 +543,14 @@ func TestConsoleOutput_FormatText(t *testing.T) {
 func TestConsoleOutput_FormatStructured(t *testing.T) {
 	output := &ConsoleTarget{
 		config: OutputTargetConfig{
-			Format: "structured", 
+			Format: "structured",
 			Console: &ConsoleTargetConfig{
 				UseColor:   false,
 				Timestamps: true,
 			},
 		},
 	}
-	
+
 	// Create a LogEntry
 	logEntry := &LogEntry{
 		Timestamp: time.Now(),
@@ -560,12 +560,12 @@ func TestConsoleOutput_FormatStructured(t *testing.T) {
 		Data:      "test data",
 		Metadata:  make(map[string]interface{}),
 	}
-	
+
 	formatted, err := output.formatStructured(logEntry)
 	if err != nil {
 		t.Errorf("formatStructured failed: %v", err)
 	}
-	
+
 	if len(formatted) == 0 {
 		t.Error("Expected non-empty formatted structured output")
 	}
@@ -579,7 +579,7 @@ func TestConsoleOutput_ColorizeLevel(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []string{"DEBUG", "INFO", "WARN", "ERROR"}
 	for _, level := range tests {
 		colorized := output.colorizeLevel(level)
@@ -599,23 +599,23 @@ func TestFileTarget_Creation(t *testing.T) {
 			Compress:   true,
 		},
 	}
-	
+
 	target, err := NewFileTarget(config, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Failed to create file target: %v", err)
 	}
-	
+
 	if target == nil {
 		t.Error("Expected non-nil file target")
 	}
-	
+
 	// Test start/stop
 	ctx := context.Background()
 	err = target.Start(ctx)
 	if err != nil {
 		t.Errorf("Failed to start file target: %v", err)
 	}
-	
+
 	err = target.Stop(ctx)
 	if err != nil {
 		t.Errorf("Failed to stop file target: %v", err)
@@ -631,18 +631,18 @@ func TestFileTarget_Operations(t *testing.T) {
 			MaxBackups: 3,
 		},
 	}
-	
+
 	target, err := NewFileTarget(config, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Failed to create file target: %v", err)
 	}
-	
+
 	ctx := context.Background()
 	err = target.Start(ctx)
 	if err != nil {
 		t.Errorf("Failed to start file target: %v", err)
 	}
-	
+
 	// Write an event
 	logEntry := &LogEntry{
 		Timestamp: time.Now(),
@@ -656,13 +656,13 @@ func TestFileTarget_Operations(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to write event: %v", err)
 	}
-	
+
 	// Test flush
 	err = target.Flush()
 	if err != nil {
 		t.Errorf("Failed to flush: %v", err)
 	}
-	
+
 	err = target.Stop(ctx)
 	if err != nil {
 		t.Errorf("Failed to stop file target: %v", err)
@@ -679,16 +679,16 @@ func TestSyslogTarget_Creation(t *testing.T) {
 			Facility: "local0",
 		},
 	}
-	
+
 	target, err := NewSyslogTarget(config, &MockLogger{})
 	// Note: This may fail in test environment without syslog, which is expected
 	if err != nil {
 		t.Logf("Syslog target creation failed (expected in test environment): %v", err)
 		return
 	}
-	
+
 	if target != nil {
-		target.Stop(context.Background()) // Clean up if created
+		_ = target.Stop(context.Background()) // Clean up if created
 	}
 }
 

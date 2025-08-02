@@ -119,7 +119,7 @@ func TestEventBusModule(t *testing.T) {
 
 	// Test services provided
 	services := module.(*EventBusModule).ProvidesServices()
-	assert.Equal(t, 1, len(services))
+	assert.Len(t, services, 1)
 	assert.Equal(t, ServiceName, services[0].Name)
 
 	// Test module lifecycle
