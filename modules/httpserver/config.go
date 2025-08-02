@@ -2,12 +2,23 @@
 package httpserver
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
 
 // DefaultTimeoutSeconds is the default timeout value in seconds
 const DefaultTimeoutSeconds = 15
+
+// Static error definitions for better error handling
+var (
+	ErrInvalidPortNumber          = errors.New("invalid port number")
+	ErrTLSAutoGenerationNoDomains = errors.New("TLS auto-generation is enabled but no domains specified")
+	ErrTLSNoCertificateFile       = errors.New("TLS is enabled but no certificate file specified")
+	ErrTLSNoKeyFile               = errors.New("TLS is enabled but no key file specified")
+	ErrRouterNotHTTPHandler       = errors.New("service does not implement http.Handler")
+	ErrServerStartTimeout         = errors.New("context cancelled while waiting for server to start")
+)
 
 // HTTPServerConfig defines the configuration for the HTTP server module.
 type HTTPServerConfig struct {
@@ -75,7 +86,7 @@ func (c *HTTPServerConfig) Validate() error {
 
 	// Check if port is within valid range
 	if c.Port < 0 || c.Port > 65535 {
-		return fmt.Errorf("invalid port number: %d", c.Port)
+		return fmt.Errorf("%w: %d", ErrInvalidPortNumber, c.Port)
 	}
 
 	// Set default timeouts if not specified
@@ -107,17 +118,17 @@ func (c *HTTPServerConfig) Validate() error {
 		if c.TLS.AutoGenerate {
 			// Make sure we have at least one domain for auto-generated certs
 			if len(c.TLS.Domains) == 0 {
-				return fmt.Errorf("TLS auto-generation is enabled but no domains specified")
+				return ErrTLSAutoGenerationNoDomains
 			}
 			return nil
 		}
 
 		// Otherwise, we need cert/key files
 		if c.TLS.CertFile == "" {
-			return fmt.Errorf("TLS is enabled but no certificate file specified")
+			return ErrTLSNoCertificateFile
 		}
 		if c.TLS.KeyFile == "" {
-			return fmt.Errorf("TLS is enabled but no key file specified")
+			return ErrTLSNoKeyFile
 		}
 	}
 

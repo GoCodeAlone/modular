@@ -33,7 +33,7 @@ func (s *MemoryJobStore) AddJob(job Job) error {
 
 	// Check if job already exists
 	if _, exists := s.jobs[job.ID]; exists {
-		return fmt.Errorf("job with ID %s already exists", job.ID)
+		return fmt.Errorf("%w: %s", ErrJobAlreadyExists, job.ID)
 	}
 
 	s.jobs[job.ID] = job
@@ -47,7 +47,7 @@ func (s *MemoryJobStore) UpdateJob(job Job) error {
 
 	// Check if job exists
 	if _, exists := s.jobs[job.ID]; !exists {
-		return fmt.Errorf("job with ID %s not found", job.ID)
+		return fmt.Errorf("%w: %s", ErrJobNotFound, job.ID)
 	}
 
 	s.jobs[job.ID] = job
@@ -61,7 +61,7 @@ func (s *MemoryJobStore) GetJob(jobID string) (Job, error) {
 
 	job, exists := s.jobs[jobID]
 	if !exists {
-		return Job{}, fmt.Errorf("job with ID %s not found", jobID)
+		return Job{}, fmt.Errorf("%w: %s", ErrJobNotFound, jobID)
 	}
 
 	return job, nil
@@ -121,7 +121,7 @@ func (s *MemoryJobStore) DeleteJob(jobID string) error {
 	defer s.jobsMutex.Unlock()
 
 	if _, exists := s.jobs[jobID]; !exists {
-		return fmt.Errorf("job with ID %s not found", jobID)
+		return fmt.Errorf("%w: %s", ErrJobNotFound, jobID)
 	}
 
 	delete(s.jobs, jobID)
@@ -148,7 +148,7 @@ func (s *MemoryJobStore) UpdateJobExecution(execution JobExecution) error {
 
 	executions, exists := s.executions[execution.JobID]
 	if !exists {
-		return fmt.Errorf("no executions found for job ID %s", execution.JobID)
+		return fmt.Errorf("%w: %s", ErrNoExecutionsFound, execution.JobID)
 	}
 
 	// Find the execution by start time
@@ -160,7 +160,7 @@ func (s *MemoryJobStore) UpdateJobExecution(execution JobExecution) error {
 		}
 	}
 
-	return fmt.Errorf("execution with start time %v not found for job ID %s", execution.StartTime, execution.JobID)
+	return fmt.Errorf("%w: start time %v, job ID %s", ErrExecutionNotFound, execution.StartTime, execution.JobID)
 }
 
 // GetJobExecutions retrieves execution history for a job
@@ -284,8 +284,8 @@ func (s *MemoryJobStore) SaveToFile(jobs []Job, filePath string) error {
 		return fmt.Errorf("failed to marshal jobs to JSON: %w", err)
 	}
 
-	// Write to file
-	err = os.WriteFile(filePath, data, 0644)
+	// Write to file with secure permissions
+	err = os.WriteFile(filePath, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write jobs to file: %w", err)
 	}

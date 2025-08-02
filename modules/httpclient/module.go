@@ -479,8 +479,13 @@ func (t *loggingTransport) logRequest(id string, req *http.Request) {
 		}
 	} else {
 		// Even when detailed logging is disabled, show useful basic information
+		// Security: Only log non-sensitive headers that are explicitly allowed
 		headers := make(map[string]string)
 		for key, values := range req.Header {
+			// Skip sensitive headers explicitly for security
+			if t.isSensitiveHeader(key) {
+				continue
+			}
 			if len(values) > 0 && t.isImportantHeader(key) {
 				headers[key] = values[0]
 			}
@@ -598,8 +603,13 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response, dura
 		}
 	} else {
 		// Even when detailed logging is disabled, show useful basic information
+		// Security: Only log non-sensitive headers that are explicitly allowed
 		headers := make(map[string]string)
 		for key, values := range resp.Header {
+			// Skip sensitive headers explicitly for security
+			if t.isSensitiveHeader(key) {
+				continue
+			}
 			if len(values) > 0 && t.isImportantHeader(key) {
 				headers[key] = values[0]
 			}
@@ -726,9 +736,32 @@ func (t *loggingTransport) smartTruncateResponse(dump string, maxSize int) strin
 	return dump[:maxSize]
 }
 
+// isSensitiveHeader checks if a header contains sensitive information
+// that should never be logged for security reasons.
+func (t *loggingTransport) isSensitiveHeader(headerName string) bool {
+	sensitive := []string{
+		"authorization", "cookie", "set-cookie", "x-api-key",
+		"x-auth-token", "proxy-authorization", "www-authenticate",
+		"proxy-authenticate", "x-access-token", "bearer", "token",
+	}
+
+	headerLower := strings.ToLower(headerName)
+	for _, sens := range sensitive {
+		if headerLower == sens || strings.Contains(headerLower, sens) {
+			return true
+		}
+	}
+	return false
+}
+
 // isImportantHeader determines if a header is important enough to show
-// even when detailed logging is disabled.
+// even when detailed logging is disabled, and is not sensitive.
 func (t *loggingTransport) isImportantHeader(headerName string) bool {
+	// First check if it's sensitive - never log sensitive headers
+	if t.isSensitiveHeader(headerName) {
+		return false
+	}
+
 	important := []string{
 		"content-type", "content-length", "user-agent",
 		"accept", "cache-control", "x-request-id", "x-correlation-id",

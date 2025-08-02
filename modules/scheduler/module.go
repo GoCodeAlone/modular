@@ -338,7 +338,7 @@ func (m *SchedulerModule) loadPersistedJobs() error {
 	}
 
 	m.logger.Warn("Job store does not support persistence")
-	return fmt.Errorf("job store does not implement PersistableJobStore interface")
+	return ErrNotPersistableJobStore
 }
 
 // savePersistedJobs saves jobs to the persistence file
@@ -362,5 +362,5 @@ func (m *SchedulerModule) savePersistedJobs() error {
 	}
 
 	m.logger.Warn("Job store does not support persistence")
-	return fmt.Errorf("job store does not implement PersistableJobStore interface")
+	return ErrNotPersistableJobStore
 }
