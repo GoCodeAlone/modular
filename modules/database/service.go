@@ -260,7 +260,7 @@ func (s *databaseServiceImpl) Begin() (*sql.Tx, error) {
 	if s.db == nil {
 		return nil, ErrDatabaseNotConnected
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("beginning database transaction: %w", err)
 	}

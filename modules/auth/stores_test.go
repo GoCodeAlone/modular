@@ -26,8 +26,8 @@ func TestMemoryUserStore(t *testing.T) {
 	// Test CreateUser
 	err := store.CreateUser(ctx, user)
 	require.NoError(t, err)
-	assert.True(t, !user.CreatedAt.IsZero())
-	assert.True(t, !user.UpdatedAt.IsZero())
+	assert.False(t, user.CreatedAt.IsZero())
+	assert.False(t, user.UpdatedAt.IsZero())
 
 	// Test duplicate user creation
 	duplicateUser := &User{
@@ -35,7 +35,7 @@ func TestMemoryUserStore(t *testing.T) {
 		Email: "different@example.com",
 	}
 	err = store.CreateUser(ctx, duplicateUser)
-	assert.ErrorIs(t, err, ErrUserAlreadyExists)
+	require.ErrorIs(t, err, ErrUserAlreadyExists)
 
 	// Test duplicate email
 	duplicateEmailUser := &User{
@@ -43,7 +43,7 @@ func TestMemoryUserStore(t *testing.T) {
 		Email: "test@example.com",
 	}
 	err = store.CreateUser(ctx, duplicateEmailUser)
-	assert.ErrorIs(t, err, ErrUserAlreadyExists)
+	require.ErrorIs(t, err, ErrUserAlreadyExists)
 
 	// Test GetUser
 	retrievedUser, err := store.GetUser(ctx, user.ID)
@@ -78,7 +78,7 @@ func TestMemoryUserStore(t *testing.T) {
 	// Test update non-existent user
 	nonExistentUser := &User{ID: "non-existent"}
 	err = store.UpdateUser(ctx, nonExistentUser)
-	assert.ErrorIs(t, err, ErrUserNotFound)
+	require.ErrorIs(t, err, ErrUserNotFound)
 
 	// Test DeleteUser
 	err = store.DeleteUser(ctx, user.ID)
@@ -86,11 +86,11 @@ func TestMemoryUserStore(t *testing.T) {
 
 	// Verify user is deleted
 	_, err = store.GetUser(ctx, user.ID)
-	assert.ErrorIs(t, err, ErrUserNotFound)
+	require.ErrorIs(t, err, ErrUserNotFound)
 
 	// Test delete non-existent user
 	err = store.DeleteUser(ctx, "non-existent")
-	assert.ErrorIs(t, err, ErrUserNotFound)
+	require.ErrorIs(t, err, ErrUserNotFound)
 
 	// Test get non-existent user by email
 	_, err = store.GetUserByEmail(ctx, "nonexistent@example.com")
@@ -141,11 +141,11 @@ func TestMemorySessionStore(t *testing.T) {
 
 	// Verify session is deleted
 	_, err = store.Get(ctx, session.ID)
-	assert.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, ErrSessionNotFound)
 
 	// Test get non-existent session
 	_, err = store.Get(ctx, "non-existent")
-	assert.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, ErrSessionNotFound)
 
 	// Test Cleanup
 	expiredSession := &Session{
@@ -181,10 +181,10 @@ func TestMemorySessionStore(t *testing.T) {
 
 	// Verify cleanup results
 	_, err = store.Get(ctx, expiredSession.ID)
-	assert.ErrorIs(t, err, ErrSessionNotFound, "Expired session should be removed")
+	require.ErrorIs(t, err, ErrSessionNotFound, "Expired session should be removed")
 
 	_, err = store.Get(ctx, inactiveSession.ID)
-	assert.ErrorIs(t, err, ErrSessionNotFound, "Inactive session should be removed")
+	require.ErrorIs(t, err, ErrSessionNotFound, "Inactive session should be removed")
 
 	_, err = store.Get(ctx, validSession.ID)
 	assert.NoError(t, err, "Valid session should remain")

@@ -175,7 +175,7 @@ func TestModule_RegisterConfig(t *testing.T) {
 	app := NewMockApplication()
 
 	err := module.RegisterConfig(app)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, module.config)
 
 	// Verify config was registered with the app
@@ -202,7 +202,7 @@ func TestModule_Init(t *testing.T) {
 
 	app := NewMockApplication()
 	err := module.Init(app)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, module.logger)
 }
 
@@ -218,7 +218,7 @@ func TestModule_Init_InvalidConfig(t *testing.T) {
 
 	app := NewMockApplication()
 	err := module.Init(app)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "configuration validation failed")
 }
 
@@ -231,7 +231,7 @@ func TestModule_StartStop(t *testing.T) {
 
 	// Test Start
 	err := module.Start(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test Stop
 	err = module.Stop(ctx)
@@ -315,7 +315,7 @@ func TestModule_Constructor_InvalidUserStore(t *testing.T) {
 	}
 
 	_, err := constructor(app, services)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user_store service does not implement UserStore interface")
 }
 
@@ -339,6 +339,6 @@ func TestModule_Constructor_InvalidSessionStore(t *testing.T) {
 	}
 
 	_, err := constructor(app, services)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "session_store service does not implement SessionStore interface")
 }

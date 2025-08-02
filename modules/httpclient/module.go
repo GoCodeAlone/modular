@@ -730,9 +730,9 @@ func (t *loggingTransport) smartTruncateResponse(dump string, maxSize int) strin
 // even when detailed logging is disabled.
 func (t *loggingTransport) isImportantHeader(headerName string) bool {
 	important := []string{
-		"content-type", "content-length", "authorization", "user-agent",
+		"content-type", "content-length", "user-agent",
 		"accept", "cache-control", "x-request-id", "x-correlation-id",
-		"x-trace-id", "location", "set-cookie",
+		"x-trace-id", "location",
 	}
 
 	headerLower := strings.ToLower(headerName)
