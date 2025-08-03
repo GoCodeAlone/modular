@@ -108,6 +108,9 @@ The `examples/` directory contains complete, working examples that demonstrate h
 | [**observer-demo**](./examples/observer-demo/) | Event system demonstration | Observer pattern with event logging |
 | [**testing-scenarios**](./examples/testing-scenarios/) | Testing and integration patterns | Various testing scenarios and configurations |
 | [**verbose-debug**](./examples/verbose-debug/) | Debugging and diagnostics | Verbose logging and debug output |
+| [**auth-demo**](./examples/auth-demo/) | Authentication system | JWT tokens, password hashing, protected routes |
+| [**cache-demo**](./examples/cache-demo/) | Caching system | In-memory and Redis caching with TTL |
+| [**scheduler-demo**](./examples/scheduler-demo/) | Job scheduling system | Cron jobs, one-time tasks, job management |
 
 ### Quick Start with Examples
 
@@ -131,6 +134,9 @@ Visit the [examples directory](./examples/) for detailed documentation, configur
 - **Examine [multi-tenant-app](./examples/multi-tenant-app/)** for building SaaS applications
 - **Investigate [instance-aware-db](./examples/instance-aware-db/)** for multiple database configurations
 - **Review [feature-flag-proxy](./examples/feature-flag-proxy/)** for dynamic routing and tenant features
+- **Check [auth-demo](./examples/auth-demo/)** for JWT authentication and security patterns
+- **Explore [cache-demo](./examples/cache-demo/)** for caching strategies and performance optimization
+- **Study [scheduler-demo](./examples/scheduler-demo/)** for automated task scheduling and job management
 
 ## Installation
 
