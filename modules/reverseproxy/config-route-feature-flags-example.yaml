@@ -1,0 +1,88 @@
+# Reverse Proxy Configuration Example with Route-Level Feature Flags
+#
+# This example demonstrates the new route_configs feature that allows
+# feature flag-controlled routing for specific routes.
+
+reverseproxy:
+  # Backend service URLs - maps service names to their URLs
+  backend_services:
+    chimera: "http://chimera-api:8080"
+    default: "http://host.docker.internal/api/platform/"
+    user-api: "http://user-api:8080"
+    legacy-api: "http://legacy-api:8080"
+
+  # Static route mapping - defines which backend serves each route pattern
+  routes:
+    "/api/v1/avatar/*": "chimera"          # Avatar API routes to chimera backend
+    "/api/v1/users/*": "user-api"          # User API routes to user-api backend
+    "/api/v1/legacy/*": "legacy-api"       # Legacy API routes to legacy-api backend
+
+  # Route-level feature flag configuration (NEW FEATURE)
+  # This allows dynamic backend selection based on feature flags
+  route_configs:
+    # Avatar API with feature flag control
+    "/api/v1/avatar/*":
+      feature_flag_id: "avatar-api"        # Feature flag to evaluate
+      alternative_backend: "default"        # Backend to use when flag is disabled
+
+    # User API with feature flag control
+    "/api/v1/users/*":
+      feature_flag_id: "new-user-api"      # Feature flag for new user API
+      alternative_backend: "legacy-api"     # Fall back to legacy when disabled
+
+    # Legacy API without feature flag (always uses primary backend from routes)
+    "/api/v1/legacy/*":
+      # No feature_flag_id specified - always uses "legacy-api" from routes
+
+  # Default backend when no route matches
+  default_backend: "default"
+  
+  # Tenant configuration
+  tenant_id_header: "X-Affiliate-Id"
+  require_tenant_id: true
+
+# Tenant-specific configurations can override feature flags
+tenants:
+  # Tenant "ctl" has specific feature flag overrides
+  ctl:
+    reverseproxy:
+      # This tenant can have different route configs
+      route_configs:
+        "/api/v1/avatar/*":
+          feature_flag_id: "avatar-api"
+          alternative_backend: "default"    # Same as global, but could be different
+
+# Example usage with FileBasedFeatureFlagEvaluator:
+#
+# // Create and register feature flag evaluator
+# featureFlagEvaluator := reverseproxy.NewFileBasedFeatureFlagEvaluator()
+# 
+# // Set global feature flags
+# featureFlagEvaluator.SetFlag("avatar-api", false)     // Routes to "default"
+# featureFlagEvaluator.SetFlag("new-user-api", true)    // Routes to "user-api"
+# 
+# // Set tenant-specific overrides
+# featureFlagEvaluator.SetTenantFlag("ctl", "avatar-api", false)  // ctl tenant routes to "default"
+# featureFlagEvaluator.SetTenantFlag("premium", "avatar-api", true) // premium tenant routes to "chimera"
+# 
+# // Register as service
+# app.RegisterService("featureFlagEvaluator", featureFlagEvaluator)
+# 
+# // Register reverseproxy module
+# app.RegisterModule(reverseproxy.NewModule())
+
+# How it works:
+# 1. When a request comes in for "/api/v1/avatar/upload":
+#    a. Check if route has route_configs entry ✓
+#    b. Evaluate feature flag "avatar-api" for the tenant (if any)
+#    c. If flag is TRUE  → route to "chimera" (from routes section)
+#    d. If flag is FALSE → route to "default" (from alternative_backend)
+#
+# 2. For routes without route_configs, normal routing applies:
+#    - Use backend specified in routes section
+#    - Fall back to default_backend if no route matches
+#
+# 3. Tenant-specific feature flags take precedence over global flags
+#
+# 4. If no feature flag evaluator is registered, all flags default to TRUE
+#    (feature flags enabled, use primary backends)

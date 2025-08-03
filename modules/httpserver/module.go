@@ -153,7 +153,7 @@ func (m *HTTPServerModule) Constructor() modular.ModuleConstructor {
 		// Get the router service (which implements http.Handler)
 		handler, ok := services["router"].(http.Handler)
 		if !ok {
-			return nil, fmt.Errorf("service %s does not implement http.Handler", "router")
+			return nil, fmt.Errorf("%w: %s", ErrRouterNotHTTPHandler, "router")
 		}
 
 		// Store the handler for use in Start
@@ -261,7 +261,7 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		}
 
 		// If server was shut down gracefully, err will be http.ErrServerClosed
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			m.logger.Error("HTTP server error", "error", err)
 		}
 	}()
@@ -272,14 +272,14 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		timeout = time.Until(deadline)
 	}
 
-	checkCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	check := func() error {
 		var dialer net.Dialer
 		conn, err := dialer.DialContext(checkCtx, "tcp", addr)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to connect to server: %w", err)
 		}
 		if closeErr := conn.Close(); closeErr != nil {
 			m.logger.Warn("Failed to close connection", "error", closeErr)
@@ -306,7 +306,7 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		// Wait before retrying
 		select {
 		case <-checkCtx.Done():
-			return fmt.Errorf("context cancelled while waiting for server to start")
+			return ErrServerStartTimeout
 		case <-ticker.C:
 		}
 	}
@@ -457,7 +457,7 @@ func (m *HTTPServerModule) generateSelfSignedCertificate(domains []string) (stri
 func (m *HTTPServerModule) createTempFile(pattern, content string) (string, error) {
 	tmpFile, err := os.CreateTemp("", pattern)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer func() {
 		if closeErr := tmpFile.Close(); closeErr != nil {
@@ -466,7 +466,7 @@ func (m *HTTPServerModule) createTempFile(pattern, content string) (string, erro
 	}()
 
 	if _, err := tmpFile.WriteString(content); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to write to temp file: %w", err)
 	}
 
 	return tmpFile.Name(), nil

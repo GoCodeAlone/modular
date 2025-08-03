@@ -15,7 +15,6 @@ type MockApplication struct {
 	configSections map[string]modular.ConfigProvider
 	services       map[string]interface{}
 	logger         modular.Logger
-	verboseConfig  bool
 }
 
 // NewMockApplication creates a new mock application
@@ -111,14 +110,14 @@ func (m *MockApplication) Run() error {
 	return nil
 }
 
-// IsVerboseConfig returns whether verbose configuration debugging is enabled for the mock
+// IsVerboseConfig returns whether verbose config is enabled (mock implementation)
 func (m *MockApplication) IsVerboseConfig() bool {
-	return m.verboseConfig
+	return false
 }
 
-// SetVerboseConfig enables or disables verbose configuration debugging for the mock
-func (m *MockApplication) SetVerboseConfig(enabled bool) {
-	m.verboseConfig = enabled
+// SetVerboseConfig sets the verbose config flag (mock implementation)
+func (m *MockApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
 }
 
 // MockLogger implements a minimal logger for testing
@@ -176,7 +175,7 @@ func TestModule_RegisterConfig(t *testing.T) {
 	app := NewMockApplication()
 
 	err := module.RegisterConfig(app)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, module.config)
 
 	// Verify config was registered with the app
@@ -203,7 +202,7 @@ func TestModule_Init(t *testing.T) {
 
 	app := NewMockApplication()
 	err := module.Init(app)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, module.logger)
 }
 
@@ -219,7 +218,7 @@ func TestModule_Init_InvalidConfig(t *testing.T) {
 
 	app := NewMockApplication()
 	err := module.Init(app)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "configuration validation failed")
 }
 
@@ -232,7 +231,7 @@ func TestModule_StartStop(t *testing.T) {
 
 	// Test Start
 	err := module.Start(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test Stop
 	err = module.Stop(ctx)
@@ -316,7 +315,7 @@ func TestModule_Constructor_InvalidUserStore(t *testing.T) {
 	}
 
 	_, err := constructor(app, services)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user_store service does not implement UserStore interface")
 }
 
@@ -340,6 +339,6 @@ func TestModule_Constructor_InvalidSessionStore(t *testing.T) {
 	}
 
 	_, err := constructor(app, services)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "session_store service does not implement SessionStore interface")
 }

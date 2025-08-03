@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -12,6 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Define static error to avoid err113 linting issue
+var errIntentionalTestFailure = errors.New("intentional test failure")
 
 type mockApp struct {
 	configSections map[string]modular.ConfigProvider
@@ -87,6 +91,14 @@ func (a *mockApp) Run() error {
 	return nil
 }
 
+func (a *mockApp) IsVerboseConfig() bool {
+	return false
+}
+
+func (a *mockApp) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
 type mockLogger struct{}
 
 func (l *mockLogger) Debug(msg string, args ...interface{}) {}
@@ -115,7 +127,7 @@ func TestSchedulerModule(t *testing.T) {
 
 	// Test services provided
 	services := module.(*SchedulerModule).ProvidesServices()
-	assert.Equal(t, 1, len(services))
+	assert.Len(t, services, 1)
 	assert.Equal(t, ServiceName, services[0].Name)
 
 	// Test module lifecycle
@@ -133,12 +145,14 @@ func TestSchedulerOperations(t *testing.T) {
 
 	// Initialize with mock app
 	app := newMockApp()
-	module.RegisterConfig(app)
-	module.Init(app)
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+	err = module.Init(app)
+	require.NoError(t, err)
 
 	// Start the module
 	ctx := context.Background()
-	err := module.Start(ctx)
+	err = module.Start(ctx)
 	require.NoError(t, err)
 
 	t.Run("ScheduleOneTimeJob", func(t *testing.T) {
@@ -313,7 +327,7 @@ func TestSchedulerOperations(t *testing.T) {
 			RunAt: time.Now().Add(100 * time.Millisecond),
 			JobFunc: func(ctx context.Context) error {
 				executed <- true
-				return fmt.Errorf("intentional test failure")
+				return errIntentionalTestFailure
 			},
 		}
 
@@ -379,8 +393,10 @@ func TestSchedulerServiceProvider(t *testing.T) {
 	module := NewModule().(*SchedulerModule)
 	app := newMockApp()
 
-	module.RegisterConfig(app)
-	module.Init(app)
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+	err = module.Init(app)
+	require.NoError(t, err)
 
 	// Test service provides
 	services := module.ProvidesServices()

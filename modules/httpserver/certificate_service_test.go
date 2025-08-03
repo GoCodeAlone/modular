@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -10,6 +11,13 @@ import (
 	"time"
 
 	"github.com/GoCodeAlone/modular"
+)
+
+// Define static errors to avoid err113 linting issues
+var (
+	errServerNameEmpty = errors.New("server name is empty")
+	errCertNotFound    = errors.New("no certificate found for domain")
+	errConfigNotFound  = errors.New("config section not found")
 )
 
 // MockCertificateService implements CertificateService for testing
@@ -25,12 +33,12 @@ func NewMockCertificateService() *MockCertificateService {
 
 func (m *MockCertificateService) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if clientHello == nil || clientHello.ServerName == "" {
-		return nil, fmt.Errorf("server name is empty")
+		return nil, errServerNameEmpty
 	}
 
 	cert, ok := m.certs[clientHello.ServerName]
 	if !ok {
-		return nil, fmt.Errorf("no certificate found for domain: %s", clientHello.ServerName)
+		return nil, fmt.Errorf("%w: %s", errCertNotFound, clientHello.ServerName)
 	}
 
 	return cert, nil
@@ -42,10 +50,9 @@ func (m *MockCertificateService) AddCertificate(domain string, cert *tls.Certifi
 
 // SimpleMockApplication is a minimal implementation for the certificate service tests
 type SimpleMockApplication struct {
-	config        map[string]modular.ConfigProvider
-	logger        modular.Logger
-	defaultCfg    modular.ConfigProvider
-	verboseConfig bool
+	config     map[string]modular.ConfigProvider
+	logger     modular.Logger
+	defaultCfg modular.ConfigProvider
 }
 
 func NewSimpleMockApplication() *SimpleMockApplication {
@@ -65,7 +72,7 @@ func (m *SimpleMockApplication) RegisterConfigSection(name string, provider modu
 func (m *SimpleMockApplication) GetConfigSection(name string) (modular.ConfigProvider, error) {
 	cfg, ok := m.config[name]
 	if !ok {
-		return nil, fmt.Errorf("config section %s not found", name)
+		return nil, fmt.Errorf("%w: %s", errConfigNotFound, name)
 	}
 	return cfg, nil
 }
@@ -119,14 +126,12 @@ func (m *SimpleMockApplication) Run() error {
 	return nil // No-op for these tests
 }
 
-// IsVerboseConfig returns whether verbose configuration debugging is enabled
 func (m *SimpleMockApplication) IsVerboseConfig() bool {
-	return m.verboseConfig
+	return false
 }
 
-// SetVerboseConfig enables or disables verbose configuration debugging
-func (m *SimpleMockApplication) SetVerboseConfig(enabled bool) {
-	m.verboseConfig = enabled
+func (m *SimpleMockApplication) SetVerboseConfig(verbose bool) {
+	// No-op for these tests
 }
 
 // SimpleMockLogger implements modular.Logger for certificate service tests
@@ -208,8 +213,9 @@ func TestHTTPServerWithCertificateService(t *testing.T) {
 
 	// Create a server to simulate that it was started
 	module.server = &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", module.config.Host, module.config.Port),
-		Handler: handler,
+		Addr:              fmt.Sprintf("%s:%d", module.config.Host, module.config.Port),
+		Handler:           handler,
+		ReadHeaderTimeout: 30 * time.Second, // Fix G112: Potential Slowloris Attack
 	}
 
 	// Set a context with short timeout for testing

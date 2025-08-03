@@ -50,9 +50,15 @@ func (m *MockApplication) SetLogger(logger modular.Logger) {
 func (m *MockApplication) GetConfigSection(name string) (modular.ConfigProvider, error) {
 	args := m.Called(name)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		if args.Error(1) == nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("config section error: %w", args.Error(1))
 	}
-	return args.Get(0).(modular.ConfigProvider), args.Error(1)
+	if args.Error(1) == nil {
+		return args.Get(0).(modular.ConfigProvider), nil
+	}
+	return args.Get(0).(modular.ConfigProvider), fmt.Errorf("config provider error: %w", args.Error(1))
 }
 
 func (m *MockApplication) SvcRegistry() modular.ServiceRegistry {
@@ -71,41 +77,58 @@ func (m *MockApplication) ConfigSections() map[string]modular.ConfigProvider {
 
 func (m *MockApplication) RegisterService(name string, service any) error {
 	args := m.Called(name, service)
-	return args.Error(0)
+	if args.Error(0) == nil {
+		return nil
+	}
+	return fmt.Errorf("register service error: %w", args.Error(0))
 }
 
 func (m *MockApplication) GetService(name string, target any) error {
 	args := m.Called(name, target)
-	return args.Error(0)
+	if args.Error(0) == nil {
+		return nil
+	}
+	return fmt.Errorf("get service error: %w", args.Error(0))
 }
 
 func (m *MockApplication) Init() error {
 	args := m.Called()
-	return args.Error(0)
+	if args.Error(0) == nil {
+		return nil
+	}
+	return fmt.Errorf("init error: %w", args.Error(0))
 }
 
 func (m *MockApplication) Start() error {
 	args := m.Called()
-	return args.Error(0)
+	if args.Error(0) == nil {
+		return nil
+	}
+	return fmt.Errorf("start error: %w", args.Error(0))
 }
 
 func (m *MockApplication) Stop() error {
 	args := m.Called()
-	return args.Error(0)
+	if args.Error(0) == nil {
+		return nil
+	}
+	return fmt.Errorf("stop error: %w", args.Error(0))
 }
 
 func (m *MockApplication) Run() error {
 	args := m.Called()
-	return args.Error(0)
+	if args.Error(0) == nil {
+		return nil
+	}
+	return fmt.Errorf("run error: %w", args.Error(0))
 }
 
 func (m *MockApplication) IsVerboseConfig() bool {
-	args := m.Called()
-	return args.Bool(0)
+	return false
 }
 
-func (m *MockApplication) SetVerboseConfig(enabled bool) {
-	m.Called(enabled)
+func (m *MockApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
 }
 
 // MockLogger is a mock implementation of the modular.Logger interface
@@ -178,7 +201,7 @@ func TestRegisterConfig(t *testing.T) {
 	configurable, ok := module.(modular.Configurable)
 	assert.True(t, ok, "Module should implement Configurable interface")
 	err := configurable.RegisterConfig(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockApp.AssertExpectations(t)
 }
 
@@ -201,7 +224,7 @@ func TestInit(t *testing.T) {
 	mockApp.On("GetConfigSection", "httpserver").Return(mockConfigProvider, nil)
 
 	err := module.Init(mockApp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, mockConfig, module.config)
 	assert.Equal(t, mockLogger, module.logger)
 	mockApp.AssertExpectations(t)
@@ -222,7 +245,7 @@ func TestConstructor(t *testing.T) {
 	}
 
 	result, err := constructor(mockApp, services)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, module, result)
 	assert.Equal(t, mockHandler, module.handler)
 }
@@ -235,12 +258,12 @@ func TestConstructorErrors(t *testing.T) {
 
 	// Test with missing router service
 	result, err := constructor(mockApp, map[string]any{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 
 	// Test with wrong type for router service
 	result, err = constructor(mockApp, map[string]any{"router": "not a handler"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }
 
@@ -279,13 +302,15 @@ func TestStartStop(t *testing.T) {
 	// Start the server
 	ctx := context.Background()
 	err := module.Start(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, module.started)
 
 	// Make a test request to the server
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
-	assert.NoError(t, err)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://127.0.0.1:%d", port), nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			t.Logf("Failed to close response body: %v", closeErr)
@@ -293,13 +318,13 @@ func TestStartStop(t *testing.T) {
 	}()
 
 	body, err := io.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "Hello, World!", string(body))
 
 	// Stop the server
 	err = module.Stop(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, module.started)
 
 	// Verify expectations
@@ -314,7 +339,7 @@ func TestStartWithNoHandler(t *testing.T) {
 	}
 
 	err := module.Start(context.Background())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrNoHandler, err)
 }
 
@@ -322,7 +347,7 @@ func TestStopWithNoServer(t *testing.T) {
 	module := &HTTPServerModule{}
 
 	err := module.Stop(context.Background())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrServerNotStarted, err)
 }
 
@@ -421,13 +446,15 @@ func TestTLSSupport(t *testing.T) {
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: true, // #nosec G402 - Required for testing with self-signed certificates
 			},
 		},
 	}
 
-	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d", port))
-	assert.NoError(t, err)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", fmt.Sprintf("https://127.0.0.1:%d", port), nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			t.Logf("Failed to close response body: %v", closeErr)
@@ -435,13 +462,13 @@ func TestTLSSupport(t *testing.T) {
 	}()
 
 	body, err := io.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "TLS OK", string(body))
 
 	// Stop the server
 	err = module.Stop(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify expectations
 	mockLogger.AssertExpectations(t)

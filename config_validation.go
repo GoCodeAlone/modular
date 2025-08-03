@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
@@ -237,6 +238,11 @@ func isZeroValue(v reflect.Value) bool {
 
 // setDefaultValue sets a default value from a string to the proper field type
 func setDefaultValue(field reflect.Value, defaultVal string) error {
+	// Special handling for time.Duration type
+	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		return setDefaultDuration(field, defaultVal)
+	}
+
 	kind := field.Kind()
 
 	switch kind {
@@ -300,6 +306,16 @@ func setDefaultBool(field reflect.Value, defaultVal string) error {
 		return fmt.Errorf("failed to parse bool value: %w", err)
 	}
 	field.SetBool(b)
+	return nil
+}
+
+// setDefaultDuration parses and sets a duration default value
+func setDefaultDuration(field reflect.Value, defaultVal string) error {
+	d, err := time.ParseDuration(defaultVal)
+	if err != nil {
+		return fmt.Errorf("failed to parse duration value: %w", err)
+	}
+	field.SetInt(int64(d))
 	return nil
 }
 

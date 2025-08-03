@@ -197,6 +197,82 @@ func (c *Config) SetFieldTracker(tracker FieldTracker) *Config {
 	return c
 }
 
+// FeedWithModuleContext feeds a single configuration structure with module context information
+// This allows module-aware feeders to customize their behavior based on the module name
+func (c *Config) FeedWithModuleContext(target interface{}, moduleName string) error {
+	if c.VerboseDebug && c.Logger != nil {
+		c.Logger.Debug("Starting module-aware config feed", "targetType", reflect.TypeOf(target), "moduleName", moduleName, "feedersCount", len(c.Feeders))
+	}
+
+	for i, f := range c.Feeders {
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Applying feeder with module context", "feederIndex", i, "feederType", fmt.Sprintf("%T", f), "moduleName", moduleName)
+		}
+
+		// Try module-aware feeder first if available
+		if maf, ok := f.(ModuleAwareFeeder); ok {
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Using ModuleAwareFeeder", "feederType", fmt.Sprintf("%T", f), "moduleName", moduleName)
+			}
+			if err := maf.FeedWithModuleContext(target, moduleName); err != nil {
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("ModuleAwareFeeder failed", "feederType", fmt.Sprintf("%T", f), "error", err)
+				}
+				return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+			}
+		} else {
+			// Fall back to regular Feed method for non-module-aware feeders
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Using regular Feed method", "feederType", fmt.Sprintf("%T", f))
+			}
+			if err := f.Feed(target); err != nil {
+				if c.VerboseDebug && c.Logger != nil {
+					c.Logger.Debug("Regular Feed method failed", "feederType", fmt.Sprintf("%T", f), "error", err)
+				}
+				return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+			}
+		}
+
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Feeder applied successfully", "feederType", fmt.Sprintf("%T", f))
+		}
+	}
+
+	// Apply defaults and validate config
+	if c.VerboseDebug && c.Logger != nil {
+		c.Logger.Debug("Validating config", "moduleName", moduleName)
+	}
+
+	if err := ValidateConfig(target); err != nil {
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Config validation failed", "moduleName", moduleName, "error", err)
+		}
+		return fmt.Errorf("config validation error for %s: %w", moduleName, err)
+	}
+
+	if c.VerboseDebug && c.Logger != nil {
+		c.Logger.Debug("Config validation succeeded", "moduleName", moduleName)
+	}
+
+	// Call Setup if implemented
+	if setupable, ok := target.(ConfigSetup); ok {
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Calling Setup for config", "moduleName", moduleName)
+		}
+		if err := setupable.Setup(); err != nil {
+			if c.VerboseDebug && c.Logger != nil {
+				c.Logger.Debug("Config setup failed", "moduleName", moduleName, "error", err)
+			}
+			return fmt.Errorf("%w for %s: %w", ErrConfigSetupError, moduleName, err)
+		}
+		if c.VerboseDebug && c.Logger != nil {
+			c.Logger.Debug("Config setup succeeded", "moduleName", moduleName)
+		}
+	}
+
+	return nil
+}
+
 // Feed with validation applies defaults and validates configs after feeding
 func (c *Config) Feed() error {
 	if c.VerboseDebug && c.Logger != nil {
@@ -220,12 +296,35 @@ func (c *Config) Feed() error {
 					c.Logger.Debug("Applying feeder to struct", "key", key, "feederIndex", i, "feederType", fmt.Sprintf("%T", f))
 				}
 
-				// Try to use the feeder's Feed method directly for better field tracking
-				if err := f.Feed(target); err != nil {
-					if c.VerboseDebug && c.Logger != nil {
-						c.Logger.Debug("Feeder Feed method failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+				// Try module-aware feeder first if this is a section config (not main config)
+				if key != mainConfigSection {
+					if maf, ok := f.(ModuleAwareFeeder); ok {
+						if c.VerboseDebug && c.Logger != nil {
+							c.Logger.Debug("Using ModuleAwareFeeder for section", "key", key, "feederType", fmt.Sprintf("%T", f))
+						}
+						if err := maf.FeedWithModuleContext(target, key); err != nil {
+							if c.VerboseDebug && c.Logger != nil {
+								c.Logger.Debug("ModuleAwareFeeder Feed method failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+							}
+							return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+						}
+					} else {
+						// Fall back to regular Feed method for non-module-aware feeders
+						if err := f.Feed(target); err != nil {
+							if c.VerboseDebug && c.Logger != nil {
+								c.Logger.Debug("Regular Feed method failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+							}
+							return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+						}
 					}
-					return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+				} else {
+					// Use regular Feed method for main config
+					if err := f.Feed(target); err != nil {
+						if c.VerboseDebug && c.Logger != nil {
+							c.Logger.Debug("Feeder Feed method failed", "key", key, "feederType", fmt.Sprintf("%T", f), "error", err)
+						}
+						return fmt.Errorf("config feeder error: %w: %w", ErrConfigFeederError, err)
+					}
 				}
 
 				// Also try ComplexFeeder if available (for instance-aware feeders)

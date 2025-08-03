@@ -80,7 +80,7 @@ func TestMergeConfigs(t *testing.T) {
 	mergedConfig := mergeConfigs(globalConfig, tenantConfig)
 
 	// TEST 1: BackendServices should include both global and tenant backends with tenant overrides
-	assert.Equal(t, 4, len(mergedConfig.BackendServices), "Merged config should have 4 backend services")
+	assert.Len(t, mergedConfig.BackendServices, 4, "Merged config should have 4 backend services")
 	assert.Equal(t, "http://legacy-tenant.example.com", mergedConfig.BackendServices["legacy"], "Legacy backend should be overridden by tenant config")
 	assert.Equal(t, "http://chimera-global.example.com", mergedConfig.BackendServices["chimera"], "Chimera backend should be preserved from global config")
 	assert.Equal(t, "http://internal-global.example.com", mergedConfig.BackendServices["internal"], "Internal backend should be preserved from global config")
@@ -90,13 +90,13 @@ func TestMergeConfigs(t *testing.T) {
 	assert.Equal(t, "legacy", mergedConfig.DefaultBackend, "Default backend should be overridden by tenant config")
 
 	// TEST 3: Routes should combine global and tenant with tenant overrides
-	assert.Equal(t, 3, len(mergedConfig.Routes), "Merged config should have 3 routes")
+	assert.Len(t, mergedConfig.Routes, 3, "Merged config should have 3 routes")
 	assert.Equal(t, "legacy", mergedConfig.Routes["/api/v1/*"], "API v1 route should point to legacy backend")
 	assert.Equal(t, "internal", mergedConfig.Routes["/api/internal/*"], "Internal route should be preserved")
 	assert.Equal(t, "tenant", mergedConfig.Routes["/api/tenant/*"], "Tenant route should be added")
 
 	// TEST 4: CompositeRoutes should be preserved
-	assert.Equal(t, 1, len(mergedConfig.CompositeRoutes), "Composite routes should be preserved")
+	assert.Len(t, mergedConfig.CompositeRoutes, 1, "Composite routes should be preserved")
 	assert.Equal(t, []string{"legacy", "chimera"}, mergedConfig.CompositeRoutes["/api/compose"].Backends)
 
 	// TEST 5: TenantIDHeader should be overridden
@@ -113,7 +113,7 @@ func TestMergeConfigs(t *testing.T) {
 	assert.Equal(t, 20*time.Second, mergedConfig.CircuitBreakerConfig.OpenTimeout, "CircuitBreaker timeout should be overridden")
 
 	// TEST 9: BackendCircuitBreakers should be merged
-	assert.Equal(t, 2, len(mergedConfig.BackendCircuitBreakers), "BackendCircuitBreakers should be merged")
+	assert.Len(t, mergedConfig.BackendCircuitBreakers, 2, "BackendCircuitBreakers should be merged")
 	assert.Equal(t, 10, mergedConfig.BackendCircuitBreakers["legacy"].FailureThreshold, "Legacy circuit breaker should be preserved")
 	assert.Equal(t, 8, mergedConfig.BackendCircuitBreakers["tenant"].FailureThreshold, "Tenant circuit breaker should be added")
 }

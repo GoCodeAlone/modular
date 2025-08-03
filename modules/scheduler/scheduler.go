@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -9,6 +10,22 @@ import (
 	"github.com/GoCodeAlone/modular"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+)
+
+// Static error definitions for better error handling
+var (
+	ErrJobAlreadyExists             = errors.New("job already exists")
+	ErrJobNotFound                  = errors.New("job not found")
+	ErrNoExecutionsFound            = errors.New("no executions found for job")
+	ErrExecutionNotFound            = errors.New("execution not found")
+	ErrNotPersistableJobStore       = errors.New("job store does not implement PersistableJobStore interface")
+	ErrSchedulerShutdownTimeout     = errors.New("scheduler shutdown timed out")
+	ErrJobMustHaveRunAtOrSchedule   = errors.New("job must have either RunAt or Schedule specified")
+	ErrRecurringJobMustHaveSchedule = errors.New("recurring jobs must have a Schedule")
+	ErrJobIDRequiredForResume       = errors.New("job ID must be provided when resuming a job")
+	ErrJobHasNoValidNextRunTime     = errors.New("job has no valid next run time")
+	ErrJobIDRequiredForRecurring    = errors.New("job ID must be provided when resuming a recurring job")
+	ErrJobMustBeRecurring           = errors.New("job must be recurring and have a schedule")
 )
 
 // JobFunc defines a function that can be executed as a job
@@ -151,7 +168,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	// Start worker goroutines
 	for i := 0; i < s.workerCount; i++ {
 		s.wg.Add(1)
-		go s.worker(i)
+		go s.worker(ctx, i)
 	}
 
 	// Start cron scheduler
@@ -202,7 +219,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 		if s.logger != nil {
 			s.logger.Warn("Scheduler shutdown timed out")
 		}
-		return fmt.Errorf("scheduler shutdown timed out")
+		return ErrSchedulerShutdownTimeout
 	case <-cronCtx.Done():
 		if s.logger != nil {
 			s.logger.Info("Cron scheduler stopped")
@@ -214,7 +231,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 }
 
 // worker processes jobs from the queue
-func (s *Scheduler) worker(id int) {
+func (s *Scheduler) worker(ctx context.Context, id int) {
 	defer s.wg.Done()
 
 	if s.logger != nil {
@@ -223,19 +240,19 @@ func (s *Scheduler) worker(id int) {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			if s.logger != nil {
 				s.logger.Debug("Worker stopping", "id", id)
 			}
 			return
 		case job := <-s.jobQueue:
-			s.executeJob(job)
+			s.executeJob(ctx, job)
 		}
 	}
 }
 
 // executeJob runs a job and records its execution
-func (s *Scheduler) executeJob(job Job) {
+func (s *Scheduler) executeJob(ctx context.Context, job Job) {
 	if s.logger != nil {
 		s.logger.Debug("Executing job", "id", job.ID, "name", job.Name)
 	}
@@ -243,7 +260,9 @@ func (s *Scheduler) executeJob(job Job) {
 	// Update job status to running
 	job.Status = JobStatusRunning
 	job.UpdatedAt = time.Now()
-	s.jobStore.UpdateJob(job)
+	if err := s.jobStore.UpdateJob(job); err != nil && s.logger != nil {
+		s.logger.Error("Failed to update job status", "error", err, "job_id", job.ID)
+	}
 
 	// Create execution record
 	execution := JobExecution{
@@ -251,10 +270,12 @@ func (s *Scheduler) executeJob(job Job) {
 		StartTime: time.Now(),
 		Status:    string(JobStatusRunning),
 	}
-	s.jobStore.AddJobExecution(execution)
+	if err := s.jobStore.AddJobExecution(execution); err != nil && s.logger != nil {
+		s.logger.Error("Failed to add job execution", "error", err, "job_id", job.ID)
+	}
 
 	// Execute the job
-	jobCtx, cancel := context.WithCancel(s.ctx)
+	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	var err error
@@ -276,7 +297,9 @@ func (s *Scheduler) executeJob(job Job) {
 			s.logger.Debug("Job execution completed", "id", job.ID, "name", job.Name)
 		}
 	}
-	s.jobStore.UpdateJobExecution(execution)
+	if err := s.jobStore.UpdateJobExecution(execution); err != nil && s.logger != nil {
+		s.logger.Error("Failed to update job execution", "error", err, "job_id", job.ID)
+	}
 
 	// Update job status and run times
 	now := time.Now()
@@ -289,7 +312,9 @@ func (s *Scheduler) executeJob(job Job) {
 
 	// For non-recurring jobs, we're done
 	if !job.IsRecurring {
-		s.jobStore.UpdateJob(job)
+		if err := s.jobStore.UpdateJob(job); err != nil && s.logger != nil {
+			s.logger.Error("Failed to update job after completion", "error", err, "job_id", job.ID)
+		}
 		return
 	}
 
@@ -305,7 +330,9 @@ func (s *Scheduler) executeJob(job Job) {
 		}
 	}
 
-	s.jobStore.UpdateJob(job)
+	if err := s.jobStore.UpdateJob(job); err != nil && s.logger != nil {
+		s.logger.Error("Failed to update job after recurring execution", "error", err, "job_id", job.ID)
+	}
 }
 
 // dispatchPendingJobs checks for and dispatches pending jobs
@@ -366,13 +393,13 @@ func (s *Scheduler) ScheduleJob(job Job) (string, error) {
 
 	// Validate job has either run time or schedule
 	if job.RunAt.IsZero() && job.Schedule == "" {
-		return "", fmt.Errorf("job must have either RunAt or Schedule specified")
+		return "", ErrJobMustHaveRunAtOrSchedule
 	}
 
 	// For recurring jobs, calculate next run time
 	if job.IsRecurring {
 		if job.Schedule == "" {
-			return "", fmt.Errorf("recurring jobs must have a Schedule")
+			return "", ErrRecurringJobMustHaveSchedule
 		}
 
 		// Parse cron expression to verify and get next run
@@ -389,7 +416,7 @@ func (s *Scheduler) ScheduleJob(job Job) (string, error) {
 	// Store the job
 	err := s.jobStore.AddJob(job)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to add job to store: %w", err)
 	}
 
 	// Register with cron if recurring
@@ -458,7 +485,7 @@ func (s *Scheduler) ScheduleRecurring(name string, cronExpr string, jobFunc JobF
 func (s *Scheduler) CancelJob(jobID string) error {
 	job, err := s.jobStore.GetJob(jobID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get job for cancellation: %w", err)
 	}
 
 	// Update job status
@@ -466,7 +493,7 @@ func (s *Scheduler) CancelJob(jobID string) error {
 	job.UpdatedAt = time.Now()
 	err = s.jobStore.UpdateJob(job)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to update job status to cancelled: %w", err)
 	}
 
 	// Remove from cron if it's recurring
@@ -484,23 +511,35 @@ func (s *Scheduler) CancelJob(jobID string) error {
 
 // GetJob returns information about a scheduled job
 func (s *Scheduler) GetJob(jobID string) (Job, error) {
-	return s.jobStore.GetJob(jobID)
+	job, err := s.jobStore.GetJob(jobID)
+	if err != nil {
+		return Job{}, fmt.Errorf("failed to get job: %w", err)
+	}
+	return job, nil
 }
 
 // ListJobs returns a list of all scheduled jobs
 func (s *Scheduler) ListJobs() ([]Job, error) {
-	return s.jobStore.GetJobs()
+	jobs, err := s.jobStore.GetJobs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list jobs: %w", err)
+	}
+	return jobs, nil
 }
 
 // GetJobHistory returns the execution history for a job
 func (s *Scheduler) GetJobHistory(jobID string) ([]JobExecution, error) {
-	return s.jobStore.GetJobExecutions(jobID)
+	executions, err := s.jobStore.GetJobExecutions(jobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get job history: %w", err)
+	}
+	return executions, nil
 }
 
 // ResumeJob resumes a persisted job
 func (s *Scheduler) ResumeJob(job Job) (string, error) {
 	if job.ID == "" {
-		return "", fmt.Errorf("job ID must be provided when resuming a job")
+		return "", ErrJobIDRequiredForResume
 	}
 
 	// Set status to pending
@@ -514,14 +553,14 @@ func (s *Scheduler) ResumeJob(job Job) (string, error) {
 			job.NextRun = &job.RunAt
 		} else {
 			// Otherwise, job can't be resumed (would run immediately)
-			return "", fmt.Errorf("job has no valid next run time")
+			return "", ErrJobHasNoValidNextRunTime
 		}
 	}
 
 	// Store the job
 	err := s.jobStore.UpdateJob(job)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to update job for resume: %w", err)
 	}
 
 	return job.ID, nil
@@ -530,11 +569,11 @@ func (s *Scheduler) ResumeJob(job Job) (string, error) {
 // ResumeRecurringJob resumes a persisted recurring job, registering it with the cron scheduler
 func (s *Scheduler) ResumeRecurringJob(job Job) (string, error) {
 	if job.ID == "" {
-		return "", fmt.Errorf("job ID must be provided when resuming a recurring job")
+		return "", ErrJobIDRequiredForRecurring
 	}
 
 	if !job.IsRecurring || job.Schedule == "" {
-		return "", fmt.Errorf("job must be recurring and have a schedule")
+		return "", ErrJobMustBeRecurring
 	}
 
 	// Set status to pending
@@ -553,7 +592,7 @@ func (s *Scheduler) ResumeRecurringJob(job Job) (string, error) {
 	// Store the job
 	err = s.jobStore.UpdateJob(job)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to update recurring job for resume: %w", err)
 	}
 
 	// Register with cron if running

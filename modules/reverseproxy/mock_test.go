@@ -1,18 +1,21 @@
 package reverseproxy
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/go-chi/chi/v5" // Import chi for router type assertion
 )
 
+var ErrMockConfigNotFound = errors.New("mock config not found for tenant")
+
 // MockApplication implements the modular.Application interface for testing
 type MockApplication struct {
 	configSections map[string]modular.ConfigProvider
 	services       map[string]interface{}
 	logger         modular.Logger
-	verboseConfig  bool
 }
 
 // NewMockApplication creates a new mock application for testing
@@ -81,6 +84,11 @@ func (m *MockApplication) GetService(name string, target interface{}) error {
 			*ptr = router
 			return nil
 		}
+	case *modular.TenantService:
+		if tenantService, ok := service.(modular.TenantService); ok {
+			*ptr = tenantService
+			return nil
+		}
 	case *interface{}:
 		*ptr = service
 		return nil
@@ -121,14 +129,19 @@ func (m *MockApplication) SetLogger(logger modular.Logger) {
 	m.logger = logger
 }
 
-// IsVerboseConfig returns whether verbose configuration debugging is enabled for the mock
+// IsVerboseConfig returns whether verbose config is enabled (mock implementation)
 func (m *MockApplication) IsVerboseConfig() bool {
-	return m.verboseConfig
+	return false
 }
 
-// SetVerboseConfig enables or disables verbose configuration debugging for the mock
-func (m *MockApplication) SetVerboseConfig(enabled bool) {
-	m.verboseConfig = enabled
+// SetVerboseConfig sets the verbose config flag (mock implementation)
+func (m *MockApplication) SetVerboseConfig(verbose bool) {
+	// No-op in mock
+}
+
+// Context returns a context for the mock application
+func (m *MockApplication) Context() context.Context {
+	return context.Background()
 }
 
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider
@@ -227,7 +240,7 @@ func (m *MockTenantService) GetTenantConfig(tid modular.TenantID, section string
 			return provider, nil
 		}
 	}
-	return nil, fmt.Errorf("mock config not found for tenant %s, section %s", tid, section)
+	return nil, fmt.Errorf("mock config not found for tenant %s, section %s: %w", tid, section, ErrMockConfigNotFound)
 }
 
 func (m *MockTenantService) GetTenants() []modular.TenantID {

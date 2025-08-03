@@ -202,6 +202,13 @@ func (cb *CircuitBreaker) GetState() CircuitState {
 	return cb.state
 }
 
+// GetFailureCount returns the current failure count of the circuit breaker.
+func (cb *CircuitBreaker) GetFailureCount() int {
+	cb.mutex.RLock()
+	defer cb.mutex.RUnlock()
+	return cb.failureCount
+}
+
 // WithFailureThreshold sets the number of failures required to open the circuit.
 func (cb *CircuitBreaker) WithFailureThreshold(threshold int) *CircuitBreaker {
 	cb.mutex.Lock()

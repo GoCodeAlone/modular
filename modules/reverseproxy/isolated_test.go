@@ -20,7 +20,7 @@ func TestIsolatedProxyBackend(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "Backend1")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"server":"Backend1","path":"` + r.URL.Path + `"}`))
+		_, _ = w.Write([]byte(`{"server":"Backend1","path":"` + r.URL.Path + `"}`))
 	}))
 	defer mockServer.Close()
 
@@ -61,7 +61,7 @@ func TestIsolatedProxyBackend(t *testing.T) {
 		w.WriteHeader(resp.StatusCode)
 
 		// Copy body
-		io.Copy(w, resp.Body)
+		_, _ = io.Copy(w, resp.Body)
 	})
 
 	// Test the handler
@@ -97,7 +97,7 @@ func TestIsolatedCompositeProxy(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "API1")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"source":"api1","data":"api1 data"}`))
+		_, _ = w.Write([]byte(`{"source":"api1","data":"api1 data"}`))
 	}))
 	defer api1Server.Close()
 
@@ -106,7 +106,7 @@ func TestIsolatedCompositeProxy(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Server", "API2")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"source":"api2","data":"api2 data"}`))
+		_, _ = w.Write([]byte(`{"source":"api2","data":"api2 data"}`))
 	}))
 	defer api2Server.Close()
 
@@ -146,7 +146,7 @@ func TestIsolatedCompositeProxy(t *testing.T) {
 			defer api1Resp.Body.Close()
 			api1Body, _ := io.ReadAll(api1Resp.Body)
 			var api1Data map[string]interface{}
-			json.Unmarshal(api1Body, &api1Data)
+			_ = json.Unmarshal(api1Body, &api1Data)
 			result["api1"] = api1Data
 		}
 
@@ -155,14 +155,16 @@ func TestIsolatedCompositeProxy(t *testing.T) {
 			defer api2Resp.Body.Close()
 			api2Body, _ := io.ReadAll(api2Resp.Body)
 			var api2Data map[string]interface{}
-			json.Unmarshal(api2Body, &api2Data)
+			_ = json.Unmarshal(api2Body, &api2Data)
 			result["api2"] = api2Data
 		}
 
 		// Send the combined response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(result)
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	})
 
 	// Register the test handler

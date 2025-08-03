@@ -1,0 +1,10 @@
+reverseproxy:
+  default_backend: "legacy"
+  backend_configs:
+    legacy:
+      header_rewriting:
+        set_headers:
+          X-Affiliate-ID: "sampleaff1"
+          X-Tenant: "sampleaff1"
+          X-Tier: "standard"
+          X-Rate-Limit: "5000"
