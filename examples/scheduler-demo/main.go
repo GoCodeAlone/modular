@@ -123,6 +123,9 @@ func (m *SchedulerAPIModule) Init(app modular.Application) error {
 }
 
 func (m *SchedulerAPIModule) setupRoutes() {
+	// Add health endpoint
+	m.router.Get("/health", m.handleHealth)
+	
 	m.router.Route("/api/jobs", func(r chi.Router) {
 		r.Post("/cron", m.handleScheduleCronJob)
 		r.Post("/once", m.handleScheduleOneTimeJob)
@@ -296,6 +299,11 @@ func (m *SchedulerAPIModule) handleCancelJob(w http.ResponseWriter, r *http.Requ
 		"message": "Job canceled successfully",
 		"jobID":   jobID,
 	})
+}
+
+func (m *SchedulerAPIModule) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","service":"scheduler"}`))
 }
 
 func (m *SchedulerAPIModule) Start(ctx context.Context) error {

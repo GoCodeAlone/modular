@@ -123,6 +123,9 @@ func (m *CacheAPIModule) Init(app modular.Application) error {
 }
 
 func (m *CacheAPIModule) setupRoutes() {
+	// Add health endpoint
+	m.router.Get("/health", m.handleHealth)
+	
 	m.router.Route("/api/cache", func(r chi.Router) {
 		r.Post("/{key}", m.handleSetCache)
 		r.Get("/{key}", m.handleGetCache)
@@ -252,6 +255,11 @@ func (m *CacheAPIModule) handleBatchSet(w http.ResponseWriter, r *http.Request) 
 		"count":   len(req),
 		"message": "Values cached successfully",
 	})
+}
+
+func (m *CacheAPIModule) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","service":"cache"}`))
 }
 
 func (m *CacheAPIModule) Start(ctx context.Context) error {

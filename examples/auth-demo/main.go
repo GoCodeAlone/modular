@@ -116,6 +116,9 @@ func (m *APIModule) Init(app modular.Application) error {
 }
 
 func (m *APIModule) setupRoutes() {
+	// Add health endpoint
+	m.router.Get("/health", m.handleHealth)
+	
 	m.router.Route("/api", func(r chi.Router) {
 		r.Post("/register", m.handleRegister)
 		r.Post("/login", m.handleLogin)
@@ -271,6 +274,11 @@ func (m *APIModule) authMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (m *APIModule) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","service":"auth"}`))
 }
 
 func (m *APIModule) Start(ctx context.Context) error {
