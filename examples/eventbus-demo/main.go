@@ -207,10 +207,15 @@ func (m *EventBusModule) publishEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *EventBusModule) getMessages(w http.ResponseWriter, r *http.Request) {
+	const maxLimit = 1000
 	limit := 100
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
+			if parsed > maxLimit {
+				limit = maxLimit
+			} else {
+				limit = parsed
+			}
 		}
 	}
 
