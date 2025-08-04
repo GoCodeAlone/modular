@@ -17,8 +17,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+import "regexp"
+
 type AppConfig struct {
 	Name string `yaml:"name" default:"JSON Schema Demo"`
+}
+
+// isValidSchemaName checks if the schema name contains only safe characters.
+func isValidSchemaName(name string) bool {
+	// Only allow alphanumeric, underscore, and hyphen
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
+	return matched
 }
 
 type ValidationRequest struct {
@@ -157,6 +166,10 @@ func (m *JSONSchemaModule) getSchemaLibrary(w http.ResponseWriter, r *http.Reque
 
 func (m *JSONSchemaModule) getSchema(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if !isValidSchemaName(name) {
+		http.Error(w, "Invalid schema name", http.StatusBadRequest)
+		return
+	}
 	schemaStr, exists := m.library.schemas[name]
 	if !exists {
 		http.Error(w, "Schema not found", http.StatusNotFound)
@@ -175,6 +188,10 @@ func (m *JSONSchemaModule) getSchema(w http.ResponseWriter, r *http.Request) {
 
 func (m *JSONSchemaModule) validateWithSchema(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if !isValidSchemaName(name) {
+		http.Error(w, "Invalid schema name", http.StatusBadRequest)
+		return
+	}
 	schemaStr, exists := m.library.schemas[name]
 	if !exists {
 		http.Error(w, "Schema not found", http.StatusNotFound)
