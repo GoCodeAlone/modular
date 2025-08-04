@@ -37,6 +37,10 @@ type SSLModule struct {
 	tlsConfig    *tls.Config
 }
 
+func NewSSLModule() *SSLModule {
+	return &SSLModule{}
+}
+
 func (m *SSLModule) Name() string {
 	return "ssl-demo"
 }
@@ -44,7 +48,7 @@ func (m *SSLModule) Name() string {
 func (m *SSLModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
 		{
-			Name:               "router",
+			Name:               "chi.router",
 			Required:           true,
 			MatchByInterface:   true,
 			SatisfiesInterface: reflect.TypeOf((*chi.Router)(nil)).Elem(),
@@ -58,27 +62,19 @@ func (m *SSLModule) RequiresServices() []modular.ServiceDependency {
 	}
 }
 
-func (m *SSLModule) Constructor() modular.ModuleConstructor {
-	return func(app modular.Application, services map[string]any) (modular.Module, error) {
-		router, ok := services["router"].(chi.Router)
-		if !ok {
-			return nil, fmt.Errorf("router service not found or wrong type")
-		}
-
-		module := &SSLModule{
-			router: router,
-		}
-
-		// Certificate service is optional during startup
-		if certService, ok := services["certificateService"].(httpserver.CertificateService); ok {
-			module.certService = certService
-		}
-
-		return module, nil
-	}
-}
-
 func (m *SSLModule) Init(app modular.Application) error {
+	// Get services from the application
+	var router chi.Router
+	if err := app.GetService("chi.router", &router); err != nil {
+		return fmt.Errorf("failed to get router service: %w", err)
+	}
+	m.router = router
+
+	// Certificate service is optional during startup
+	var certService httpserver.CertificateService
+	if err := app.GetService("certificateService", &certService); err == nil {
+		m.certService = certService
+	}
 	// Set up HTTP routes
 	m.router.Route("/api/ssl", func(r chi.Router) {
 		r.Get("/info", m.getSSLInfo)
@@ -343,7 +339,7 @@ func main() {
 	// For demo purposes, we'll use a self-signed certificate
 	app.RegisterModule(chimux.NewChiMuxModule())
 	app.RegisterModule(httpserver.NewHTTPServerModule())
-	app.RegisterModule(&SSLModule{})
+	app.RegisterModule(NewSSLModule())
 
 	logger.Info("Starting Let's Encrypt Demo Application")
 	logger.Info("DEMO MODE: This demo shows SSL/TLS capabilities without actual Let's Encrypt certificates")

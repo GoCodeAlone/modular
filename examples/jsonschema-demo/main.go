@@ -41,6 +41,12 @@ type JSONSchemaModule struct {
 	library       *SchemaLibrary
 }
 
+func NewJSONSchemaModule() *JSONSchemaModule {
+	return &JSONSchemaModule{
+		library: NewSchemaLibrary(),
+	}
+}
+
 func (m *JSONSchemaModule) Name() string {
 	return "jsonschema-demo"
 }
@@ -50,11 +56,10 @@ func (m *JSONSchemaModule) RequiresServices() []modular.ServiceDependency {
 		{
 			Name:               "jsonschema.service",
 			Required:           true,
-			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*jsonschema.JSONSchemaService)(nil)).Elem(),
+			MatchByInterface:   false,
 		},
 		{
-			Name:               "router",
+			Name:               "chi.router",
 			Required:           true,
 			MatchByInterface:   true,
 			SatisfiesInterface: reflect.TypeOf((*chi.Router)(nil)).Elem(),
@@ -62,27 +67,19 @@ func (m *JSONSchemaModule) RequiresServices() []modular.ServiceDependency {
 	}
 }
 
-func (m *JSONSchemaModule) Constructor() modular.ModuleConstructor {
-	return func(app modular.Application, services map[string]any) (modular.Module, error) {
-		schemaService, ok := services["jsonschema.service"].(jsonschema.JSONSchemaService)
-		if !ok {
-			return nil, fmt.Errorf("JSON schema service not found or wrong type")
-		}
-
-		router, ok := services["router"].(chi.Router)
-		if !ok {
-			return nil, fmt.Errorf("router service not found or wrong type")
-		}
-
-		return &JSONSchemaModule{
-			schemaService: schemaService,
-			router:        router,
-			library:       NewSchemaLibrary(),
-		}, nil
-	}
-}
-
 func (m *JSONSchemaModule) Init(app modular.Application) error {
+	// Get services from the application
+	var schemaService jsonschema.JSONSchemaService
+	if err := app.GetService("jsonschema.service", &schemaService); err != nil {
+		return fmt.Errorf("failed to get JSON schema service: %w", err)
+	}
+	m.schemaService = schemaService
+
+	var router chi.Router
+	if err := app.GetService("chi.router", &router); err != nil {
+		return fmt.Errorf("failed to get router service: %w", err)
+	}
+	m.router = router
 	// Set up HTTP routes
 	m.router.Route("/api/schema", func(r chi.Router) {
 		r.Post("/validate", m.validateData)
@@ -439,7 +436,7 @@ func main() {
 	app.RegisterModule(jsonschema.NewModule())
 	app.RegisterModule(chimux.NewChiMuxModule())
 	app.RegisterModule(httpserver.NewHTTPServerModule())
-	app.RegisterModule(&JSONSchemaModule{})
+	app.RegisterModule(NewJSONSchemaModule())
 
 	logger.Info("Starting JSON Schema Demo Application")
 

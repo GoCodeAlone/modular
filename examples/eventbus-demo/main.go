@@ -42,9 +42,15 @@ type SubscriptionRequest struct {
 }
 
 type EventBusModule struct {
-	eventBus eventbus.EventBus
+	eventBus *eventbus.EventBusModule
 	router   chi.Router
 	messages []Message // Store received messages for demonstration
+}
+
+func NewEventBusModule() *EventBusModule {
+	return &EventBusModule{
+		messages: make([]Message, 0),
+	}
 }
 
 func (m *EventBusModule) Name() string {
@@ -56,11 +62,10 @@ func (m *EventBusModule) RequiresServices() []modular.ServiceDependency {
 		{
 			Name:               "eventbus.provider",
 			Required:           true,
-			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*eventbus.EventBus)(nil)).Elem(),
+			MatchByInterface:   false,
 		},
 		{
-			Name:               "router",
+			Name:               "chi.router",
 			Required:           true,
 			MatchByInterface:   true,
 			SatisfiesInterface: reflect.TypeOf((*chi.Router)(nil)).Elem(),
@@ -68,27 +73,38 @@ func (m *EventBusModule) RequiresServices() []modular.ServiceDependency {
 	}
 }
 
-func (m *EventBusModule) Constructor() modular.ModuleConstructor {
-	return func(app modular.Application, services map[string]any) (modular.Module, error) {
-		eventBusService, ok := services["eventbus.provider"].(eventbus.EventBus)
-		if !ok {
-			return nil, fmt.Errorf("eventbus service not found or wrong type")
-		}
-
-		router, ok := services["router"].(chi.Router)
-		if !ok {
-			return nil, fmt.Errorf("router service not found or wrong type")
-		}
-
-		return &EventBusModule{
-			eventBus: eventBusService,
-			router:   router,
-			messages: make([]Message, 0),
-		}, nil
+func (m *EventBusModule) Init(app modular.Application) error {
+	// Get services from the application
+	var eventBusService *eventbus.EventBusModule
+	if err := app.GetService("eventbus.provider", &eventBusService); err != nil {
+		return fmt.Errorf("failed to get event bus service: %w", err)
 	}
+	m.eventBus = eventBusService
+
+	var router chi.Router
+	if err := app.GetService("chi.router", &router); err != nil {
+		return fmt.Errorf("failed to get router service: %w", err)
+	}
+	m.router = router
+
+	// Set up HTTP routes
+	m.router.Route("/api/eventbus", func(r chi.Router) {
+		r.Post("/publish", m.publishEvent)
+		r.Get("/messages", m.getMessages)
+		r.Get("/topics", m.getTopics)
+		r.Get("/stats", m.getStats)
+		r.Delete("/messages", m.clearMessages)
+		r.Post("/subscribe", m.subscribeToDemo) // Add demo subscription endpoint
+	})
+
+	m.router.Get("/health", m.healthCheck)
+
+	slog.Info("EventBus demo module initialized")
+	return nil
 }
 
-func (m *EventBusModule) Init(app modular.Application) error {
+// subscribeToDemo sets up demo subscriptions when called
+func (m *EventBusModule) subscribeToDemo(w http.ResponseWriter, r *http.Request) {
 	// Set up demonstration event subscribers
 	ctx := context.Background()
 
@@ -111,7 +127,8 @@ func (m *EventBusModule) Init(app modular.Application) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to subscribe to user events: %w", err)
+		http.Error(w, fmt.Sprintf("Failed to subscribe to user events: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	// Subscribe to order events asynchronously
@@ -133,22 +150,18 @@ func (m *EventBusModule) Init(app modular.Application) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to subscribe to order events: %w", err)
+		http.Error(w, fmt.Sprintf("Failed to subscribe to order events: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	// Set up HTTP routes
-	m.router.Route("/api/eventbus", func(r chi.Router) {
-		r.Post("/publish", m.publishEvent)
-		r.Get("/messages", m.getMessages)
-		r.Get("/topics", m.getTopics)
-		r.Get("/stats", m.getStats)
-		r.Delete("/messages", m.clearMessages)
-	})
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Demo subscriptions activated",
+		"subscriptions": []string{"user.*", "order.*"},
+	}
 
-	m.router.Get("/health", m.healthCheck)
-
-	slog.Info("EventBus demo module initialized")
-	return nil
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func (m *EventBusModule) publishEvent(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +191,7 @@ func (m *EventBusModule) publishEvent(w http.ResponseWriter, r *http.Request) {
 	event.Metadata["timestamp"] = time.Now().Format(time.RFC3339)
 
 	// Publish event
-	if err := m.eventBus.Publish(r.Context(), event); err != nil {
+	if err := m.eventBus.Publish(r.Context(), req.Topic, req.Content); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to publish event: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -304,7 +317,7 @@ func main() {
 	app.RegisterModule(eventbus.NewModule())
 	app.RegisterModule(chimux.NewChiMuxModule())
 	app.RegisterModule(httpserver.NewHTTPServerModule())
-	app.RegisterModule(&EventBusModule{})
+	app.RegisterModule(NewEventBusModule())
 
 	logger.Info("Starting EventBus Demo Application")
 
