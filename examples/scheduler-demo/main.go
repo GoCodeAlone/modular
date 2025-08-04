@@ -40,15 +40,6 @@ type JobResponse struct {
 	Message string `json:"message"`
 }
 
-// SchedulerService defines the interface we expect from the scheduler module
-type SchedulerService interface {
-	ScheduleRecurring(name string, cronExpr string, jobFunc func(context.Context) error) (string, error)
-	ScheduleJob(job interface{}) (string, error) // Using interface{} since we don't have the exact Job type
-	CancelJob(jobID string) error
-	ListJobs() ([]interface{}, error) // Using interface{} since we don't have the exact Job type
-	GetJob(jobID string) (interface{}, error)
-}
-
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -85,7 +76,7 @@ func main() {
 // SchedulerAPIModule provides HTTP routes for job scheduling
 type SchedulerAPIModule struct {
 	router    chi.Router
-	scheduler SchedulerService
+	scheduler *scheduler.SchedulerModule
 	logger    modular.Logger
 }
 
@@ -110,12 +101,19 @@ func (m *SchedulerAPIModule) Init(app modular.Application) error {
 	m.logger = app.Logger()
 
 	// Get scheduler service
-	if err := app.GetService("scheduler.service", &m.scheduler); err != nil {
+	var schedulerService interface{}
+	if err := app.GetService("scheduler.provider", &schedulerService); err != nil {
 		return fmt.Errorf("failed to get scheduler service: %w", err)
+	}
+	
+	var ok bool
+	m.scheduler, ok = schedulerService.(*scheduler.SchedulerModule)
+	if !ok {
+		return fmt.Errorf("scheduler service is not of expected type")
 	}
 
 	// Get router
-	if err := app.GetService("chimux.router", &m.router); err != nil {
+	if err := app.GetService("chi.router", &m.router); err != nil {
 		return fmt.Errorf("failed to get router service: %w", err)
 	}
 
@@ -138,7 +136,7 @@ func (m *SchedulerAPIModule) setupDemoJobs() {
 	// Schedule a demo heartbeat job
 	_, err := m.scheduler.ScheduleRecurring(
 		"demo-heartbeat",
-		"*/30 * * * * *", // Every 30 seconds
+		"*/30 * * * *", // Every 30 minutes
 		m.createHeartbeatJob(),
 	)
 	if err != nil {
@@ -316,7 +314,7 @@ func (m *SchedulerAPIModule) ProvidesServices() []modular.ServiceProvider {
 
 func (m *SchedulerAPIModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
-		{Name: "scheduler.service", Required: true},
-		{Name: "chimux.router", Required: true},
+		{Name: "scheduler.provider", Required: true},
+		{Name: "chi.router", Required: true},
 	}
 }

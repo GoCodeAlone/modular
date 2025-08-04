@@ -114,7 +114,7 @@ func (m *CacheAPIModule) Init(app modular.Application) error {
 	}
 
 	// Get router
-	if err := app.GetService("chimux.router", &m.router); err != nil {
+	if err := app.GetService("chi.router", &m.router); err != nil {
 		return fmt.Errorf("failed to get router service: %w", err)
 	}
 
@@ -271,6 +271,6 @@ func (m *CacheAPIModule) ProvidesServices() []modular.ServiceProvider {
 func (m *CacheAPIModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
 		{Name: "cache.provider", Required: true},
-		{Name: "chimux.router", Required: true},
+		{Name: "chi.router", Required: true},
 	}
 }

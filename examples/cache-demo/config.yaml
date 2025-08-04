@@ -1,14 +1,8 @@
 cache:
-  backend: "memory"
-  default_ttl: 3600  # 1 hour in seconds
-  memory:
-    cleanup_interval: 600  # cleanup every 10 minutes
-  redis:
-    address: "localhost:6379"
-    password: ""
-    db: 0
-    max_retries: 3
-    pool_size: 10
+  engine: "memory"
+  defaultTTL: 3600  # 1 hour in seconds
+  cleanupInterval: 600  # cleanup every 10 minutes (seconds)
+  maxItems: 10000
 
 httpserver:
   port: 8080

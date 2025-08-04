@@ -102,12 +102,12 @@ func (m *APIModule) Init(app modular.Application) error {
 	m.logger = app.Logger()
 
 	// Get auth service
-	if err := app.GetService("authService", &m.authService); err != nil {
+	if err := app.GetService("auth", &m.authService); err != nil {
 		return fmt.Errorf("failed to get auth service: %w", err)
 	}
 
 	// Get router
-	if err := app.GetService("chimux.router", &m.router); err != nil {
+	if err := app.GetService("chi.router", &m.router); err != nil {
 		return fmt.Errorf("failed to get router service: %w", err)
 	}
 
@@ -289,7 +289,7 @@ func (m *APIModule) ProvidesServices() []modular.ServiceProvider {
 
 func (m *APIModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
-		{Name: "authService", Required: true},
-		{Name: "chimux.router", Required: true},
+		{Name: "auth", Required: true},
+		{Name: "chi.router", Required: true},
 	}
 }

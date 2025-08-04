@@ -60,6 +60,10 @@ func (m *JSONSchemaModule) Name() string {
 	return "jsonschema-demo"
 }
 
+func (m *JSONSchemaModule) Dependencies() []string {
+	return []string{"modular.jsonschema", "chimux"}
+}
+
 func (m *JSONSchemaModule) RequiresServices() []modular.ServiceDependency {
 	return []modular.ServiceDependency{
 		{
