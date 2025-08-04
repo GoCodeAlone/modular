@@ -1,0 +1,18 @@
+auth:
+  jwt:
+    secret: "demo-secret-key-change-in-production"
+    expiration: 1h  # 1 hour
+  password:
+    min_length: 8
+    bcrypt_cost: 12
+
+httpserver:
+  port: 8080
+  host: "localhost"
+
+chimux:
+  cors:
+    enabled: true
+    allowed_origins: ["*"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["*"]

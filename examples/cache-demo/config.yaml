@@ -1,0 +1,16 @@
+cache:
+  engine: "memory"
+  defaultTTL: 3600  # 1 hour in seconds
+  cleanupInterval: 600  # cleanup every 10 minutes (seconds)
+  maxItems: 10000
+
+httpserver:
+  port: 8080
+  host: "localhost"
+
+chimux:
+  cors:
+    enabled: true
+    allowed_origins: ["*"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["*"]
