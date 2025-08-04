@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"os"
@@ -250,9 +251,9 @@ func (m *SSLModule) homePage(w http.ResponseWriter, r *http.Request) {
 </body>
 </html>`, 
 		getStatusClass(r.TLS != nil), 
-		protocol, 
-		r.Host, 
-		r.URL.String())
+		html.EscapeString(protocol), 
+		html.EscapeString(r.Host), 
+		html.EscapeString(r.URL.String()))
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
