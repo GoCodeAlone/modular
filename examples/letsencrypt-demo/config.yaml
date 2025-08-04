@@ -1,0 +1,25 @@
+letsencrypt:
+  # Let's Encrypt configuration would go here for production
+  # This demo runs without actual Let's Encrypt integration
+  email: "demo@example.com"
+  domains:
+    - "localhost"
+    - "127.0.0.1"
+  use_staging: true  # Use staging environment for demo/testing
+  storage_path: "./certs"
+  auto_renew: true
+  renew_before: 30
+
+httpserver:
+  port: 8080  # Changed to HTTP port for demo simplicity
+  host: "0.0.0.0"
+  # TLS disabled for demo to avoid certificate issues
+  # tls:
+  #   enabled: true
+
+chimux:
+  cors:
+    enabled: true
+    allowed_origins: ["*"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["*"]
