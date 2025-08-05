@@ -3,6 +3,7 @@
 package reverseproxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -2549,6 +2550,26 @@ func (m *ReverseProxyModule) handleDryRunRequest(ctx context.Context, w http.Res
 		return
 	}
 
+	// Read and preserve the request body before it gets consumed
+	var bodyBytes []byte
+	var err error
+	if r.Body != nil {
+		bodyBytes, err = io.ReadAll(r.Body)
+		if err != nil {
+			m.app.Logger().Error("Failed to read request body for dry run", "error", err)
+			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			return
+		}
+		r.Body.Close()
+	}
+
+	// Create a new request with the preserved body for the return backend
+	returnRequest := r.Clone(ctx)
+	if len(bodyBytes) > 0 {
+		returnRequest.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		returnRequest.ContentLength = int64(len(bodyBytes))
+	}
+
 	// Determine which response to return to the client
 	var returnBackend string
 	if m.config.DryRun.DefaultResponseBackend == "secondary" {
@@ -2571,13 +2592,13 @@ func (m *ReverseProxyModule) handleDryRunRequest(ctx context.Context, w http.Res
 	}
 
 	// Send request to the return backend and capture response
-	returnHandler(recorder, r)
+	returnHandler(recorder, returnRequest)
 
-	// Copy the recorded response to the actual response writer
+	// Copy the recorded response to the original response writer
 	// Copy headers
-	for key, values := range recorder.Header() {
-		for _, value := range values {
-			w.Header().Add(key, value)
+	for key, vals := range recorder.Header() {
+		for _, v := range vals {
+			w.Header().Add(key, v)
 		}
 	}
 	w.WriteHeader(recorder.Code)
@@ -2587,37 +2608,106 @@ func (m *ReverseProxyModule) handleDryRunRequest(ctx context.Context, w http.Res
 
 	// Now perform dry run comparison in the background (async)
 	go func() {
-		// Create a copy of the request for background comparison
-		reqCopy := r.Clone(ctx)
+		// Create a new context for background processing to avoid cancellation when the original request completes
+		backgroundCtx := context.Background()
+
+		// Create a copy of the request for background comparison with preserved body
+		reqCopy := r.Clone(backgroundCtx)
+		if len(bodyBytes) > 0 {
+			reqCopy.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			reqCopy.ContentLength = int64(len(bodyBytes))
+		}
 
 		// Get the actual backend URLs
 		primaryURL, exists := m.config.BackendServices[primaryBackend]
 		if !exists {
-			m.app.Logger().Error("Primary backend URL not found for dry run", "backend", primaryBackend)
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Error("Primary backend URL not found for dry run", "backend", primaryBackend)
+			}
 			return
 		}
 
 		secondaryURL, exists := m.config.BackendServices[secondaryBackend]
 		if !exists {
-			m.app.Logger().Error("Secondary backend URL not found for dry run", "backend", secondaryBackend)
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Error("Secondary backend URL not found for dry run", "backend", secondaryBackend)
+			}
 			return
 		}
 
-		// Process dry run comparison with actual URLs
-		result, err := m.dryRunHandler.ProcessDryRun(ctx, reqCopy, primaryURL, secondaryURL)
+		// Capture endpoint path before processing to avoid accessing potentially invalid request
+		endpointPath := reqCopy.URL.Path
+
+		// Process dry run comparison with actual URLs using the background context
+		result, err := m.dryRunHandler.ProcessDryRun(backgroundCtx, reqCopy, primaryURL, secondaryURL)
 		if err != nil {
-			m.app.Logger().Error("Background dry run processing failed", "error", err)
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Error("Background dry run processing failed", "error", err)
+			}
 			return
 		}
 
-		m.app.Logger().Debug("Dry run comparison completed",
-			"endpoint", r.URL.Path,
-			"primaryBackend", primaryBackend,
-			"secondaryBackend", secondaryBackend,
-			"returnedBackend", returnBackend,
-			"statusCodeMatch", result.Comparison.StatusCodeMatch,
-			"bodyMatch", result.Comparison.BodyMatch,
-			"differences", len(result.Comparison.Differences),
-		)
+		// Add nil checks before accessing result fields
+		if result != nil && !isEmptyComparisonResult(result.Comparison) {
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Debug("Dry run comparison completed",
+					"endpoint", endpointPath,
+					"primaryBackend", primaryBackend,
+					"secondaryBackend", secondaryBackend,
+					"returnedBackend", returnBackend,
+					"statusCodeMatch", result.Comparison.StatusCodeMatch,
+					"bodyMatch", result.Comparison.BodyMatch,
+					"differences", len(result.Comparison.Differences),
+				)
+			}
+		} else {
+			if m.app != nil && m.app.Logger() != nil {
+				if result == nil {
+					m.app.Logger().Error("Dry run result is nil")
+				} else {
+					m.app.Logger().Error("Dry run result comparison is empty")
+				}
+			}
+		}
 	}()
+}
+
+// isEmptyComparisonResult checks if a ComparisonResult is empty or represents no differences.
+// isEmptyComparisonResult determines whether a ComparisonResult is considered "empty".
+//
+// An "empty" ComparisonResult means that either:
+//   - No matches were found (all match fields are false) and there are no recorded differences,
+//   - Or, the result does not indicate any differences (Differences and HeaderDiffs are empty).
+//
+// Specifically, this function returns true if:
+//   - All of StatusCodeMatch, HeadersMatch, and BodyMatch are false, and both Differences and HeaderDiffs are empty.
+//   - There are no differences recorded at all.
+//
+// It returns false if:
+//   - Any differences are present (Differences or HeaderDiffs are non-empty), or
+//   - All match fields are true (indicating a successful comparison).
+//
+// This is used to determine if a dry run comparison yielded any differences or if the result is a default/empty value.
+func isEmptyComparisonResult(result ComparisonResult) bool {
+	// Check if all boolean fields are false (indicating no matches found)
+	if !result.StatusCodeMatch && !result.HeadersMatch && !result.BodyMatch {
+		// If no matches and no differences recorded, it's likely an empty/default result
+		if len(result.Differences) == 0 && len(result.HeaderDiffs) == 0 {
+			return true
+		}
+	}
+
+	// If there are differences recorded, it's not empty
+	if len(result.Differences) > 0 || len(result.HeaderDiffs) > 0 {
+		return false
+	}
+
+	// If all match fields are true and no differences, it's a successful comparison (not empty)
+	if result.StatusCodeMatch && result.HeadersMatch && result.BodyMatch {
+		return false
+	}
+
+	// Default case: If none of the above conditions matched, we conservatively assume the result is empty.
+	// This ensures that only explicit differences or matches are treated as non-empty; ambiguous or default-initialized results are considered empty.
+	return true
 }
