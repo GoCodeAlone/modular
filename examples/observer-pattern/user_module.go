@@ -2,10 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+)
+
+// Static errors for err113 compliance
+var (
+	errMaxUsersReached = errors.New("maximum users reached")
+	errUserNotFound    = errors.New("user not found")
 )
 
 // UserModuleConfig configures the user module
@@ -16,11 +23,11 @@ type UserModuleConfig struct {
 
 // UserModule demonstrates a module that both observes and emits events
 type UserModule struct {
-	name       string
-	config     *UserModuleConfig
-	logger     modular.Logger
-	userStore  *UserStore
-	subject    modular.Subject // Reference to emit events
+	name      string
+	config    *UserModuleConfig
+	logger    modular.Logger
+	userStore *UserStore
+	subject   modular.Subject // Reference to emit events
 }
 
 // User represents a user entity
@@ -112,7 +119,7 @@ func (m *UserModule) Constructor() modular.ModuleConstructor {
 // RegisterObservers implements ObservableModule to register as an observer
 func (m *UserModule) RegisterObservers(subject modular.Subject) error {
 	// Register to observe application events
-	err := subject.RegisterObserver(m, 
+	err := subject.RegisterObserver(m,
 		modular.EventTypeApplicationStarted,
 		modular.EventTypeApplicationStopped,
 		modular.EventTypeServiceRegistered,
@@ -120,7 +127,7 @@ func (m *UserModule) RegisterObservers(subject modular.Subject) error {
 	if err != nil {
 		return fmt.Errorf("failed to register user module as observer: %w", err)
 	}
-	
+
 	m.logger.Info("User module registered as observer for application events")
 	return nil
 }
@@ -128,9 +135,9 @@ func (m *UserModule) RegisterObservers(subject modular.Subject) error {
 // EmitEvent allows the module to emit events
 func (m *UserModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
 	if m.subject != nil {
-		return m.subject.NotifyObservers(ctx, event)
+		return fmt.Errorf("failed to notify observers: %w", m.subject.NotifyObservers(ctx, event))
 	}
-	return fmt.Errorf("no subject available for event emission")
+	return errNoSubjectAvailableForEventEmission
 }
 
 // OnEvent implements Observer interface to receive events
@@ -139,11 +146,11 @@ func (m *UserModule) OnEvent(ctx context.Context, event cloudevents.Event) error
 	case modular.EventTypeApplicationStarted:
 		m.logger.Info("🎉 User module received application started event")
 		// Initialize user data or perform startup tasks
-		
+
 	case modular.EventTypeApplicationStopped:
 		m.logger.Info("👋 User module received application stopped event")
 		// Cleanup tasks
-		
+
 	case modular.EventTypeServiceRegistered:
 		var data map[string]interface{}
 		if err := event.DataAs(&data); err == nil {
@@ -164,12 +171,12 @@ func (m *UserModule) ObserverID() string {
 
 func (m *UserModule) CreateUser(id, email string) error {
 	if len(m.userStore.users) >= m.config.MaxUsers {
-		return fmt.Errorf("maximum users reached: %d", m.config.MaxUsers)
+		return fmt.Errorf("maximum users reached: %d: %w", m.config.MaxUsers, errMaxUsersReached)
 	}
 
 	user := &User{ID: id, Email: email}
 	m.userStore.users[id] = user
-	
+
 	// Emit custom CloudEvent
 	event := modular.NewCloudEvent(
 		"com.example.user.created",
@@ -182,11 +189,11 @@ func (m *UserModule) CreateUser(id, email string) error {
 			"module": m.name,
 		},
 	)
-	
+
 	if err := m.EmitEvent(context.Background(), event); err != nil {
 		m.logger.Error("Failed to emit user.created event", "error", err)
 	}
-	
+
 	m.logger.Info("👤 User created", "userID", id, "email", email)
 	return nil
 }
@@ -194,9 +201,9 @@ func (m *UserModule) CreateUser(id, email string) error {
 func (m *UserModule) LoginUser(id string) error {
 	user, exists := m.userStore.users[id]
 	if !exists {
-		return fmt.Errorf("user not found: %s", id)
+		return fmt.Errorf("user not found: %s: %w", id, errUserNotFound)
 	}
-	
+
 	// Emit custom CloudEvent
 	event := modular.NewCloudEvent(
 		"com.example.user.login",
@@ -209,11 +216,11 @@ func (m *UserModule) LoginUser(id string) error {
 			"module": m.name,
 		},
 	)
-	
+
 	if err := m.EmitEvent(context.Background(), event); err != nil {
 		m.logger.Error("Failed to emit user.login event", "error", err)
 	}
-	
+
 	m.logger.Info("🔐 User logged in", "userID", id)
 	return nil
 }

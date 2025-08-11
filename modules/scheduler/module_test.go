@@ -369,7 +369,7 @@ func TestSchedulerConfiguration(t *testing.T) {
 		WorkerCount:       10,
 		QueueSize:         200,
 		StorageType:       "memory",
-		CheckInterval:     2,
+		CheckInterval:     2 * time.Second,
 		EnablePersistence: false,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
@@ -417,7 +417,7 @@ func TestJobPersistence(t *testing.T) {
 			StorageType:       "memory",
 			EnablePersistence: true,
 			PersistenceFile:   tempFile,
-			ShutdownTimeout:   1, // Short timeout for test
+			ShutdownTimeout:   1 * time.Second, // Short timeout for test
 		}
 		app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
 

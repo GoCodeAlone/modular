@@ -731,16 +731,23 @@ func createTempConfig(cfg any) (interface{}, configInfo, error) {
 	isPtr := cfgValue.Kind() == reflect.Ptr
 
 	var targetType reflect.Type
+	var sourceValue reflect.Value
 	if isPtr {
 		if cfgValue.IsNil() {
 			return nil, configInfo{}, ErrConfigNilPointer
 		}
 		targetType = cfgValue.Elem().Type()
+		sourceValue = cfgValue.Elem()
 	} else {
 		targetType = cfgValue.Type()
+		sourceValue = cfgValue
 	}
 
 	tempCfgValue := reflect.New(targetType)
+
+	// Copy existing values from the original config to the temp config
+	// This preserves any values that were already set (e.g., by tests)
+	tempCfgValue.Elem().Set(sourceValue)
 
 	return tempCfgValue.Interface(), configInfo{
 		originalVal: cfgValue,

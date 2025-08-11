@@ -19,6 +19,9 @@ var ErrNoHostname = errors.New("no hostname in URL")
 // ErrUnexpectedStatusCode is returned when a health check receives an unexpected status code
 var ErrUnexpectedStatusCode = errors.New("unexpected status code")
 
+// ErrUnexpectedConfigType is returned when an unexpected config type is passed to Init
+var ErrUnexpectedConfigType = errors.New("unexpected config type")
+
 // HealthStatus represents the health status of a backend service.
 type HealthStatus struct {
 	BackendID        string        `json:"backend_id"`

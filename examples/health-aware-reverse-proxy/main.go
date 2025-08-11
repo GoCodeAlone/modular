@@ -61,17 +61,19 @@ func startMockBackends() {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"backend":"healthy-api","path":"%s","method":"%s","timestamp":"%s"}`, 
+			fmt.Fprintf(w, `{"backend":"healthy-api","path":"%s","method":"%s","timestamp":"%s"}`,
 				r.URL.Path, r.Method, time.Now().Format(time.RFC3339))
 		})
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"status":"healthy","service":"healthy-api","timestamp":"%s"}`, 
+			fmt.Fprintf(w, `{"status":"healthy","service":"healthy-api","timestamp":"%s"}`,
 				time.Now().Format(time.RFC3339))
 		})
 		fmt.Println("Starting healthy-api backend on :9001")
-		http.ListenAndServe(":9001", mux)
+		if err := http.ListenAndServe(":9001", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9001", err)
+		} //nolint:gosec
 	}()
 
 	// Intermittent backend that sometimes fails (port 9002)
@@ -88,7 +90,7 @@ func startMockBackends() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"backend":"intermittent-api","path":"%s","method":"%s","request":%d}`, 
+			fmt.Fprintf(w, `{"backend":"intermittent-api","path":"%s","method":"%s","request":%d}`,
 				r.URL.Path, r.Method, requestCount)
 		})
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +100,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","service":"intermittent-api","requests":%d}`, requestCount)
 		})
 		fmt.Println("Starting intermittent-api backend on :9002")
-		http.ListenAndServe(":9002", mux)
+		if err := http.ListenAndServe(":9002", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9002", err)
+		} //nolint:gosec
 	}()
 
 	// Slow backend (port 9003)
@@ -109,7 +113,7 @@ func startMockBackends() {
 			time.Sleep(2 * time.Second)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"backend":"slow-api","path":"%s","method":"%s","delay":"2s"}`, 
+			fmt.Fprintf(w, `{"backend":"slow-api","path":"%s","method":"%s","delay":"2s"}`,
 				r.URL.Path, r.Method)
 		})
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +123,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","service":"slow-api"}`)
 		})
 		fmt.Println("Starting slow-api backend on :9003")
-		http.ListenAndServe(":9003", mux)
+		if err := http.ListenAndServe(":9003", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9003", err)
+		} //nolint:gosec
 	}()
 
 	// Unreachable backend simulation - we won't start this one
@@ -170,7 +176,7 @@ func (h *HealthModule) Start(ctx context.Context) error {
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// Simple health response indicating the reverse proxy application is running
 		response := map[string]interface{}{
 			"status":    "healthy",
@@ -178,12 +184,12 @@ func (h *HealthModule) Start(ctx context.Context) error {
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"version":   "1.0.0",
 		}
-		
+
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			h.app.Logger().Error("Failed to encode health response", "error", err)
 		}
 	})
-	
+
 	h.app.Logger().Info("Registered application health endpoint", "endpoint", "/health")
 	return nil
 }

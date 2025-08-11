@@ -90,6 +90,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5"
@@ -167,7 +168,7 @@ func (m *ChiMuxModule) Name() string {
 //   - AllowedHeaders: ["Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"]
 //   - AllowCredentials: false
 //   - MaxAge: 300 seconds (5 minutes)
-//   - Timeout: 60000 milliseconds (60 seconds)
+//   - Timeout: 60s (60 seconds)
 func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &ChiMuxConfig{
@@ -176,7 +177,7 @@ func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 		AllowedHeaders:   []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
 		AllowCredentials: false,
 		MaxAge:           300,
-		Timeout:          60000,
+		Timeout:          60 * time.Second,
 	}
 
 	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(defaultConfig))

@@ -80,7 +80,7 @@ func TestEventLoggerModule_ConfigValidation(t *testing.T) {
 				Enabled:       true,
 				LogLevel:      "INFO",
 				Format:        "json",
-				FlushInterval: "5s",
+				FlushInterval: 5 * time.Second,
 				OutputTargets: []OutputTargetConfig{
 					{
 						Type:   "console",
@@ -116,7 +116,7 @@ func TestEventLoggerModule_ConfigValidation(t *testing.T) {
 			config: &EventLoggerConfig{
 				LogLevel:      "INFO",
 				Format:        "json",
-				FlushInterval: "invalid",
+				FlushInterval: -1 * time.Second, // Invalid negative duration
 			},
 			wantErr: true,
 		},
@@ -222,7 +222,7 @@ func TestEventLoggerModule_EventProcessing(t *testing.T) {
 		LogLevel:      "DEBUG",
 		Format:        "json",
 		BufferSize:    10,
-		FlushInterval: "1s",
+		FlushInterval: 1 * time.Second,
 		OutputTargets: []OutputTargetConfig{
 			{
 				Type:   "console",

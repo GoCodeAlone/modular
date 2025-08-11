@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
@@ -186,37 +185,44 @@ func TestModule_RegisterConfig(t *testing.T) {
 
 func TestModule_Init(t *testing.T) {
 	// Test with valid config
-	module := &Module{
-		config: &Config{
-			JWT: JWTConfig{
-				Secret:            "test-secret",
-				Expiration:        time.Hour,
-				RefreshExpiration: time.Hour * 24,
-			},
-			Password: PasswordConfig{
-				MinLength:  8,
-				BcryptCost: 12,
-			},
+	module := &Module{}
+
+	config := &Config{
+		JWT: JWTConfig{
+			Secret:            "test-secret",
+			Expiration:        3600,
+			RefreshExpiration: 86400,
+		},
+		Password: PasswordConfig{
+			MinLength:  8,
+			BcryptCost: 12,
 		},
 	}
 
 	app := NewMockApplication()
+	// Register the config section
+	app.RegisterConfigSection("auth", modular.NewStdConfigProvider(config))
+
 	err := module.Init(app)
 	assert.NoError(t, err)
 	assert.NotNil(t, module.logger)
+	assert.NotNil(t, module.config)
 }
 
 func TestModule_Init_InvalidConfig(t *testing.T) {
 	// Test with invalid config
-	module := &Module{
-		config: &Config{
-			JWT: JWTConfig{
-				Secret: "", // Invalid: empty secret
-			},
+	module := &Module{}
+
+	config := &Config{
+		JWT: JWTConfig{
+			Secret: "", // Invalid: empty secret
 		},
 	}
 
 	app := NewMockApplication()
+	// Register the invalid config section
+	app.RegisterConfigSection("auth", modular.NewStdConfigProvider(config))
+
 	err := module.Init(app)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "configuration validation failed")
@@ -243,8 +249,8 @@ func TestModule_Constructor(t *testing.T) {
 		config: &Config{
 			JWT: JWTConfig{
 				Secret:            "test-secret",
-				Expiration:        time.Hour,
-				RefreshExpiration: time.Hour * 24,
+				Expiration:        3600,
+				RefreshExpiration: 86400,
 			},
 		},
 	}
@@ -268,8 +274,8 @@ func TestModule_Constructor_WithCustomStores(t *testing.T) {
 		config: &Config{
 			JWT: JWTConfig{
 				Secret:            "test-secret",
-				Expiration:        time.Hour,
-				RefreshExpiration: time.Hour * 24,
+				Expiration:        3600,
+				RefreshExpiration: 86400,
 			},
 		},
 	}
@@ -300,8 +306,8 @@ func TestModule_Constructor_InvalidUserStore(t *testing.T) {
 		config: &Config{
 			JWT: JWTConfig{
 				Secret:            "test-secret",
-				Expiration:        time.Hour,
-				RefreshExpiration: time.Hour * 24,
+				Expiration:        3600,
+				RefreshExpiration: 86400,
 			},
 		},
 	}
@@ -324,8 +330,8 @@ func TestModule_Constructor_InvalidSessionStore(t *testing.T) {
 		config: &Config{
 			JWT: JWTConfig{
 				Secret:            "test-secret",
-				Expiration:        time.Hour,
-				RefreshExpiration: time.Hour * 24,
+				Expiration:        3600,
+				RefreshExpiration: 86400,
 			},
 		},
 	}

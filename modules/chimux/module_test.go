@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5"
@@ -54,7 +55,7 @@ func TestModule_Init(t *testing.T) {
 	assert.Equal(t, []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, module.config.AllowedMethods)
 	assert.False(t, module.config.AllowCredentials)
 	assert.Equal(t, 300, module.config.MaxAge)
-	assert.Equal(t, 60000, module.config.Timeout)
+	assert.Equal(t, 60*time.Second, module.config.Timeout)
 
 	// Verify router was created
 	assert.NotNil(t, module.router, "Router should be initialized")
@@ -235,7 +236,7 @@ func TestModule_BasePath(t *testing.T) {
 		AllowedHeaders:   []string{"Authorization"},
 		AllowCredentials: false,
 		MaxAge:           300,
-		Timeout:          60000,
+		Timeout:          60 * time.Second,
 		BasePath:         "/api/v1", // Set custom base path
 	}
 
@@ -290,7 +291,7 @@ func TestModule_TenantLifecycle(t *testing.T) {
 	// Create tenant-specific config
 	tenantConfig := &ChiMuxConfig{
 		BasePath: "/tenant",
-		Timeout:  30000,
+		Timeout:  30 * time.Second,
 	}
 
 	// Register tenant in mock tenant service
@@ -313,7 +314,7 @@ func TestModule_TenantLifecycle(t *testing.T) {
 	storedConfig := module.tenantConfigs[tenantID]
 	require.NotNil(t, storedConfig)
 	assert.Equal(t, "/tenant", storedConfig.BasePath)
-	assert.Equal(t, 30000, storedConfig.Timeout)
+	assert.Equal(t, 30*time.Second, storedConfig.Timeout)
 
 	// Verify GetTenantConfig works for existing tenant
 	retrievedConfig := module.GetTenantConfig(tenantID)

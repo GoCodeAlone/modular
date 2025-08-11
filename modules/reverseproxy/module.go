@@ -135,8 +135,11 @@ func (m *ReverseProxyModule) Name() string {
 // tenant-specific functionality.
 func (m *ReverseProxyModule) RegisterConfig(app modular.Application) error {
 	m.app = app.(modular.TenantApplication)
-	// Register the config section
-	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(&ReverseProxyConfig{}))
+	// Register the config section only if it doesn't already exist (for BDD tests)
+	if _, err := app.GetConfigSection(m.Name()); err != nil {
+		// Config section doesn't exist, register a default one
+		app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(&ReverseProxyConfig{}))
+	}
 
 	return nil
 }
@@ -150,7 +153,17 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 	if err != nil {
 		return fmt.Errorf("failed to get config section '%s': %w", m.Name(), err)
 	}
-	m.config = cfg.GetConfig().(*ReverseProxyConfig)
+
+	// Handle both value and pointer types
+	configValue := cfg.GetConfig()
+	switch v := configValue.(type) {
+	case *ReverseProxyConfig:
+		m.config = v
+	case ReverseProxyConfig:
+		m.config = &v
+	default:
+		return fmt.Errorf("%w: %T", ErrUnexpectedConfigType, v)
+	}
 
 	// Validate configuration values
 	if err := m.validateConfig(); err != nil {
@@ -623,9 +636,21 @@ func (m *ReverseProxyModule) OnTenantRemoved(tenantID modular.TenantID) {
 func (m *ReverseProxyModule) ProvidesServices() []modular.ServiceProvider {
 	var services []modular.ServiceProvider
 
+	// Don't provide any services if config is nil
+	if m.config == nil {
+		return services
+	}
+
+	// Provide the reverse proxy module itself as a service
+	services = append(services, modular.ServiceProvider{
+		Name:        "reverseproxy.provider",
+		Description: "Reverse proxy module providing request routing and load balancing",
+		Instance:    m,
+	})
+
 	// Provide the feature flag evaluator service if we have one and feature flags are enabled.
 	// This includes both internally created and externally provided evaluators so other modules can use them.
-	if m.featureFlagEvaluator != nil && m.config != nil && m.config.FeatureFlags.Enabled {
+	if m.featureFlagEvaluator != nil && m.config.FeatureFlags.Enabled {
 		services = append(services, modular.ServiceProvider{
 			Name:     "featureFlagEvaluator",
 			Instance: m.featureFlagEvaluator,
@@ -2074,70 +2099,6 @@ func mergeConfigs(global, tenant *ReverseProxyConfig) *ReverseProxyConfig {
 	return merged
 }
 
-// getBackendMap returns a map of backend IDs to their URLs from the global configuration.
-//
-//nolint:unused
-func (m *ReverseProxyModule) getBackendMap() map[string]string {
-	if m.config == nil || m.config.BackendServices == nil {
-		return map[string]string{}
-	}
-	return m.config.BackendServices
-}
-
-// getTenantBackendMap returns a map of backend IDs to their URLs for a specific tenant.
-//
-//nolint:unused
-func (m *ReverseProxyModule) getTenantBackendMap(tenantID modular.TenantID) map[string]string {
-	if m.tenants == nil {
-		return map[string]string{}
-	}
-
-	tenant, exists := m.tenants[tenantID]
-	if !exists || tenant == nil || tenant.BackendServices == nil {
-		return map[string]string{}
-	}
-
-	return tenant.BackendServices
-}
-
-// getBackendURLsByTenant returns all backend URLs for a specific tenant.
-//
-//nolint:unused
-func (m *ReverseProxyModule) getBackendURLsByTenant(tenantID modular.TenantID) map[string]string {
-	return m.getTenantBackendMap(tenantID)
-}
-
-// getBackendByPathAndTenant returns the backend URL for a specific path and tenant.
-//
-//nolint:unused
-func (m *ReverseProxyModule) getBackendByPathAndTenant(path string, tenantID modular.TenantID) (string, bool) {
-	// Get the tenant-specific backend map
-	backendMap := m.getTenantBackendMap(tenantID)
-
-	// Check if there's a direct match for the path
-	if url, ok := backendMap[path]; ok {
-		return url, true
-	}
-
-	// If no direct match, try to find the most specific match
-	var bestMatch string
-	var bestMatchLength int
-
-	for pattern, url := range backendMap {
-		// Check if path starts with the pattern and the pattern is longer than our current best match
-		if strings.HasPrefix(path, pattern) && len(pattern) > bestMatchLength {
-			bestMatch = url
-			bestMatchLength = len(pattern)
-		}
-	}
-
-	if bestMatchLength > 0 {
-		return bestMatch, true
-	}
-
-	return "", false
-}
-
 // registerMetricsEndpoint registers an HTTP endpoint to expose collected metrics
 func (m *ReverseProxyModule) registerMetricsEndpoint(endpoint string) {
 	if endpoint == "" {
@@ -2607,12 +2568,19 @@ func (m *ReverseProxyModule) handleDryRunRequest(ctx context.Context, w http.Res
 	}
 
 	// Now perform dry run comparison in the background (async)
-	go func() {
-		// Create a new context for background processing to avoid cancellation when the original request completes
-		backgroundCtx := context.Background()
+	go func(requestCtx context.Context) {
+		// Add panic recovery for background goroutine
+		defer func() {
+			if r := recover(); r != nil {
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Error("Background dry run goroutine panicked", "panic", r)
+				}
+			}
+		}()
 
+		// Use the passed context for background processing
 		// Create a copy of the request for background comparison with preserved body
-		reqCopy := r.Clone(backgroundCtx)
+		reqCopy := r.Clone(requestCtx)
 		if len(bodyBytes) > 0 {
 			reqCopy.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			reqCopy.ContentLength = int64(len(bodyBytes))
@@ -2639,7 +2607,7 @@ func (m *ReverseProxyModule) handleDryRunRequest(ctx context.Context, w http.Res
 		endpointPath := reqCopy.URL.Path
 
 		// Process dry run comparison with actual URLs using the background context
-		result, err := m.dryRunHandler.ProcessDryRun(backgroundCtx, reqCopy, primaryURL, secondaryURL)
+		result, err := m.dryRunHandler.ProcessDryRun(requestCtx, reqCopy, primaryURL, secondaryURL)
 		if err != nil {
 			if m.app != nil && m.app.Logger() != nil {
 				m.app.Logger().Error("Background dry run processing failed", "error", err)
@@ -2669,7 +2637,7 @@ func (m *ReverseProxyModule) handleDryRunRequest(ctx context.Context, w http.Res
 				}
 			}
 		}
-	}()
+	}(ctx)
 }
 
 // isEmptyComparisonResult checks if a ComparisonResult is empty or represents no differences.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -67,6 +68,7 @@ func main() {
 	app.Logger().Info("  http://localhost:8080/proxy/httpbin/headers")
 
 	// Make some test requests to demonstrate the logging
+	ctx := context.Background()
 	client := &http.Client{Timeout: 10 * time.Second}
 	testURLs := []string{
 		"http://localhost:8080/proxy/httpbin/json",
@@ -76,7 +78,14 @@ func main() {
 
 	for _, url := range testURLs {
 		app.Logger().Info("Making test request", "url", url)
-		resp, err := client.Get(url)
+
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			app.Logger().Error("Failed to create request", "url", url, "error", err)
+			continue
+		}
+
+		resp, err := client.Do(req)
 		if err != nil {
 			app.Logger().Error("Request failed", "url", url, "error", err)
 			continue

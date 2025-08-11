@@ -1,5 +1,9 @@
 package eventbus
 
+import (
+	"time"
+)
+
 // EventBusConfig defines the configuration for the event bus module.
 // This structure contains all the settings needed to configure event processing,
 // worker pools, event retention, and external broker connections.
@@ -49,11 +53,10 @@ type EventBusConfig struct {
 	// Must be at least 1.
 	WorkerCount int `json:"workerCount" yaml:"workerCount" validate:"min=1" env:"WORKER_COUNT"`
 
-	// EventTTL is the time to live for events in seconds.
+	// EventTTL is the time to live for events.
 	// Events older than this value may be automatically removed from queues
 	// or marked as expired. Used for event cleanup and storage management.
-	// Must be at least 1.
-	EventTTL int `json:"eventTTL" yaml:"eventTTL" validate:"min=1" env:"EVENT_TTL"`
+	EventTTL time.Duration `json:"eventTTL" yaml:"eventTTL" env:"EVENT_TTL" default:"3600s"`
 
 	// RetentionDays is how many days to retain event history.
 	// This affects event storage and cleanup policies. Longer retention

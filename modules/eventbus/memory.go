@@ -2,7 +2,6 @@ package eventbus
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -124,17 +123,34 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 	case <-done:
 		// All workers exited gracefully
 	case <-ctx.Done():
-		return fmt.Errorf("event bus shutdown timed out")
+		return ErrEventBusShutdownTimeout
 	}
 
 	m.isStarted = false
 	return nil
 }
 
+// matchesTopic checks if an event topic matches a subscription topic pattern
+// Supports wildcard patterns like "user.*" matching "user.created", "user.updated", etc.
+func matchesTopic(eventTopic, subscriptionTopic string) bool {
+	// Exact match
+	if eventTopic == subscriptionTopic {
+		return true
+	}
+
+	// Wildcard match - check if subscription topic ends with *
+	if len(subscriptionTopic) > 1 && subscriptionTopic[len(subscriptionTopic)-1] == '*' {
+		prefix := subscriptionTopic[:len(subscriptionTopic)-1]
+		return len(eventTopic) >= len(prefix) && eventTopic[:len(prefix)] == prefix
+	}
+
+	return false
+}
+
 // Publish sends an event to the specified topic
 func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	if !m.isStarted {
-		return fmt.Errorf("event bus not started")
+		return ErrEventBusNotStarted
 	}
 
 	// Fill in event metadata
@@ -146,25 +162,27 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	// Store in event history
 	m.storeEventHistory(event)
 
-	// Get subscribers for the topic
+	// Get all matching subscribers (exact match + wildcard matches)
 	m.topicMutex.RLock()
-	subsMap, ok := m.subscriptions[event.Topic]
+	var allMatchingSubs []*memorySubscription
 
-	// If no subscribers, just return
-	if !ok || len(subsMap) == 0 {
-		m.topicMutex.RUnlock()
-		return nil
-	}
-
-	// Make a copy of the subscriptions to avoid holding the lock while publishing
-	subs := make([]*memorySubscription, 0, len(subsMap))
-	for _, sub := range subsMap {
-		subs = append(subs, sub)
+	// Check all subscription topics to find matches
+	for subscriptionTopic, subsMap := range m.subscriptions {
+		if matchesTopic(event.Topic, subscriptionTopic) {
+			for _, sub := range subsMap {
+				allMatchingSubs = append(allMatchingSubs, sub)
+			}
+		}
 	}
 	m.topicMutex.RUnlock()
 
-	// Publish to all subscribers
-	for _, sub := range subs {
+	// If no matching subscribers, just return
+	if len(allMatchingSubs) == 0 {
+		return nil
+	}
+
+	// Publish to all matching subscribers
+	for _, sub := range allMatchingSubs {
 		sub.mutex.RLock()
 		if sub.cancelled {
 			sub.mutex.RUnlock()
@@ -196,11 +214,11 @@ func (m *MemoryEventBus) SubscribeAsync(ctx context.Context, topic string, handl
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
 	if !m.isStarted {
-		return nil, fmt.Errorf("event bus not started")
+		return nil, ErrEventBusNotStarted
 	}
 
 	if handler == nil {
-		return nil, fmt.Errorf("event handler cannot be nil")
+		return nil, ErrEventHandlerNil
 	}
 
 	// Create a new subscription
@@ -222,9 +240,16 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 	m.subscriptions[topic][sub.id] = sub
 	m.topicMutex.Unlock()
 
-	// Start event listener goroutine
+	// Start event listener goroutine and wait for it to be ready
+	started := make(chan struct{})
 	m.wg.Add(1)
-	go m.handleEvents(sub)
+	go func() {
+		close(started) // Signal that the goroutine has started
+		m.handleEvents(sub)
+	}()
+
+	// Wait for the goroutine to be ready before returning
+	<-started
 
 	return sub, nil
 }
@@ -232,12 +257,12 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 // Unsubscribe removes a subscription
 func (m *MemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
 	if !m.isStarted {
-		return fmt.Errorf("event bus not started")
+		return ErrEventBusNotStarted
 	}
 
 	sub, ok := subscription.(*memorySubscription)
 	if !ok {
-		return fmt.Errorf("invalid subscription type")
+		return ErrInvalidSubscriptionType
 	}
 
 	// Cancel the subscription

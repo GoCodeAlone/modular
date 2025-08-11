@@ -170,7 +170,7 @@ func (m *EventLoggerModule) RegisterConfig(app modular.Application) error {
 		LogLevel:          "INFO",
 		Format:            "structured",
 		BufferSize:        100,
-		FlushInterval:     "5s",
+		FlushInterval:     5 * time.Second,
 		IncludeMetadata:   true,
 		IncludeStackTrace: false,
 		OutputTargets: []OutputTargetConfig{
@@ -365,8 +365,7 @@ func (m *EventLoggerModule) ObserverID() string {
 func (m *EventLoggerModule) processEvents() {
 	defer m.wg.Done()
 
-	flushInterval, _ := time.ParseDuration(m.config.FlushInterval)
-	flushTicker := time.NewTicker(flushInterval)
+	flushTicker := time.NewTicker(m.config.FlushInterval)
 	defer flushTicker.Stop()
 
 	for {

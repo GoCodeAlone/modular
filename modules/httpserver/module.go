@@ -55,6 +55,12 @@ var (
 
 	// ErrNoHandler is returned when no HTTP handler is available for the server.
 	ErrNoHandler = errors.New("no HTTP handler available")
+
+	// ErrRouterServiceNotHandler is returned when the router service doesn't implement http.Handler.
+	ErrRouterServiceNotHandler = errors.New("router service does not implement http.Handler")
+
+	// ErrServerStartTimeout is returned when the server fails to start within the timeout period.
+	ErrServerStartTimeout = errors.New("context cancelled while waiting for server to start")
 )
 
 // HTTPServerModule represents the HTTP server module and implements the modular.Module interface.
@@ -107,14 +113,20 @@ func (m *HTTPServerModule) Name() string {
 // Default values are provided for common use cases, but can be
 // overridden through configuration files or environment variables.
 func (m *HTTPServerModule) RegisterConfig(app modular.Application) error {
-	// Register the configuration with default values
+	// Check if httpserver config is already registered (e.g., by tests)
+	if _, err := app.GetConfigSection(m.Name()); err == nil {
+		// Config already registered, skip to avoid overriding
+		return nil
+	}
+
+	// Register default config only if not already present
 	defaultConfig := &HTTPServerConfig{
 		Host:            "0.0.0.0",
 		Port:            8080,
-		ReadTimeout:     15,
-		WriteTimeout:    15,
-		IdleTimeout:     60,
-		ShutdownTimeout: 30,
+		ReadTimeout:     15 * time.Second,
+		WriteTimeout:    15 * time.Second,
+		IdleTimeout:     60 * time.Second,
+		ShutdownTimeout: 30 * time.Second,
 	}
 
 	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(defaultConfig))
@@ -153,7 +165,7 @@ func (m *HTTPServerModule) Constructor() modular.ModuleConstructor {
 		// Get the router service (which implements http.Handler)
 		handler, ok := services["router"].(http.Handler)
 		if !ok {
-			return nil, fmt.Errorf("service %s does not implement http.Handler", "router")
+			return nil, fmt.Errorf("%w: %s", ErrRouterServiceNotHandler, "router")
 		}
 
 		// Store the handler for use in Start
@@ -194,9 +206,9 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 	m.server = &http.Server{
 		Addr:         addr,
 		Handler:      m.handler,
-		ReadTimeout:  m.config.GetTimeout(m.config.ReadTimeout),
-		WriteTimeout: m.config.GetTimeout(m.config.WriteTimeout),
-		IdleTimeout:  m.config.GetTimeout(m.config.IdleTimeout),
+		ReadTimeout:  m.config.ReadTimeout,
+		WriteTimeout: m.config.WriteTimeout,
+		IdleTimeout:  m.config.IdleTimeout,
 	}
 
 	// Start the server in a goroutine
@@ -261,7 +273,7 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		}
 
 		// If server was shut down gracefully, err will be http.ErrServerClosed
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			m.logger.Error("HTTP server error", "error", err)
 		}
 	}()
@@ -272,14 +284,14 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		timeout = time.Until(deadline)
 	}
 
-	checkCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	check := func() error {
 		var dialer net.Dialer
 		conn, err := dialer.DialContext(checkCtx, "tcp", addr)
 		if err != nil {
-			return err
+			return fmt.Errorf("dialing server: %w", err)
 		}
 		if closeErr := conn.Close(); closeErr != nil {
 			m.logger.Warn("Failed to close connection", "error", closeErr)
@@ -306,7 +318,7 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 		// Wait before retrying
 		select {
 		case <-checkCtx.Done():
-			return fmt.Errorf("context cancelled while waiting for server to start")
+			return ErrServerStartTimeout
 		case <-ticker.C:
 		}
 	}
@@ -338,7 +350,7 @@ func (m *HTTPServerModule) Stop(ctx context.Context) error {
 	// Create a context with timeout for shutdown
 	shutdownCtx, cancel := context.WithTimeout(
 		ctx,
-		m.config.GetTimeout(m.config.ShutdownTimeout),
+		m.config.ShutdownTimeout,
 	)
 	defer cancel()
 
@@ -355,8 +367,13 @@ func (m *HTTPServerModule) Stop(ctx context.Context) error {
 
 // ProvidesServices returns the services provided by this module
 func (m *HTTPServerModule) ProvidesServices() []modular.ServiceProvider {
-	// This module doesn't provide any services
-	return nil
+	return []modular.ServiceProvider{
+		{
+			Name:        "httpserver",
+			Description: "HTTP server module for handling HTTP requests and providing web services",
+			Instance:    m,
+		},
+	}
 }
 
 // RequiresServices returns the services required by this module
@@ -457,7 +474,7 @@ func (m *HTTPServerModule) generateSelfSignedCertificate(domains []string) (stri
 func (m *HTTPServerModule) createTempFile(pattern, content string) (string, error) {
 	tmpFile, err := os.CreateTemp("", pattern)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("creating temp file: %w", err)
 	}
 	defer func() {
 		if closeErr := tmpFile.Close(); closeErr != nil {
@@ -466,7 +483,7 @@ func (m *HTTPServerModule) createTempFile(pattern, content string) (string, erro
 	}()
 
 	if _, err := tmpFile.WriteString(content); err != nil {
-		return "", err
+		return "", fmt.Errorf("writing to temp file: %w", err)
 	}
 
 	return tmpFile.Name(), nil

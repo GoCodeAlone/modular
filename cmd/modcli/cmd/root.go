@@ -84,7 +84,7 @@ It helps with generating modules, configurations, and other common tasks.`,
 				OsExit(0)
 				return
 			}
-			cmd.Help()
+			_ = cmd.Help()
 		},
 	}
 
@@ -106,7 +106,7 @@ func NewGenerateCommand() *cobra.Command {
 		Short: "Generate various components",
 		Long:  `Generate modules, configurations, and other components for the Modular framework.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Help()
+			_ = cmd.Help()
 		},
 	}
 

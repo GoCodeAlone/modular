@@ -40,3 +40,4 @@ go.work.sum
 *.log
 .vscode/settings.json
 coverage.txt
+*-coverage.txt

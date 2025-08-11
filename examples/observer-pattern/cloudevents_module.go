@@ -157,15 +157,15 @@ func (m *CloudEventsModule) emitDemoCloudEvent(ctx context.Context, config *Clou
 // RegisterObservers implements ObservableModule to register for events.
 func (m *CloudEventsModule) RegisterObservers(subject modular.Subject) error {
 	// Register to receive all events for demonstration
-	return subject.RegisterObserver(m)
+	return fmt.Errorf("failed to register observer: %w", subject.RegisterObserver(m))
 }
 
 // EmitEvent implements ObservableModule for CloudEvents.
 func (m *CloudEventsModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
 	if observableApp, ok := m.app.(*modular.ObservableApplication); ok {
-		return observableApp.NotifyObservers(ctx, event)
+		return fmt.Errorf("failed to notify observers: %w", observableApp.NotifyObservers(ctx, event))
 	}
-	return fmt.Errorf("application does not support CloudEvents")
+	return errApplicationDoesNotSupportCloudEvents
 }
 
 // OnEvent implements Observer interface to receive CloudEvents.

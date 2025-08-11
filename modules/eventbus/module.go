@@ -258,7 +258,7 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 	// Start the event bus
 	err := m.eventbus.Start(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("starting event bus: %w", err)
 	}
 
 	m.isStarted = true
@@ -292,7 +292,7 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 	// Stop the event bus
 	err := m.eventbus.Stop(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("stopping event bus: %w", err)
 	}
 
 	m.isStarted = false
@@ -353,7 +353,11 @@ func (m *EventBusModule) Publish(ctx context.Context, topic string, payload inte
 		Topic:   topic,
 		Payload: payload,
 	}
-	return m.eventbus.Publish(ctx, event)
+	err := m.eventbus.Publish(ctx, event)
+	if err != nil {
+		return fmt.Errorf("publishing event to topic %s: %w", topic, err)
+	}
+	return nil
 }
 
 // Subscribe subscribes to a topic on the event bus with synchronous processing.
@@ -372,7 +376,11 @@ func (m *EventBusModule) Publish(ctx context.Context, topic string, payload inte
 //	    return updateLastLoginTime(user.ID)
 //	})
 func (m *EventBusModule) Subscribe(ctx context.Context, topic string, handler EventHandler) (Subscription, error) {
-	return m.eventbus.Subscribe(ctx, topic, handler)
+	sub, err := m.eventbus.Subscribe(ctx, topic, handler)
+	if err != nil {
+		return nil, fmt.Errorf("subscribing to topic %s: %w", topic, err)
+	}
+	return sub, nil
 }
 
 // SubscribeAsync subscribes to a topic with asynchronous event processing.
@@ -392,7 +400,11 @@ func (m *EventBusModule) Subscribe(ctx context.Context, topic string, handler Ev
 //	    return generateThumbnails(imageData)
 //	})
 func (m *EventBusModule) SubscribeAsync(ctx context.Context, topic string, handler EventHandler) (Subscription, error) {
-	return m.eventbus.SubscribeAsync(ctx, topic, handler)
+	sub, err := m.eventbus.SubscribeAsync(ctx, topic, handler)
+	if err != nil {
+		return nil, fmt.Errorf("subscribing async to topic %s: %w", topic, err)
+	}
+	return sub, nil
 }
 
 // Unsubscribe cancels a subscription and stops receiving events.
@@ -406,7 +418,11 @@ func (m *EventBusModule) SubscribeAsync(ctx context.Context, topic string, handl
 //
 //	err := eventBus.Unsubscribe(ctx, subscription)
 func (m *EventBusModule) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	return m.eventbus.Unsubscribe(ctx, subscription)
+	err := m.eventbus.Unsubscribe(ctx, subscription)
+	if err != nil {
+		return fmt.Errorf("unsubscribing: %w", err)
+	}
+	return nil
 }
 
 // Topics returns a list of all active topics that have subscribers.

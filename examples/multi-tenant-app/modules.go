@@ -2,9 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/CrisisTextLine/modular"
+)
+
+// Static error variables for err113 compliance
+var (
+	errInvalidWebserverConfigType     = errors.New("invalid webserver config type")
+	errAppNotTenantApplication        = errors.New("app does not implement TenantApplication interface")
+	errInvalidContentConfigType       = errors.New("invalid content config type")
+	errInvalidNotificationsConfigType = errors.New("invalid notifications config type")
 )
 
 // WebServer module - standard non-tenant aware module
@@ -37,7 +46,7 @@ func (w *WebServer) Init(app modular.Application) error {
 
 	webConfig, ok := cp.GetConfig().(*WebConfig)
 	if !ok {
-		return fmt.Errorf("invalid webserver config type")
+		return errInvalidWebserverConfigType
 	}
 	w.config = webConfig
 
@@ -129,7 +138,7 @@ func (cm *ContentManager) Init(app modular.Application) error {
 	var ok bool
 	cm.app, ok = app.(modular.TenantApplication)
 	if !ok {
-		return fmt.Errorf("app does not implement TenantApplication interface")
+		return errAppNotTenantApplication
 	}
 
 	// Get default config
@@ -140,7 +149,7 @@ func (cm *ContentManager) Init(app modular.Application) error {
 
 	contentConfig, ok := cp.GetConfig().(*ContentConfig)
 	if !ok {
-		return fmt.Errorf("invalid content config type")
+		return errInvalidContentConfigType
 	}
 	cm.defaultConfig = contentConfig
 
@@ -187,7 +196,7 @@ func (nm *NotificationManager) Init(app modular.Application) error {
 	// Get tenant service
 	ts, err := nm.app.GetTenantService()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get tenant service: %w", err)
 	}
 	nm.tenantService = ts
 
@@ -199,7 +208,7 @@ func (nm *NotificationManager) Init(app modular.Application) error {
 
 	notificationConfig, ok := config.GetConfig().(*NotificationConfig)
 	if !ok {
-		return fmt.Errorf("invalid notifications config type")
+		return errInvalidNotificationsConfigType
 	}
 	nm.defaultConfig = notificationConfig
 

@@ -102,26 +102,35 @@ func TestFeatureFlagEvaluatorServiceExposure(t *testing.T) {
 			providedServices := module.ProvidesServices()
 
 			if tt.expectService {
-				// Should provide exactly one service (featureFlagEvaluator)
-				if len(providedServices) != 1 {
-					t.Errorf("Expected 1 provided service, got %d", len(providedServices))
+				// Should provide two services (reverseproxy.provider + featureFlagEvaluator)
+				if len(providedServices) != 2 {
+					t.Errorf("Expected 2 provided services, got %d", len(providedServices))
 					return
 				}
 
-				service := providedServices[0]
-				if service.Name != "featureFlagEvaluator" {
-					t.Errorf("Expected service name 'featureFlagEvaluator', got '%s'", service.Name)
+				// Find the featureFlagEvaluator service
+				var flagService *modular.ServiceProvider
+				for i, service := range providedServices {
+					if service.Name == "featureFlagEvaluator" {
+						flagService = &providedServices[i]
+						break
+					}
+				}
+
+				if flagService == nil {
+					t.Error("Expected featureFlagEvaluator service to be provided")
+					return
 				}
 
 				// Verify the service implements FeatureFlagEvaluator
-				if _, ok := service.Instance.(FeatureFlagEvaluator); !ok {
-					t.Errorf("Expected service to implement FeatureFlagEvaluator, got %T", service.Instance)
+				if _, ok := flagService.Instance.(FeatureFlagEvaluator); !ok {
+					t.Errorf("Expected service to implement FeatureFlagEvaluator, got %T", flagService.Instance)
 				}
 
 				// Test that it's the FileBasedFeatureFlagEvaluator specifically
-				evaluator, ok := service.Instance.(*FileBasedFeatureFlagEvaluator)
+				evaluator, ok := flagService.Instance.(*FileBasedFeatureFlagEvaluator)
 				if !ok {
-					t.Errorf("Expected service to be *FileBasedFeatureFlagEvaluator, got %T", service.Instance)
+					t.Errorf("Expected service to be *FileBasedFeatureFlagEvaluator, got %T", flagService.Instance)
 					return
 				}
 
@@ -142,9 +151,16 @@ func TestFeatureFlagEvaluatorServiceExposure(t *testing.T) {
 				}
 
 			} else {
-				// Should not provide any services
-				if len(providedServices) != 0 {
-					t.Errorf("Expected 0 provided services, got %d", len(providedServices))
+				// Should provide only one service (reverseproxy.provider)
+				if len(providedServices) != 1 {
+					t.Errorf("Expected 1 provided service, got %d", len(providedServices))
+					return
+				}
+
+				// Should be the reverseproxy.provider service
+				service := providedServices[0]
+				if service.Name != "reverseproxy.provider" {
+					t.Errorf("Expected service name 'reverseproxy.provider', got '%s'", service.Name)
 				}
 			}
 		})
@@ -247,15 +263,29 @@ func TestFeatureFlagEvaluatorServiceDependencyResolution(t *testing.T) {
 		t.Error("Expected internal flag to not exist when using external evaluator")
 	}
 
-	// The module should still provide the service (it's the external one)
+	// The module should still provide both services (reverseproxy.provider + external evaluator)
 	providedServices := module.ProvidesServices()
-	if len(providedServices) != 1 {
-		t.Errorf("Expected 1 provided service, got %d", len(providedServices))
+	if len(providedServices) != 2 {
+		t.Errorf("Expected 2 provided services, got %d", len(providedServices))
+		return
+	}
+
+	// Find the featureFlagEvaluator service
+	var flagService *modular.ServiceProvider
+	for i, service := range providedServices {
+		if service.Name == "featureFlagEvaluator" {
+			flagService = &providedServices[i]
+			break
+		}
+	}
+
+	if flagService == nil {
+		t.Error("Expected featureFlagEvaluator service to be provided")
 		return
 	}
 
 	// Verify it's the same instance as the external evaluator
-	if providedServices[0].Instance != externalEvaluator {
+	if flagService.Instance != externalEvaluator {
 		t.Error("Expected provided service to be the same instance as external evaluator")
 	}
 }

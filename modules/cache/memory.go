@@ -30,6 +30,12 @@ func NewMemoryCache(config *CacheConfig) *MemoryCache {
 
 // Connect initializes the memory cache
 func (c *MemoryCache) Connect(ctx context.Context) error {
+	// Validate configuration before use
+	if c.config.CleanupInterval <= 0 {
+		// Set a sensible default if CleanupInterval is invalid
+		c.config.CleanupInterval = 60 * time.Second
+	}
+
 	// Start cleanup goroutine with derived context
 	c.cleanupCtx, c.cancelFunc = context.WithCancel(ctx)
 	go func() {
@@ -144,7 +150,7 @@ func (c *MemoryCache) DeleteMulti(ctx context.Context, keys []string) error {
 
 // startCleanupTimer starts the cleanup timer for expired items
 func (c *MemoryCache) startCleanupTimer(ctx context.Context) {
-	ticker := time.NewTicker(time.Duration(c.config.CleanupInterval) * time.Second)
+	ticker := time.NewTicker(c.config.CleanupInterval)
 	defer ticker.Stop()
 
 	for {

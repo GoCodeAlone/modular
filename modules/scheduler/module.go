@@ -58,11 +58,17 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+)
+
+// Module errors
+var (
+	ErrJobStoreNotPersistable = errors.New("job store does not implement PersistableJobStore interface")
 )
 
 // ModuleName is the unique identifier for the scheduler module.
@@ -121,18 +127,18 @@ func (m *SchedulerModule) Name() string {
 // Default configuration:
 //   - WorkerCount: 5 worker goroutines
 //   - QueueSize: 100 job queue capacity
-//   - ShutdownTimeout: 30 seconds for graceful shutdown
+//   - ShutdownTimeout: 30s for graceful shutdown
 //   - StorageType: "memory" storage backend
-//   - CheckInterval: 1 second for job polling
+//   - CheckInterval: 1s for job polling
 //   - RetentionDays: 7 days for completed job retention
 func (m *SchedulerModule) RegisterConfig(app modular.Application) error {
 	// Register the configuration with default values
 	defaultConfig := &SchedulerConfig{
 		WorkerCount:       5,
 		QueueSize:         100,
-		ShutdownTimeout:   30,
+		ShutdownTimeout:   30 * time.Second,
 		StorageType:       "memory",
-		CheckInterval:     1,
+		CheckInterval:     1 * time.Second, // Fast for unit tests
 		RetentionDays:     7,
 		PersistenceFile:   "scheduler_jobs.json",
 		EnablePersistence: false,
@@ -168,7 +174,7 @@ func (m *SchedulerModule) Init(app modular.Application) error {
 		m.jobStore,
 		WithWorkerCount(m.config.WorkerCount),
 		WithQueueSize(m.config.QueueSize),
-		WithCheckInterval(time.Duration(m.config.CheckInterval)*time.Second),
+		WithCheckInterval(m.config.CheckInterval),
 		WithLogger(m.logger),
 	)
 
@@ -219,7 +225,7 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 	}
 
 	// Create a context with timeout for graceful shutdown
-	shutdownCtx, cancel := context.WithTimeout(ctx, time.Duration(m.config.ShutdownTimeout)*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(ctx, m.config.ShutdownTimeout)
 	defer cancel()
 
 	// Stop the scheduler
@@ -338,7 +344,7 @@ func (m *SchedulerModule) loadPersistedJobs() error {
 	}
 
 	m.logger.Warn("Job store does not support persistence")
-	return fmt.Errorf("job store does not implement PersistableJobStore interface")
+	return ErrJobStoreNotPersistable
 }
 
 // savePersistedJobs saves jobs to the persistence file
@@ -362,5 +368,5 @@ func (m *SchedulerModule) savePersistedJobs() error {
 	}
 
 	m.logger.Warn("Job store does not support persistence")
-	return fmt.Errorf("job store does not implement PersistableJobStore interface")
+	return ErrJobStoreNotPersistable
 }

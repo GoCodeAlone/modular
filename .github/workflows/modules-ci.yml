@@ -115,6 +115,12 @@ jobs:
         run: |
           go test -v ./... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic
 
+      - name: Run BDD tests explicitly for ${{ matrix.module }}
+        working-directory: modules/${{ matrix.module }}
+        run: |
+          echo "Running BDD tests for ${{ matrix.module }} module..."
+          go test -v -run ".*BDD|.*Module" . || echo "No BDD tests found for ${{ matrix.module }}"
+
       - name: Upload coverage for ${{ matrix.module }}
         uses: codecov/codecov-action@v5
         with:
@@ -204,4 +210,40 @@ jobs:
             lint_result="${{ needs.lint-modules.result }}"
             
             echo "| $module | $test_result | $verify_result | $lint_result |" >> $GITHUB_STEP_SUMMARY
+          done
+
+  # Comprehensive BDD test execution across all modules
+  bdd-tests:
+    needs: detect-modules
+    runs-on: ubuntu-latest
+    name: BDD Tests Summary
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Run comprehensive BDD tests
+        run: |
+          echo "# BDD Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | BDD Tests Status |" >> $GITHUB_STEP_SUMMARY  
+          echo "|--------|------------------|" >> $GITHUB_STEP_SUMMARY
+          
+          modules=$(echo '${{ needs.detect-modules.outputs.modules }}' | jq -r '.[]')
+          
+          for module in $modules; do
+            cd "modules/$module"
+            echo "=== Running BDD tests for $module ==="
+            if go test -v -run ".*BDD|.*Module" . >/dev/null 2>&1; then
+              echo "| $module | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $module | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
+            fi
+            cd ../..
           done

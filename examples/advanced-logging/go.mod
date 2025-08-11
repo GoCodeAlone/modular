@@ -5,7 +5,7 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	github.com/CrisisTextLine/modular v1.4.0
+	github.com/CrisisTextLine/modular v1.5.0
 	github.com/CrisisTextLine/modular/modules/chimux v1.1.0
 	github.com/CrisisTextLine/modular/modules/httpclient v0.1.0
 	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1

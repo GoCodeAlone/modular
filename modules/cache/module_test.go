@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -33,7 +34,11 @@ func (a *mockApp) RegisterConfigSection(name string, provider modular.ConfigProv
 }
 
 func (a *mockApp) GetConfigSection(name string) (modular.ConfigProvider, error) {
-	return a.configSections[name], nil
+	provider, exists := a.configSections[name]
+	if !exists {
+		return nil, fmt.Errorf("config section '%s' not found", name)
+	}
+	return provider, nil
 }
 
 func (a *mockApp) ConfigSections() map[string]modular.ConfigProvider {
@@ -96,7 +101,13 @@ func (a *mockApp) SetVerboseConfig(verbose bool) {
 type mockConfigProvider struct{}
 
 func (m *mockConfigProvider) GetConfig() interface{} {
-	return nil
+	return &CacheConfig{
+		Engine:          "memory",
+		DefaultTTL:      300 * time.Second,
+		CleanupInterval: 60 * time.Second,  // Non-zero to avoid ticker panic
+		MaxItems:        10000,
+		ConnectionMaxAge: 3600 * time.Second,
+	}
 }
 
 type mockLogger struct{}
@@ -197,8 +208,8 @@ func TestExpiration(t *testing.T) {
 	// Override config for faster expiration
 	config := &CacheConfig{
 		Engine:          "memory",
-		DefaultTTL:      1, // 1 second
-		CleanupInterval: 1, // 1 second
+		DefaultTTL:      1 * time.Second, // 1 second
+		CleanupInterval: 1 * time.Second, // 1 second
 		MaxItems:        100,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
@@ -241,13 +252,13 @@ func TestRedisConfiguration(t *testing.T) {
 	// Override config for Redis
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
 
@@ -264,13 +275,13 @@ func TestRedisConfiguration(t *testing.T) {
 func TestRedisOperationsWithMockBehavior(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -307,13 +318,13 @@ func TestRedisOperationsWithMockBehavior(t *testing.T) {
 func TestRedisConfigurationEdgeCases(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "invalid-url",
 		RedisPassword:    "test-password",
 		RedisDB:          1,
-		ConnectionMaxAge: 120,
+		ConnectionMaxAge: 120 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -328,13 +339,13 @@ func TestRedisConfigurationEdgeCases(t *testing.T) {
 func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -358,13 +369,13 @@ func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 func TestRedisConnectWithPassword(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "test-password",
 		RedisDB:          1,
-		ConnectionMaxAge: 120,
+		ConnectionMaxAge: 120 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -388,13 +399,13 @@ func TestRedisJSONMarshaling(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -427,13 +438,13 @@ func TestRedisFullOperations(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -508,13 +519,13 @@ func TestRedisGetJSONUnmarshalError(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -541,13 +552,13 @@ func TestRedisGetWithServerError(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL: 300 * time.Second,
+		CleanupInterval: 60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)

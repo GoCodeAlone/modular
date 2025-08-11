@@ -120,28 +120,26 @@ func (m *CacheModule) Name() string {
 
 // RegisterConfig registers the module's configuration structure.
 // This method is called during application initialization to register
-// the default configuration values for the cache module.
+// the configuration structure for the cache module. Defaults are provided
+// via struct tags in the CacheConfig structure.
 //
-// Default configuration:
+// Default configuration (from struct tags):
 //   - Engine: "memory"
-//   - DefaultTTL: 300 seconds (5 minutes)
-//   - CleanupInterval: 60 seconds (1 minute)
+//   - DefaultTTL: 300s (5 minutes)
+//   - CleanupInterval: 60s (1 minute)
 //   - MaxItems: 10000
+//   - ConnectionMaxAge: 3600s (1 hour)
 //   - Redis settings: empty/default values
 func (m *CacheModule) RegisterConfig(app modular.Application) error {
-	// Register the configuration with default values
-	defaultConfig := &CacheConfig{
-		Engine:           "memory",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
-		MaxItems:         10000,
-		RedisURL:         "",
-		RedisPassword:    "",
-		RedisDB:          0,
-		ConnectionMaxAge: 60,
+	// Check if cache config is already registered (e.g., by tests)
+	if _, err := app.GetConfigSection(m.Name()); err == nil {
+		// Config already registered, skip to avoid overriding
+		return nil
 	}
 
-	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(defaultConfig))
+	// Register empty config - defaults come from struct tags
+	m.config = &CacheConfig{}
+	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(m.config))
 	return nil
 }
 
@@ -161,7 +159,7 @@ func (m *CacheModule) RegisterConfig(app modular.Application) error {
 //   - fallback: defaults to memory cache for unknown engines
 func (m *CacheModule) Init(app modular.Application) error {
 	// Retrieve the registered config section for access
-	cfg, err := app.GetConfigSection(m.name)
+	cfg, err := app.GetConfigSection(m.Name())
 	if err != nil {
 		return fmt.Errorf("failed to get config section for cache module: %w", err)
 	}
@@ -281,7 +279,7 @@ func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 //	err := cache.Set(ctx, "session:abc", sessionData, time.Hour)
 func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	if ttl == 0 {
-		ttl = time.Duration(m.config.DefaultTTL) * time.Second
+		ttl = m.config.DefaultTTL
 	}
 	if err := m.cacheEngine.Set(ctx, key, value, ttl); err != nil {
 		return fmt.Errorf("failed to set cache item: %w", err)
@@ -358,7 +356,7 @@ func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]i
 //	err := cache.SetMulti(ctx, items, time.Minute*30)
 func (m *CacheModule) SetMulti(ctx context.Context, items map[string]interface{}, ttl time.Duration) error {
 	if ttl == 0 {
-		ttl = time.Duration(m.config.DefaultTTL) * time.Second
+		ttl = m.config.DefaultTTL
 	}
 	if err := m.cacheEngine.SetMulti(ctx, items, ttl); err != nil {
 		return fmt.Errorf("failed to set multiple cache items: %w", err)
