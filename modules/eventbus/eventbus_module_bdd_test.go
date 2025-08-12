@@ -550,8 +550,8 @@ func (ctx *EventBusBDDTestContext) theMemoryEngineShouldBeUsed() error {
 
 func (ctx *EventBusBDDTestContext) eventsShouldBeProcessedInMemory() error {
 	// For BDD purposes, validate that the memory engine is properly initialized
-	if ctx.service == nil || ctx.service.eventbus == nil {
-		return fmt.Errorf("memory eventbus not properly initialized")
+	if ctx.service == nil || ctx.service.router == nil {
+		return fmt.Errorf("eventbus router not properly initialized")
 	}
 
 	return nil

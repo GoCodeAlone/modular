@@ -303,7 +303,7 @@ func TestEventBusConfiguration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify configuration was applied
-	assert.NotNil(t, module.eventbus)
+	assert.NotNil(t, module.router)
 }
 
 func TestEventBusServiceProvider(t *testing.T) {
