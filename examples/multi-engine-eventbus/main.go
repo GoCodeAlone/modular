@@ -82,6 +82,23 @@ func main() {
 				},
 			},
 			{
+				Name: "redis-durable",
+				Type: "redis",
+				Config: map[string]interface{}{
+					"url":      "redis://localhost:6379",
+					"db":       0,
+					"poolSize": 10,
+				},
+			},
+			{
+				Name: "kafka-analytics",
+				Type: "kafka",
+				Config: map[string]interface{}{
+					"brokers": []string{"localhost:9092"},
+					"groupId": "multi-engine-demo",
+				},
+			},
+			{
 				Name: "memory-reliable",
 				Type: "custom",
 				Config: map[string]interface{}{
@@ -99,7 +116,11 @@ func main() {
 			},
 			{
 				Topics: []string{"analytics.*", "metrics.*"},
-				Engine: "memory-reliable",
+				Engine: "kafka-analytics",
+			},
+			{
+				Topics: []string{"system.*", "health.*"},
+				Engine: "redis-durable",
 			},
 			{
 				Topics: []string{"*"}, // Fallback for all other topics
@@ -139,9 +160,14 @@ func main() {
 
 	fmt.Printf("🚀 Started %s in %s environment\n", appConfig.Name, appConfig.Environment)
 	fmt.Println("📊 Multi-Engine EventBus Configuration:")
-	fmt.Println("  - memory-fast: Handles user.* and auth.* topics")
-	fmt.Println("  - memory-reliable: Handles analytics.*, metrics.*, and fallback topics")
+	fmt.Println("  - memory-fast: Handles user.* and auth.* topics (in-memory, low latency)")
+	fmt.Println("  - kafka-analytics: Handles analytics.* and metrics.* topics (distributed, persistent)")
+	fmt.Println("  - redis-durable: Handles system.* and health.* topics (Redis pub/sub, persistent)")
+	fmt.Println("  - memory-reliable: Handles fallback topics (in-memory with metrics)")
 	fmt.Println()
+	
+	// Check if external services are available
+	checkServiceAvailability(eventBusService)
 
 	// Set up event handlers
 	setupEventHandlers(ctx, eventBusService)
@@ -189,26 +215,44 @@ func setupEventHandlers(ctx context.Context, eventBus *eventbus.EventBusModule) 
 		return nil
 	})
 
-	// Analytics event handlers (routed to memory-reliable engine)
+	// Analytics event handlers (routed to kafka-analytics engine)
 	eventBus.SubscribeAsync(ctx, "analytics.pageview", func(ctx context.Context, event eventbus.Event) error {
 		analyticsEvent := event.Payload.(AnalyticsEvent)
-		fmt.Printf("📈 [MEMORY-RELIABLE] Page view: %s (session: %s)\n", 
+		fmt.Printf("📈 [KAFKA-ANALYTICS] Page view: %s (session: %s)\n", 
 			analyticsEvent.Page, analyticsEvent.SessionID)
 		return nil
 	})
 
 	eventBus.SubscribeAsync(ctx, "analytics.click", func(ctx context.Context, event eventbus.Event) error {
 		analyticsEvent := event.Payload.(AnalyticsEvent)
-		fmt.Printf("📈 [MEMORY-RELIABLE] Click event: %s on %s\n", 
+		fmt.Printf("📈 [KAFKA-ANALYTICS] Click event: %s on %s\n", 
 			analyticsEvent.EventType, analyticsEvent.Page)
 		return nil
 	})
+	
+	eventBus.SubscribeAsync(ctx, "metrics.cpu_usage", func(ctx context.Context, event eventbus.Event) error {
+		fmt.Printf("📊 [KAFKA-ANALYTICS] CPU usage metric received\n")
+		return nil
+	})
 
-	// System event handlers (fallback routing to memory-reliable engine)
+	// System event handlers (routed to redis-durable engine)
 	eventBus.Subscribe(ctx, "system.health", func(ctx context.Context, event eventbus.Event) error {
 		systemEvent := event.Payload.(SystemEvent)
-		fmt.Printf("⚙️  [MEMORY-RELIABLE] System %s: %s - %s\n", 
+		fmt.Printf("⚙️  [REDIS-DURABLE] System %s: %s - %s\n", 
 			systemEvent.Level, systemEvent.Component, systemEvent.Message)
+		return nil
+	})
+	
+	eventBus.Subscribe(ctx, "health.check", func(ctx context.Context, event eventbus.Event) error {
+		systemEvent := event.Payload.(SystemEvent)
+		fmt.Printf("🏥 [REDIS-DURABLE] Health check: %s - %s\n", 
+			systemEvent.Component, systemEvent.Message)
+		return nil
+	})
+
+	// Fallback event handlers (routed to memory-reliable engine)
+	eventBus.Subscribe(ctx, "fallback.test", func(ctx context.Context, event eventbus.Event) error {
+		fmt.Printf("🔄 [MEMORY-RELIABLE] Fallback event processed\n")
 		return nil
 	})
 }
@@ -249,7 +293,7 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 
 	time.Sleep(500 * time.Millisecond)
 
-	// Analytics events (routed to memory-reliable engine)
+	// Analytics events (routed to kafka-analytics engine)
 	analyticsEvents := []AnalyticsEvent{
 		{SessionID: "sess123", EventType: "pageview", Page: "/dashboard", Timestamp: now},
 		{SessionID: "sess123", EventType: "click", Page: "/dashboard", Timestamp: now.Add(1 * time.Second)},
@@ -275,9 +319,18 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 		}
 	}
 
+	// Publish a metrics event to Kafka
+	err := eventBus.Publish(ctx, "metrics.cpu_usage", map[string]interface{}{
+		"cpu":       85.5,
+		"timestamp": now,
+	})
+	if err != nil {
+		fmt.Printf("Error publishing metrics event: %v\n", err)
+	}
+
 	time.Sleep(500 * time.Millisecond)
 
-	// System events (fallback routing to memory-reliable engine)
+	// System events (routed to redis-durable engine)
 	systemEvents := []SystemEvent{
 		{Component: "database", Level: "info", Message: "Connection established", Timestamp: now},
 		{Component: "cache", Level: "warning", Message: "High memory usage", Timestamp: now.Add(1 * time.Second)},
@@ -293,6 +346,29 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
+
+	// Health check events (also routed to redis-durable engine)
+	healthEvent := SystemEvent{
+		Component: "loadbalancer", 
+		Level: "info", 
+		Message: "All endpoints healthy", 
+		Timestamp: now,
+	}
+	err = eventBus.Publish(ctx, "health.check", healthEvent)
+	if err != nil {
+		fmt.Printf("Error publishing health event: %v\n", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Fallback event (routed to memory-reliable engine)
+	err = eventBus.Publish(ctx, "fallback.test", map[string]interface{}{
+		"message":   "This goes to fallback engine",
+		"timestamp": now,
+	})
+	if err != nil {
+		fmt.Printf("Error publishing fallback event: %v\n", err)
+	}
 }
 
 func showRoutingInfo(eventBus *eventbus.EventBusModule) {
@@ -302,8 +378,8 @@ func showRoutingInfo(eventBus *eventbus.EventBusModule) {
 	// Show how different topics are routed
 	topics := []string{
 		"user.registered", "user.login", "auth.failed",
-		"analytics.pageview", "analytics.click", 
-		"system.health", "random.topic",
+		"analytics.pageview", "analytics.click", "metrics.cpu_usage",
+		"system.health", "health.check", "random.topic",
 	}
 
 	if eventBus != nil && eventBus.GetRouter() != nil {
@@ -323,4 +399,29 @@ func showRoutingInfo(eventBus *eventbus.EventBusModule) {
 			fmt.Printf("  %s: %d subscribers\n", topic, count)
 		}
 	}
+}
+
+func checkServiceAvailability(eventBus *eventbus.EventBusModule) {
+	fmt.Println("🔍 Checking external service availability:")
+	
+	if eventBus != nil && eventBus.GetRouter() != nil {
+		// Test Redis connectivity by trying to get the engine
+		redisEngine := eventBus.GetRouter().GetEngineForTopic("system.test")
+		if redisEngine == "redis-durable" {
+			fmt.Println("  ✅ Redis engine configured and ready")
+		} else {
+			fmt.Println("  ❌ Redis engine not available, events will route to fallback")
+		}
+		
+		// Test Kafka connectivity by trying to get the engine
+		kafkaEngine := eventBus.GetRouter().GetEngineForTopic("analytics.test")
+		if kafkaEngine == "kafka-analytics" {
+			fmt.Println("  ✅ Kafka engine configured and ready")
+		} else {
+			fmt.Println("  ❌ Kafka engine not available, events will route to fallback")
+		}
+	}
+	
+	fmt.Println("  💡 If external services are not available, run: ./run-demo.sh start")
+	fmt.Println()
 }
