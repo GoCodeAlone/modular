@@ -28,7 +28,7 @@ jobs:
       modules: ${{ steps.set-matrix.outputs.modules }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -95,7 +95,7 @@ jobs:
     name: Test ${{ matrix.module }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -135,7 +135,7 @@ jobs:
     name: Verify ${{ matrix.module }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -168,7 +168,7 @@ jobs:
 
     name: Lint ${{ matrix.module }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-go@v5
         with:
