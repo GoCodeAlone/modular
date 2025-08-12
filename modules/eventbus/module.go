@@ -481,3 +481,16 @@ func (m *EventBusModule) Topics() []string {
 func (m *EventBusModule) SubscriberCount(topic string) int {
 	return m.router.SubscriberCount(topic)
 }
+
+// GetRouter returns the underlying engine router for advanced operations.
+// This method provides access to engine-specific functionality like
+// checking which engine a topic routes to.
+//
+// Example:
+//
+//	router := eventBus.GetRouter()
+//	engine := router.GetEngineForTopic("user.created")
+//	fmt.Printf("Topic routes to engine: %s", engine)
+func (m *EventBusModule) GetRouter() *EngineRouter {
+	return m.router
+}

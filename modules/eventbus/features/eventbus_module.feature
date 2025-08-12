@@ -88,3 +88,69 @@ Feature: EventBus Module
     Then all subscriptions should be cancelled
     And worker pools should be shut down gracefully
     And no memory leaks should occur
+
+  # Multi-Engine Scenarios
+  Scenario: Multi-engine configuration
+    Given I have a multi-engine eventbus configuration with memory and custom engines
+    When the eventbus module is initialized
+    Then both engines should be available
+    And the engine router should be configured correctly
+
+  Scenario: Topic routing between engines  
+    Given I have a multi-engine eventbus with topic routing configured
+    When I publish an event to topic "user.created" 
+    And I publish an event to topic "analytics.pageview"
+    Then "user.created" should be routed to the memory engine
+    And "analytics.pageview" should be routed to the custom engine
+
+  Scenario: Custom engine registration
+    Given I register a custom engine type "testengine"
+    When I configure eventbus to use the custom engine
+    Then the custom engine should be used for event processing
+    And events should be handled by the custom implementation
+
+  Scenario: Engine-specific configuration
+    Given I have engines with different configuration settings
+    When the eventbus is initialized with engine-specific configs
+    Then each engine should use its specific configuration
+    And engine behavior should reflect the configured settings
+
+  Scenario: Multi-engine subscription management
+    Given I have multiple engines running
+    When I subscribe to topics on different engines
+    And I check subscription counts across engines
+    Then each engine should report its subscriptions correctly
+    And total subscriber counts should aggregate across engines
+
+  Scenario: Routing rule evaluation
+    Given I have routing rules with wildcards and exact matches
+    When I publish events with various topic patterns
+    Then events should be routed according to the first matching rule
+    And fallback routing should work for unmatched topics
+
+  Scenario: Multi-engine error handling
+    Given I have multiple engines configured
+    When one engine encounters an error
+    Then other engines should continue operating normally
+    And the error should be isolated to the failing engine
+
+  Scenario: Engine router topic discovery  
+    Given I have subscriptions across multiple engines
+    When I query for active topics
+    Then all topics from all engines should be returned
+    And subscriber counts should be aggregated correctly
+
+  # Tenant Isolation Scenarios
+  Scenario: Tenant-aware event routing
+    Given I have a multi-tenant eventbus configuration
+    When tenant "tenant1" publishes an event to "user.login"
+    And tenant "tenant2" subscribes to "user.login"
+    Then "tenant2" should not receive "tenant1" events
+    And event isolation should be maintained between tenants
+
+  Scenario: Tenant-specific engine routing
+    Given I have tenant-aware routing configuration
+    When "tenant1" is configured to use memory engine
+    And "tenant2" is configured to use custom engine
+    Then events from each tenant should use their assigned engine
+    And tenant configurations should not interfere with each other
