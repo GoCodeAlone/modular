@@ -271,7 +271,24 @@ func (ctx *ReverseProxyBDDTestContext) setupApplicationWithConfig() error {
 	ctx.app.RegisterModule(ctx.module)
 
 	// Initialize the application with the complete configuration
-	return ctx.app.Init()
+	err := ctx.app.Init()
+	if err != nil {
+		return fmt.Errorf("failed to initialize application: %w", err)
+	}
+
+	// Start the application (this starts all startable modules including health checker)
+	err = ctx.app.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start application: %w", err)
+	}
+
+	// Retrieve the service after initialization and startup
+	err = ctx.app.GetService("reverseproxy.provider", &ctx.service)
+	if err != nil {
+		return fmt.Errorf("failed to get reverseproxy service: %w", err)
+	}
+
+	return nil
 }
 
 func (ctx *ReverseProxyBDDTestContext) theReverseProxyModuleIsInitialized() error {
@@ -633,20 +650,45 @@ func (ctx *ReverseProxyBDDTestContext) theProxyShouldDetectTheFailure() error {
 		return fmt.Errorf("health checker not available")
 	}
 
+	// Debug: Check if health checker is actually running
+	ctx.app.Logger().Info("Health checker status before wait", "enabled", ctx.config.HealthCheck.Enabled, "interval", ctx.config.HealthCheck.Interval)
+
 	// Get health status of backends
 	healthStatus := ctx.service.healthChecker.GetHealthStatus()
 	if healthStatus == nil {
 		return fmt.Errorf("health status not available")
 	}
 
-	// Check if any backend is marked as unhealthy
-	hasUnhealthyBackend := false
+	// Debug: Log initial health status
 	for backendID, status := range healthStatus {
-		if !status.Healthy {
-			hasUnhealthyBackend = true
-			ctx.app.Logger().Info("Detected unhealthy backend", "backend", backendID, "status", status)
-			break
+		ctx.app.Logger().Info("Initial health status", "backend", backendID, "healthy", status.Healthy, "lastError", status.LastError)
+	}
+
+	// Wait for health checker to detect the failure (give it some time to run)
+	maxWaitTime := 6 * time.Second // More than 2x the health check interval
+	waitInterval := 500 * time.Millisecond
+	hasUnhealthyBackend := false
+	
+	for waited := time.Duration(0); waited < maxWaitTime; waited += waitInterval {
+		// Trigger health check by attempting to get status again
+		healthStatus = ctx.service.healthChecker.GetHealthStatus()
+		if healthStatus != nil {
+			for backendID, status := range healthStatus {
+				ctx.app.Logger().Info("Health status check", "backend", backendID, "healthy", status.Healthy, "lastError", status.LastError, "lastCheck", status.LastCheck)
+				if !status.Healthy {
+					hasUnhealthyBackend = true
+					ctx.app.Logger().Info("Detected unhealthy backend", "backend", backendID, "status", status)
+					break
+				}
+			}
+			
+			if hasUnhealthyBackend {
+				break
+			}
 		}
+		
+		// Wait a bit before checking again
+		time.Sleep(waitInterval)
 	}
 
 	if !hasUnhealthyBackend {
@@ -750,8 +792,8 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCircuitBreakerEnabl
 		},
 	}
 
-	// Don't call setupApplicationWithConfig() to avoid service registration conflicts
-	return nil
+	// Set up application with circuit breaker enabled from the beginning
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) aBackendFailsRepeatedly() error {
