@@ -544,9 +544,6 @@ func (ctx *ReverseProxyBDDTestContext) loadBalancingShouldBeApplied() error {
 		return fmt.Errorf("need at least 2 test servers to verify load balancing")
 	}
 
-	// Track which backends receive requests
-	backendHits := make(map[string]int)
-	
 	// Make multiple requests to see load balancing in action
 	for i := 0; i < len(ctx.testServers)*2; i++ {
 		resp, err := ctx.makeRequestThroughModule("GET", "/test", nil)
@@ -600,7 +597,6 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithHealthChecksEnabled
 
 	// Set up application with health checks enabled from the beginning
 	return ctx.setupApplicationWithConfig()
-}
 }
 
 func (ctx *ReverseProxyBDDTestContext) aBackendBecomesUnavailable() error {
@@ -878,12 +874,6 @@ func (ctx *ReverseProxyBDDTestContext) requestsShouldBeHandledGracefully() error
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		return fmt.Errorf("expected content-type header in graceful response")
-	}
-
-	return nil
-
-	if _, exists := errorResponse["error"]; !exists {
-		return fmt.Errorf("graceful error response should include error field")
 	}
 
 	return nil
@@ -1392,7 +1382,7 @@ func (ctx *ReverseProxyBDDTestContext) unhealthyBackendsShouldBeMarkedAsDown() e
 		if !status.Healthy {
 			foundUnhealthyBackend = true
 			// Verify the backend is properly marked with failure details
-			if status.Error == nil && status.LastCheck.IsZero() {
+			if status.LastError == "" && status.LastCheck.IsZero() {
 				return fmt.Errorf("unhealthy backend %s should have error details", backendID)
 			}
 		}
@@ -1507,7 +1497,7 @@ func (ctx *ReverseProxyBDDTestContext) healthStatusShouldBeProperlyTracked() err
 		}
 
 		// Status should have either healthy=true or an error
-		if !status.Healthy && status.Error == nil {
+		if !status.Healthy && status.LastError == "" {
 			return fmt.Errorf("unhealthy backend %s should have error information", backendID)
 		}
 
@@ -1825,11 +1815,11 @@ func (ctx *ReverseProxyBDDTestContext) otherStatusCodesShouldMarkBackendsAsUnhea
 
 	// Check if any backends are marked unhealthy due to unexpected status codes
 	foundUnhealthyFromStatusCode := false
-	for backendID, status := range healthStatus {
+	for _, status := range healthStatus {
 		if !status.Healthy {
 			// Check if the error relates to status codes
-			if status.Error != nil {
-				errorText := status.Error.Error()
+			if status.LastError != "" {
+				errorText := status.LastError
 				if strings.Contains(strings.ToLower(errorText), "status") || 
 				   strings.Contains(strings.ToLower(errorText), "500") ||
 				   strings.Contains(strings.ToLower(errorText), "502") {
