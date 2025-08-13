@@ -135,16 +135,19 @@ usage() {
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  start    - Start Redis and Kafka services"
-    echo "  stop     - Stop the services"
-    echo "  cleanup  - Stop services and remove volumes"
-    echo "  run      - Start services and run the Go application"
-    echo "  app      - Run only the Go application (services must be running)"
-    echo "  status   - Show the status of running services"
-    echo "  logs     - Show logs from all services"
+    echo "  start      - Start Redis service"
+    echo "  redis      - Start Redis service only (simple setup)"
+    echo "  stop       - Stop the services"
+    echo "  cleanup    - Stop services and remove volumes"
+    echo "  run        - Start services and run the Go application"
+    echo "  run-redis  - Start Redis and run the application"
+    echo "  app        - Run only the Go application (services must be running)"
+    echo "  status     - Show the status of running services"
+    echo "  logs       - Show logs from all services"
     echo ""
     echo "Examples:"
     echo "  $0 run        # Start everything and run the demo"
+    echo "  $0 redis      # Start just Redis and run the demo"  
     echo "  $0 start      # Just start the services"
     echo "  $0 app        # Run the app (services must be running)"
     echo "  $0 cleanup    # Clean up everything"
@@ -163,6 +166,31 @@ show_status() {
     fi
     
     $COMPOSE_CMD ps
+}
+
+# Start just Redis (for simple testing)
+start_redis_only() {
+    print_status "Starting Redis service only..."
+    
+    # Use docker compose (newer) or docker-compose (older)
+    if docker compose version &> /dev/null; then
+        COMPOSE_CMD="docker compose"
+    else
+        COMPOSE_CMD="docker-compose"
+    fi
+    
+    $COMPOSE_CMD up -d redis
+    
+    # Wait for Redis to be healthy
+    print_status "Waiting for Redis to be ready..."
+    timeout 30 bash -c 'until docker exec eventbus-redis redis-cli ping | grep -q "PONG"; do sleep 1; done'
+    
+    if [ $? -eq 0 ]; then
+        print_success "Redis is ready!"
+    else
+        print_error "Redis failed to start within 30 seconds"
+        exit 1
+    fi
 }
 
 # Show logs
@@ -184,6 +212,18 @@ case "${1:-run}" in
     "start")
         check_dependencies
         start_services
+        ;;
+    "redis")
+        check_dependencies
+        start_redis_only
+        ;;
+    "run-redis")
+        check_dependencies
+        start_redis_only
+        echo ""
+        print_success "Redis is ready! Starting the application..."
+        echo ""
+        run_app
         ;;
     "stop")
         stop_services

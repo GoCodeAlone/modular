@@ -1,65 +1,27 @@
 version: '3.8'
 
 services:
-  # Redis for pub/sub messaging
+  # Redis for pub/sub messaging - the primary external service for this demo
   redis:
     image: redis:7-alpine
     container_name: eventbus-redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --protected-mode no
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 5s
+    networks:
+      - eventbus-network
 
-  # Zookeeper for Kafka
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: eventbus-zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-    volumes:
-      - zookeeper_data:/var/lib/zookeeper/data
-      - zookeeper_log:/var/lib/zookeeper/log
-
-  # Kafka for distributed messaging
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: eventbus-kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_HOST://localhost:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    healthcheck:
-      test: kafka-topics --bootstrap-server localhost:9092 --list
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+networks:
+  eventbus-network:
+    driver: bridge
 
 volumes:
   redis_data:
-  zookeeper_data:
-  zookeeper_log:
-  kafka_data:

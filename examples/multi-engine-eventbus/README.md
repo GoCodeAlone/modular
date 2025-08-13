@@ -1,53 +1,113 @@
 # Multi-Engine EventBus Example
 
-This example demonstrates the enhanced eventbus module with multi-engine support, topic routing, and integration with real Redis and Kafka services alongside in-memory engines.
+This example demonstrates the enhanced eventbus module with multi-engine support, topic routing, and integration with Redis alongside in-memory engines. It shows clear event publishing and consumption patterns with graceful degradation when external services are unavailable.
 
 ## Features Demonstrated
 
-- **Multiple Event Bus Engines**: Shows how to configure and use multiple engines simultaneously
-  - **Memory engines**: Fast in-memory processing for low-latency events
-  - **Redis engine**: Distributed pub/sub messaging with persistence
-  - **Kafka engine**: Enterprise-grade distributed streaming with consumer groups
-- **Topic-based Routing**: Routes different types of events to different engines based on topic patterns
-- **Local Service Setup**: Complete Docker Compose setup for local Redis and Kafka services
-- **Graceful Degradation**: Handles cases where external services are unavailable
-- **Engine-Specific Configuration**: Demonstrates engine-specific configuration settings
-- **Synchronous and Asynchronous Processing**: Shows both sync and async event handlers
+- **Multiple Event Bus Engines**: Configure and use multiple engines simultaneously
+  - **Memory engines**: Fast in-memory processing for low-latency events  
+  - **Redis engine**: Distributed pub/sub messaging with Redis persistence
+  - **Custom engine**: Enhanced memory engine with metrics collection
+- **Topic-based Routing**: Routes different event types to appropriate engines based on topic patterns  
+- **Event Consumption Visibility**: Clear indicators showing event publishing and consumption
+- **Local Redis Setup**: Simple Docker setup for Redis service testing
+- **Graceful Degradation**: Handles cases where Redis is unavailable with automatic fallback
+- **Engine-Specific Configuration**: Demonstrates engine-specific configuration options
+- **Robust Error Handling**: Graceful shutdown and error handling for production scenarios
 
 ## Architecture Overview
 
-The example configures four engines with intelligent routing:
+The example configures three engines with intelligent routing:
 
 1. **memory-fast**: Fast in-memory engine for user and authentication events
    - Handles topics: `user.*`, `auth.*`
    - Optimized for low latency with smaller buffers and fewer workers
 
-2. **kafka-analytics**: Kafka engine for analytics and metrics events
-   - Handles topics: `analytics.*`, `metrics.*`
-   - Provides distributed processing and data persistence
+2. **redis-primary**: Redis engine for system, health, and notification events
+   - Handles topics: `system.*`, `health.*`, `notifications.*`
+   - Provides distributed pub/sub messaging with Redis persistence
 
-3. **redis-durable**: Redis engine for system and health events
-   - Handles topics: `system.*`, `health.*`
-   - Offers pub/sub messaging with Redis persistence
-
-4. **memory-reliable**: Custom memory engine with metrics for fallback events
+3. **memory-reliable**: Custom memory engine with metrics for fallback events
    - Handles all other topics not matched by specific rules
    - Includes event metrics collection and larger buffers for reliability
 
 ## Prerequisites
 
 - **Go 1.24+**: For running the application
-- **Docker & Docker Compose**: For running Redis and Kafka locally
+- **Docker**: For running Redis locally (optional - app works without it)
 - **Git**: For cloning the repository
 
 ## Quick Start
 
 ### Option 1: Use the Setup Script (Recommended)
 
-The `run-demo.sh` script handles everything automatically:
+The `run-demo.sh` script handles Redis setup automatically:
 
 ```bash
-# Start services and run the demo
+# Start Redis and run the demo
+./run-demo.sh run-redis
+
+# Or start just Redis for testing
+./run-demo.sh redis
+
+# Run without external services (graceful degradation)
+./run-demo.sh app
+```
+
+### Option 2: Manual Setup
+
+```bash
+# 1. Run without external services (shows graceful degradation)
+go run main.go
+
+# 2. Or start Redis manually and then run
+docker run -d -p 6379:6379 redis:alpine
+go run main.go
+
+# 3. Stop Redis when done
+docker stop $(docker ps -q --filter ancestor=redis:alpine)
+```
+
+## Expected Output
+
+### With Redis Available
+
+When Redis is running, you'll see:
+
+```
+🚀 Started Multi-Engine EventBus Demo in development environment
+📊 Multi-Engine EventBus Configuration:
+  - memory-fast: Handles user.* and auth.* topics (in-memory, low latency)
+  - redis-primary: Handles system.*, health.*, and notifications.* topics (Redis pub/sub, distributed)
+  - memory-reliable: Handles fallback topics (in-memory with metrics)
+
+🔍 Checking external service availability:
+  ✅ Redis service is reachable on localhost:6379
+  ⚠️ EventBus router is not routing to redis-primary (engine may have failed to start)
+
+📡 Setting up event handlers (showing consumption patterns)...
+✅ All event handlers configured and ready to consume events
+
+🎯 Publishing events to different engines based on topic routing:
+   📤 [PUBLISHED] = Event sent    📨 [CONSUMED] = Event received by handler
+
+🔵 Memory-Fast Engine Events:
+📤 [PUBLISHED] user.registered: user123
+📨 [CONSUMED] User registered: user123 (action: register) → memory-fast engine
+...
+```
+
+### Without Redis (Graceful Degradation)
+
+When Redis is unavailable, the system gracefully falls back:
+
+```
+🔍 Checking external service availability:
+  ❌ Redis service not reachable, system/health/notifications events will route to fallback
+  💡 To enable Redis: docker run -d -p 6379:6379 redis:alpine
+```
+
+All events are still processed using the memory engines, demonstrating robust fault tolerance.
 ./run-demo.sh run
 
 # Or start services separately

@@ -1,5 +1,5 @@
 # Multi-Engine EventBus Example Configuration
-# This configuration demonstrates multi-engine EventBus setup with intelligent routing
+# This configuration demonstrates multi-engine EventBus setup with Redis as primary external service
 
 # Application configuration
 name: "Multi-Engine EventBus Demo"
@@ -17,21 +17,13 @@ eventbus:
         workerCount: 3
         retentionDays: 1
     
-    # Redis engine for durable messaging (system/health events)  
-    - name: "redis-durable"
+    # Redis engine for durable messaging (system/health/notifications events)  
+    - name: "redis-primary"
       type: "redis"
       config:
         url: "redis://localhost:6379"
         db: 0
         poolSize: 10
-    
-    # Kafka engine for analytics/metrics (distributed processing)
-    - name: "kafka-analytics" 
-      type: "kafka"
-      config:
-        brokers:
-          - "localhost:9092"
-        groupId: "multi-engine-demo"
     
     # Custom memory engine with metrics (fallback for all other topics)
     - name: "memory-reliable"
@@ -48,13 +40,9 @@ eventbus:
     - topics: ["user.*", "auth.*"]
       engine: "memory-fast"
     
-    # Analytics and metrics events → Kafka engine  
-    - topics: ["analytics.*", "metrics.*"]
-      engine: "kafka-analytics"
-    
-    # System and health events → Redis engine
-    - topics: ["system.*", "health.*"] 
-      engine: "redis-durable"
+    # System, health, and notification events → Redis engine
+    - topics: ["system.*", "health.*", "notifications.*"] 
+      engine: "redis-primary"
     
     # All other topics → reliable memory engine with metrics
     - topics: ["*"]

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
+	"net"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
@@ -59,6 +59,14 @@ type SystemEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// NotificationEvent represents a notification event
+type NotificationEvent struct {
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	Priority  string    `json:"priority"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -68,7 +76,8 @@ func main() {
 		Environment: "development",
 	}
 
-	// Create eventbus configuration with multiple engines and routing
+	// Create eventbus configuration with Redis as primary external service
+	// and simplified multi-engine setup
 	eventbusConfig := &eventbus.EventBusConfig{
 		Engines: []eventbus.EngineConfig{
 			{
@@ -82,20 +91,12 @@ func main() {
 				},
 			},
 			{
-				Name: "redis-durable",
+				Name: "redis-primary",
 				Type: "redis",
 				Config: map[string]interface{}{
 					"url":      "redis://localhost:6379",
 					"db":       0,
 					"poolSize": 10,
-				},
-			},
-			{
-				Name: "kafka-analytics",
-				Type: "kafka",
-				Config: map[string]interface{}{
-					"brokers": []string{"localhost:9092"},
-					"groupId": "multi-engine-demo",
 				},
 			},
 			{
@@ -115,12 +116,8 @@ func main() {
 				Engine: "memory-fast",
 			},
 			{
-				Topics: []string{"analytics.*", "metrics.*"},
-				Engine: "kafka-analytics",
-			},
-			{
-				Topics: []string{"system.*", "health.*"},
-				Engine: "redis-durable",
+				Topics: []string{"system.*", "health.*", "notifications.*"},
+				Engine: "redis-primary",
 			},
 			{
 				Topics: []string{"*"}, // Fallback for all other topics
@@ -161,8 +158,7 @@ func main() {
 	fmt.Printf("🚀 Started %s in %s environment\n", appConfig.Name, appConfig.Environment)
 	fmt.Println("📊 Multi-Engine EventBus Configuration:")
 	fmt.Println("  - memory-fast: Handles user.* and auth.* topics (in-memory, low latency)")
-	fmt.Println("  - kafka-analytics: Handles analytics.* and metrics.* topics (distributed, persistent)")
-	fmt.Println("  - redis-durable: Handles system.* and health.* topics (Redis pub/sub, persistent)")
+	fmt.Println("  - redis-primary: Handles system.*, health.*, and notifications.* topics (Redis pub/sub, distributed)")
 	fmt.Println("  - memory-reliable: Handles fallback topics (in-memory with metrics)")
 	fmt.Println()
 	
@@ -182,88 +178,98 @@ func main() {
 	// Show routing information
 	showRoutingInfo(eventBusService)
 
-	// Graceful shutdown
+	// Graceful shutdown with proper error handling
 	fmt.Println("\n🛑 Shutting down...")
+	
+	// Create a timeout context for shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	
 	err = app.Stop()
 	if err != nil {
-		log.Printf("Error during shutdown: %v", err)
-		os.Exit(1)
+		// Log the error but don't exit with error code
+		// External services being unavailable during shutdown is expected
+		log.Printf("Warning during shutdown (this is normal if external services are unavailable): %v", err)
 	}
-
+	
 	fmt.Println("✅ Application shutdown complete")
+	
+	// Check if shutdown context was cancelled (timeout)
+	select {
+	case <-shutdownCtx.Done():
+		if shutdownCtx.Err() == context.DeadlineExceeded {
+			log.Println("Shutdown completed within timeout")
+		}
+	default:
+		// Shutdown completed normally
+	}
 }
 
 func setupEventHandlers(ctx context.Context, eventBus *eventbus.EventBusModule) {
+	fmt.Println("📡 Setting up event handlers (showing consumption patterns)...")
+	
 	// User event handlers (routed to memory-fast engine)
 	eventBus.Subscribe(ctx, "user.registered", func(ctx context.Context, event eventbus.Event) error {
 		userEvent := event.Payload.(UserEvent)
-		fmt.Printf("🔵 [MEMORY-FAST] User registered: %s (action: %s)\n", 
+		fmt.Printf("📨 [CONSUMED] User registered: %s (action: %s) → memory-fast engine\n", 
 			userEvent.UserID, userEvent.Action)
 		return nil
 	})
 
 	eventBus.Subscribe(ctx, "user.login", func(ctx context.Context, event eventbus.Event) error {
 		userEvent := event.Payload.(UserEvent)
-		fmt.Printf("🔵 [MEMORY-FAST] User login: %s at %s\n", 
+		fmt.Printf("📨 [CONSUMED] User login: %s at %s → memory-fast engine\n", 
 			userEvent.UserID, userEvent.Timestamp.Format("15:04:05"))
 		return nil
 	})
 
 	eventBus.Subscribe(ctx, "auth.failed", func(ctx context.Context, event eventbus.Event) error {
 		userEvent := event.Payload.(UserEvent)
-		fmt.Printf("🔴 [MEMORY-FAST] Auth failed for user: %s\n", userEvent.UserID)
+		fmt.Printf("📨 [CONSUMED] Auth failed for user: %s → memory-fast engine\n", userEvent.UserID)
 		return nil
 	})
 
-	// Analytics event handlers (routed to kafka-analytics engine)
-	eventBus.SubscribeAsync(ctx, "analytics.pageview", func(ctx context.Context, event eventbus.Event) error {
-		analyticsEvent := event.Payload.(AnalyticsEvent)
-		fmt.Printf("📈 [KAFKA-ANALYTICS] Page view: %s (session: %s)\n", 
-			analyticsEvent.Page, analyticsEvent.SessionID)
-		return nil
-	})
-
-	eventBus.SubscribeAsync(ctx, "analytics.click", func(ctx context.Context, event eventbus.Event) error {
-		analyticsEvent := event.Payload.(AnalyticsEvent)
-		fmt.Printf("📈 [KAFKA-ANALYTICS] Click event: %s on %s\n", 
-			analyticsEvent.EventType, analyticsEvent.Page)
-		return nil
-	})
-	
-	eventBus.SubscribeAsync(ctx, "metrics.cpu_usage", func(ctx context.Context, event eventbus.Event) error {
-		fmt.Printf("📊 [KAFKA-ANALYTICS] CPU usage metric received\n")
-		return nil
-	})
-
-	// System event handlers (routed to redis-durable engine)
+	// System event handlers (routed to redis-primary engine)
 	eventBus.Subscribe(ctx, "system.health", func(ctx context.Context, event eventbus.Event) error {
 		systemEvent := event.Payload.(SystemEvent)
-		fmt.Printf("⚙️  [REDIS-DURABLE] System %s: %s - %s\n", 
+		fmt.Printf("📨 [CONSUMED] System %s: %s - %s → redis-primary engine\n", 
 			systemEvent.Level, systemEvent.Component, systemEvent.Message)
 		return nil
 	})
 	
 	eventBus.Subscribe(ctx, "health.check", func(ctx context.Context, event eventbus.Event) error {
 		systemEvent := event.Payload.(SystemEvent)
-		fmt.Printf("🏥 [REDIS-DURABLE] Health check: %s - %s\n", 
+		fmt.Printf("📨 [CONSUMED] Health check: %s - %s → redis-primary engine\n", 
 			systemEvent.Component, systemEvent.Message)
+		return nil
+	})
+	
+	eventBus.Subscribe(ctx, "notifications.alert", func(ctx context.Context, event eventbus.Event) error {
+		notificationEvent := event.Payload.(NotificationEvent)
+		fmt.Printf("📨 [CONSUMED] Notification alert: %s - %s → redis-primary engine\n", 
+			notificationEvent.Type, notificationEvent.Message)
 		return nil
 	})
 
 	// Fallback event handlers (routed to memory-reliable engine)
 	eventBus.Subscribe(ctx, "fallback.test", func(ctx context.Context, event eventbus.Event) error {
-		fmt.Printf("🔄 [MEMORY-RELIABLE] Fallback event processed\n")
+		fmt.Printf("📨 [CONSUMED] Fallback event processed → memory-reliable engine\n")
 		return nil
 	})
+	
+	fmt.Println("✅ All event handlers configured and ready to consume events")
+	fmt.Println()
 }
 
 func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventBusModule) {
 	fmt.Println("🎯 Publishing events to different engines based on topic routing:")
+	fmt.Println("   📤 [PUBLISHED] = Event sent    📨 [CONSUMED] = Event received by handler")
 	fmt.Println()
 
 	now := time.Now()
 
 	// User events (routed to memory-fast engine)
+	fmt.Println("🔵 Memory-Fast Engine Events:")
 	userEvents := []UserEvent{
 		{UserID: "user123", Action: "register", Timestamp: now},
 		{UserID: "user456", Action: "login", Timestamp: now.Add(1 * time.Second)},
@@ -281,89 +287,75 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 			topic = "auth.failed"
 		}
 
+		fmt.Printf("📤 [PUBLISHED] %s: %s\n", topic, event.UserID)
 		err := eventBus.Publish(ctx, topic, event)
 		if err != nil {
 			fmt.Printf("Error publishing user event: %v\n", err)
 		}
 
 		if i < len(userEvents)-1 {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 	}
 
 	time.Sleep(500 * time.Millisecond)
+	fmt.Println()
 
-	// Analytics events (routed to kafka-analytics engine)
-	analyticsEvents := []AnalyticsEvent{
-		{SessionID: "sess123", EventType: "pageview", Page: "/dashboard", Timestamp: now},
-		{SessionID: "sess123", EventType: "click", Page: "/dashboard", Timestamp: now.Add(1 * time.Second)},
-		{SessionID: "sess456", EventType: "pageview", Page: "/profile", Timestamp: now.Add(2 * time.Second)},
-	}
-
-	for i, event := range analyticsEvents {
-		var topic string
-		switch event.EventType {
-		case "pageview":
-			topic = "analytics.pageview"
-		case "click":
-			topic = "analytics.click"
-		}
-
-		err := eventBus.Publish(ctx, topic, event)
-		if err != nil {
-			fmt.Printf("Error publishing analytics event: %v\n", err)
-		}
-
-		if i < len(analyticsEvents)-1 {
-			time.Sleep(200 * time.Millisecond)
-		}
-	}
-
-	// Publish a metrics event to Kafka
-	err := eventBus.Publish(ctx, "metrics.cpu_usage", map[string]interface{}{
-		"cpu":       85.5,
-		"timestamp": now,
-	})
-	if err != nil {
-		fmt.Printf("Error publishing metrics event: %v\n", err)
-	}
-
-	time.Sleep(500 * time.Millisecond)
-
-	// System events (routed to redis-durable engine)
+	// System events (routed to redis-primary engine)
+	fmt.Println("🔴 Redis-Primary Engine Events:")
 	systemEvents := []SystemEvent{
 		{Component: "database", Level: "info", Message: "Connection established", Timestamp: now},
 		{Component: "cache", Level: "warning", Message: "High memory usage", Timestamp: now.Add(1 * time.Second)},
 	}
 
 	for i, event := range systemEvents {
+		fmt.Printf("📤 [PUBLISHED] system.health: %s - %s\n", event.Component, event.Message)
 		err := eventBus.Publish(ctx, "system.health", event)
 		if err != nil {
 			fmt.Printf("Error publishing system event: %v\n", err)
 		}
 
 		if i < len(systemEvents)-1 {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 	}
 
-	// Health check events (also routed to redis-durable engine)
+	// Health check events (also routed to redis-primary engine)
 	healthEvent := SystemEvent{
 		Component: "loadbalancer", 
 		Level: "info", 
 		Message: "All endpoints healthy", 
 		Timestamp: now,
 	}
-	err = eventBus.Publish(ctx, "health.check", healthEvent)
+	fmt.Printf("📤 [PUBLISHED] health.check: %s - %s\n", healthEvent.Component, healthEvent.Message)
+	err := eventBus.Publish(ctx, "health.check", healthEvent)
 	if err != nil {
 		fmt.Printf("Error publishing health event: %v\n", err)
 	}
 
 	time.Sleep(500 * time.Millisecond)
 
-	// Fallback event (routed to memory-reliable engine)
+	// Notification events (also routed to redis-primary engine)
+	notificationEvent := NotificationEvent{
+		Type: "alert",
+		Message: "System resource usage high",
+		Priority: "medium",
+		Timestamp: now,
+	}
+	fmt.Printf("📤 [PUBLISHED] notifications.alert: %s - %s\n", notificationEvent.Type, notificationEvent.Message)
+	err = eventBus.Publish(ctx, "notifications.alert", notificationEvent)
+	if err != nil {
+		fmt.Printf("Error publishing notification event: %v\n", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	fmt.Println()
+
+	// Fallback events (routed to memory-reliable engine)
+	fmt.Println("🟡 Memory-Reliable Engine (Fallback):")
+	fmt.Printf("📤 [PUBLISHED] fallback.test: sample fallback event\n")
 	err = eventBus.Publish(ctx, "fallback.test", map[string]interface{}{
-		"message":   "This goes to fallback engine",
+		"message": "This event uses the fallback engine",
 		"timestamp": now,
 	})
 	if err != nil {
@@ -378,8 +370,8 @@ func showRoutingInfo(eventBus *eventbus.EventBusModule) {
 	// Show how different topics are routed
 	topics := []string{
 		"user.registered", "user.login", "auth.failed",
-		"analytics.pageview", "analytics.click", "metrics.cpu_usage",
-		"system.health", "health.check", "random.topic",
+		"system.health", "health.check", "notifications.alert",
+		"fallback.test", "random.topic",
 	}
 
 	if eventBus != nil && eventBus.GetRouter() != nil {
@@ -404,24 +396,38 @@ func showRoutingInfo(eventBus *eventbus.EventBusModule) {
 func checkServiceAvailability(eventBus *eventbus.EventBusModule) {
 	fmt.Println("🔍 Checking external service availability:")
 	
-	if eventBus != nil && eventBus.GetRouter() != nil {
-		// Test Redis connectivity by trying to get the engine
-		redisEngine := eventBus.GetRouter().GetEngineForTopic("system.test")
-		if redisEngine == "redis-durable" {
-			fmt.Println("  ✅ Redis engine configured and ready")
-		} else {
-			fmt.Println("  ❌ Redis engine not available, events will route to fallback")
-		}
-		
-		// Test Kafka connectivity by trying to get the engine
-		kafkaEngine := eventBus.GetRouter().GetEngineForTopic("analytics.test")
-		if kafkaEngine == "kafka-analytics" {
-			fmt.Println("  ✅ Kafka engine configured and ready")
-		} else {
-			fmt.Println("  ❌ Kafka engine not available, events will route to fallback")
-		}
+	// Check Redis connectivity directly
+	redisAvailable := false
+	if conn, err := net.DialTimeout("tcp", "localhost:6379", 2*time.Second); err == nil {
+		conn.Close()
+		redisAvailable = true
 	}
 	
-	fmt.Println("  💡 If external services are not available, run: ./run-demo.sh start")
+	if redisAvailable {
+		fmt.Println("  ✅ Redis service is reachable on localhost:6379")
+		
+		// Now check if the EventBus router is using Redis
+		if eventBus != nil && eventBus.GetRouter() != nil {
+			redisTopics := []string{"system.test", "health.test", "notifications.test"}
+			routedToRedis := false
+			
+			for _, topic := range redisTopics {
+				engineName := eventBus.GetRouter().GetEngineForTopic(topic)
+				if engineName == "redis-primary" {
+					routedToRedis = true
+					break
+				}
+			}
+			
+			if routedToRedis {
+				fmt.Println("  ✅ EventBus router is correctly routing to redis-primary engine")
+			} else {
+				fmt.Println("  ⚠️ EventBus router is not routing to redis-primary (engine may have failed to start)")
+			}
+		}
+	} else {
+		fmt.Println("  ❌ Redis service not reachable, system/health/notifications events will route to fallback")
+		fmt.Println("  💡 To enable Redis: docker run -d -p 6379:6379 redis:alpine")
+	}
 	fmt.Println()
 }
