@@ -1,4 +1,4 @@
-module github.com/CrisisTextLine/modular/examples/multi-engine-eventbus
+module multi-engine-eventbus
 
 go 1.24.2
 
