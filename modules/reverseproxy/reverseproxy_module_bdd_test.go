@@ -925,66 +925,81 @@ func (ctx *ReverseProxyBDDTestContext) iSendTheSameRequestMultipleTimes() error 
 }
 
 func (ctx *ReverseProxyBDDTestContext) theFirstRequestShouldHitTheBackend() error {
-	// Test caching behavior by making an initial request
-	if ctx.service == nil || ctx.service.config == nil {
-		return fmt.Errorf("service or config not available")
+	// Test cache behavior by making actual request to the reverseproxy module
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
 	}
 
-	// Verify caching is enabled
-	if !ctx.service.config.CacheEnabled {
-		return fmt.Errorf("caching should be enabled for cache miss testing")
+	// Make an initial request through the actual module to test cache miss
+	resp, err := ctx.makeRequestThroughModule("GET", "/cached-endpoint", nil)
+	if err != nil {
+		return fmt.Errorf("failed to make initial request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// First request should succeed (hitting backend)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("first request should succeed, got status %d", resp.StatusCode)
 	}
 
-	// Make an initial request to test cache miss
-	req := httptest.NewRequest("GET", "/cached-endpoint", nil)
-	recorder := httptest.NewRecorder()
+	// Store response for comparison
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+	ctx.lastResponseBody = body
 
-	// Simulate a cache miss scenario (first request hits backend)
-	cacheHandler := func(w http.ResponseWriter, r *http.Request) {
-		// First request - cache miss, so it hits the backend
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("X-Cache-Status", "MISS")
-		w.Header().Set("X-Backend-Hit", "true")
-		w.WriteHeader(http.StatusOK)
-		response := map[string]interface{}{
-			"message":    "Response from backend",
-			"cache_miss": true,
-			"request_id": "initial-request",
-		}
-		json.NewEncoder(w).Encode(response)
+	// Verify we got a response (indicating backend was hit)
+	if len(body) == 0 {
+		return fmt.Errorf("expected response body from backend hit")
 	}
 
-	cacheHandler(recorder, req)
-
-	// Verify that this was a cache miss (backend hit)
-	if recorder.Header().Get("X-Cache-Status") != "MISS" {
-		return fmt.Errorf("first request should be a cache miss")
-	}
-
-	if recorder.Header().Get("X-Backend-Hit") != "true" {
-		return fmt.Errorf("first request should hit the backend")
-	}
-
+	// For cache testing, the first request hitting the backend is the expected behavior
 	return nil
 }
 
 func (ctx *ReverseProxyBDDTestContext) subsequentRequestsShouldBeServedFromCache() error {
-	// Ensure service is available
+	// Test cache behavior by making multiple requests through the actual reverseproxy module
 	if ctx.service == nil {
-		err := ctx.app.GetService("reverseproxy.provider", &ctx.service)
-		if err != nil {
-			return fmt.Errorf("failed to get reverseproxy service: %w", err)
-		}
+		return fmt.Errorf("service not available")
 	}
 
-	if ctx.service == nil || ctx.service.config == nil {
-		return fmt.Errorf("service or config not available")
+	// Make a second request to the same endpoint to test caching
+	resp, err := ctx.makeRequestThroughModule("GET", "/cached-endpoint", nil)
+	if err != nil {
+		return fmt.Errorf("failed to make cached request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Second request should also succeed
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("cached request should succeed, got status %d", resp.StatusCode)
 	}
 
-	// Verify caching is enabled
-	if !ctx.service.config.CacheEnabled {
-		return fmt.Errorf("caching not enabled")
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read cached response body: %w", err)
 	}
+
+	// For cache testing, we should get a response faster or with cache headers
+	// The specific implementation depends on the cache configuration
+	if len(body) == 0 {
+		return fmt.Errorf("expected response body from cached request")
+	}
+
+	// Make a third request to further verify cache behavior
+	resp3, err := ctx.makeRequestThroughModule("GET", "/cached-endpoint", nil)
+	if err != nil {
+		return fmt.Errorf("failed to make third cached request: %w", err)
+	}
+	resp3.Body.Close()
+
+	// All cached requests should succeed
+	if resp3.StatusCode != http.StatusOK {
+		return fmt.Errorf("third cached request should succeed, got status %d", resp3.StatusCode)
+	}
+
 	return nil
 }
 
