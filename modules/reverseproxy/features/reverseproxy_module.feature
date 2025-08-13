@@ -64,3 +64,183 @@ Feature: Reverse Proxy Module
     When the module is stopped
     Then ongoing requests should be completed
     And new requests should be rejected gracefully
+
+  Scenario: Health check DNS resolution
+    Given I have a reverse proxy with health checks configured for DNS resolution
+    When health checks are performed
+    Then DNS resolution should be validated
+    And unhealthy backends should be marked as down
+
+  Scenario: Custom health endpoints per backend
+    Given I have a reverse proxy with custom health endpoints configured
+    When health checks are performed on different backends
+    Then each backend should be checked at its custom endpoint
+    And health status should be properly tracked
+
+  Scenario: Per-backend health check configuration
+    Given I have a reverse proxy with per-backend health check settings
+    When health checks run with different intervals and timeouts
+    Then each backend should use its specific configuration
+    And health check timing should be respected
+
+  Scenario: Recent request threshold behavior
+    Given I have a reverse proxy with recent request threshold configured
+    When requests are made within the threshold window
+    Then health checks should be skipped for recently used backends
+    And health checks should resume after threshold expires
+
+  Scenario: Health check expected status codes
+    Given I have a reverse proxy with custom expected status codes
+    When backends return various HTTP status codes
+    Then only configured status codes should be considered healthy
+    And other status codes should mark backends as unhealthy
+
+  Scenario: Metrics collection enabled
+    Given I have a reverse proxy with metrics enabled
+    When requests are processed through the proxy
+    Then metrics should be collected and exposed
+    And metric values should reflect proxy activity
+
+  Scenario: Metrics endpoint configuration
+    Given I have a reverse proxy with custom metrics endpoint
+    When the metrics endpoint is accessed
+    Then metrics should be available at the configured path
+    And metrics data should be properly formatted
+
+  Scenario: Debug endpoints functionality
+    Given I have a reverse proxy with debug endpoints enabled
+    When debug endpoints are accessed
+    Then configuration information should be exposed
+    And debug data should be properly formatted
+
+  Scenario: Debug info endpoint
+    Given I have a reverse proxy with debug endpoints enabled
+    When the debug info endpoint is accessed
+    Then general proxy information should be returned
+    And configuration details should be included
+
+  Scenario: Debug backends endpoint
+    Given I have a reverse proxy with debug endpoints enabled
+    When the debug backends endpoint is accessed
+    Then backend configuration should be returned
+    And backend health status should be included
+
+  Scenario: Debug feature flags endpoint
+    Given I have a reverse proxy with debug endpoints and feature flags enabled
+    When the debug flags endpoint is accessed
+    Then current feature flag states should be returned
+    And tenant-specific flags should be included
+
+  Scenario: Debug circuit breakers endpoint
+    Given I have a reverse proxy with debug endpoints and circuit breakers enabled
+    When the debug circuit breakers endpoint is accessed
+    Then circuit breaker states should be returned
+    And circuit breaker metrics should be included
+
+  Scenario: Debug health checks endpoint
+    Given I have a reverse proxy with debug endpoints and health checks enabled
+    When the debug health checks endpoint is accessed
+    Then health check status should be returned
+    And health check history should be included
+
+  Scenario: Route-level feature flags with alternatives
+    Given I have a reverse proxy with route-level feature flags configured
+    When requests are made to flagged routes
+    Then feature flags should control routing decisions
+    And alternative backends should be used when flags are disabled
+
+  Scenario: Backend-level feature flags with alternatives
+    Given I have a reverse proxy with backend-level feature flags configured
+    When requests target flagged backends
+    Then feature flags should control backend selection
+    And alternative backends should be used when flags are disabled
+
+  Scenario: Composite route feature flags
+    Given I have a reverse proxy with composite route feature flags configured
+    When requests are made to composite routes
+    Then feature flags should control route availability
+    And alternative single backends should be used when disabled
+
+  Scenario: Tenant-specific feature flags
+    Given I have a reverse proxy with tenant-specific feature flags configured
+    When requests are made with different tenant contexts
+    Then feature flags should be evaluated per tenant
+    And tenant-specific routing should be applied
+
+  Scenario: Dry run mode with response comparison
+    Given I have a reverse proxy with dry run mode enabled
+    When requests are processed in dry run mode
+    Then requests should be sent to both primary and comparison backends
+    And responses should be compared and logged
+
+  Scenario: Dry run with feature flags
+    Given I have a reverse proxy with dry run mode and feature flags configured
+    When feature flags control routing in dry run mode
+    Then appropriate backends should be compared based on flag state
+    And comparison results should be logged with flag context
+
+  Scenario: Per-backend path rewriting
+    Given I have a reverse proxy with per-backend path rewriting configured
+    When requests are routed to different backends
+    Then paths should be rewritten according to backend configuration
+    And original paths should be properly transformed
+
+  Scenario: Per-endpoint path rewriting
+    Given I have a reverse proxy with per-endpoint path rewriting configured
+    When requests match specific endpoint patterns
+    Then paths should be rewritten according to endpoint configuration
+    And endpoint-specific rules should override backend rules
+
+  Scenario: Hostname handling modes
+    Given I have a reverse proxy with different hostname handling modes configured
+    When requests are forwarded to backends
+    Then Host headers should be handled according to configuration
+    And custom hostnames should be applied when specified
+
+  Scenario: Header set and remove operations
+    Given I have a reverse proxy with header rewriting configured
+    When requests are processed through the proxy
+    Then specified headers should be added or modified
+    And specified headers should be removed from requests
+
+  Scenario: Per-backend circuit breaker configuration
+    Given I have a reverse proxy with per-backend circuit breaker settings
+    When different backends fail at different rates
+    Then each backend should use its specific circuit breaker configuration
+    And circuit breaker behavior should be isolated per backend
+
+  Scenario: Circuit breaker half-open state
+    Given I have a reverse proxy with circuit breakers in half-open state
+    When test requests are sent through half-open circuits
+    Then limited requests should be allowed through
+    And circuit state should transition based on results
+
+  Scenario: Cache TTL behavior
+    Given I have a reverse proxy with specific cache TTL configured
+    When cached responses age beyond TTL
+    Then expired cache entries should be evicted
+    And fresh requests should hit backends after expiration
+
+  Scenario: Global request timeout
+    Given I have a reverse proxy with global request timeout configured
+    When backend requests exceed the timeout
+    Then requests should be terminated after timeout
+    And appropriate error responses should be returned
+
+  Scenario: Per-route timeout overrides
+    Given I have a reverse proxy with per-route timeout overrides configured
+    When requests are made to routes with specific timeouts
+    Then route-specific timeouts should override global settings
+    And timeout behavior should be applied per route
+
+  Scenario: Backend error response handling
+    Given I have a reverse proxy configured for error handling
+    When backends return error responses
+    Then error responses should be properly handled
+    And appropriate client responses should be returned
+
+  Scenario: Connection failure handling
+    Given I have a reverse proxy configured for connection failure handling
+    When backend connections fail
+    Then connection failures should be handled gracefully
+    And circuit breakers should respond appropriately
