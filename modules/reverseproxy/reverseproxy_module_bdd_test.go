@@ -17,18 +17,19 @@ import (
 
 // ReverseProxy BDD Test Context
 type ReverseProxyBDDTestContext struct {
-	app                modular.Application
-	module             *ReverseProxyModule
-	service            *ReverseProxyModule
-	config             *ReverseProxyConfig
-	lastError          error
-	testServers        []*httptest.Server
-	lastResponse       *http.Response
-	healthCheckServers []*httptest.Server
-	metricsEnabled     bool
-	debugEnabled       bool
-	featureFlagService *FileBasedFeatureFlagEvaluator
-	dryRunEnabled      bool
+	app                   modular.Application
+	module                *ReverseProxyModule
+	service               *ReverseProxyModule
+	config                *ReverseProxyConfig
+	lastError             error
+	testServers           []*httptest.Server
+	lastResponse          *http.Response
+	healthCheckServers    []*httptest.Server
+	metricsEnabled        bool
+	debugEnabled          bool
+	featureFlagService    *FileBasedFeatureFlagEvaluator
+	dryRunEnabled         bool
+	controlledFailureMode *bool // For controlling backend failure in tests
 	// HTTP testing support
 	httpRecorder     *httptest.ResponseRecorder
 	lastResponseBody []byte
@@ -150,6 +151,7 @@ func (ctx *ReverseProxyBDDTestContext) resetContext() {
 	ctx.debugEnabled = false
 	ctx.featureFlagService = nil
 	ctx.dryRunEnabled = false
+	ctx.controlledFailureMode = nil
 }
 
 func (ctx *ReverseProxyBDDTestContext) iHaveAModularApplicationWithReverseProxyModuleConfigured() error {
@@ -763,21 +765,31 @@ func (ctx *ReverseProxyBDDTestContext) routeTrafficOnlyToHealthyBackends() error
 }
 
 func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCircuitBreakerEnabled() error {
-	// Don't reset context - work with existing app from background
-	// Just update the configuration
+	// Reset context to start fresh
+	ctx.resetContext()
 
-	// Create a test backend server
+	// Create a controllable backend server that can switch between success and failure
+	failureMode := false
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test backend response"))
+		if failureMode {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("backend failure"))
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("test backend response"))
+		}
 	}))
 	ctx.testServers = append(ctx.testServers, testServer)
+
+	// Store reference to control failure mode
+	ctx.controlledFailureMode = &failureMode
 
 	// Update configuration with circuit breaker enabled
 	ctx.config = &ReverseProxyConfig{
 		BackendServices: map[string]string{
 			"test-backend": testServer.URL,
 		},
+		DefaultBackend: "test-backend",
 		Routes: map[string]string{
 			"/api/*": "test-backend",
 		},
@@ -797,36 +809,26 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCircuitBreakerEnabl
 }
 
 func (ctx *ReverseProxyBDDTestContext) aBackendFailsRepeatedly() error {
-	// Implement actual repeated backend failures to trigger circuit breaker
-	if ctx.service == nil {
-		return fmt.Errorf("service not available")
+	// Enable failure mode on the controllable backend
+	if ctx.controlledFailureMode == nil {
+		return fmt.Errorf("controlled failure mode not available")
 	}
-
-	// Create a failing backend server
-	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always return failures to trigger circuit breaker
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("backend failure"))
-	}))
-	ctx.testServers = append(ctx.testServers, failingServer)
-
-	// Update configuration to use the failing backend
-	ctx.service.config.BackendServices["failing-backend"] = failingServer.URL
-	ctx.service.config.DefaultBackend = "failing-backend"
+	
+	*ctx.controlledFailureMode = true
 
 	// Make multiple requests to trigger circuit breaker
-	failureThreshold := ctx.service.config.CircuitBreakerConfig.FailureThreshold
+	failureThreshold := int(ctx.config.CircuitBreakerConfig.FailureThreshold)
 	if failureThreshold <= 0 {
 		failureThreshold = 3 // Default threshold
 	}
 
 	// Make enough failures to trigger circuit breaker
-	for i := 0; i < int(failureThreshold)+1; i++ {
+	for i := 0; i < failureThreshold+1; i++ {
 		resp, err := ctx.makeRequestThroughModule("GET", "/test", nil)
-		if err == nil {
+		if err == nil && resp != nil {
 			resp.Body.Close()
 		}
-		// Continue even with errors - this is expected as backend is failing
+		// Continue even with errors - this is expected as backend is now failing
 	}
 
 	// Give circuit breaker time to react
