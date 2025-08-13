@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis for pub/sub messaging - the primary external service for this demo
   redis:
