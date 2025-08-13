@@ -161,7 +161,7 @@ func (r *RedisEventBus) Stop(ctx context.Context) error {
 	r.topicMutex.Lock()
 	for _, subs := range r.subscriptions {
 		for _, sub := range subs {
-			sub.Cancel()
+			_ = sub.Cancel() // Ignore error during shutdown
 		}
 	}
 	r.subscriptions = make(map[string]map[string]*redisSubscription)
@@ -241,10 +241,10 @@ func (r *RedisEventBus) subscribe(ctx context.Context, topic string, handler Eve
 	var pubsub *redis.PubSub
 	if strings.Contains(topic, "*") {
 		// Use pattern subscription for wildcard topics
-		pubsub = r.client.PSubscribe(r.ctx, topic)
+		pubsub = r.client.PSubscribe(ctx, topic)
 	} else {
 		// Use regular subscription for exact topics
-		pubsub = r.client.Subscribe(r.ctx, topic)
+		pubsub = r.client.Subscribe(ctx, topic)
 	}
 
 	// Create subscription object

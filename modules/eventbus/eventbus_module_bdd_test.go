@@ -13,25 +13,25 @@ import (
 
 // EventBus BDD Test Context
 type EventBusBDDTestContext struct {
-	app                   modular.Application
-	module                *EventBusModule
-	service               *EventBusModule
-	eventbusConfig        *EventBusConfig
-	lastError             error
-	receivedEvents        []Event
-	eventHandlers         map[string]func(context.Context, Event) error
-	subscriptions         map[string]Subscription
-	lastSubscription      Subscription
-	asyncProcessed        bool
-	publishingBlocked     bool
-	handlerErrors         []error
-	activeTopics          []string
-	subscriberCounts      map[string]int
-	mutex                 sync.Mutex
+	app               modular.Application
+	module            *EventBusModule
+	service           *EventBusModule
+	eventbusConfig    *EventBusConfig
+	lastError         error
+	receivedEvents    []Event
+	eventHandlers     map[string]func(context.Context, Event) error
+	subscriptions     map[string]Subscription
+	lastSubscription  Subscription
+	asyncProcessed    bool
+	publishingBlocked bool
+	handlerErrors     []error
+	activeTopics      []string
+	subscriberCounts  map[string]int
+	mutex             sync.Mutex
 	// New fields for multi-engine testing
-	customEngineType      string
-	publishedTopics       map[string]bool
-	totalSubscriberCount  int
+	customEngineType     string
+	publishedTopics      map[string]bool
+	totalSubscriberCount int
 }
 
 func (ctx *EventBusBDDTestContext) resetContext() {
@@ -103,13 +103,31 @@ func (ctx *EventBusBDDTestContext) theEventbusModuleIsInitialized() error {
 		return nil
 	}
 
-	// HACK: Manually set the config to work around instance-aware provider issue
-	ctx.module.config = ctx.eventbusConfig
+	// HACK: Override the config after init to work around config provider issue
+	if ctx.eventbusConfig != nil {
+		ctx.module.config = ctx.eventbusConfig
+		
+		// Re-initialize the router with the correct config
+		ctx.module.router, err = NewEngineRouter(ctx.eventbusConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create engine router: %w", err)
+		}
+	}
 
 	// Get the eventbus service
 	var eventbusService *EventBusModule
 	if err := ctx.app.GetService("eventbus.provider", &eventbusService); err == nil {
 		ctx.service = eventbusService
+		
+		// HACK: Also override the service's config if it's different from the module
+		if ctx.eventbusConfig != nil && ctx.service != ctx.module {
+			ctx.service.config = ctx.eventbusConfig
+			ctx.service.router, err = NewEngineRouter(ctx.eventbusConfig)
+			if err != nil {
+				return fmt.Errorf("failed to create service engine router: %w", err)
+			}
+		}
+		
 		// Start the eventbus service
 		ctx.service.Start(context.Background())
 	} else {
@@ -188,7 +206,6 @@ func (ctx *EventBusBDDTestContext) iSubscribeToTopicWithAHandler(topic string) e
 		return fmt.Errorf("failed to subscribe to topic %s: %v", topic, err)
 	}
 
-
 	ctx.subscriptions[topic] = subscription
 	ctx.lastSubscription = subscription
 
@@ -200,13 +217,11 @@ func (ctx *EventBusBDDTestContext) iPublishAnEventToTopicWithPayload(topic, payl
 		return fmt.Errorf("eventbus service not available")
 	}
 
-
 	err := ctx.service.Publish(context.Background(), topic, payload)
 	if err != nil {
 		ctx.lastError = err
 		return fmt.Errorf("failed to publish event: %v", err)
 	}
-
 
 	// Give more time for event processing
 	time.Sleep(500 * time.Millisecond)
@@ -734,28 +749,19 @@ func (ctx *EventBusBDDTestContext) iHaveAMultiEngineEventbusConfiguration() erro
 		},
 	}
 
+	// Store config for later use by theEventbusModuleIsInitialized
+	ctx.eventbusConfig = config
+
 	// Create and configure application
 	logger := &testLogger{}
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
-	app := modular.NewStdApplication(mainConfigProvider, logger)
-	app.RegisterConfigSection("eventbus", modular.NewStdConfigProvider(config))
+	ctx.app = modular.NewStdApplication(mainConfigProvider, logger)
+	ctx.app.RegisterConfigSection("eventbus", modular.NewStdConfigProvider(config))
 
-	module := NewModule().(*EventBusModule)
-	app.RegisterModule(module)
+	ctx.module = NewModule().(*EventBusModule)
+	ctx.app.RegisterModule(ctx.module)
 
-	err := app.Init()
-	if err != nil {
-		return fmt.Errorf("failed to initialize application: %w", err)
-	}
-
-	var eventbusService *EventBusModule
-	err = app.GetService("eventbus.provider", &eventbusService)
-	if err != nil {
-		return fmt.Errorf("eventbus service not found: %w", err)
-	}
-
-	ctx.service = eventbusService
-	ctx.app = app
+	// Don't initialize yet - let theEventbusModuleIsInitialized() do it
 	return nil
 }
 
@@ -806,8 +812,14 @@ func (ctx *EventBusBDDTestContext) theEngineRouterShouldBeConfiguredCorrectly() 
 }
 
 func (ctx *EventBusBDDTestContext) iHaveAMultiEngineEventbusWithTopicRouting() error {
-	// Same as multi-engine configuration for this scenario
-	return ctx.iHaveAMultiEngineEventbusConfiguration()
+	// Set up multi-engine configuration
+	err := ctx.iHaveAMultiEngineEventbusConfiguration()
+	if err != nil {
+		return err
+	}
+	
+	// Initialize the eventbus module
+	return ctx.theEventbusModuleIsInitialized()
 }
 
 func (ctx *EventBusBDDTestContext) iPublishAnEventToTopic(topic string) error {
@@ -897,6 +909,14 @@ func (ctx *EventBusBDDTestContext) iConfigureEventbusToUseCustomEngine() error {
 		return fmt.Errorf("failed to initialize application: %w", err)
 	}
 
+	// HACK: Override the config after init to work around config provider issue
+	module.config = config
+	// Re-initialize the router with the correct config
+	module.router, err = NewEngineRouter(config)
+	if err != nil {
+		return fmt.Errorf("failed to create engine router: %w", err)
+	}
+
 	ctx.service = module
 	ctx.app = app
 	return nil
@@ -966,7 +986,11 @@ func (ctx *EventBusBDDTestContext) engineBehaviorShouldReflectSettings() error {
 }
 
 func (ctx *EventBusBDDTestContext) iHaveMultipleEnginesRunning() error {
-	return ctx.iHaveAMultiEngineEventbusConfiguration()
+	err := ctx.iHaveAMultiEngineEventbusConfiguration()
+	if err != nil {
+		return err
+	}
+	return ctx.theEventbusModuleIsInitialized()
 }
 
 func (ctx *EventBusBDDTestContext) iSubscribeToTopicsOnDifferentEngines() error {
@@ -974,7 +998,7 @@ func (ctx *EventBusBDDTestContext) iSubscribeToTopicsOnDifferentEngines() error 
 		// Use the existing configuration approach
 		return ctx.iHaveAnEventbusServiceAvailable()
 	}
-	
+
 	err := ctx.service.Start(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to start eventbus: %w", err)
@@ -1022,7 +1046,11 @@ func (ctx *EventBusBDDTestContext) totalSubscriberCountsShouldAggregate() error 
 }
 
 func (ctx *EventBusBDDTestContext) iHaveRoutingRulesWithWildcardsAndExactMatches() error {
-	return ctx.iHaveAMultiEngineEventbusConfiguration()
+	err := ctx.iHaveAMultiEngineEventbusConfiguration()
+	if err != nil {
+		return err
+	}
+	return ctx.theEventbusModuleIsInitialized()
 }
 
 func (ctx *EventBusBDDTestContext) iPublishEventsWithVariousTopicPatterns() error {
@@ -1100,7 +1128,11 @@ func (ctx *EventBusBDDTestContext) subscriberCountsShouldBeAggregatedCorrectly()
 
 // Tenant isolation - simplified implementations
 func (ctx *EventBusBDDTestContext) iHaveAMultiTenantEventbusConfiguration() error {
-	return ctx.iHaveAMultiEngineEventbusConfiguration()
+	err := ctx.iHaveAMultiEngineEventbusConfiguration()
+	if err != nil {
+		return err
+	}
+	return ctx.theEventbusModuleIsInitialized()
 }
 
 func (ctx *EventBusBDDTestContext) tenantPublishesAnEventToTopic(tenant, topic string) error {
@@ -1310,7 +1342,7 @@ func TestEventBusModuleBDD(t *testing.T) {
 			ctx.Then(`^all topics from all engines should be returned$`, testCtx.allTopicsFromAllEnginesShouldBeReturned)
 			ctx.Then(`^subscriber counts should be aggregated correctly$`, testCtx.subscriberCountsShouldBeAggregatedCorrectly)
 
-			// Steps for tenant isolation scenarios  
+			// Steps for tenant isolation scenarios
 			ctx.Given(`^I have a multi-tenant eventbus configuration$`, testCtx.iHaveAMultiTenantEventbusConfiguration)
 			ctx.When(`^tenant "([^"]*)" publishes an event to "([^"]*)"$`, testCtx.tenantPublishesAnEventToTopic)
 			ctx.When(`^tenant "([^"]*)" subscribes to "([^"]*)"$`, testCtx.tenantSubscribesToTopic)

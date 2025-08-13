@@ -29,11 +29,11 @@ type KafkaEventBus struct {
 
 // KafkaConfig holds Kafka-specific configuration
 type KafkaConfig struct {
-	Brokers         []string `json:"brokers"`
-	GroupID         string   `json:"groupId"`
-	SecurityConfig  map[string]string `json:"security"`
-	ProducerConfig  map[string]string `json:"producer"`
-	ConsumerConfig  map[string]string `json:"consumer"`
+	Brokers        []string          `json:"brokers"`
+	GroupID        string            `json:"groupId"`
+	SecurityConfig map[string]string `json:"security"`
+	ProducerConfig map[string]string `json:"producer"`
+	ConsumerConfig map[string]string `json:"consumer"`
 }
 
 // kafkaSubscription represents a subscription in the Kafka event bus
@@ -155,8 +155,8 @@ func (h *KafkaConsumerGroupHandler) topicMatches(messageTopic, subscriptionTopic
 // NewKafkaEventBus creates a new Kafka-based event bus
 func NewKafkaEventBus(config map[string]interface{}) (EventBus, error) {
 	kafkaConfig := &KafkaConfig{
-		Brokers: []string{"localhost:9092"},
-		GroupID: "eventbus-" + uuid.New().String(),
+		Brokers:        []string{"localhost:9092"},
+		GroupID:        "eventbus-" + uuid.New().String(),
 		SecurityConfig: make(map[string]string),
 		ProducerConfig: make(map[string]string),
 		ConsumerConfig: make(map[string]string),
@@ -183,7 +183,7 @@ func NewKafkaEventBus(config map[string]interface{}) (EventBus, error) {
 	saramaConfig.Version = sarama.V2_6_0_0
 	saramaConfig.Producer.Return.Successes = true
 	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll
-	saramaConfig.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+	saramaConfig.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	saramaConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
 
 	// Apply security configuration
@@ -253,7 +253,7 @@ func (k *KafkaEventBus) Stop(ctx context.Context) error {
 	k.topicMutex.Lock()
 	for _, subs := range k.subscriptions {
 		for _, sub := range subs {
-			sub.Cancel()
+			_ = sub.Cancel() // Ignore error during shutdown
 		}
 	}
 	k.subscriptions = make(map[string]map[string]*kafkaSubscription)

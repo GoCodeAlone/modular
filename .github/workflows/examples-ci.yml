@@ -32,6 +32,7 @@ jobs:
           - testing-scenarios
           - observer-pattern
           - health-aware-reverse-proxy
+          - multi-engine-eventbus
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -277,6 +278,44 @@ jobs:
               echo "📋 Application logs:"
               cat app.log
               exit 1
+            fi
+            
+          elif [ "${{ matrix.example }}" = "multi-engine-eventbus" ]; then
+            # Multi-engine eventbus example needs special handling for Docker services
+            echo "🔄 Testing multi-engine-eventbus with Docker services..."
+            
+            # Check if Docker is available
+            if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; then
+              echo "Docker available, running full demo with external services"
+              
+              # Make run-demo.sh executable
+              chmod +x run-demo.sh
+              
+              # Run the demo script with timeout
+              if timeout 60s ./run-demo.sh run; then
+                echo "✅ multi-engine-eventbus demo completed successfully"
+              else
+                echo "❌ multi-engine-eventbus demo failed or timed out"
+                # Clean up any Docker containers
+                docker-compose -f docker-compose.yml down -v 2>/dev/null || true
+                exit 1
+              fi
+            else
+              echo "Docker not available, testing graceful degradation mode"
+              
+              # Run without Docker services to test graceful degradation
+              timeout 10s ./example &
+              PID=$!
+              sleep 5
+              
+              # Check if process is still running (should handle missing services gracefully)
+              if kill -0 $PID 2>/dev/null; then
+                echo "✅ multi-engine-eventbus handles missing services gracefully"
+                kill $PID 2>/dev/null || true
+              else
+                echo "❌ multi-engine-eventbus failed to handle missing services"
+                exit 1
+              fi
             fi
             
           elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ] || [ "${{ matrix.example }}" = "feature-flag-proxy" ]; then

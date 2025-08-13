@@ -1,8 +1,15 @@
 package eventbus
 
 import (
+	"errors"
 	"fmt"
 	"time"
+)
+
+// Static errors for validation
+var (
+	ErrDuplicateEngineName = errors.New("duplicate engine name")
+	ErrUnknownEngineRef    = errors.New("routing rule references unknown engine")
 )
 
 // EngineConfig defines the configuration for an individual event bus engine.
@@ -61,7 +68,7 @@ type RoutingRule struct {
 //	    engine: "redis"
 type EventBusConfig struct {
 	// --- Single Engine Configuration (Legacy Support) ---
-	
+
 	// Engine specifies the event bus engine to use for single-engine mode.
 	// Supported values: "memory", "redis", "kafka", "kinesis"
 	// Default: "memory"
@@ -155,7 +162,7 @@ func (c *EventBusConfig) ValidateConfig() error {
 		engineNames := make(map[string]bool)
 		for _, engine := range c.Engines {
 			if _, exists := engineNames[engine.Name]; exists {
-				return fmt.Errorf("duplicate engine name: %s", engine.Name)
+				return fmt.Errorf("%w: %s", ErrDuplicateEngineName, engine.Name)
 			}
 			engineNames[engine.Name] = true
 		}
@@ -163,7 +170,7 @@ func (c *EventBusConfig) ValidateConfig() error {
 		// Validate routing references existing engines
 		for _, rule := range c.Routing {
 			if _, exists := engineNames[rule.Engine]; !exists {
-				return fmt.Errorf("routing rule references unknown engine: %s", rule.Engine)
+				return fmt.Errorf("%w: %s", ErrUnknownEngineRef, rule.Engine)
 			}
 		}
 	} else {

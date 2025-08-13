@@ -14,32 +14,32 @@ import (
 // memory engine, this one includes additional features like event metrics collection,
 // custom event filtering, and enhanced subscription management.
 type CustomMemoryEventBus struct {
-	config         *CustomMemoryConfig
-	subscriptions  map[string]map[string]*customMemorySubscription
-	topicMutex     sync.RWMutex
-	ctx            context.Context
-	cancel         context.CancelFunc
-	isStarted      bool
-	eventMetrics   *EventMetrics
-	eventFilters   []EventFilter
+	config        *CustomMemoryConfig
+	subscriptions map[string]map[string]*customMemorySubscription
+	topicMutex    sync.RWMutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+	isStarted     bool
+	eventMetrics  *EventMetrics
+	eventFilters  []EventFilter
 }
 
 // CustomMemoryConfig holds configuration for the custom memory engine
 type CustomMemoryConfig struct {
-	MaxEventQueueSize      int                    `json:"maxEventQueueSize"`
-	DefaultEventBufferSize int                    `json:"defaultEventBufferSize"`
-	EnableMetrics          bool                   `json:"enableMetrics"`
-	MetricsInterval        time.Duration          `json:"metricsInterval"`
+	MaxEventQueueSize      int                      `json:"maxEventQueueSize"`
+	DefaultEventBufferSize int                      `json:"defaultEventBufferSize"`
+	EnableMetrics          bool                     `json:"enableMetrics"`
+	MetricsInterval        time.Duration            `json:"metricsInterval"`
 	EventFilters           []map[string]interface{} `json:"eventFilters"`
 }
 
 // EventMetrics holds metrics about event processing
 type EventMetrics struct {
-	TotalEvents          int64         `json:"totalEvents"`
-	EventsPerTopic       map[string]int64 `json:"eventsPerTopic"`
-	AverageProcessingTime time.Duration `json:"averageProcessingTime"`
-	LastResetTime        time.Time     `json:"lastResetTime"`
-	mutex                sync.RWMutex
+	TotalEvents           int64            `json:"totalEvents"`
+	EventsPerTopic        map[string]int64 `json:"eventsPerTopic"`
+	AverageProcessingTime time.Duration    `json:"averageProcessingTime"`
+	LastResetTime         time.Time        `json:"lastResetTime"`
+	mutex                 sync.RWMutex
 }
 
 // EventFilter defines a filter that can be applied to events
@@ -177,7 +177,7 @@ func NewCustomMemoryEventBus(config map[string]interface{}) (EventBus, error) {
 				}
 				filter := &TopicPrefixFilter{
 					AllowedPrefixes: allowedPrefixes,
-					name:           "topicPrefix",
+					name:            "topicPrefix",
 				}
 				bus.eventFilters = append(bus.eventFilters, filter)
 			}
@@ -222,7 +222,7 @@ func (c *CustomMemoryEventBus) Stop(ctx context.Context) error {
 	c.topicMutex.Lock()
 	for _, subs := range c.subscriptions {
 		for _, sub := range subs {
-			sub.Cancel()
+			_ = sub.Cancel() // Ignore error during shutdown
 		}
 	}
 	c.topicMutex.Unlock()
@@ -454,7 +454,7 @@ func (c *CustomMemoryEventBus) handleEvents(sub *customMemorySubscription) {
 			if c.config.EnableMetrics {
 				c.eventMetrics.mutex.Lock()
 				// Simple moving average for processing time
-				c.eventMetrics.AverageProcessingTime = 
+				c.eventMetrics.AverageProcessingTime =
 					(c.eventMetrics.AverageProcessingTime + processingDuration) / 2
 				c.eventMetrics.mutex.Unlock()
 			}
@@ -516,7 +516,7 @@ func (c *CustomMemoryEventBus) logMetrics() {
 func (c *CustomMemoryEventBus) GetMetrics() *EventMetrics {
 	c.eventMetrics.mutex.RLock()
 	defer c.eventMetrics.mutex.RUnlock()
-	
+
 	// Return a copy to avoid race conditions
 	metrics := &EventMetrics{
 		TotalEvents:           c.eventMetrics.TotalEvents,
@@ -524,10 +524,10 @@ func (c *CustomMemoryEventBus) GetMetrics() *EventMetrics {
 		AverageProcessingTime: c.eventMetrics.AverageProcessingTime,
 		LastResetTime:         c.eventMetrics.LastResetTime,
 	}
-	
+
 	for k, v := range c.eventMetrics.EventsPerTopic {
 		metrics.EventsPerTopic[k] = v
 	}
-	
+
 	return metrics
 }

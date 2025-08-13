@@ -209,7 +209,7 @@ func (m *EventBusModule) RegisterConfig(app modular.Application) error {
 //
 // Supported engines:
 //   - "memory": In-process event bus using Go channels
-//   - "redis": Distributed event bus using Redis pub/sub  
+//   - "redis": Distributed event bus using Redis pub/sub
 //   - "kafka": Enterprise event bus using Apache Kafka
 //   - "kinesis": AWS Kinesis streams
 //   - "custom": Custom engine implementations
@@ -235,7 +235,7 @@ func (m *EventBusModule) Init(app modular.Application) error {
 	}
 
 	if m.config.IsMultiEngine() {
-		m.logger.Info("Initialized multi-engine eventbus", 
+		m.logger.Info("Initialized multi-engine eventbus",
 			"engines", len(m.config.Engines),
 			"routing_rules", len(m.config.Routing))
 		for _, engine := range m.config.Engines {
@@ -278,7 +278,7 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 
 	m.isStarted = true
 	if m.config.IsMultiEngine() {
-		m.logger.Info("Event bus started with multiple engines", 
+		m.logger.Info("Event bus started with multiple engines",
 			"engines", m.router.GetEngineNames())
 	} else {
 		m.logger.Info("Event bus started")

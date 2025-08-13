@@ -2,8 +2,16 @@ package eventbus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+)
+
+// Static errors for engine registry
+var (
+	ErrUnknownEngineType    = errors.New("unknown engine type")
+	ErrEngineNotFound       = errors.New("engine not found")
+	ErrSubscriptionNotFound = errors.New("subscription not found in any engine")
 )
 
 // EngineFactory is a function that creates an EventBus implementation.
@@ -36,9 +44,9 @@ func GetRegisteredEngines() []string {
 
 // EngineRouter manages multiple event bus engines and routes events based on configuration.
 type EngineRouter struct {
-	engines       map[string]EventBus  // Map of engine name to EventBus instance
-	routing       []RoutingRule        // Routing rules in order of precedence
-	defaultEngine string               // Default engine name for unmatched topics
+	engines       map[string]EventBus // Map of engine name to EventBus instance
+	routing       []RoutingRule       // Routing rules in order of precedence
+	defaultEngine string              // Default engine name for unmatched topics
 }
 
 // NewEngineRouter creates a new engine router with the given configuration.
@@ -54,7 +62,7 @@ func NewEngineRouter(config *EventBusConfig) (*EngineRouter, error) {
 		for _, engineConfig := range config.Engines {
 			engine, err := createEngine(engineConfig.Type, engineConfig.Config)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create engine %s (%s): %w", 
+				return nil, fmt.Errorf("failed to create engine %s (%s): %w",
 					engineConfig.Name, engineConfig.Type, err)
 			}
 			router.engines[engineConfig.Name] = engine
@@ -86,7 +94,7 @@ func NewEngineRouter(config *EventBusConfig) (*EngineRouter, error) {
 func createEngine(engineType string, config map[string]interface{}) (EventBus, error) {
 	factory, exists := engineRegistry[engineType]
 	if !exists {
-		return nil, fmt.Errorf("unknown engine type: %s", engineType)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownEngineType, engineType)
 	}
 
 	return factory(config)
@@ -118,10 +126,13 @@ func (r *EngineRouter) Publish(ctx context.Context, event Event) error {
 	engineName := r.getEngineForTopic(event.Topic)
 	engine, exists := r.engines[engineName]
 	if !exists {
-		return fmt.Errorf("engine %s not found for topic %s", engineName, event.Topic)
+		return fmt.Errorf("%w for topic %s: %s", ErrEngineNotFound, event.Topic, engineName)
 	}
 
-	return engine.Publish(ctx, event)
+	if err := engine.Publish(ctx, event); err != nil {
+		return fmt.Errorf("publishing to engine %s: %w", engineName, err)
+	}
+	return nil
 }
 
 // Subscribe subscribes to a topic using the appropriate engine.
@@ -130,10 +141,14 @@ func (r *EngineRouter) Subscribe(ctx context.Context, topic string, handler Even
 	engineName := r.getEngineForTopic(topic)
 	engine, exists := r.engines[engineName]
 	if !exists {
-		return nil, fmt.Errorf("engine %s not found for topic %s", engineName, topic)
+		return nil, fmt.Errorf("%w for topic %s: %s", ErrEngineNotFound, topic, engineName)
 	}
 
-	return engine.Subscribe(ctx, topic, handler)
+	sub, err := engine.Subscribe(ctx, topic, handler)
+	if err != nil {
+		return nil, fmt.Errorf("subscribing to engine %s: %w", engineName, err)
+	}
+	return sub, nil
 }
 
 // SubscribeAsync subscribes to a topic asynchronously using the appropriate engine.
@@ -141,10 +156,14 @@ func (r *EngineRouter) SubscribeAsync(ctx context.Context, topic string, handler
 	engineName := r.getEngineForTopic(topic)
 	engine, exists := r.engines[engineName]
 	if !exists {
-		return nil, fmt.Errorf("engine %s not found for topic %s", engineName, topic)
+		return nil, fmt.Errorf("%w for topic %s: %s", ErrEngineNotFound, topic, engineName)
 	}
 
-	return engine.SubscribeAsync(ctx, topic, handler)
+	sub, err := engine.SubscribeAsync(ctx, topic, handler)
+	if err != nil {
+		return nil, fmt.Errorf("async subscribing to engine %s: %w", engineName, err)
+	}
+	return sub, nil
 }
 
 // Unsubscribe removes a subscription from its engine.
@@ -157,7 +176,7 @@ func (r *EngineRouter) Unsubscribe(ctx context.Context, subscription Subscriptio
 		}
 		// Ignore errors for engines that don't have this subscription
 	}
-	return fmt.Errorf("subscription not found in any engine")
+	return ErrSubscriptionNotFound
 }
 
 // Topics returns all active topics from all engines.

@@ -3,6 +3,7 @@ package eventbus
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +14,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/google/uuid"
+)
+
+// Static errors for Kinesis
+var (
+	ErrInvalidShardCount = errors.New("invalid shard count")
 )
 
 // KinesisEventBus implements EventBus using AWS Kinesis
@@ -135,9 +141,14 @@ func (k *KinesisEventBus) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		// Stream doesn't exist, create it
+		// Check for valid shard count to prevent overflow
+		if k.config.ShardCount > 2147483647 { // max int32 value
+			return fmt.Errorf("%w: shard count too large (%d exceeds maximum)", ErrInvalidShardCount, k.config.ShardCount)
+		}
+		shardCount := int32(k.config.ShardCount) // #nosec G115 - checked above
 		_, err := k.client.CreateStream(ctx, &kinesis.CreateStreamInput{
 			StreamName: &k.config.StreamName,
-			ShardCount: func(i int) *int32 { i32 := int32(i); return &i32 }(k.config.ShardCount),
+			ShardCount: &shardCount,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create Kinesis stream: %w", err)
@@ -173,7 +184,7 @@ func (k *KinesisEventBus) Stop(ctx context.Context) error {
 	k.topicMutex.Lock()
 	for _, subs := range k.subscriptions {
 		for _, sub := range subs {
-			sub.Cancel()
+			_ = sub.Cancel() // Ignore error during shutdown
 		}
 	}
 	k.subscriptions = make(map[string]map[string]*kinesisSubscription)
@@ -279,8 +290,8 @@ func (k *KinesisEventBus) subscribe(ctx context.Context, topic string, handler E
 // startShardReaders starts reading from all shards
 func (k *KinesisEventBus) startShardReaders() {
 	// Get stream description to find shards
+	k.wg.Add(1)
 	go func() {
-		k.wg.Add(1)
 		defer k.wg.Done()
 
 		for {
