@@ -126,8 +126,8 @@ func TestHealthChecker_DNSResolution(t *testing.T) {
 	// Test DNS resolution for unreachable host
 	// Use unreachable localhost port - DNS will succeed but connection will fail
 	dnsResolved, resolvedIPs, err = hc.performDNSCheck(context.Background(), "http://127.0.0.1:9999")
-	assert.True(t, dnsResolved) // DNS should resolve localhost successfully
-	require.NoError(t, err)     // DNS resolution itself should work
+	assert.True(t, dnsResolved)     // DNS should resolve localhost successfully
+	require.NoError(t, err)         // DNS resolution itself should work
 	assert.NotEmpty(t, resolvedIPs) // Should get IP addresses
 
 	// Test invalid URL

@@ -61,7 +61,7 @@ func (ctx *ReverseProxyBDDTestContext) resetContext() {
 			server.Close()
 		}
 	}
-	
+
 	// Close health check servers
 	for _, server := range ctx.healthCheckServers {
 		if server != nil {
@@ -1068,7 +1068,7 @@ func (ctx *ReverseProxyBDDTestContext) onlyConfiguredStatusCodesShouldBeConsider
 		if len(actualBackend) != len(expectedBackend) {
 			return fmt.Errorf("expected backend-202 status codes %v, got %v", expectedBackend, actualBackend)
 		}
-		
+
 		for i, code := range expectedBackend {
 			if actualBackend[i] != code {
 				return fmt.Errorf("expected backend-202 status code %d at index %d, got %d", code, i, actualBackend[i])
@@ -1140,8 +1140,8 @@ func (ctx *ReverseProxyBDDTestContext) metricValuesShouldReflectProxyActivity() 
 func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCustomMetricsEndpoint() error {
 	// Work with existing app from background step, just validate that metrics can be configured
 	// Don't try to reconfigure the entire application
-	
-	// Create a test backend server for this scenario  
+
+	// Create a test backend server for this scenario
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("backend response"))
@@ -1657,9 +1657,9 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCompositeRouteFeatu
 	// Create configuration with composite route feature flags
 	ctx.config = &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"service1":  server1.URL,
-			"service2":  server2.URL,
-			"fallback":  altServer.URL,
+			"service1": server1.URL,
+			"service2": server2.URL,
+			"fallback": altServer.URL,
 		},
 		CompositeRoutes: map[string]CompositeRoute{
 			"/api/combined": {
