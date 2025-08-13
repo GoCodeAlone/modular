@@ -995,8 +995,7 @@ func (ctx *EventBusBDDTestContext) iHaveMultipleEnginesRunning() error {
 
 func (ctx *EventBusBDDTestContext) iSubscribeToTopicsOnDifferentEngines() error {
 	if ctx.service == nil {
-		// Use the existing configuration approach
-		return ctx.iHaveAnEventbusServiceAvailable()
+		return fmt.Errorf("no eventbus service available - ensure multi-engine setup is called first")
 	}
 
 	err := ctx.service.Start(context.Background())
@@ -1107,6 +1106,19 @@ func (ctx *EventBusBDDTestContext) theErrorShouldBeIsolatedToFailingEngine() err
 }
 
 func (ctx *EventBusBDDTestContext) iHaveSubscriptionsAcrossMultipleEngines() error {
+	// Set up multi-engine configuration first
+	err := ctx.iHaveAMultiEngineEventbusConfiguration()
+	if err != nil {
+		return err
+	}
+	
+	// Initialize the service
+	err = ctx.theEventbusModuleIsInitialized()
+	if err != nil {
+		return err
+	}
+	
+	// Now subscribe to topics on different engines
 	return ctx.iSubscribeToTopicsOnDifferentEngines()
 }
 
@@ -1123,7 +1135,12 @@ func (ctx *EventBusBDDTestContext) allTopicsFromAllEnginesShouldBeReturned() err
 }
 
 func (ctx *EventBusBDDTestContext) subscriberCountsShouldBeAggregatedCorrectly() error {
-	return ctx.totalSubscriberCountsShouldAggregate()
+	// Calculate the total subscriber count
+	totalCount := ctx.service.SubscriberCount("user.created") + ctx.service.SubscriberCount("analytics.pageview")
+	if totalCount != 2 {
+		return fmt.Errorf("expected total count of 2, got %d", totalCount)
+	}
+	return nil
 }
 
 // Tenant isolation - simplified implementations
