@@ -142,9 +142,11 @@ func (k *KinesisEventBus) Start(ctx context.Context) error {
 	if err != nil {
 		// Stream doesn't exist, create it
 		// Check for valid shard count to prevent overflow
-		if k.config.ShardCount > 2147483647 { // max int32 value
-			return fmt.Errorf("%w: shard count too large (%d exceeds maximum)", ErrInvalidShardCount, k.config.ShardCount)
+		if k.config.ShardCount < 1 || k.config.ShardCount > 2147483647 { // max int32 value
+			return fmt.Errorf("%w: shard count out of valid range (1-2147483647): %d", ErrInvalidShardCount, k.config.ShardCount)
 		}
+		
+		// Safe conversion after validation
 		shardCount := int32(k.config.ShardCount)
 		_, err := k.client.CreateStream(ctx, &kinesis.CreateStreamInput{
 			StreamName: &k.config.StreamName,

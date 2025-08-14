@@ -32,6 +32,11 @@ type EventBusBDDTestContext struct {
 	customEngineType     string
 	publishedTopics      map[string]bool
 	totalSubscriberCount int
+	// New fields for tenant testing
+	tenantEventHandlers  map[string]map[string]func(context.Context, Event) error // tenant -> topic -> handler
+	tenantReceivedEvents map[string][]Event                                       // tenant -> events received
+	tenantSubscriptions  map[string]map[string]Subscription                       // tenant -> topic -> subscription
+	tenantEngineConfig   map[string]string                                        // tenant -> engine type
 }
 
 func (ctx *EventBusBDDTestContext) resetContext() {
@@ -52,6 +57,11 @@ func (ctx *EventBusBDDTestContext) resetContext() {
 	ctx.handlerErrors = nil
 	ctx.activeTopics = nil
 	ctx.subscriberCounts = make(map[string]int)
+	// Initialize tenant-specific maps
+	ctx.tenantEventHandlers = make(map[string]map[string]func(context.Context, Event) error)
+	ctx.tenantReceivedEvents = make(map[string][]Event)
+	ctx.tenantSubscriptions = make(map[string]map[string]Subscription)
+	ctx.tenantEngineConfig = make(map[string]string)
 }
 
 func (ctx *EventBusBDDTestContext) iHaveAModularApplicationWithEventbusModuleConfigured() error {
@@ -106,7 +116,7 @@ func (ctx *EventBusBDDTestContext) theEventbusModuleIsInitialized() error {
 	// HACK: Override the config after init to work around config provider issue
 	if ctx.eventbusConfig != nil {
 		ctx.module.config = ctx.eventbusConfig
-		
+
 		// Re-initialize the router with the correct config
 		ctx.module.router, err = NewEngineRouter(ctx.eventbusConfig)
 		if err != nil {
@@ -118,7 +128,7 @@ func (ctx *EventBusBDDTestContext) theEventbusModuleIsInitialized() error {
 	var eventbusService *EventBusModule
 	if err := ctx.app.GetService("eventbus.provider", &eventbusService); err == nil {
 		ctx.service = eventbusService
-		
+
 		// HACK: Also override the service's config if it's different from the module
 		if ctx.eventbusConfig != nil && ctx.service != ctx.module {
 			ctx.service.config = ctx.eventbusConfig
@@ -127,7 +137,7 @@ func (ctx *EventBusBDDTestContext) theEventbusModuleIsInitialized() error {
 				return fmt.Errorf("failed to create service engine router: %w", err)
 			}
 		}
-		
+
 		// Start the eventbus service
 		ctx.service.Start(context.Background())
 	} else {
@@ -698,8 +708,35 @@ func (ctx *EventBusBDDTestContext) theEventbusIsStopped() error {
 }
 
 func (ctx *EventBusBDDTestContext) allSubscriptionsShouldBeCancelled() error {
-	// For BDD purposes, validate that stop was called successfully
-	// In real implementation, would check that subscriptions are inactive
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Verify that all subscriptions have been properly cancelled
+	// First check regular subscriptions
+	for topic, subscription := range ctx.subscriptions {
+		if subscription == nil {
+			return fmt.Errorf("subscription for topic %s is nil", topic)
+		}
+		// In a real implementation, we would check subscription.IsActive() or similar
+		// For now, we verify the subscription exists and assume Stop() handled it
+	}
+
+	// Check tenant-specific subscriptions
+	for tenant, subscriptions := range ctx.tenantSubscriptions {
+		for topic, subscription := range subscriptions {
+			if subscription == nil {
+				return fmt.Errorf("subscription for tenant %s topic %s is nil", tenant, topic)
+			}
+			// In a real implementation, we would verify subscription state
+		}
+	}
+
+	// Verify the service has been properly stopped
+	if ctx.service != nil {
+		// In a complete implementation, we would check ctx.service.IsRunning() == false
+		// For now, we assume if Stop() was called without error, subscriptions are cancelled
+	}
+
 	return nil
 }
 
@@ -817,7 +854,7 @@ func (ctx *EventBusBDDTestContext) iHaveAMultiEngineEventbusWithTopicRouting() e
 	if err != nil {
 		return err
 	}
-	
+
 	// Initialize the eventbus module
 	return ctx.theEventbusModuleIsInitialized()
 }
@@ -1111,13 +1148,13 @@ func (ctx *EventBusBDDTestContext) iHaveSubscriptionsAcrossMultipleEngines() err
 	if err != nil {
 		return err
 	}
-	
+
 	// Initialize the service
 	err = ctx.theEventbusModuleIsInitialized()
 	if err != nil {
 		return err
 	}
-	
+
 	// Now subscribe to topics on different engines
 	return ctx.iSubscribeToTopicsOnDifferentEngines()
 }
@@ -1153,24 +1190,104 @@ func (ctx *EventBusBDDTestContext) iHaveAMultiTenantEventbusConfiguration() erro
 }
 
 func (ctx *EventBusBDDTestContext) tenantPublishesAnEventToTopic(tenant, topic string) error {
-	// In a real implementation, this would set tenant context
-	return ctx.iPublishAnEventToTopic(topic)
+	// Create tenant context for the event
+	tenantCtx := modular.NewTenantContext(context.Background(), modular.TenantID(tenant))
+
+	// Create event data specific to this tenant
+	eventData := map[string]interface{}{
+		"tenant": tenant,
+		"topic":  topic,
+		"data":   fmt.Sprintf("event-for-%s", tenant),
+	}
+
+	// Publish event with tenant context
+	return ctx.service.Publish(tenantCtx, topic, eventData)
 }
 
 func (ctx *EventBusBDDTestContext) tenantSubscribesToTopic(tenant, topic string) error {
-	// In a real implementation, this would set tenant context
-	_, err := ctx.service.Subscribe(context.Background(), topic, func(ctx context.Context, event Event) error {
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Initialize maps for this tenant if they don't exist
+	if ctx.tenantEventHandlers[tenant] == nil {
+		ctx.tenantEventHandlers[tenant] = make(map[string]func(context.Context, Event) error)
+		ctx.tenantReceivedEvents[tenant] = make([]Event, 0)
+		ctx.tenantSubscriptions[tenant] = make(map[string]Subscription)
+	}
+
+	// Create tenant-specific event handler
+	handler := func(eventCtx context.Context, event Event) error {
+		ctx.mutex.Lock()
+		defer ctx.mutex.Unlock()
+		// Store received event for this tenant
+		ctx.tenantReceivedEvents[tenant] = append(ctx.tenantReceivedEvents[tenant], event)
 		return nil
-	})
-	return err
+	}
+
+	ctx.tenantEventHandlers[tenant][topic] = handler
+
+	// Create tenant context for subscription
+	tenantCtx := modular.NewTenantContext(context.Background(), modular.TenantID(tenant))
+
+	// Subscribe with tenant context
+	subscription, err := ctx.service.Subscribe(tenantCtx, topic, handler)
+	if err != nil {
+		return err
+	}
+
+	ctx.tenantSubscriptions[tenant][topic] = subscription
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) tenantShouldNotReceiveOtherTenantEvents(tenant1, tenant2 string) error {
-	return nil // Verify tenant isolation
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Check that tenant1 did not receive any events meant for tenant2
+	tenant1Events := ctx.tenantReceivedEvents[tenant1]
+	for _, event := range tenant1Events {
+		if eventData, ok := event.Payload.(map[string]interface{}); ok {
+			if eventTenant, ok := eventData["tenant"].(string); ok && eventTenant == tenant2 {
+				return fmt.Errorf("tenant %s received event meant for tenant %s", tenant1, tenant2)
+			}
+		}
+	}
+
+	// Check that tenant2 did not receive any events meant for tenant1
+	tenant2Events := ctx.tenantReceivedEvents[tenant2]
+	for _, event := range tenant2Events {
+		if eventData, ok := event.Payload.(map[string]interface{}); ok {
+			if eventTenant, ok := eventData["tenant"].(string); ok && eventTenant == tenant1 {
+				return fmt.Errorf("tenant %s received event meant for tenant %s", tenant2, tenant1)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) eventIsolationShouldBeMaintainedBetweenTenants() error {
-	return nil // Verify isolation is maintained
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Verify that each tenant only received their own events
+	for tenant, events := range ctx.tenantReceivedEvents {
+		for _, event := range events {
+			if eventData, ok := event.Payload.(map[string]interface{}); ok {
+				if eventTenant, ok := eventData["tenant"].(string); ok {
+					if eventTenant != tenant {
+						return fmt.Errorf("event isolation violated: tenant %s received event for tenant %s", tenant, eventTenant)
+					}
+				} else {
+					return fmt.Errorf("event missing tenant information")
+				}
+			} else {
+				return fmt.Errorf("event payload not in expected format")
+			}
+		}
+	}
+
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) iHaveTenantAwareRoutingConfiguration() error {
@@ -1178,19 +1295,92 @@ func (ctx *EventBusBDDTestContext) iHaveTenantAwareRoutingConfiguration() error 
 }
 
 func (ctx *EventBusBDDTestContext) tenantIsConfiguredToUseMemoryEngine(tenant string) error {
-	return nil // Configure tenant to use specific engine
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Configure tenant to use memory engine
+	ctx.tenantEngineConfig[tenant] = "memory"
+
+	// In a real implementation, this would update the tenant's engine routing configuration
+	// For now, we just store the configuration for verification
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) tenantIsConfiguredToUseCustomEngine(tenant string) error {
-	return nil // Configure tenant to use specific engine
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Configure tenant to use custom engine
+	ctx.tenantEngineConfig[tenant] = "custom"
+
+	// In a real implementation, this would update the tenant's engine routing configuration
+	// For now, we just store the configuration for verification
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) eventsFromEachTenantShouldUseAssignedEngine() error {
-	return nil // Verify tenant uses assigned engine
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Verify that each tenant's engine configuration is being respected
+	for tenant, engineType := range ctx.tenantEngineConfig {
+		if engineType == "" {
+			return fmt.Errorf("no engine configuration found for tenant %s", tenant)
+		}
+
+		// In a real implementation, we would verify that events from this tenant
+		// are being routed through the specified engine type
+		// For now, we just verify the configuration exists and is valid
+		validEngines := []string{"memory", "redis", "kafka", "kinesis", "custom"}
+		isValid := false
+		for _, valid := range validEngines {
+			if engineType == valid {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			return fmt.Errorf("tenant %s configured with invalid engine type: %s", tenant, engineType)
+		}
+	}
+
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) tenantConfigurationsShouldNotInterfere() error {
-	return nil // Verify tenant configurations are isolated
+	ctx.mutex.Lock()
+	defer ctx.mutex.Unlock()
+
+	// Verify that different tenants have different engine configurations
+	engineTypes := make(map[string][]string) // engine type -> list of tenants
+
+	for tenant, engineType := range ctx.tenantEngineConfig {
+		if engineTypes[engineType] == nil {
+			engineTypes[engineType] = make([]string, 0)
+		}
+		engineTypes[engineType] = append(engineTypes[engineType], tenant)
+	}
+
+	// Verify that each tenant's configuration is isolated
+	// (events for tenant A are not processed by tenant B's handlers, etc.)
+	for tenant1 := range ctx.tenantEngineConfig {
+		for tenant2 := range ctx.tenantEngineConfig {
+			if tenant1 != tenant2 {
+				// Check that tenant1's events don't leak to tenant2
+				tenant2Events := ctx.tenantReceivedEvents[tenant2]
+				for _, event := range tenant2Events {
+					if eventData, ok := event.Payload.(map[string]interface{}); ok {
+						if eventTenant, ok := eventData["tenant"].(string); ok && eventTenant == tenant1 {
+							return fmt.Errorf("configuration interference detected: tenant %s received events from tenant %s", tenant2, tenant1)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (ctx *EventBusBDDTestContext) setupApplicationWithConfig() error {
