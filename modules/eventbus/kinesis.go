@@ -110,7 +110,7 @@ func NewKinesisEventBus(config map[string]interface{}) (EventBus, error) {
 	}
 	if shardCount, ok := config["shardCount"].(int); ok {
 		if shardCount < 1 || shardCount > 2147483647 {
-			return nil, fmt.Errorf("shard count out of valid range (1-2147483647): %d", shardCount)
+			return nil, fmt.Errorf("%w: shard count out of valid range (1-2147483647): %d", ErrInvalidShardCount, shardCount)
 		}
 		kinesisConfig.ShardCount = int32(shardCount)
 	}
