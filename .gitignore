@@ -41,3 +41,8 @@ go.work.sum
 .vscode/settings.json
 coverage.txt
 *-coverage.txt
+
+# Backup files
+*.backup
+*.bak
+*~

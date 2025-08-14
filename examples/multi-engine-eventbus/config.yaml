@@ -1,0 +1,49 @@
+# Multi-Engine EventBus Example Configuration
+# This configuration demonstrates multi-engine EventBus setup with Redis as primary external service
+
+# Application configuration
+name: "Multi-Engine EventBus Demo"
+environment: "development"
+
+# EventBus configuration with multiple engines and routing
+eventbus:
+  engines:
+    # Memory engine optimized for fast processing (user/auth events)
+    - name: "memory-fast"
+      type: "memory"
+      config:
+        maxEventQueueSize: 500
+        defaultEventBufferSize: 10
+        workerCount: 3
+        retentionDays: 1
+    
+    # Redis engine for durable messaging (system/health/notifications events)  
+    - name: "redis-primary"
+      type: "redis"
+      config:
+        url: "redis://localhost:6379"
+        db: 0
+        poolSize: 10
+    
+    # Custom memory engine with metrics (fallback for all other topics)
+    - name: "memory-reliable"
+      type: "custom"
+      config:
+        enableMetrics: true
+        maxEventQueueSize: 2000
+        defaultEventBufferSize: 50
+        metricsInterval: "30s"
+  
+  # Topic-based routing rules (processed in order)
+  routing:
+    # User and authentication events → fast memory engine
+    - topics: ["user.*", "auth.*"]
+      engine: "memory-fast"
+    
+    # System, health, and notification events → Redis engine
+    - topics: ["system.*", "health.*", "notifications.*"] 
+      engine: "redis-primary"
+    
+    # All other topics → reliable memory engine with metrics
+    - topics: ["*"]
+      engine: "memory-reliable"

@@ -1,0 +1,25 @@
+services:
+  # Redis for pub/sub messaging - the primary external service for this demo
+  redis:
+    image: redis:7-alpine
+    container_name: eventbus-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --protected-mode no
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - eventbus-network
+
+networks:
+  eventbus-network:
+    driver: bridge
+
+volumes:
+  redis_data:
