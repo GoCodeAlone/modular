@@ -4051,7 +4051,12 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithPerBackendCircuitBr
 			},
 		},
 	}
-
+	
+	err := ctx.setupApplicationWithConfig()
+	if err != nil {
+		return fmt.Errorf("failed to setup application: %w", err)
+	}
+	
 	return nil
 }
 
@@ -4095,7 +4100,8 @@ func (ctx *ReverseProxyBDDTestContext) differentBackendsFailAtDifferentRates() e
 	}))
 	defer backend2.Close()
 
-	// Configure with different backends
+	// Configure with different backends, but preserve the existing BackendCircuitBreakers
+	oldConfig := ctx.config
 	ctx.config = &ReverseProxyConfig{
 		BackendServices: map[string]string{
 			"high-failure-backend": backend1.URL,
@@ -4109,6 +4115,9 @@ func (ctx *ReverseProxyBDDTestContext) differentBackendsFailAtDifferentRates() e
 			"high-failure-backend": {URL: backend1.URL},
 			"low-failure-backend":  {URL: backend2.URL},
 		},
+		// Preserve circuit breaker configuration from the Given step
+		CircuitBreakerConfig:   oldConfig.CircuitBreakerConfig,
+		BackendCircuitBreakers: oldConfig.BackendCircuitBreakers,
 	}
 
 	// Re-setup application
@@ -4159,24 +4168,41 @@ func (ctx *ReverseProxyBDDTestContext) differentBackendsFailAtDifferentRates() e
 }
 
 func (ctx *ReverseProxyBDDTestContext) eachBackendShouldUseItsSpecificCircuitBreakerConfiguration() error {
-	// Verify per-backend circuit breaker configuration without re-initializing
-	// Just check that the configuration was set up correctly
-	if ctx.config == nil {
-		return fmt.Errorf("configuration not available")
+	// Verify per-backend circuit breaker configuration in the actual service
+	// Check the service config instead of ctx.config
+	if ctx.service == nil {
+		err := ctx.ensureServiceInitialized()
+		if err != nil {
+			return fmt.Errorf("failed to initialize service: %w", err)
+		}
 	}
 
-	criticalConfig, exists := ctx.config.BackendCircuitBreakers["critical"]
+	if ctx.service.config == nil {
+		return fmt.Errorf("service configuration not available")
+	}
+
+	if ctx.service.config.BackendCircuitBreakers == nil {
+		return fmt.Errorf("BackendCircuitBreakers map is nil in service config")
+	}
+
+	// Debug: print all available keys
+	var availableKeys []string
+	for key := range ctx.service.config.BackendCircuitBreakers {
+		availableKeys = append(availableKeys, key)
+	}
+
+	criticalConfig, exists := ctx.service.config.BackendCircuitBreakers["critical"]
 	if !exists {
-		return fmt.Errorf("critical backend circuit breaker config not found")
+		return fmt.Errorf("critical backend circuit breaker config not found in service config, available keys: %v", availableKeys)
 	}
 
 	if criticalConfig.FailureThreshold != 2 {
 		return fmt.Errorf("expected failure threshold 2 for critical backend, got %d", criticalConfig.FailureThreshold)
 	}
 
-	nonCriticalConfig, exists := ctx.config.BackendCircuitBreakers["non-critical"]
+	nonCriticalConfig, exists := ctx.service.config.BackendCircuitBreakers["non-critical"]
 	if !exists {
-		return fmt.Errorf("non-critical backend circuit breaker config not found")
+		return fmt.Errorf("non-critical backend circuit breaker config not found in service config, available keys: %v", availableKeys)
 	}
 
 	if nonCriticalConfig.FailureThreshold != 10 {

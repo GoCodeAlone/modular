@@ -23,7 +23,7 @@ func TestFeatureFlagEvaluatorServiceExposure(t *testing.T) {
 			name: "FeatureFlagsDisabled",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				FeatureFlags: FeatureFlagsConfig{
 					Enabled: false,
@@ -35,7 +35,7 @@ func TestFeatureFlagEvaluatorServiceExposure(t *testing.T) {
 			name: "FeatureFlagsEnabledNoDefaults",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				FeatureFlags: FeatureFlagsConfig{
 					Enabled: true,
@@ -48,7 +48,7 @@ func TestFeatureFlagEvaluatorServiceExposure(t *testing.T) {
 			name: "FeatureFlagsEnabledWithDefaults",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				FeatureFlags: FeatureFlagsConfig{
 					Enabled: true,
@@ -200,7 +200,7 @@ func TestFeatureFlagEvaluatorServiceDependencyResolution(t *testing.T) {
 	// Register the module configuration with the module app
 	moduleApp.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(&ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"test": "http://test:8080",
+			"test": "http://127.0.0.1:18080",
 		},
 		FeatureFlags: FeatureFlagsConfig{
 			Enabled: true,
@@ -216,7 +216,7 @@ func TestFeatureFlagEvaluatorServiceDependencyResolution(t *testing.T) {
 	// Set configuration with feature flags enabled
 	module.config = &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"test": "http://test:8080",
+			"test": "http://127.0.0.1:18080",
 		},
 		FeatureFlags: FeatureFlagsConfig{
 			Enabled: true,
