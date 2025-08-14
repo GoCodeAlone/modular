@@ -22,8 +22,8 @@ func TestDebugHandler(t *testing.T) {
 	// Create a mock reverse proxy config
 	proxyConfig := &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"primary":   "http://primary.example.com",
-			"secondary": "http://secondary.example.com",
+			"primary":   "http://127.0.0.1:19082",
+			"secondary": "http://127.0.0.1:19083",
 		},
 		Routes: map[string]string{
 			"/api/v1/users": "primary",
@@ -131,8 +131,8 @@ func TestDebugHandler(t *testing.T) {
 			assert.Contains(t, response, "defaultBackend")
 
 			backendServices := response["backendServices"].(map[string]interface{})
-			assert.Equal(t, "http://primary.example.com", backendServices["primary"])
-			assert.Equal(t, "http://secondary.example.com", backendServices["secondary"])
+			assert.Equal(t, "http://127.0.0.1:19082", backendServices["primary"])
+			assert.Equal(t, "http://127.0.0.1:19083", backendServices["secondary"])
 		})
 
 		t.Run("FlagsEndpoint", func(t *testing.T) {
@@ -287,7 +287,7 @@ func TestDebugHandlerWithMocks(t *testing.T) {
 
 	proxyConfig := &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"primary": "http://primary.example.com",
+			"primary": "http://127.0.0.1:19082",
 		},
 		Routes:         map[string]string{},
 		DefaultBackend: "primary",
@@ -328,7 +328,7 @@ func TestDebugHandlerWithMocks(t *testing.T) {
 		mockHealthCheckers := map[string]*HealthChecker{
 			"primary": NewHealthChecker(
 				&HealthCheckConfig{Enabled: true},
-				map[string]string{"primary": "http://primary.example.com"},
+				map[string]string{"primary": "http://127.0.0.1:19082"},
 				&http.Client{},
 				logger.WithGroup("health"),
 			),
