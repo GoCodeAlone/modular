@@ -40,7 +40,7 @@ type KinesisConfig struct {
 	AccessKeyID     string `json:"accessKeyId"`
 	SecretAccessKey string `json:"secretAccessKey"`
 	SessionToken    string `json:"sessionToken"`
-	ShardCount      int    `json:"shardCount"`
+	ShardCount      int32  `json:"shardCount"`
 }
 
 // kinesisSubscription represents a subscription in the Kinesis event bus
@@ -109,7 +109,10 @@ func NewKinesisEventBus(config map[string]interface{}) (EventBus, error) {
 		kinesisConfig.SessionToken = sessionToken
 	}
 	if shardCount, ok := config["shardCount"].(int); ok {
-		kinesisConfig.ShardCount = shardCount
+		if shardCount < 1 || shardCount > 2147483647 {
+			return nil, fmt.Errorf("shard count out of valid range (1-2147483647): %d", shardCount)
+		}
+		kinesisConfig.ShardCount = int32(shardCount)
 	}
 
 	// Create AWS config
@@ -141,16 +144,14 @@ func (k *KinesisEventBus) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		// Stream doesn't exist, create it
-		// Check for valid shard count to prevent overflow
-		if k.config.ShardCount < 1 || k.config.ShardCount > 2147483647 { // max int32 value
-			return fmt.Errorf("%w: shard count out of valid range (1-2147483647): %d", ErrInvalidShardCount, k.config.ShardCount)
+		// Check for valid shard count
+		if k.config.ShardCount < 1 {
+			return fmt.Errorf("%w: shard count must be positive: %d", ErrInvalidShardCount, k.config.ShardCount)
 		}
 
-		// Safe conversion after validation
-		shardCount := int32(k.config.ShardCount)
 		_, err := k.client.CreateStream(ctx, &kinesis.CreateStreamInput{
 			StreamName: &k.config.StreamName,
-			ShardCount: &shardCount,
+			ShardCount: &k.config.ShardCount,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create Kinesis stream: %w", err)
