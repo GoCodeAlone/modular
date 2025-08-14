@@ -174,8 +174,34 @@ func (ctx *ReverseProxyBDDTestContext) backendHealthStatusesShouldReflectCustomE
 		return fmt.Errorf("health status not available for backends")
 	}
 
-	// In a real implementation, these would differ based on the custom endpoint responses
-	// For now, just verify that both statuses exist and can be different
+	// Verify that the healthy backend is actually healthy
+	// It should respond with 200 OK on /custom-health
+	if !healthyStatus.Healthy {
+		return fmt.Errorf("healthy-backend should be healthy but is reported as unhealthy")
+	}
+	if !healthyStatus.HealthCheckPassing {
+		return fmt.Errorf("healthy-backend health check should be passing but is reported as failing")
+	}
+
+	// Verify that the unhealthy backend is actually unhealthy
+	// It should respond with 503 Service Unavailable on /different-health
+	if unhealthyStatus.Healthy {
+		return fmt.Errorf("unhealthy-backend should be unhealthy but is reported as healthy")
+	}
+	if unhealthyStatus.HealthCheckPassing {
+		return fmt.Errorf("unhealthy-backend health check should be failing but is reported as passing")
+	}
+
+	// Verify that the unhealthy backend has error information
+	if unhealthyStatus.LastError == "" {
+		return fmt.Errorf("unhealthy-backend should have error information but LastError is empty")
+	}
+
+	// Verify that both backends have different health check results
+	if healthyStatus.Healthy == unhealthyStatus.Healthy {
+		return fmt.Errorf("backends should have different health statuses but both are the same")
+	}
+
 	return nil
 }
 
