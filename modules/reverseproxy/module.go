@@ -588,7 +588,10 @@ func (m *ReverseProxyModule) OnTenantRegistered(tenantID modular.TenantID) {
 	// The actual configuration will be loaded in Start() or when needed
 	m.tenants[tenantID] = nil
 
-	m.app.Logger().Debug("Tenant registered with reverseproxy module", "tenantID", tenantID)
+	// Check if app is available (module might not be fully initialized yet)
+	if m.app != nil && m.app.Logger() != nil {
+		m.app.Logger().Debug("Tenant registered with reverseproxy module", "tenantID", tenantID)
+	}
 }
 
 // loadTenantConfigs loads all tenant-specific configurations.
@@ -626,7 +629,11 @@ func (m *ReverseProxyModule) loadTenantConfigs() {
 func (m *ReverseProxyModule) OnTenantRemoved(tenantID modular.TenantID) {
 	// Clean up tenant-specific resources
 	delete(m.tenants, tenantID)
-	m.app.Logger().Info("Tenant removed from reverseproxy module", "tenantID", tenantID)
+
+	// Check if app is available (module might not be fully initialized yet)
+	if m.app != nil && m.app.Logger() != nil {
+		m.app.Logger().Info("Tenant removed from reverseproxy module", "tenantID", tenantID)
+	}
 }
 
 // ProvidesServices returns the services provided by this module.

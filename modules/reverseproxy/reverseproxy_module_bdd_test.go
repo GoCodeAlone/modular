@@ -64,7 +64,7 @@ func (ctx *ReverseProxyBDDTestContext) makeRequestThroughModule(method, path str
 				break
 			}
 		}
-		
+
 		// If no match found, create a catch-all handler from the module
 		if handler == nil {
 			handler = ctx.service.createTenantAwareCatchAllHandler()
@@ -670,7 +670,7 @@ func (ctx *ReverseProxyBDDTestContext) theProxyShouldDetectTheFailure() error {
 	maxWaitTime := 6 * time.Second // More than 2x the health check interval
 	waitInterval := 500 * time.Millisecond
 	hasUnhealthyBackend := false
-	
+
 	for waited := time.Duration(0); waited < maxWaitTime; waited += waitInterval {
 		// Trigger health check by attempting to get status again
 		healthStatus = ctx.service.healthChecker.GetHealthStatus()
@@ -683,12 +683,12 @@ func (ctx *ReverseProxyBDDTestContext) theProxyShouldDetectTheFailure() error {
 					break
 				}
 			}
-			
+
 			if hasUnhealthyBackend {
 				break
 			}
 		}
-		
+
 		// Wait a bit before checking again
 		time.Sleep(waitInterval)
 	}
@@ -724,7 +724,7 @@ func (ctx *ReverseProxyBDDTestContext) routeTrafficOnlyToHealthyBackends() error
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("unhealthy"))
 		} else {
-			w.WriteHeader(http.StatusInternalServerError) 
+			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("unhealthy-backend-response"))
 		}
 	}))
@@ -755,7 +755,7 @@ func (ctx *ReverseProxyBDDTestContext) routeTrafficOnlyToHealthyBackends() error
 		if string(body) == "unhealthy-backend-response" {
 			return fmt.Errorf("request was routed to unhealthy backend")
 		}
-		
+
 		if resp.StatusCode == http.StatusInternalServerError {
 			return fmt.Errorf("received error response, suggesting unhealthy backend was used")
 		}
@@ -813,7 +813,7 @@ func (ctx *ReverseProxyBDDTestContext) aBackendFailsRepeatedly() error {
 	if ctx.controlledFailureMode == nil {
 		return fmt.Errorf("controlled failure mode not available")
 	}
-	
+
 	*ctx.controlledFailureMode = true
 
 	// Make multiple requests to trigger circuit breaker
@@ -859,7 +859,7 @@ func (ctx *ReverseProxyBDDTestContext) theCircuitBreakerShouldOpen() error {
 	// Verify response suggests circuit breaker behavior
 	body, _ := io.ReadAll(resp.Body)
 	responseText := string(body)
-	
+
 	// The response should indicate some form of failure handling or circuit behavior
 	if len(responseText) == 0 {
 		return fmt.Errorf("expected error response body indicating circuit breaker state")
@@ -1083,7 +1083,7 @@ func (ctx *ReverseProxyBDDTestContext) tenantIsolationShouldBeMaintained() error
 	// Make request with tenant A
 	req1 := httptest.NewRequest("GET", "/test", nil)
 	req1.Header.Set("X-Tenant-ID", "tenant-a")
-	
+
 	resp1, err := ctx.makeRequestThroughModule("GET", "/test?tenant=a", nil)
 	if err != nil {
 		return fmt.Errorf("failed to make tenant-a request: %w", err)
@@ -1297,7 +1297,7 @@ func (ctx *ReverseProxyBDDTestContext) theModuleIsStopped() error {
 
 func (ctx *ReverseProxyBDDTestContext) ongoingRequestsShouldBeCompleted() error {
 	// Implement real graceful shutdown testing with a long-running endpoint
-	
+
 	if ctx.app == nil {
 		return fmt.Errorf("application not available")
 	}
@@ -1327,11 +1327,11 @@ func (ctx *ReverseProxyBDDTestContext) ongoingRequestsShouldBeCompleted() error 
 	// Start a long-running request in a goroutine
 	requestCompleted := make(chan bool)
 	requestStarted := make(chan bool)
-	
+
 	go func() {
 		defer func() { requestCompleted <- true }()
 		requestStarted <- true
-		
+
 		// Make a request that will take time to complete
 		resp, err := ctx.makeRequestThroughModule("GET", "/slow/test", nil)
 		if err == nil && resp != nil {
@@ -1349,10 +1349,10 @@ func (ctx *ReverseProxyBDDTestContext) ongoingRequestsShouldBeCompleted() error 
 
 	// Wait for request to start
 	<-requestStarted
-	
+
 	// Give the request a moment to begin processing
 	time.Sleep(50 * time.Millisecond)
-	
+
 	// Now stop the application - this should wait for ongoing requests
 	stopCompleted := make(chan error)
 	go func() {
@@ -1385,7 +1385,7 @@ func (ctx *ReverseProxyBDDTestContext) newRequestsShouldBeRejectedGracefully() e
 		// During shutdown, errors are expected and acceptable as part of graceful rejection
 		return nil
 	}
-	
+
 	if resp != nil {
 		defer resp.Body.Close()
 		// If we get a response, it should be an error status indicating shutdown
@@ -1422,7 +1422,7 @@ func TestReverseProxyModuleBDD(t *testing.T) {
 			s.Then(`^the proxy service should be available$`, ctx.theProxyServiceShouldBeAvailable)
 			s.Then(`^the module should be ready to route requests$`, ctx.theModuleShouldBeReadyToRouteRequests)
 
-			// Single Backend Scenarios  
+			// Single Backend Scenarios
 			s.Given(`^I have a reverse proxy configured with a single backend$`, ctx.iHaveAReverseProxyConfiguredWithASingleBackend)
 			s.When(`^I send a request to the proxy$`, ctx.iSendARequestToTheProxy)
 			s.Then(`^the request should be forwarded to the backend$`, ctx.theRequestShouldBeForwardedToTheBackend)
@@ -1486,5 +1486,3 @@ func TestReverseProxyModuleBDD(t *testing.T) {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
 }
-
-

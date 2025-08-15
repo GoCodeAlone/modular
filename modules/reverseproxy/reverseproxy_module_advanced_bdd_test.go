@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 )
+
 // Feature Flag Scenarios
 
 func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithRouteLevelFeatureFlagsConfigured() error {
@@ -280,8 +281,8 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithTenantSpecificFeatu
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"backend": "tenant-1",
-			"tenant": tenantID,
-			"path": r.URL.Path,
+			"tenant":  tenantID,
+			"path":    r.URL.Path,
 		})
 	}))
 	defer func() { ctx.testServers = append(ctx.testServers, backend1) }()
@@ -290,9 +291,9 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithTenantSpecificFeatu
 		tenantID := r.Header.Get("X-Tenant-ID")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"backend": "tenant-2", 
-			"tenant": tenantID,
-			"path": r.URL.Path,
+			"backend": "tenant-2",
+			"tenant":  tenantID,
+			"path":    r.URL.Path,
 		})
 	}))
 	defer func() { ctx.testServers = append(ctx.testServers, backend2) }()
@@ -306,12 +307,12 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithTenantSpecificFeatu
 		},
 		Routes: map[string]string{
 			"/tenant1/*": "tenant1-backend",
-			"/tenant2/*": "tenant2-backend", 
+			"/tenant2/*": "tenant2-backend",
 		},
 		FeatureFlags: FeatureFlagsConfig{
 			Enabled: true,
 			Flags: map[string]bool{
-				"route-rewriting": true,
+				"route-rewriting":  true,
 				"advanced-routing": false,
 			},
 		},
@@ -326,7 +327,7 @@ func (ctx *ReverseProxyBDDTestContext) requestsAreMadeWithDifferentTenantContext
 
 func (ctx *ReverseProxyBDDTestContext) featureFlagsShouldBeEvaluatedPerTenant() error {
 	// Implement real verification of tenant-specific flag evaluation
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -385,7 +386,7 @@ func (ctx *ReverseProxyBDDTestContext) featureFlagsShouldBeEvaluatedPerTenant() 
 		_ = string(bodyA) // Store tenant A response
 	}
 
-	// Test tenant B requests  
+	// Test tenant B requests
 	reqB := httptest.NewRequest("GET", "/api/test", nil)
 	reqB.Header.Set("X-Tenant-ID", "tenant-b")
 
@@ -403,13 +404,13 @@ func (ctx *ReverseProxyBDDTestContext) featureFlagsShouldBeEvaluatedPerTenant() 
 	// If both requests succeed, feature flag evaluation per tenant is working
 	// The specific routing behavior depends on the feature flag configuration
 	// The key test is that tenant-aware processing occurs without errors
-	
+
 	if respA != nil && respA.StatusCode >= 200 && respA.StatusCode < 600 {
 		// Valid response for tenant A
 	}
-	
+
 	if respB != nil && respB.StatusCode >= 200 && respB.StatusCode < 600 {
-		// Valid response for tenant B  
+		// Valid response for tenant B
 	}
 
 	// Success: tenant-specific feature flag evaluation is functional
@@ -627,8 +628,8 @@ func (ctx *ReverseProxyBDDTestContext) comparisonResultsShouldBeLoggedWithFlagCo
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"flag-context": r.Header.Get("X-Feature-Context"),
-			"backend": "flag-aware",
-			"path": r.URL.Path,
+			"backend":      "flag-aware",
+			"path":         r.URL.Path,
 		})
 	}))
 	defer func() { ctx.testServers = append(ctx.testServers, backend) }()
@@ -849,7 +850,7 @@ func (ctx *ReverseProxyBDDTestContext) pathsShouldBeRewrittenAccordingToEndpoint
 
 func (ctx *ReverseProxyBDDTestContext) endpointSpecificRulesShouldOverrideBackendRules() error {
 	// Implement real verification of rule precedence - endpoint rules should override backend rules
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -869,7 +870,7 @@ func (ctx *ReverseProxyBDDTestContext) endpointSpecificRulesShouldOverrideBacken
 		},
 		Routes: map[string]string{
 			"/api/*":   "api-backend",
-			"/users/*": "api-backend", 
+			"/users/*": "api-backend",
 		},
 		BackendConfigs: map[string]BackendServiceConfig{
 			"api-backend": {
@@ -903,9 +904,9 @@ func (ctx *ReverseProxyBDDTestContext) endpointSpecificRulesShouldOverrideBacken
 
 	apiBody, _ := io.ReadAll(apiResp.Body)
 	apiPath := string(apiBody)
-	
+
 	// Test users endpoint - should use endpoint-specific rule (override)
-	usersResp, err := ctx.makeRequestThroughModule("GET", "/users/123", nil)  
+	usersResp, err := ctx.makeRequestThroughModule("GET", "/users/123", nil)
 	if err != nil {
 		return fmt.Errorf("failed to make users request: %w", err)
 	}
@@ -932,7 +933,7 @@ func (ctx *ReverseProxyBDDTestContext) endpointSpecificRulesShouldOverrideBacken
 	if apiResp.StatusCode != http.StatusOK {
 		return fmt.Errorf("API request should succeed for rule precedence test")
 	}
-	
+
 	if usersResp.StatusCode != http.StatusOK {
 		return fmt.Errorf("users request should succeed for rule precedence test")
 	}
@@ -1023,7 +1024,7 @@ func (ctx *ReverseProxyBDDTestContext) hostHeadersShouldBeHandledAccordingToConf
 
 func (ctx *ReverseProxyBDDTestContext) customHostnamesShouldBeAppliedWhenSpecified() error {
 	// Implement real verification of custom hostname application
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -1100,7 +1101,7 @@ func (ctx *ReverseProxyBDDTestContext) customHostnamesShouldBeAppliedWhenSpecifi
 	defer standardResp.Body.Close()
 
 	if standardResp.StatusCode != http.StatusOK {
-		return fmt.Errorf("standard request should succeed")  
+		return fmt.Errorf("standard request should succeed")
 	}
 
 	// Parse standard response
@@ -1254,24 +1255,24 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithPerBackendCircuitBr
 			},
 		},
 	}
-	
+
 	err := ctx.setupApplicationWithConfig()
 	if err != nil {
 		return fmt.Errorf("failed to setup application: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (ctx *ReverseProxyBDDTestContext) differentBackendsFailAtDifferentRates() error {
 	// Implement real simulation of different failure patterns for different backends
-	
+
 	// Ensure service is initialized
 	err := ctx.ensureServiceInitialized()
 	if err != nil {
 		return fmt.Errorf("failed to ensure service initialization: %w", err)
 	}
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -1290,7 +1291,7 @@ func (ctx *ReverseProxyBDDTestContext) differentBackendsFailAtDifferentRates() e
 	}))
 	defer backend1.Close()
 
-	// Backend 2: Fails occasionally (low failure rate)  
+	// Backend 2: Fails occasionally (low failure rate)
 	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate low failure rate
 		if len(r.URL.Path)%10 < 2 { // 20% failure rate
@@ -1417,13 +1418,13 @@ func (ctx *ReverseProxyBDDTestContext) eachBackendShouldUseItsSpecificCircuitBre
 
 func (ctx *ReverseProxyBDDTestContext) circuitBreakerBehaviorShouldBeIsolatedPerBackend() error {
 	// Implement real verification of isolation between backend circuit breakers
-	
+
 	// Ensure service is initialized
 	err := ctx.ensureServiceInitialized()
 	if err != nil {
 		return fmt.Errorf("failed to ensure service initialization: %w", err)
 	}
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -1495,7 +1496,7 @@ func (ctx *ReverseProxyBDDTestContext) circuitBreakerBehaviorShouldBeIsolatedPer
 
 	if workingResp != nil {
 		defer workingResp.Body.Close()
-		
+
 		// Working backend should ideally return success, but during testing
 		// there might be various factors affecting the response
 		if workingResp.StatusCode == http.StatusOK {
@@ -1505,7 +1506,7 @@ func (ctx *ReverseProxyBDDTestContext) circuitBreakerBehaviorShouldBeIsolatedPer
 				return nil
 			}
 		}
-		
+
 		// If we don't get the ideal response, let's check if we at least get a response
 		// Different status codes might be acceptable depending on circuit breaker implementation
 		if workingResp.StatusCode >= 200 && workingResp.StatusCode < 600 {
@@ -1517,11 +1518,11 @@ func (ctx *ReverseProxyBDDTestContext) circuitBreakerBehaviorShouldBeIsolatedPer
 
 	// Test that failing backend is now circuit broken
 	failingResp, err := ctx.makeRequestThroughModule("GET", "/failing/test", nil)
-	
+
 	// Failing backend should be circuit broken or return error
 	if err == nil && failingResp != nil {
 		defer failingResp.Body.Close()
-		
+
 		// If we get a response, it should be an error or the same failure pattern
 		// (circuit breaker might still let some requests through depending on implementation)
 		if failingResp.StatusCode < 500 {
@@ -1574,7 +1575,7 @@ func (ctx *ReverseProxyBDDTestContext) testRequestsAreSentThroughHalfOpenCircuit
 
 func (ctx *ReverseProxyBDDTestContext) limitedRequestsShouldBeAllowedThrough() error {
 	// Implement real verification of half-open state behavior
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -1587,15 +1588,15 @@ func (ctx *ReverseProxyBDDTestContext) limitedRequestsShouldBeAllowedThrough() e
 
 	for i := 0; i < totalRequests; i++ {
 		resp, err := ctx.makeRequestThroughModule("GET", "/test/halfopen", nil)
-		
+
 		if err != nil {
 			errorCount++
 			continue
 		}
-		
+
 		if resp != nil {
 			defer resp.Body.Close()
-			
+
 			if resp.StatusCode < 400 {
 				successCount++
 			} else {
@@ -1604,7 +1605,7 @@ func (ctx *ReverseProxyBDDTestContext) limitedRequestsShouldBeAllowedThrough() e
 		} else {
 			errorCount++
 		}
-		
+
 		// Small delay between requests
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -1613,29 +1614,29 @@ func (ctx *ReverseProxyBDDTestContext) limitedRequestsShouldBeAllowedThrough() e
 	// If all requests succeed, circuit breaker might be fully closed
 	// If all requests fail, circuit breaker might be fully open
 	// Mixed results suggest half-open behavior
-	
+
 	if successCount > 0 && errorCount > 0 {
 		// Mixed results indicate half-open state behavior
 		return nil
 	}
-	
+
 	if successCount > 0 && errorCount == 0 {
 		// All requests succeeded - circuit breaker might be closed now (acceptable)
 		return nil
 	}
-	
+
 	if errorCount > 0 && successCount == 0 {
 		// All requests failed - might still be in open state (acceptable)
 		return nil
 	}
-	
+
 	// Even if we get limited success/failure patterns, that's acceptable for half-open state
 	return nil
 }
 
 func (ctx *ReverseProxyBDDTestContext) circuitStateShouldTransitionBasedOnResults() error {
 	// Implement real verification of state transitions
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -1744,18 +1745,18 @@ func (ctx *ReverseProxyBDDTestContext) circuitStateShouldTransitionBasedOnResult
 	// - Phase 2: Should have registered failures
 	// - Phase 3: Should show circuit breaker effect (failures/blocks)
 	// - Phase 4: Should show recovery
-	
+
 	if phase1Success == 0 {
 		return fmt.Errorf("expected initial success requests, but got none")
 	}
-	
+
 	if phase2Failures == 0 {
 		return fmt.Errorf("expected failure registration phase, but got none")
 	}
-	
+
 	// Phase 3 and 4 results can vary based on circuit breaker implementation,
 	// but the fact that we could make requests without crashes shows basic functionality
-	
+
 	return nil
 }
 
@@ -2006,7 +2007,7 @@ func (ctx *ReverseProxyBDDTestContext) routeSpecificTimeoutsShouldOverrideGlobal
 
 func (ctx *ReverseProxyBDDTestContext) timeoutBehaviorShouldBeAppliedPerRoute() error {
 	// Implement real per-route timeout behavior verification via actual requests
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
@@ -2061,13 +2062,13 @@ func (ctx *ReverseProxyBDDTestContext) timeoutBehaviorShouldBeAppliedPerRoute() 
 
 	// Test slow route - should timeout due to global timeout setting
 	slowResp, err := ctx.makeRequestThroughModule("GET", "/slow/test", nil)
-	
+
 	// We expect either an error or a timeout status for slow backend
 	if err != nil {
 		// Timeout errors are expected
 		if strings.Contains(err.Error(), "timeout") ||
-		   strings.Contains(err.Error(), "deadline") ||
-		   strings.Contains(err.Error(), "context") {
+			strings.Contains(err.Error(), "deadline") ||
+			strings.Contains(err.Error(), "context") {
 			return nil // Timeout behavior working correctly
 		}
 		return nil // Any error suggests timeout behavior
@@ -2075,21 +2076,21 @@ func (ctx *ReverseProxyBDDTestContext) timeoutBehaviorShouldBeAppliedPerRoute() 
 
 	if slowResp != nil {
 		defer slowResp.Body.Close()
-		
+
 		// Should get timeout-related error status for slow backend
 		if slowResp.StatusCode >= 500 {
 			body, _ := io.ReadAll(slowResp.Body)
 			bodyStr := string(body)
-			
+
 			// Look for timeout indicators
 			if strings.Contains(bodyStr, "timeout") ||
-			   strings.Contains(bodyStr, "deadline") ||
-			   slowResp.StatusCode == http.StatusGatewayTimeout ||
-			   slowResp.StatusCode == http.StatusRequestTimeout {
+				strings.Contains(bodyStr, "deadline") ||
+				slowResp.StatusCode == http.StatusGatewayTimeout ||
+				slowResp.StatusCode == http.StatusRequestTimeout {
 				return nil // Timeout applied correctly
 			}
 		}
-		
+
 		// Even success responses are acceptable if they come back quickly
 		// (might indicate timeout prevented long wait)
 		if slowResp.StatusCode < 400 {
@@ -2138,7 +2139,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyConfiguredForErrorHandl
 
 func (ctx *ReverseProxyBDDTestContext) backendsReturnErrorResponses() error {
 	// Configure test server to return errors on certain paths for error response testing
-	
+
 	// Ensure service is available before testing
 	err := ctx.ensureServiceInitialized()
 	if err != nil {
@@ -2195,43 +2196,43 @@ func (ctx *ReverseProxyBDDTestContext) errorResponsesShouldBeProperlyHandled() e
 
 func (ctx *ReverseProxyBDDTestContext) appropriateClientResponsesShouldBeReturned() error {
 	// Implement real error response handling verification
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
 
 	// Make requests to test error response handling
 	testPaths := []string{"/error/400", "/error/500", "/error/timeout"}
-	
+
 	for _, path := range testPaths {
 		resp, err := ctx.makeRequestThroughModule("GET", path, nil)
-		
+
 		if err != nil {
 			// Errors can be appropriate client responses for error handling
 			continue
 		}
-		
+
 		if resp != nil {
 			defer resp.Body.Close()
-			
+
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
-			
+
 			// Verify that error responses are handled appropriately:
 			// 1. Status codes should be reasonable (not causing crashes)
 			// 2. Response body should exist and be reasonable
 			// 3. Content-Type should be set appropriately
-			
+
 			// Check that we got a response with proper headers
 			if resp.Header.Get("Content-Type") == "" && len(body) > 0 {
 				return fmt.Errorf("error responses should have proper Content-Type headers")
 			}
-			
+
 			// Check status codes are in valid ranges
 			if resp.StatusCode < 100 || resp.StatusCode > 599 {
 				return fmt.Errorf("invalid HTTP status code in error response: %d", resp.StatusCode)
 			}
-			
+
 			// For error paths, we expect either client or server error status
 			if strings.Contains(path, "/error/") {
 				if resp.StatusCode >= 400 && resp.StatusCode < 600 {
@@ -2245,14 +2246,14 @@ func (ctx *ReverseProxyBDDTestContext) appropriateClientResponsesShouldBeReturne
 					}
 				}
 			}
-			
+
 			// Check that response body exists for error cases
 			if resp.StatusCode >= 400 && len(body) == 0 {
 				return fmt.Errorf("error responses should have response body, got empty body for status %d", resp.StatusCode)
 			}
 		}
 	}
-	
+
 	// If we got here without errors, error response handling is working appropriately
 	return nil
 }
@@ -2291,27 +2292,27 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyConfiguredForConnection
 
 func (ctx *ReverseProxyBDDTestContext) backendConnectionsFail() error {
 	// Implement actual backend connection failure validation
-	
+
 	// Ensure service is initialized first
 	err := ctx.ensureServiceInitialized()
 	if err != nil {
 		return fmt.Errorf("failed to ensure service initialization: %w", err)
 	}
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available after initialization")
 	}
 
 	// Make a request to verify that backends are actually failing to connect
 	resp, err := ctx.makeRequestThroughModule("GET", "/api/health", nil)
-	
+
 	// We expect either an error or an error status response
 	if err != nil {
 		// Connection errors indicate backend failure - this is expected
 		if strings.Contains(err.Error(), "connection") ||
-		   strings.Contains(err.Error(), "dial") ||
-		   strings.Contains(err.Error(), "refused") ||
-		   strings.Contains(err.Error(), "timeout") {
+			strings.Contains(err.Error(), "dial") ||
+			strings.Contains(err.Error(), "refused") ||
+			strings.Contains(err.Error(), "timeout") {
 			return nil // Backend connections are indeed failing
 		}
 		// Any error suggests backend failure
@@ -2320,23 +2321,23 @@ func (ctx *ReverseProxyBDDTestContext) backendConnectionsFail() error {
 
 	if resp != nil {
 		defer resp.Body.Close()
-		
+
 		// Check if we get an error status indicating backend failure
 		if resp.StatusCode >= 500 {
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
-			
+
 			// Look for indicators of backend connection failure
 			if strings.Contains(bodyStr, "connection") ||
-			   strings.Contains(bodyStr, "dial") ||
-			   strings.Contains(bodyStr, "refused") ||
-			   strings.Contains(bodyStr, "proxy error") ||
-			   resp.StatusCode == http.StatusBadGateway ||
-			   resp.StatusCode == http.StatusServiceUnavailable {
+				strings.Contains(bodyStr, "dial") ||
+				strings.Contains(bodyStr, "refused") ||
+				strings.Contains(bodyStr, "proxy error") ||
+				resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable {
 				return nil // Backend connections are failing as expected
 			}
 		}
-		
+
 		// If we get a successful response, backends might not be failing
 		if resp.StatusCode < 400 {
 			return fmt.Errorf("expected backend connection failures, but got success status %d", resp.StatusCode)
@@ -2349,9 +2350,9 @@ func (ctx *ReverseProxyBDDTestContext) backendConnectionsFail() error {
 
 func (ctx *ReverseProxyBDDTestContext) connectionFailuresShouldBeHandledGracefully() error {
 	// Implement real connection failure testing instead of just configuration checking
-	
+
 	if ctx.service == nil {
-		return fmt.Errorf("service not available")  
+		return fmt.Errorf("service not available")
 	}
 
 	// Make requests to the failing backend to test actual connection failure handling
@@ -2364,12 +2365,12 @@ func (ctx *ReverseProxyBDDTestContext) connectionFailuresShouldBeHandledGraceful
 		resp, err := ctx.makeRequestThroughModule("GET", "/api/test", nil)
 		lastErr = err
 		lastResp = resp
-		
+
 		if resp != nil {
 			responseCount++
 			defer resp.Body.Close()
 		}
-		
+
 		// Small delay between requests
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -2381,9 +2382,9 @@ func (ctx *ReverseProxyBDDTestContext) connectionFailuresShouldBeHandledGraceful
 
 	if lastErr != nil {
 		// Connection errors are acceptable and indicate graceful handling
-		if strings.Contains(lastErr.Error(), "connection") || 
-		   strings.Contains(lastErr.Error(), "dial") ||
-		   strings.Contains(lastErr.Error(), "refused") {
+		if strings.Contains(lastErr.Error(), "connection") ||
+			strings.Contains(lastErr.Error(), "dial") ||
+			strings.Contains(lastErr.Error(), "refused") {
 			return nil // Connection failures handled gracefully with errors
 		}
 		return nil // Any error is better than a crash
@@ -2394,24 +2395,24 @@ func (ctx *ReverseProxyBDDTestContext) connectionFailuresShouldBeHandledGraceful
 		if lastResp.StatusCode >= 500 {
 			body, _ := io.ReadAll(lastResp.Body)
 			bodyStr := string(body)
-			
+
 			// Should indicate connection failure handling
 			if strings.Contains(bodyStr, "error") ||
-			   strings.Contains(bodyStr, "unavailable") ||
-			   strings.Contains(bodyStr, "timeout") ||
-			   lastResp.StatusCode == http.StatusBadGateway ||
-			   lastResp.StatusCode == http.StatusServiceUnavailable {
+				strings.Contains(bodyStr, "unavailable") ||
+				strings.Contains(bodyStr, "timeout") ||
+				lastResp.StatusCode == http.StatusBadGateway ||
+				lastResp.StatusCode == http.StatusServiceUnavailable {
 				return nil // Error responses indicate graceful handling
 			}
 			// Any 5xx status is acceptable for connection failures
 			return nil
 		}
-		
+
 		// Success responses after connection failures suggest lack of proper handling
 		if lastResp.StatusCode < 400 {
 			return fmt.Errorf("expected error handling for connection failures, but got success status %d", lastResp.StatusCode)
 		}
-		
+
 		// 4xx status codes are also acceptable for connection failures
 		return nil
 	}
@@ -2435,20 +2436,20 @@ func (ctx *ReverseProxyBDDTestContext) connectionFailuresShouldBeHandledGraceful
 
 func (ctx *ReverseProxyBDDTestContext) circuitBreakersShouldRespondAppropriately() error {
 	// Implement real circuit breaker response verification to connection failures
-	
+
 	if ctx.service == nil {
 		return fmt.Errorf("service not available")
 	}
 
-	// Create a backend that will fail to simulate connection failures  
+	// Create a backend that will fail to simulate connection failures
 	failingBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// This handler won't be reached because we'll close the server
 		w.WriteHeader(http.StatusOK)
 	}))
-	
+
 	// Close the server immediately to simulate connection failure
 	failingBackend.Close()
-	
+
 	// Configure the reverse proxy with circuit breaker enabled
 	ctx.config = &ReverseProxyConfig{
 		BackendServices: map[string]string{
@@ -2490,7 +2491,7 @@ func (ctx *ReverseProxyBDDTestContext) circuitBreakersShouldRespondAppropriately
 
 	// Now make another request - circuit breaker should respond with appropriate error
 	resp, err := ctx.makeRequestThroughModule("GET", "/test/endpoint", nil)
-	
+
 	if err != nil {
 		// Circuit breaker may return error directly
 		if strings.Contains(err.Error(), "circuit") || strings.Contains(err.Error(), "timeout") {
@@ -2501,23 +2502,23 @@ func (ctx *ReverseProxyBDDTestContext) circuitBreakersShouldRespondAppropriately
 
 	if resp != nil {
 		defer resp.Body.Close()
-		
+
 		// Circuit breaker should return an error status code
 		if resp.StatusCode >= 500 {
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
-			
+
 			// Verify the response indicates circuit breaker behavior
-			if strings.Contains(bodyStr, "circuit") || 
-			   strings.Contains(bodyStr, "unavailable") || 
-			   strings.Contains(bodyStr, "timeout") ||
-			   resp.StatusCode == http.StatusBadGateway ||
-			   resp.StatusCode == http.StatusServiceUnavailable {
+			if strings.Contains(bodyStr, "circuit") ||
+				strings.Contains(bodyStr, "unavailable") ||
+				strings.Contains(bodyStr, "timeout") ||
+				resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable {
 				return nil // Circuit breaker is responding appropriately
 			}
 		}
-		
-		// If we get a successful response after multiple failures, 
+
+		// If we get a successful response after multiple failures,
 		// that suggests circuit breaker didn't engage properly
 		if resp.StatusCode < 400 {
 			return fmt.Errorf("circuit breaker should prevent requests after repeated failures, but got success response")

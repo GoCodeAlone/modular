@@ -31,7 +31,7 @@ func TestNewApplication(t *testing.T) {
 			want: &StdApplication{
 				cfgProvider:    nil,
 				cfgSections:    make(map[string]ConfigProvider),
-				svcRegistry:    make(ServiceRegistry),
+				svcRegistry:    ServiceRegistry{"logger": nil},
 				moduleRegistry: make(ModuleRegistry),
 				logger:         nil,
 			},
@@ -45,7 +45,7 @@ func TestNewApplication(t *testing.T) {
 			want: &StdApplication{
 				cfgProvider:    cp,
 				cfgSections:    make(map[string]ConfigProvider),
-				svcRegistry:    make(ServiceRegistry),
+				svcRegistry:    ServiceRegistry{"logger": log},
 				moduleRegistry: make(ModuleRegistry),
 				logger:         log,
 			},
