@@ -273,13 +273,18 @@ type StdApplication struct {
 //	    log.Fatal(err)
 //	}
 func NewStdApplication(cp ConfigProvider, logger Logger) Application {
-	return &StdApplication{
+	app := &StdApplication{
 		cfgProvider:    cp,
 		cfgSections:    make(map[string]ConfigProvider),
 		svcRegistry:    make(ServiceRegistry),
 		moduleRegistry: make(ModuleRegistry),
 		logger:         logger,
 	}
+	
+	// Register the logger as a service so modules can depend on it
+	app.svcRegistry["logger"] = logger
+	
+	return app
 }
 
 // ConfigProvider retrieves the application config provider
