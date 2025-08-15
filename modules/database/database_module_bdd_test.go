@@ -30,7 +30,7 @@ func (ctx *DatabaseBDDTestContext) resetContext() {
 		modular.ConfigFeeders = ctx.originalFeeders
 		ctx.originalFeeders = nil
 	}
-	
+
 	ctx.app = nil
 	ctx.module = nil
 	ctx.service = nil
@@ -43,68 +43,68 @@ func (ctx *DatabaseBDDTestContext) resetContext() {
 
 func (ctx *DatabaseBDDTestContext) iHaveAModularApplicationWithDatabaseModuleConfigured() error {
 	ctx.resetContext()
-	
+
 	// Save original feeders and disable env feeder for BDD tests
-	// This ensures BDD tests have full control over configuration  
+	// This ensures BDD tests have full control over configuration
 	ctx.originalFeeders = modular.ConfigFeeders
 	modular.ConfigFeeders = []modular.Feeder{} // No feeders for controlled testing
-	
+
 	// Create application with database config
 	logger := &testLogger{}
-	
+
 	// Create basic database configuration for testing
 	dbConfig := &Config{
 		Connections: map[string]*ConnectionConfig{
 			"default": {
-				Driver: "sqlite3",
-				DSN:    ":memory:",
+				Driver:             "sqlite3",
+				DSN:                ":memory:",
 				MaxOpenConnections: 10,
 				MaxIdleConnections: 5,
 			},
 		},
 		Default: "default",
 	}
-	
+
 	// Create provider with the database config - bypass instance-aware setup
 	dbConfigProvider := modular.NewStdConfigProvider(dbConfig)
-	
+
 	// Create app with empty main config
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewStdApplication(mainConfigProvider, logger)
-	
+
 	// Create and configure database module
 	ctx.module = NewModule()
-	
+
 	// Register module first (this will create the instance-aware config provider)
 	ctx.app.RegisterModule(ctx.module)
-	
-	// Now override the config section with our direct configuration 
+
+	// Now override the config section with our direct configuration
 	ctx.app.RegisterConfigSection("database", dbConfigProvider)
-	
+
 	// Initialize
 	if err := ctx.app.Init(); err != nil {
 		return fmt.Errorf("failed to initialize app: %v", err)
 	}
-	
+
 	// HACK: Manually set the config and reinitialize connections
 	// This is needed because the instance-aware provider doesn't get our config
 	ctx.module.config = dbConfig
 	if err := ctx.module.initializeConnections(); err != nil {
 		return fmt.Errorf("failed to initialize connections manually: %v", err)
 	}
-	
+
 	// Start the app
 	if err := ctx.app.Start(); err != nil {
 		return fmt.Errorf("failed to start app: %v", err)
 	}
-	
+
 	// Get the database service
 	var dbService DatabaseService
 	if err := ctx.app.GetService("database.service", &dbService); err != nil {
 		return fmt.Errorf("failed to get database service: %v", err)
 	}
 	ctx.service = dbService
-	
+
 	return nil
 }
 
@@ -140,7 +140,7 @@ func (ctx *DatabaseBDDTestContext) iExecuteASimpleSQLQuery() error {
 	if ctx.service == nil {
 		return fmt.Errorf("no database service available")
 	}
-	
+
 	// Execute a simple query like CREATE TABLE or SELECT 1
 	rows, err := ctx.service.Query("SELECT 1 as test_value")
 	if err != nil {
@@ -148,7 +148,7 @@ func (ctx *DatabaseBDDTestContext) iExecuteASimpleSQLQuery() error {
 		return nil
 	}
 	defer rows.Close()
-	
+
 	if rows.Next() {
 		var testValue int
 		if err := rows.Scan(&testValue); err != nil {
@@ -178,7 +178,7 @@ func (ctx *DatabaseBDDTestContext) iExecuteAParameterizedSQLQuery() error {
 	if ctx.service == nil {
 		return fmt.Errorf("no database service available")
 	}
-	
+
 	// Execute a parameterized query
 	rows, err := ctx.service.Query("SELECT ? as param_value", 42)
 	if err != nil {
@@ -186,7 +186,7 @@ func (ctx *DatabaseBDDTestContext) iExecuteAParameterizedSQLQuery() error {
 		return nil
 	}
 	defer rows.Close()
-	
+
 	if rows.Next() {
 		var paramValue int
 		if err := rows.Scan(&paramValue); err != nil {
@@ -219,7 +219,7 @@ func (ctx *DatabaseBDDTestContext) iTryToExecuteAQuery() error {
 		ctx.queryError = fmt.Errorf("no database service available")
 		return nil
 	}
-	
+
 	// Try to execute a query
 	_, ctx.queryError = ctx.service.Query("SELECT 1")
 	return nil
@@ -243,7 +243,7 @@ func (ctx *DatabaseBDDTestContext) iStartADatabaseTransaction() error {
 	if ctx.service == nil {
 		return fmt.Errorf("no database service available")
 	}
-	
+
 	// Start a transaction
 	tx, err := ctx.service.Begin()
 	if err != nil {
@@ -258,7 +258,7 @@ func (ctx *DatabaseBDDTestContext) iShouldBeAbleToExecuteQueriesWithinTheTransac
 	if ctx.transaction == nil {
 		return fmt.Errorf("no transaction started")
 	}
-	
+
 	// Execute query within transaction
 	_, err := ctx.transaction.Query("SELECT 1")
 	if err != nil {
@@ -272,7 +272,7 @@ func (ctx *DatabaseBDDTestContext) iShouldBeAbleToCommitOrRollbackTheTransaction
 	if ctx.transaction == nil {
 		return fmt.Errorf("no transaction to commit/rollback")
 	}
-	
+
 	// Try to commit transaction
 	err := ctx.transaction.Commit()
 	if err != nil {
@@ -292,7 +292,7 @@ func (ctx *DatabaseBDDTestContext) iMakeMultipleConcurrentDatabaseRequests() err
 	if ctx.service == nil {
 		return fmt.Errorf("no database service available")
 	}
-	
+
 	// Simulate multiple concurrent requests
 	for i := 0; i < 3; i++ {
 		go func() {
@@ -316,7 +316,7 @@ func (ctx *DatabaseBDDTestContext) iPerformAHealthCheck() error {
 	if ctx.service == nil {
 		return fmt.Errorf("no database service available")
 	}
-	
+
 	// Perform health check
 	err := ctx.service.Ping(context.Background())
 	ctx.healthStatus = (err == nil)

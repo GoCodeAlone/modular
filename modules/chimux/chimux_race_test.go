@@ -5,8 +5,8 @@ import (
 
 	"github.com/CrisisTextLine/modular"
 	"github.com/CrisisTextLine/modular/modules/chimux"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockTenantAwareModule simulates a module that changes initialization order
@@ -45,9 +45,9 @@ func TestChimuxTenantRaceConditionFixed(t *testing.T) {
 	t.Run("Chimux handles OnTenantRegistered gracefully when called before Init", func(t *testing.T) {
 		// Create chimux module but DO NOT call Init
 		module := chimux.NewChiMuxModule().(*chimux.ChiMuxModule)
-		
+
 		// This should NOT panic anymore due to the defensive nil check
-		// In the real scenario, this happens during application Init when 
+		// In the real scenario, this happens during application Init when
 		// tenant service registration triggers immediate tenant callbacks
 		assert.NotPanics(t, func() {
 			module.OnTenantRegistered(modular.TenantID("test-tenant"))
@@ -61,34 +61,34 @@ func TestChimuxTenantRaceConditionWithComplexDependencies(t *testing.T) {
 	t.Run("Simulate complex module dependency graph causing race condition", func(t *testing.T) {
 		// This test simulates what happens when modules like reverseproxy + launchdarkly
 		// or eventlogger/eventbus change the initialization order
-		
+
 		logger := &chimux.MockLogger{}
-		
+
 		// Create a simplified application that shows the race condition
 		app := modular.NewStdApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
-		
+
 		// Register modules in an order that will trigger the race condition
 		chimuxModule := chimux.NewChiMuxModule()
 		app.RegisterModule(chimuxModule)
-		
+
 		// Register mock tenant-aware modules that could affect initialization order
 		mockModule1 := NewMockTenantAwareModule("reverseproxy-mock")
-		mockModule2 := NewMockTenantAwareModule("launchdarkly-mock") 
+		mockModule2 := NewMockTenantAwareModule("launchdarkly-mock")
 		app.RegisterModule(mockModule1)
 		app.RegisterModule(mockModule2)
-		
+
 		// Create and register tenant service and config loader
 		// This is what triggers the race condition in real scenarios
 		tenantService := modular.NewStandardTenantService(logger)
 		app.RegisterService("tenantService", tenantService)
-		
+
 		// Register a mock tenant config loader
 		tenantConfigLoader := &MockTenantConfigLoader{}
 		app.RegisterService("tenantConfigLoader", tenantConfigLoader)
-		
+
 		// Register a tenant before initialization to simulate the race condition
 		tenantService.RegisterTenant("test-tenant", nil)
-		
+
 		// This Init call should NOT trigger the race condition anymore
 		// After our fix, it should work properly
 		err := app.Init()
@@ -109,24 +109,24 @@ func TestChimuxInitializationLifecycle(t *testing.T) {
 	t.Run("Verify chimux initialization state", func(t *testing.T) {
 		module := chimux.NewChiMuxModule().(*chimux.ChiMuxModule)
 		mockApp := chimux.NewMockApplication()
-		
+
 		// Before Init - router should be nil
 		assert.Nil(t, module.ChiRouter(), "Router should be nil before Init")
-		
+
 		// Register config
 		err := module.RegisterConfig(mockApp)
 		require.NoError(t, err)
-		
+
 		// Before Init - router should still be nil
 		assert.Nil(t, module.ChiRouter(), "Router should still be nil after RegisterConfig")
-		
+
 		// Init should create the router
 		err = module.Init(mockApp)
 		require.NoError(t, err)
-		
+
 		// After Init - router should be available
 		assert.NotNil(t, module.ChiRouter(), "Router should be available after Init")
-		
+
 		// Now tenant registration should be safe
 		require.NotPanics(t, func() {
 			module.OnTenantRegistered(modular.TenantID("test-tenant"))

@@ -629,7 +629,7 @@ func (m *ReverseProxyModule) loadTenantConfigs() {
 func (m *ReverseProxyModule) OnTenantRemoved(tenantID modular.TenantID) {
 	// Clean up tenant-specific resources
 	delete(m.tenants, tenantID)
-	
+
 	// Check if app is available (module might not be fully initialized yet)
 	if m.app != nil && m.app.Logger() != nil {
 		m.app.Logger().Info("Tenant removed from reverseproxy module", "tenantID", tenantID)

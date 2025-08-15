@@ -195,7 +195,7 @@ func (ctx *HTTPServerBDDTestContext) iHaveAnHTTPServerWithCustomTimeoutSettings(
 	// Create HTTP server configuration with custom timeouts
 	ctx.serverConfig = &HTTPServerConfig{
 		Host:         "127.0.0.1",
-		Port:         8081, // Fixed port for timeout testing
+		Port:         8081,            // Fixed port for timeout testing
 		ReadTimeout:  5 * time.Second, // Short timeout for testing
 		WriteTimeout: 5 * time.Second,
 		IdleTimeout:  10 * time.Second,
@@ -267,7 +267,7 @@ func (ctx *HTTPServerBDDTestContext) setupApplicationWithConfig() error {
 	if ctx.serverConfig.TLS != nil {
 	} else {
 	}
-	
+
 	logger := &testLogger{}
 
 	// Save and clear ConfigFeeders to prevent environment interference during tests
@@ -287,7 +287,7 @@ func (ctx *HTTPServerBDDTestContext) setupApplicationWithConfig() error {
 		IdleTimeout:     ctx.serverConfig.IdleTimeout,
 		ShutdownTimeout: ctx.serverConfig.ShutdownTimeout,
 	}
-	
+
 	// Copy TLS config if it exists
 	if ctx.serverConfig.TLS != nil {
 		configCopy.TLS = &TLSConfig{
@@ -648,7 +648,7 @@ func (ctx *HTTPServerBDDTestContext) theMiddlewareChainShouldExecuteInOrder() er
 
 func (ctx *HTTPServerBDDTestContext) iHaveATLSConfigurationWithoutCertificateFiles() error {
 	// Debug: print that this method is being called
-	
+
 	ctx.resetContext()
 
 	ctx.serverConfig = &HTTPServerConfig{
@@ -668,14 +668,14 @@ func (ctx *HTTPServerBDDTestContext) iHaveATLSConfigurationWithoutCertificateFil
 
 	ctx.isHTTPS = true
 	err := ctx.setupApplicationWithConfig()
-	
+
 	// Debug: check if our test config is still intact after setup
 	if ctx.serverConfig.TLS != nil {
 		// TLS configuration is available
 	} else {
 		// No TLS configuration
 	}
-	
+
 	return err
 }
 
@@ -684,7 +684,7 @@ func (ctx *HTTPServerBDDTestContext) theHTTPSServerIsStartedWithAutoGeneration()
 	if ctx.serverConfig.TLS != nil {
 	} else {
 	}
-	
+
 	return ctx.theHTTPServerIsStarted()
 }
 
@@ -697,19 +697,19 @@ func (ctx *HTTPServerBDDTestContext) theServerShouldGenerateSelfSignedCertificat
 	if ctx.serverConfig.TLS == nil {
 		return fmt.Errorf("debug: test config TLS is nil")
 	}
-	
+
 	// Debug: Let's check what config section we can get from the app
 	configSection, err := ctx.app.GetConfigSection("httpserver")
 	if err != nil {
 		return fmt.Errorf("debug: cannot get config section: %v", err)
 	}
-	
+
 	actualConfig := configSection.GetConfig().(*HTTPServerConfig)
 	if actualConfig.TLS == nil {
-		return fmt.Errorf("debug: actual config TLS is nil (test config TLS.Enabled=%v, TLS.AutoGenerate=%v)", 
+		return fmt.Errorf("debug: actual config TLS is nil (test config TLS.Enabled=%v, TLS.AutoGenerate=%v)",
 			ctx.serverConfig.TLS.Enabled, ctx.serverConfig.TLS.AutoGenerate)
 	}
-	
+
 	if !actualConfig.TLS.AutoGenerate {
 		return fmt.Errorf("auto-TLS not enabled: AutoGenerate is %v", actualConfig.TLS.AutoGenerate)
 	}

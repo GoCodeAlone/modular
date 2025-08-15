@@ -280,13 +280,13 @@ func (ctx *AuthBDDTestContext) iRefreshTheToken() error {
 
 	// First, create a user in the user store for refresh functionality
 	refreshUser := &User{
-		ID:       "refresh-user",
-		Email:    "refresh@example.com",
-		Active:   true,
-		Roles:    []string{"user"},
+		ID:          "refresh-user",
+		Email:       "refresh@example.com",
+		Active:      true,
+		Roles:       []string{"user"},
 		Permissions: []string{"read"},
 	}
-	
+
 	// Create the user in the store
 	if err := ctx.service.userStore.CreateUser(context.Background(), refreshUser); err != nil {
 		// If user already exists, that's fine

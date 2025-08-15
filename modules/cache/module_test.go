@@ -102,10 +102,10 @@ type mockConfigProvider struct{}
 
 func (m *mockConfigProvider) GetConfig() interface{} {
 	return &CacheConfig{
-		Engine:          "memory",
-		DefaultTTL:      300 * time.Second,
-		CleanupInterval: 60 * time.Second,  // Non-zero to avoid ticker panic
-		MaxItems:        10000,
+		Engine:           "memory",
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second, // Non-zero to avoid ticker panic
+		MaxItems:         10000,
 		ConnectionMaxAge: 3600 * time.Second,
 	}
 }
@@ -252,8 +252,8 @@ func TestRedisConfiguration(t *testing.T) {
 	// Override config for Redis
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
@@ -275,8 +275,8 @@ func TestRedisConfiguration(t *testing.T) {
 func TestRedisOperationsWithMockBehavior(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
@@ -318,8 +318,8 @@ func TestRedisOperationsWithMockBehavior(t *testing.T) {
 func TestRedisConfigurationEdgeCases(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "invalid-url",
 		RedisPassword:    "test-password",
@@ -339,8 +339,8 @@ func TestRedisConfigurationEdgeCases(t *testing.T) {
 func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
@@ -369,8 +369,8 @@ func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 func TestRedisConnectWithPassword(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "test-password",
@@ -399,8 +399,8 @@ func TestRedisJSONMarshaling(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
@@ -438,8 +438,8 @@ func TestRedisFullOperations(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
@@ -519,8 +519,8 @@ func TestRedisGetJSONUnmarshalError(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
@@ -552,8 +552,8 @@ func TestRedisGetWithServerError(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL: 300 * time.Second,
-		CleanupInterval: 60 * time.Second,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",

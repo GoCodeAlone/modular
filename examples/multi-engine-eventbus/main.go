@@ -161,7 +161,7 @@ func main() {
 	fmt.Println("  - redis-primary: Handles system.*, health.*, and notifications.* topics (Redis pub/sub, distributed)")
 	fmt.Println("  - memory-reliable: Handles fallback topics (in-memory with metrics)")
 	fmt.Println()
-	
+
 	// Check if external services are available
 	checkServiceAvailability(eventBusService)
 
@@ -180,20 +180,20 @@ func main() {
 
 	// Graceful shutdown with proper error handling
 	fmt.Println("\n🛑 Shutting down...")
-	
+
 	// Create a timeout context for shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
-	
+
 	err = app.Stop()
 	if err != nil {
 		// Log the error but don't exit with error code
 		// External services being unavailable during shutdown is expected
 		log.Printf("Warning during shutdown (this is normal if external services are unavailable): %v", err)
 	}
-	
+
 	fmt.Println("✅ Application shutdown complete")
-	
+
 	// Check if shutdown context was cancelled (timeout)
 	select {
 	case <-shutdownCtx.Done():
@@ -207,18 +207,18 @@ func main() {
 
 func setupEventHandlers(ctx context.Context, eventBus *eventbus.EventBusModule) {
 	fmt.Println("📡 Setting up event handlers (showing consumption patterns)...")
-	
+
 	// User event handlers (routed to memory-fast engine)
 	eventBus.Subscribe(ctx, "user.registered", func(ctx context.Context, event eventbus.Event) error {
 		userEvent := event.Payload.(UserEvent)
-		fmt.Printf("📨 [CONSUMED] User registered: %s (action: %s) → memory-fast engine\n", 
+		fmt.Printf("📨 [CONSUMED] User registered: %s (action: %s) → memory-fast engine\n",
 			userEvent.UserID, userEvent.Action)
 		return nil
 	})
 
 	eventBus.Subscribe(ctx, "user.login", func(ctx context.Context, event eventbus.Event) error {
 		userEvent := event.Payload.(UserEvent)
-		fmt.Printf("📨 [CONSUMED] User login: %s at %s → memory-fast engine\n", 
+		fmt.Printf("📨 [CONSUMED] User login: %s at %s → memory-fast engine\n",
 			userEvent.UserID, userEvent.Timestamp.Format("15:04:05"))
 		return nil
 	})
@@ -232,21 +232,21 @@ func setupEventHandlers(ctx context.Context, eventBus *eventbus.EventBusModule) 
 	// System event handlers (routed to redis-primary engine)
 	eventBus.Subscribe(ctx, "system.health", func(ctx context.Context, event eventbus.Event) error {
 		systemEvent := event.Payload.(SystemEvent)
-		fmt.Printf("📨 [CONSUMED] System %s: %s - %s → redis-primary engine\n", 
+		fmt.Printf("📨 [CONSUMED] System %s: %s - %s → redis-primary engine\n",
 			systemEvent.Level, systemEvent.Component, systemEvent.Message)
 		return nil
 	})
-	
+
 	eventBus.Subscribe(ctx, "health.check", func(ctx context.Context, event eventbus.Event) error {
 		systemEvent := event.Payload.(SystemEvent)
-		fmt.Printf("📨 [CONSUMED] Health check: %s - %s → redis-primary engine\n", 
+		fmt.Printf("📨 [CONSUMED] Health check: %s - %s → redis-primary engine\n",
 			systemEvent.Component, systemEvent.Message)
 		return nil
 	})
-	
+
 	eventBus.Subscribe(ctx, "notifications.alert", func(ctx context.Context, event eventbus.Event) error {
 		notificationEvent := event.Payload.(NotificationEvent)
-		fmt.Printf("📨 [CONSUMED] Notification alert: %s - %s → redis-primary engine\n", 
+		fmt.Printf("📨 [CONSUMED] Notification alert: %s - %s → redis-primary engine\n",
 			notificationEvent.Type, notificationEvent.Message)
 		return nil
 	})
@@ -256,7 +256,7 @@ func setupEventHandlers(ctx context.Context, eventBus *eventbus.EventBusModule) 
 		fmt.Printf("📨 [CONSUMED] Fallback event processed → memory-reliable engine\n")
 		return nil
 	})
-	
+
 	fmt.Println("✅ All event handlers configured and ready to consume events")
 	fmt.Println()
 }
@@ -322,9 +322,9 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 
 	// Health check events (also routed to redis-primary engine)
 	healthEvent := SystemEvent{
-		Component: "loadbalancer", 
-		Level: "info", 
-		Message: "All endpoints healthy", 
+		Component: "loadbalancer",
+		Level:     "info",
+		Message:   "All endpoints healthy",
 		Timestamp: now,
 	}
 	fmt.Printf("📤 [PUBLISHED] health.check: %s - %s\n", healthEvent.Component, healthEvent.Message)
@@ -337,9 +337,9 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 
 	// Notification events (also routed to redis-primary engine)
 	notificationEvent := NotificationEvent{
-		Type: "alert",
-		Message: "System resource usage high",
-		Priority: "medium",
+		Type:      "alert",
+		Message:   "System resource usage high",
+		Priority:  "medium",
 		Timestamp: now,
 	}
 	fmt.Printf("📤 [PUBLISHED] notifications.alert: %s - %s\n", notificationEvent.Type, notificationEvent.Message)
@@ -355,7 +355,7 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 	fmt.Println("🟡 Memory-Reliable Engine (Fallback):")
 	fmt.Printf("📤 [PUBLISHED] fallback.test: sample fallback event\n")
 	err = eventBus.Publish(ctx, "fallback.test", map[string]interface{}{
-		"message": "This event uses the fallback engine",
+		"message":   "This event uses the fallback engine",
 		"timestamp": now,
 	})
 	if err != nil {
@@ -366,7 +366,7 @@ func demonstrateMultiEngineEvents(ctx context.Context, eventBus *eventbus.EventB
 func showRoutingInfo(eventBus *eventbus.EventBusModule) {
 	fmt.Println()
 	fmt.Println("📋 Event Bus Routing Information:")
-	
+
 	// Show how different topics are routed
 	topics := []string{
 		"user.registered", "user.login", "auth.failed",
@@ -395,22 +395,22 @@ func showRoutingInfo(eventBus *eventbus.EventBusModule) {
 
 func checkServiceAvailability(eventBus *eventbus.EventBusModule) {
 	fmt.Println("🔍 Checking external service availability:")
-	
+
 	// Check Redis connectivity directly
 	redisAvailable := false
 	if conn, err := net.DialTimeout("tcp", "localhost:6379", 2*time.Second); err == nil {
 		conn.Close()
 		redisAvailable = true
 	}
-	
+
 	if redisAvailable {
 		fmt.Println("  ✅ Redis service is reachable on localhost:6379")
-		
+
 		// Now check if the EventBus router is using Redis
 		if eventBus != nil && eventBus.GetRouter() != nil {
 			redisTopics := []string{"system.test", "health.test", "notifications.test"}
 			routedToRedis := false
-			
+
 			for _, topic := range redisTopics {
 				engineName := eventBus.GetRouter().GetEngineForTopic(topic)
 				if engineName == "redis-primary" {
@@ -418,7 +418,7 @@ func checkServiceAvailability(eventBus *eventbus.EventBusModule) {
 					break
 				}
 			}
-			
+
 			if routedToRedis {
 				fmt.Println("  ✅ EventBus router is correctly routing to redis-primary engine")
 			} else {

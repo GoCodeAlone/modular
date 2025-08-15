@@ -50,14 +50,14 @@ func (ctx *SchedulerBDDTestContext) iHaveAModularApplicationWithSchedulerModuleC
 
 	// Create application
 	logger := &testLogger{}
-	
+
 	// Save and clear ConfigFeeders to prevent environment interference during tests
 	originalFeeders := modular.ConfigFeeders
 	modular.ConfigFeeders = []modular.Feeder{}
 	defer func() {
 		modular.ConfigFeeders = originalFeeders
 	}()
-	
+
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewStdApplication(mainConfigProvider, logger)
 
@@ -77,14 +77,14 @@ func (ctx *SchedulerBDDTestContext) iHaveAModularApplicationWithSchedulerModuleC
 
 func (ctx *SchedulerBDDTestContext) setupSchedulerModule() error {
 	logger := &testLogger{}
-	
+
 	// Save and clear ConfigFeeders to prevent environment interference during tests
 	originalFeeders := modular.ConfigFeeders
 	modular.ConfigFeeders = []modular.Feeder{}
 	defer func() {
 		modular.ConfigFeeders = originalFeeders
 	}()
-	
+
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewStdApplication(mainConfigProvider, logger)
 
@@ -126,13 +126,13 @@ func (ctx *SchedulerBDDTestContext) theSchedulerServiceShouldBeAvailable() error
 	if ctx.service == nil {
 		return fmt.Errorf("scheduler service not available")
 	}
-	
+
 	// For testing purposes, ensure we use the same instance as the module
 	// This works around potential service resolution issues
 	if ctx.module != nil {
 		ctx.service = ctx.module
 	}
-	
+
 	return nil
 }
 
@@ -307,7 +307,7 @@ func (ctx *SchedulerBDDTestContext) iScheduleMultipleJobs() error {
 		if err != nil {
 			return fmt.Errorf("failed to schedule job %d: %w", i, err)
 		}
-		
+
 		// Store the first job ID for cancellation tests
 		if i == 0 {
 			ctx.jobID = jobID
@@ -324,10 +324,10 @@ func (ctx *SchedulerBDDTestContext) theSchedulerIsRestarted() error {
 		// If shutdown failed, let's try to continue anyway for the test
 		// The important thing is that we can restart
 	}
-	
+
 	// Brief pause to ensure clean shutdown
 	time.Sleep(100 * time.Millisecond)
-	
+
 	return ctx.app.Start()
 }
 
@@ -346,8 +346,8 @@ func (ctx *SchedulerBDDTestContext) iHaveASchedulerWithConfigurableWorkerPool() 
 
 	// Create scheduler configuration with worker pool settings
 	ctx.config = &SchedulerConfig{
-		WorkerCount:       5,                  // Specific worker count for this test
-		QueueSize:         50,                 // Specific queue size for this test
+		WorkerCount:       5,  // Specific worker count for this test
+		QueueSize:         50, // Specific queue size for this test
 		CheckInterval:     1 * time.Second,
 		ShutdownTimeout:   30 * time.Second,
 		StorageType:       "memory",
@@ -370,7 +370,7 @@ func (ctx *SchedulerBDDTestContext) jobsShouldBeProcessedByAvailableWorkers() er
 			return err
 		}
 	}
-	
+
 	// Verify worker pool configuration
 	if ctx.service.config.WorkerCount != 5 {
 		return fmt.Errorf("expected 5 workers, got %d", ctx.service.config.WorkerCount)
@@ -434,7 +434,7 @@ func (ctx *SchedulerBDDTestContext) jobsOlderThanTheRetentionPeriodShouldBeClean
 			return err
 		}
 	}
-	
+
 	// Verify cleanup configuration
 	if ctx.service.config.RetentionDays == 0 {
 		return fmt.Errorf("retention period not configured")
@@ -477,7 +477,7 @@ func (ctx *SchedulerBDDTestContext) theJobShouldBeRetriedAccordingToTheRetryPoli
 			return err
 		}
 	}
-	
+
 	// Verify scheduler is configured for handling failed jobs
 	if ctx.service.config.WorkerCount == 0 {
 		return fmt.Errorf("scheduler not properly configured")
@@ -504,17 +504,17 @@ func (ctx *SchedulerBDDTestContext) iCancelAScheduledJob() error {
 	if ctx.jobID == "" {
 		return fmt.Errorf("no job to cancel")
 	}
-	
+
 	// Cancel the job using the service
 	if ctx.service == nil {
 		return fmt.Errorf("scheduler service not available")
 	}
-	
+
 	err := ctx.service.CancelJob(ctx.jobID)
 	if err != nil {
 		return fmt.Errorf("failed to cancel job: %w", err)
 	}
-	
+
 	return nil
 }
 
