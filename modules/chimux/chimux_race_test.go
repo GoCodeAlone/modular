@@ -93,7 +93,6 @@ func TestChimuxTenantRaceConditionWithComplexDependencies(t *testing.T) {
 		// After our fix, it should work properly
 		err := app.Init()
 		require.NoError(t, err, "Application initialization should not panic due to race condition")
-		require.NoError(t, err, "Application initialization should not panic due to race condition")
 	})
 }
 
