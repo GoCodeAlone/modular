@@ -250,7 +250,7 @@ func TestFilterLoggerDecorator(t *testing.T) {
 		decorator := NewFilterLoggerDecorator(inner, nil, nil, levelFilters)
 
 		decorator.Info("info message")
-		decorator.Debug("debug message")  // Should be filtered
+		decorator.Debug("debug message") // Should be filtered
 		decorator.Warn("warn message")
 		decorator.Error("error message")
 
@@ -270,11 +270,11 @@ func TestFilterLoggerDecorator(t *testing.T) {
 
 		decorator := NewFilterLoggerDecorator(inner, messageFilters, keyFilters, levelFilters)
 
-		decorator.Info("normal message", "env", "prod")     // Should pass
-		decorator.Info("secret message", "env", "prod")     // Filtered by message
-		decorator.Info("normal message", "env", "test")     // Filtered by key-value
-		decorator.Debug("normal message", "env", "prod")    // Filtered by level
-		decorator.Error("normal message", "env", "prod")    // Should pass
+		decorator.Info("normal message", "env", "prod")  // Should pass
+		decorator.Info("secret message", "env", "prod")  // Filtered by message
+		decorator.Info("normal message", "env", "test")  // Filtered by key-value
+		decorator.Debug("normal message", "env", "prod") // Filtered by level
+		decorator.Error("normal message", "env", "prod") // Should pass
 
 		entries := inner.GetEntries()
 		require.Len(t, entries, 2)
@@ -295,10 +295,10 @@ func TestLevelModifierLoggerDecorator(t *testing.T) {
 		}
 		decorator := NewLevelModifierLoggerDecorator(inner, levelMappings)
 
-		decorator.Info("info message")    // Should become debug
-		decorator.Error("error message")  // Should become warn
-		decorator.Warn("warn message")    // Should stay warn
-		decorator.Debug("debug message")  // Should stay debug
+		decorator.Info("info message")   // Should become debug
+		decorator.Error("error message") // Should become warn
+		decorator.Warn("warn message")   // Should stay warn
+		decorator.Debug("debug message") // Should stay debug
 
 		entries := inner.GetEntries()
 		require.Len(t, entries, 4)

@@ -60,7 +60,7 @@ type DualWriterLoggerDecorator struct {
 func NewDualWriterLoggerDecorator(primary, secondary Logger) *DualWriterLoggerDecorator {
 	return &DualWriterLoggerDecorator{
 		BaseLoggerDecorator: NewBaseLoggerDecorator(primary),
-		secondary:          secondary,
+		secondary:           secondary,
 	}
 }
 
@@ -126,9 +126,9 @@ func (d *ValueInjectionLoggerDecorator) Debug(msg string, args ...any) {
 // This decorator can filter by log level, message content, or key-value pairs.
 type FilterLoggerDecorator struct {
 	*BaseLoggerDecorator
-	messageFilters []string // Substrings to filter on
+	messageFilters []string          // Substrings to filter on
 	keyFilters     map[string]string // Key-value pairs to filter on
-	levelFilters   map[string]bool // Log levels to allow
+	levelFilters   map[string]bool   // Log levels to allow
 }
 
 // NewFilterLoggerDecorator creates a decorator that filters log events.
@@ -142,7 +142,7 @@ func NewFilterLoggerDecorator(inner Logger, messageFilters []string, keyFilters 
 			"debug": true,
 		}
 	}
-	
+
 	return &FilterLoggerDecorator{
 		BaseLoggerDecorator: NewBaseLoggerDecorator(inner),
 		messageFilters:      messageFilters,
@@ -274,7 +274,7 @@ type PrefixLoggerDecorator struct {
 func NewPrefixLoggerDecorator(inner Logger, prefix string) *PrefixLoggerDecorator {
 	return &PrefixLoggerDecorator{
 		BaseLoggerDecorator: NewBaseLoggerDecorator(inner),
-		prefix:             prefix,
+		prefix:              prefix,
 	}
 }
 
