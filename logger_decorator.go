@@ -292,7 +292,7 @@ func (d *PrefixLoggerDecorator) formatMessage(msg string) string {
 		return msg
 	}
 	var builder strings.Builder
-	builder.Grow(len(d.prefix) + len(msg) + 1) // Pre-allocate capacity
+	builder.Grow(len(d.prefix) + len(msg) + 1) // Pre-allocate capacity for prefix + space + message
 	builder.WriteString(d.prefix)
 	builder.WriteByte(' ')
 	builder.WriteString(msg)
