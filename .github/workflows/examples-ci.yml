@@ -33,6 +33,7 @@ jobs:
           - observer-pattern
           - health-aware-reverse-proxy
           - multi-engine-eventbus
+          - logmasker-example
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

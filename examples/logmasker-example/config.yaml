@@ -1,0 +1,30 @@
+appName: LogMasker Example
+environment: dev
+
+logmasker:
+  enabled: true
+  defaultMaskStrategy: "redact"
+  fieldRules:
+    - fieldName: "password"
+      strategy: "redact"
+    - fieldName: "token"
+      strategy: "redact"
+    - fieldName: "secret"
+      strategy: "redact"
+    - fieldName: "email"
+      strategy: "partial"
+      partialConfig:
+        showFirst: 2
+        showLast: 2
+        maskChar: "*"
+        minLength: 4
+  patternRules:
+    - pattern: '\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+      strategy: "redact"
+    - pattern: '\b\d{3}[\s-]?\d{2}[\s-]?\d{4}\b'
+      strategy: "redact"
+  defaultPartialConfig:
+    showFirst: 2
+    showLast: 2
+    maskChar: "*"
+    minLength: 4
