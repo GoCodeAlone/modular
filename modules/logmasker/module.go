@@ -279,8 +279,11 @@ func (m *LogMaskerModule) Init(app modular.Application) error {
 		m.compiledPatterns[i] = &compiledRule
 	}
 
-	// Register the masking logger service
-	maskingLogger := &MaskingLogger{module: m}
+	// Register the masking logger service using the decorator pattern
+	maskingLogger := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(m.originalLogger),
+		module:              m,
+	}
 	if err := app.RegisterService(ServiceName, maskingLogger); err != nil {
 		return fmt.Errorf("failed to register masking logger service: %w", err)
 	}
@@ -304,53 +307,55 @@ func (m *LogMaskerModule) ProvidesServices() []modular.ServiceProvider {
 	}
 }
 
-// MaskingLogger implements modular.Logger with masking capabilities.
+// MaskingLogger implements modular.LoggerDecorator with masking capabilities.
+// It extends BaseLoggerDecorator to leverage the framework's decorator infrastructure.
 type MaskingLogger struct {
+	*modular.BaseLoggerDecorator
 	module *LogMaskerModule
 }
 
 // Info logs an informational message with masking applied to arguments.
 func (l *MaskingLogger) Info(msg string, args ...any) {
 	if !l.module.config.Enabled {
-		l.module.originalLogger.Info(msg, args...)
+		l.BaseLoggerDecorator.Info(msg, args...)
 		return
 	}
 
 	maskedArgs := l.maskArgs(args...)
-	l.module.originalLogger.Info(msg, maskedArgs...)
+	l.BaseLoggerDecorator.Info(msg, maskedArgs...)
 }
 
 // Error logs an error message with masking applied to arguments.
 func (l *MaskingLogger) Error(msg string, args ...any) {
 	if !l.module.config.Enabled {
-		l.module.originalLogger.Error(msg, args...)
+		l.BaseLoggerDecorator.Error(msg, args...)
 		return
 	}
 
 	maskedArgs := l.maskArgs(args...)
-	l.module.originalLogger.Error(msg, maskedArgs...)
+	l.BaseLoggerDecorator.Error(msg, maskedArgs...)
 }
 
 // Warn logs a warning message with masking applied to arguments.
 func (l *MaskingLogger) Warn(msg string, args ...any) {
 	if !l.module.config.Enabled {
-		l.module.originalLogger.Warn(msg, args...)
+		l.BaseLoggerDecorator.Warn(msg, args...)
 		return
 	}
 
 	maskedArgs := l.maskArgs(args...)
-	l.module.originalLogger.Warn(msg, maskedArgs...)
+	l.BaseLoggerDecorator.Warn(msg, maskedArgs...)
 }
 
 // Debug logs a debug message with masking applied to arguments.
 func (l *MaskingLogger) Debug(msg string, args ...any) {
 	if !l.module.config.Enabled {
-		l.module.originalLogger.Debug(msg, args...)
+		l.BaseLoggerDecorator.Debug(msg, args...)
 		return
 	}
 
 	maskedArgs := l.maskArgs(args...)
-	l.module.originalLogger.Debug(msg, maskedArgs...)
+	l.BaseLoggerDecorator.Debug(msg, maskedArgs...)
 }
 
 // maskArgs applies masking rules to key-value pairs in the arguments.

@@ -1,4 +1,4 @@
-module example
+module logmasker-example
 
 go 1.23.0
 
@@ -20,6 +20,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/CrisisTextLine/modular => ../../..
+replace github.com/CrisisTextLine/modular => ../../
 
-replace github.com/CrisisTextLine/modular/modules/logmasker => ..
+replace github.com/CrisisTextLine/modular/modules/logmasker => ../../modules/logmasker

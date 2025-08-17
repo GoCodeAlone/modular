@@ -203,7 +203,10 @@ func TestMaskingLogger_FieldBasedMasking(t *testing.T) {
 	app.RegisterService("logger", mockLogger)
 	module.Init(app)
 
-	masker := &MaskingLogger{module: module}
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	// Test password masking
 	masker.Info("User login", "email", "user@example.com", "password", "secret123")
@@ -239,7 +242,10 @@ func TestMaskingLogger_PatternBasedMasking(t *testing.T) {
 	app.RegisterService("logger", mockLogger)
 	module.Init(app)
 
-	masker := &MaskingLogger{module: module}
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	// Test credit card number masking
 	masker.Info("Payment processed", "card", "4111-1111-1111-1111", "amount", "100")
@@ -272,7 +278,10 @@ func TestMaskingLogger_MaskableValueInterface(t *testing.T) {
 	app.RegisterService("logger", mockLogger)
 	module.Init(app)
 
-	masker := &MaskingLogger{module: module}
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	// Test with a value that should be masked
 	maskableValue := &TestMaskableValue{
@@ -329,7 +338,10 @@ func TestMaskingLogger_DisabledMasking(t *testing.T) {
 	app.RegisterService("logger", mockLogger)
 	module.Init(app)
 
-	masker := &MaskingLogger{module: module}
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	// Test with sensitive data - should not be masked
 	masker.Info("User login", "password", "secret123", "token", "abc-def-123")
@@ -360,7 +372,10 @@ func TestMaskingStrategies(t *testing.T) {
 	app.RegisterService("logger", mockLogger)
 	module.Init(app)
 
-	masker := &MaskingLogger{module: module}
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	tests := []struct {
 		strategy MaskStrategy
@@ -407,7 +422,11 @@ func TestMaskingStrategies(t *testing.T) {
 
 func TestPartialMasking(t *testing.T) {
 	module := NewModule()
-	masker := &MaskingLogger{module: module}
+	mockLogger := &MockLogger{} // Add mockLogger for the decorator
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	config := &PartialMaskConfig{
 		ShowFirst: 2,
@@ -463,7 +482,10 @@ func TestAllLogLevels(t *testing.T) {
 	app.RegisterService("logger", mockLogger)
 	module.Init(app)
 
-	masker := &MaskingLogger{module: module}
+	masker := &MaskingLogger{
+		BaseLoggerDecorator: modular.NewBaseLoggerDecorator(mockLogger),
+		module:              module,
+	}
 
 	// Test all log levels
 	masker.Info("Info message", "password", "secret")
