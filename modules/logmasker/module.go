@@ -436,9 +436,21 @@ func (l *MaskingLogger) applyMaskStrategy(value any, strategy MaskStrategy, part
 		return "[REDACTED]" // Fallback for non-string values
 
 	case MaskStrategyHash:
-		valueStr := fmt.Sprintf("%v", value)
-		hash := sha256.Sum256([]byte(valueStr))
-		return fmt.Sprintf("[HASH:%x]", hash)
+		// Use type switch to handle common types efficiently
+		var valueBytes []byte
+		switch v := value.(type) {
+		case string:
+			valueBytes = []byte(v)
+		case []byte:
+			valueBytes = v
+		default:
+			// Fallback to fmt.Sprintf for other types
+			valueBytes = []byte(fmt.Sprintf("%v", v))
+		}
+
+		hash := sha256.Sum256(valueBytes)
+		// Pre-format hash representation to avoid double allocations
+		return "[HASH:" + fmt.Sprintf("%x", hash) + "]"
 
 	case MaskStrategyNone:
 		return value
