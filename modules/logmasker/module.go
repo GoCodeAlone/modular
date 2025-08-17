@@ -62,6 +62,7 @@
 package logmasker
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"regexp"
@@ -386,12 +387,8 @@ func (l *MaskingLogger) maskArgs(args ...any) []any {
 			}
 
 			// Apply field-based rules
-			if i < len(args) {
-				if keyStr, ok := args[i].(string); ok {
-					result[i+1] = l.applyMaskingRules(keyStr, value)
-				} else {
-					result[i+1] = value
-				}
+			if keyStr, ok := args[i].(string); ok {
+				result[i+1] = l.applyMaskingRules(keyStr, value)
 			} else {
 				result[i+1] = value
 			}
@@ -439,7 +436,9 @@ func (l *MaskingLogger) applyMaskStrategy(value any, strategy MaskStrategy, part
 		return "[REDACTED]" // Fallback for non-string values
 
 	case MaskStrategyHash:
-		return fmt.Sprintf("[HASH:%x]", fmt.Sprintf("%v", value))
+		valueStr := fmt.Sprintf("%v", value)
+		hash := sha256.Sum256([]byte(valueStr))
+		return fmt.Sprintf("[HASH:%x]", hash)
 
 	case MaskStrategyNone:
 		return value
