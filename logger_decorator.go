@@ -100,6 +100,12 @@ func NewValueInjectionLoggerDecorator(inner Logger, injectedArgs ...any) *ValueI
 }
 
 func (d *ValueInjectionLoggerDecorator) combineArgs(originalArgs []any) []any {
+	if len(d.injectedArgs) == 0 {
+		return originalArgs
+	}
+	if len(originalArgs) == 0 {
+		return d.injectedArgs
+	}
 	combined := make([]any, 0, len(d.injectedArgs)+len(originalArgs))
 	combined = append(combined, d.injectedArgs...)
 	combined = append(combined, originalArgs...)
@@ -286,6 +292,7 @@ func (d *PrefixLoggerDecorator) formatMessage(msg string) string {
 		return msg
 	}
 	var builder strings.Builder
+	builder.Grow(len(d.prefix) + len(msg) + 1) // Pre-allocate capacity
 	builder.WriteString(d.prefix)
 	builder.WriteByte(' ')
 	builder.WriteString(msg)

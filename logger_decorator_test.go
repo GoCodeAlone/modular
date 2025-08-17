@@ -76,7 +76,7 @@ func argsToMap(args []any) map[string]any {
 		return make(map[string]any)
 	}
 
-	result := make(map[string]any)
+	result := make(map[string]any, len(args)/2) // Pre-allocate capacity
 	for i := 0; i < len(args)-1; i += 2 {
 		if key, ok := args[i].(string); ok {
 			result[key] = args[i+1]
