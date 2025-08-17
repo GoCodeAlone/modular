@@ -68,9 +68,14 @@ func (t *TestLogger) CountEntries(level string) int {
 	return count
 }
 
-// Helper function to extract key-value pairs from args
-// Safely handles odd-length args by ignoring the last unpaired argument
+// argsToMap converts a slice of alternating key-value arguments into a map.
+// Keys must be strings; non-string keys are ignored.
+// If args has odd length, the last unpaired argument is ignored.
 func argsToMap(args []any) map[string]any {
+	if len(args) == 0 {
+		return make(map[string]any)
+	}
+
 	result := make(map[string]any)
 	for i := 0; i < len(args)-1; i += 2 {
 		if key, ok := args[i].(string); ok {

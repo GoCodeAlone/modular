@@ -11,35 +11,35 @@ import (
 
 // Static errors for logger decorator BDD tests
 var (
-	errLoggerNotSet                = errors.New("logger not set")
-	errBaseLoggerNotSet            = errors.New("base logger not set")
-	errPrimaryLoggerNotSet         = errors.New("primary logger not set")
-	errSecondaryLoggerNotSet       = errors.New("secondary logger not set")
-	errDecoratedLoggerNotSet       = errors.New("decorated logger not set")
-	errNoMessagesLogged            = errors.New("no messages logged")
-	errUnexpectedMessageCount      = errors.New("unexpected message count")
-	errMessageNotFound             = errors.New("message not found")
-	errArgNotFound                 = errors.New("argument not found")
-	errUnexpectedLogLevel          = errors.New("unexpected log level")
-	errServiceLoggerMismatch       = errors.New("service logger mismatch")
+	errLoggerNotSet           = errors.New("logger not set")
+	errBaseLoggerNotSet       = errors.New("base logger not set")
+	errPrimaryLoggerNotSet    = errors.New("primary logger not set")
+	errSecondaryLoggerNotSet  = errors.New("secondary logger not set")
+	errDecoratedLoggerNotSet  = errors.New("decorated logger not set")
+	errNoMessagesLogged       = errors.New("no messages logged")
+	errUnexpectedMessageCount = errors.New("unexpected message count")
+	errMessageNotFound        = errors.New("message not found")
+	errArgNotFound            = errors.New("argument not found")
+	errUnexpectedLogLevel     = errors.New("unexpected log level")
+	errServiceLoggerMismatch  = errors.New("service logger mismatch")
 )
 
 // LoggerDecoratorBDDTestContext holds the test context for logger decorator BDD scenarios
 type LoggerDecoratorBDDTestContext struct {
-	app               Application
-	baseLogger        *TestLogger
-	primaryLogger     *TestLogger
-	secondaryLogger   *TestLogger
-	auditLogger       *TestLogger
-	decoratedLogger   Logger
-	initialLogger     *TestLogger
-	currentLogger     Logger
-	expectedMessages  []string
-	expectedArgs      map[string]string
-	filterCriteria    map[string]interface{}
-	levelMappings     map[string]string
-	messageCount      int
-	expectedLevels    []string
+	app              Application
+	baseLogger       *TestLogger
+	primaryLogger    *TestLogger
+	secondaryLogger  *TestLogger
+	auditLogger      *TestLogger
+	decoratedLogger  Logger
+	initialLogger    *TestLogger
+	currentLogger    Logger
+	expectedMessages []string
+	expectedArgs     map[string]string
+	filterCriteria   map[string]interface{}
+	levelMappings    map[string]string
+	messageCount     int
+	expectedLevels   []string
 }
 
 // Step definitions for logger decorator BDD tests
@@ -115,25 +115,21 @@ func (ctx *LoggerDecoratorBDDTestContext) iApplyAValueInjectionDecoratorWithTwoK
 }
 
 func (ctx *LoggerDecoratorBDDTestContext) iApplyADualWriterDecorator() error {
-	// Check if we have primary and secondary loggers OR primary and audit loggers
 	var primary, secondary Logger
-	
+
+	// Try different combinations of available loggers
 	if ctx.primaryLogger != nil && ctx.secondaryLogger != nil {
-		primary = ctx.primaryLogger
-		secondary = ctx.secondaryLogger
+		primary, secondary = ctx.primaryLogger, ctx.secondaryLogger
 	} else if ctx.primaryLogger != nil && ctx.auditLogger != nil {
-		primary = ctx.primaryLogger
-		secondary = ctx.auditLogger
+		primary, secondary = ctx.primaryLogger, ctx.auditLogger
 	} else if ctx.baseLogger != nil && ctx.primaryLogger != nil {
-		primary = ctx.baseLogger
-		secondary = ctx.primaryLogger
+		primary, secondary = ctx.baseLogger, ctx.primaryLogger
 	} else if ctx.baseLogger != nil && ctx.auditLogger != nil {
-		primary = ctx.baseLogger
-		secondary = ctx.auditLogger
+		primary, secondary = ctx.baseLogger, ctx.auditLogger
 	} else {
-		return errPrimaryLoggerNotSet
+		return fmt.Errorf("dual writer decorator requires two loggers, but insufficient loggers are configured")
 	}
-	
+
 	ctx.decoratedLogger = NewDualWriterLoggerDecorator(primary, secondary)
 	ctx.currentLogger = ctx.decoratedLogger
 	return nil
@@ -172,7 +168,7 @@ func (ctx *LoggerDecoratorBDDTestContext) iApplyAFilterDecoratorThatAllowsOnlyLe
 	if ctx.currentLogger == nil {
 		return errBaseLoggerNotSet
 	}
-	
+
 	// Parse level names from Gherkin format like '"info" and "error"'
 	// Extract quoted level names
 	var levelList []string
@@ -183,7 +179,7 @@ func (ctx *LoggerDecoratorBDDTestContext) iApplyAFilterDecoratorThatAllowsOnlyLe
 			levelList = append(levelList, strings.TrimSpace(part))
 		}
 	}
-	
+
 	levelFilters := map[string]bool{
 		"debug": false,
 		"info":  false,
@@ -274,28 +270,31 @@ func (ctx *LoggerDecoratorBDDTestContext) iGetTheLoggerServiceFromTheApplication
 	return nil
 }
 
-func (ctx *LoggerDecoratorBDDTestContext) theLoggedMessageShouldContain(expectedContent string) error {
-	// Check multiple potential loggers since decorated loggers forward to different targets
-	var entries []TestLogEntry
-	var targetLogger *TestLogger
-	
-	// First try baseLogger
+// findActiveLogger returns the first logger that has entries, or nil if none found
+func (ctx *LoggerDecoratorBDDTestContext) findActiveLogger() *TestLogger {
 	if ctx.baseLogger != nil && len(ctx.baseLogger.GetEntries()) > 0 {
-		targetLogger = ctx.baseLogger
-		entries = ctx.baseLogger.GetEntries()
-	} else if ctx.initialLogger != nil && len(ctx.initialLogger.GetEntries()) > 0 {
-		// Try initialLogger for SetLogger scenarios
-		targetLogger = ctx.initialLogger
-		entries = ctx.initialLogger.GetEntries()
-	} else if ctx.primaryLogger != nil && len(ctx.primaryLogger.GetEntries()) > 0 {
-		targetLogger = ctx.primaryLogger
-		entries = ctx.primaryLogger.GetEntries()
+		return ctx.baseLogger
 	}
-	
-	if targetLogger == nil || len(entries) == 0 {
+	if ctx.initialLogger != nil && len(ctx.initialLogger.GetEntries()) > 0 {
+		return ctx.initialLogger
+	}
+	if ctx.primaryLogger != nil && len(ctx.primaryLogger.GetEntries()) > 0 {
+		return ctx.primaryLogger
+	}
+	return nil
+}
+
+func (ctx *LoggerDecoratorBDDTestContext) theLoggedMessageShouldContain(expectedContent string) error {
+	targetLogger := ctx.findActiveLogger()
+	if targetLogger == nil {
 		return errNoMessagesLogged
 	}
-	
+
+	entries := targetLogger.GetEntries()
+	if len(entries) == 0 {
+		return errNoMessagesLogged
+	}
+
 	lastEntry := entries[len(entries)-1]
 	if !strings.Contains(lastEntry.Message, expectedContent) {
 		return fmt.Errorf("expected message to contain '%s', but got '%s'", expectedContent, lastEntry.Message)
@@ -304,32 +303,24 @@ func (ctx *LoggerDecoratorBDDTestContext) theLoggedMessageShouldContain(expected
 }
 
 func (ctx *LoggerDecoratorBDDTestContext) theLoggedArgsShouldContain(key, expectedValue string) error {
-	// Find the appropriate logger to check - could be base, initial, or primary
-	var targetLogger *TestLogger
-	
-	if ctx.baseLogger != nil && len(ctx.baseLogger.GetEntries()) > 0 {
-		targetLogger = ctx.baseLogger
-	} else if ctx.initialLogger != nil && len(ctx.initialLogger.GetEntries()) > 0 {
-		targetLogger = ctx.initialLogger
-	} else if ctx.primaryLogger != nil && len(ctx.primaryLogger.GetEntries()) > 0 {
-		targetLogger = ctx.primaryLogger
-	} else {
+	targetLogger := ctx.findActiveLogger()
+	if targetLogger == nil {
 		return errNoMessagesLogged
 	}
-	
+
 	entries := targetLogger.GetEntries()
 	if len(entries) == 0 {
 		return errNoMessagesLogged
 	}
-	
+
 	lastEntry := entries[len(entries)-1]
 	args := argsToMap(lastEntry.Args)
-	
+
 	actualValue, exists := args[key]
 	if !exists {
 		return fmt.Errorf("expected arg '%s' not found in logged args: %v", key, args)
 	}
-	
+
 	if fmt.Sprintf("%v", actualValue) != expectedValue {
 		return fmt.Errorf("expected arg '%s' to be '%s', but got '%v'", key, expectedValue, actualValue)
 	}
@@ -343,12 +334,12 @@ func (ctx *LoggerDecoratorBDDTestContext) bothThePrimaryAndSecondaryLoggersShoul
 	if ctx.secondaryLogger == nil {
 		return errSecondaryLoggerNotSet
 	}
-	
+
 	primaryEntries := ctx.primaryLogger.GetEntries()
 	secondaryEntries := ctx.secondaryLogger.GetEntries()
-	
+
 	if len(primaryEntries) == 0 || len(secondaryEntries) == 0 {
-		return fmt.Errorf("both loggers should have received messages, primary: %d, secondary: %d", 
+		return fmt.Errorf("both loggers should have received messages, primary: %d, secondary: %d",
 			len(primaryEntries), len(secondaryEntries))
 	}
 	return nil
@@ -357,7 +348,7 @@ func (ctx *LoggerDecoratorBDDTestContext) bothThePrimaryAndSecondaryLoggersShoul
 func (ctx *LoggerDecoratorBDDTestContext) theBaseLoggerShouldHaveReceivedMessages(expectedCount int) error {
 	// Find the appropriate logger to check - could be base, initial, or primary
 	var targetLogger *TestLogger
-	
+
 	if ctx.baseLogger != nil {
 		targetLogger = ctx.baseLogger
 	} else if ctx.initialLogger != nil {
@@ -367,7 +358,7 @@ func (ctx *LoggerDecoratorBDDTestContext) theBaseLoggerShouldHaveReceivedMessage
 	} else {
 		return errBaseLoggerNotSet
 	}
-	
+
 	entries := targetLogger.GetEntries()
 	if len(entries) != expectedCount {
 		return fmt.Errorf("expected %d messages, but got %d", expectedCount, len(entries))
@@ -378,7 +369,7 @@ func (ctx *LoggerDecoratorBDDTestContext) theBaseLoggerShouldHaveReceivedMessage
 func (ctx *LoggerDecoratorBDDTestContext) theLoggedMessageShouldBe(expectedMessage string) error {
 	// Find the appropriate logger to check - could be base, initial, or primary
 	var targetLogger *TestLogger
-	
+
 	if ctx.baseLogger != nil && len(ctx.baseLogger.GetEntries()) > 0 {
 		targetLogger = ctx.baseLogger
 	} else if ctx.initialLogger != nil && len(ctx.initialLogger.GetEntries()) > 0 {
@@ -388,12 +379,12 @@ func (ctx *LoggerDecoratorBDDTestContext) theLoggedMessageShouldBe(expectedMessa
 	} else {
 		return errNoMessagesLogged
 	}
-	
+
 	entries := targetLogger.GetEntries()
 	if len(entries) == 0 {
 		return errNoMessagesLogged
 	}
-	
+
 	lastEntry := entries[len(entries)-1]
 	if lastEntry.Message != expectedMessage {
 		return fmt.Errorf("expected message to be '%s', but got '%s'", expectedMessage, lastEntry.Message)
@@ -404,7 +395,7 @@ func (ctx *LoggerDecoratorBDDTestContext) theLoggedMessageShouldBe(expectedMessa
 func (ctx *LoggerDecoratorBDDTestContext) bothThePrimaryAndAuditLoggersShouldHaveReceivedMessages(expectedCount int) error {
 	// Check which loggers we actually have
 	var logger1, logger2 *TestLogger
-	
+
 	if ctx.primaryLogger != nil && ctx.auditLogger != nil {
 		logger1, logger2 = ctx.primaryLogger, ctx.auditLogger
 	} else if ctx.primaryLogger != nil && ctx.secondaryLogger != nil {
@@ -412,10 +403,10 @@ func (ctx *LoggerDecoratorBDDTestContext) bothThePrimaryAndAuditLoggersShouldHav
 	} else {
 		return errPrimaryLoggerNotSet
 	}
-	
+
 	entries1 := logger1.GetEntries()
 	entries2 := logger2.GetEntries()
-	
+
 	if len(entries1) != expectedCount {
 		return fmt.Errorf("expected first logger to receive %d messages, but got %d", expectedCount, len(entries1))
 	}
@@ -432,19 +423,19 @@ func (ctx *LoggerDecoratorBDDTestContext) theLoggerServiceShouldBeTheDecoratedLo
 	if ctx.decoratedLogger == nil {
 		return errDecoratedLoggerNotSet
 	}
-	
+
 	// Verify that the service logger and the decorated logger are the same instance
 	if ctx.currentLogger != ctx.decoratedLogger {
 		return errServiceLoggerMismatch
 	}
-	
+
 	return nil
 }
 
 func (ctx *LoggerDecoratorBDDTestContext) theFirstMessageShouldHaveLevel(expectedLevel string) error {
 	// Find the appropriate logger to check - could be base, initial, or primary
 	var targetLogger *TestLogger
-	
+
 	if ctx.baseLogger != nil {
 		targetLogger = ctx.baseLogger
 	} else if ctx.initialLogger != nil {
@@ -454,12 +445,12 @@ func (ctx *LoggerDecoratorBDDTestContext) theFirstMessageShouldHaveLevel(expecte
 	} else {
 		return errBaseLoggerNotSet
 	}
-	
+
 	entries := targetLogger.GetEntries()
 	if len(entries) == 0 {
 		return errNoMessagesLogged
 	}
-	
+
 	firstEntry := entries[0]
 	if firstEntry.Level != expectedLevel {
 		return fmt.Errorf("expected first message level to be '%s', but got '%s'", expectedLevel, firstEntry.Level)
@@ -470,7 +461,7 @@ func (ctx *LoggerDecoratorBDDTestContext) theFirstMessageShouldHaveLevel(expecte
 func (ctx *LoggerDecoratorBDDTestContext) theSecondMessageShouldHaveLevel(expectedLevel string) error {
 	// Find the appropriate logger to check - could be base, initial, or primary
 	var targetLogger *TestLogger
-	
+
 	if ctx.baseLogger != nil {
 		targetLogger = ctx.baseLogger
 	} else if ctx.initialLogger != nil {
@@ -480,12 +471,12 @@ func (ctx *LoggerDecoratorBDDTestContext) theSecondMessageShouldHaveLevel(expect
 	} else {
 		return errBaseLoggerNotSet
 	}
-	
+
 	entries := targetLogger.GetEntries()
 	if len(entries) < 2 {
 		return fmt.Errorf("expected at least 2 messages, but got %d", len(entries))
 	}
-	
+
 	secondEntry := entries[1]
 	if secondEntry.Level != expectedLevel {
 		return fmt.Errorf("expected second message level to be '%s', but got '%s'", expectedLevel, secondEntry.Level)
@@ -496,7 +487,7 @@ func (ctx *LoggerDecoratorBDDTestContext) theSecondMessageShouldHaveLevel(expect
 func (ctx *LoggerDecoratorBDDTestContext) theMessagesShouldHaveLevels(expectedLevels string) error {
 	// Find the appropriate logger to check - could be base, initial, or primary
 	var targetLogger *TestLogger
-	
+
 	if ctx.baseLogger != nil {
 		targetLogger = ctx.baseLogger
 	} else if ctx.initialLogger != nil {
@@ -506,14 +497,14 @@ func (ctx *LoggerDecoratorBDDTestContext) theMessagesShouldHaveLevels(expectedLe
 	} else {
 		return errBaseLoggerNotSet
 	}
-	
+
 	levelList := strings.Split(strings.ReplaceAll(expectedLevels, `"`, ""), ", ")
 	entries := targetLogger.GetEntries()
-	
+
 	if len(entries) != len(levelList) {
 		return fmt.Errorf("expected %d messages, but got %d", len(levelList), len(entries))
 	}
-	
+
 	for i, expectedLevel := range levelList {
 		if entries[i].Level != expectedLevel {
 			return fmt.Errorf("expected message %d to have level '%s', but got '%s'", i+1, expectedLevel, entries[i].Level)

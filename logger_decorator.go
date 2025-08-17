@@ -285,7 +285,6 @@ func (d *PrefixLoggerDecorator) formatMessage(msg string) string {
 	if d.prefix == "" {
 		return msg
 	}
-	// Use strings.Builder for more efficient string concatenation
 	var builder strings.Builder
 	builder.WriteString(d.prefix)
 	builder.WriteByte(' ')
