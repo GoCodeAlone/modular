@@ -70,8 +70,8 @@ func main() {
 	maskingLogger.Info("User authentication",
 		"username", "johndoe",
 		"email", "john.doe@example.com", // Will be partially masked
-		"password", "supersecret123",    // Will be redacted
-		"sessionId", "abc-123-def")      // Will remain unchanged
+		"password", "supersecret123", // Will be redacted
+		"sessionId", "abc-123-def") // Will remain unchanged
 
 	// Demonstrate pattern-based masking
 	log.Println("\n=== Pattern-based Masking ===")
@@ -87,7 +87,7 @@ func main() {
 	privateToken := &SensitiveToken{Value: "private-token", IsPublic: false}
 
 	maskingLogger.Info("API tokens",
-		"public", publicToken,  // Will not be masked
+		"public", publicToken, // Will not be masked
 		"private", privateToken) // Will be masked
 
 	// Demonstrate different log levels
