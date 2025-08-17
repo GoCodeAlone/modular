@@ -828,6 +828,8 @@ func (app *StdApplication) Logger() Logger {
 // SetLogger sets the application's logger
 func (app *StdApplication) SetLogger(logger Logger) {
 	app.logger = logger
+	// Also update the service registry so modules get the new logger via DI
+	app.svcRegistry["logger"] = logger
 }
 
 // SetVerboseConfig enables or disables verbose configuration debugging
