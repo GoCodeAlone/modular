@@ -132,9 +132,10 @@ type FilterLoggerDecorator struct {
 }
 
 // NewFilterLoggerDecorator creates a decorator that filters log events.
+// If levelFilters is nil, all levels (info, error, warn, debug) are allowed by default.
 func NewFilterLoggerDecorator(inner Logger, messageFilters []string, keyFilters map[string]string, levelFilters map[string]bool) *FilterLoggerDecorator {
 	if levelFilters == nil {
-		// Default to allowing all levels
+		// Default to allowing all standard log levels
 		levelFilters = map[string]bool{
 			"info":  true,
 			"error": true,
@@ -168,7 +169,9 @@ func (d *FilterLoggerDecorator) shouldLog(level, msg string, args ...any) bool {
 	for i := 0; i < len(args)-1; i += 2 {
 		if key, ok := args[i].(string); ok {
 			if filterValue, exists := d.keyFilters[key]; exists {
-				if value := fmt.Sprintf("%v", args[i+1]); value == filterValue {
+				// Convert both values to strings for comparison
+				argValue := fmt.Sprintf("%v", args[i+1])
+				if argValue == filterValue {
 					return false // Block if key-value pair matches filter
 				}
 			}
@@ -279,10 +282,15 @@ func NewPrefixLoggerDecorator(inner Logger, prefix string) *PrefixLoggerDecorato
 }
 
 func (d *PrefixLoggerDecorator) formatMessage(msg string) string {
-	if d.prefix != "" {
-		return d.prefix + " " + msg
+	if d.prefix == "" {
+		return msg
 	}
-	return msg
+	// Use strings.Builder for more efficient string concatenation
+	var builder strings.Builder
+	builder.WriteString(d.prefix)
+	builder.WriteByte(' ')
+	builder.WriteString(msg)
+	return builder.String()
 }
 
 func (d *PrefixLoggerDecorator) Info(msg string, args ...any) {
