@@ -64,3 +64,38 @@ Feature: Event Logger Module
     When I emit events
     Then errors should be handled gracefully
     And other output targets should continue working
+
+  Scenario: Emit operational events during logger lifecycle
+    Given I have an event logger with event observation enabled
+    When the event logger module starts
+    Then a logger started event should be emitted
+    And the event should contain output count and buffer size
+    When the event logger module stops
+    Then a logger stopped event should be emitted
+
+  Scenario: Emit events during configuration loading
+    Given I have an event logger with event observation enabled
+    When the event logger module is initialized
+    Then a config loaded event should be emitted
+    And output registered events should be emitted for each target
+    And the events should contain configuration details
+
+  Scenario: Emit events during event processing
+    Given I have an event logger with event observation enabled
+    When I emit a test event for processing
+    Then an event received event should be emitted
+    And an event processed event should be emitted
+    And an output success event should be emitted
+
+  Scenario: Emit events during buffer overflow
+    Given I have an event logger with small buffer and event observation enabled
+    When I emit more events than the buffer can hold
+    Then buffer full events should be emitted
+    And event dropped events should be emitted
+    And the events should contain drop reasons
+
+  Scenario: Emit events when output target fails
+    Given I have an event logger with faulty output target and event observation enabled
+    When I emit a test event for processing
+    Then an output error event should be emitted
+    And the error event should contain error details

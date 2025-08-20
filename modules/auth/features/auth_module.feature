@@ -105,3 +105,73 @@ Feature: Authentication Module
     When I authenticate with incorrect credentials
     Then the authentication should fail
     And an error should be returned
+
+  Scenario: Emit events during token generation
+    Given I have an auth module with event observation enabled
+    When I generate a JWT token for a user
+    Then a token generated event should be emitted
+    And the event should contain user and token information
+
+  Scenario: Emit events during token validation
+    Given I have an auth module with event observation enabled
+    And I have user credentials and JWT configuration
+    And I generate a JWT token for the user
+    When I validate the token
+    Then a token validated event should be emitted
+    And the event should contain validation information
+
+  Scenario: Emit events during session management
+    Given I have an auth module with event observation enabled
+    When I create a session for a user
+    Then a session created event should be emitted
+    When I access the session
+    Then a session accessed event should be emitted
+    When I delete the session
+    Then a session destroyed event should be emitted
+
+  Scenario: Emit events during OAuth2 flow
+    Given I have an auth module with event observation enabled
+    And I have OAuth2 providers configured
+    When I get an OAuth2 authorization URL
+    Then an OAuth2 auth URL event should be emitted
+    When I exchange an OAuth2 code for tokens
+    Then an OAuth2 exchange event should be emitted
+
+  Scenario: Emit events during token refresh
+    Given I have an auth module with event observation enabled
+    And I have a valid JWT token
+    When I refresh the token
+    Then a token refreshed event should be emitted
+
+  Scenario: Emit events during session expiration
+    Given I have an auth module with event observation enabled
+    And I have an expired session
+    When I attempt to access the expired session
+    Then the session access should fail
+    And a session expired event should be emitted
+
+  Scenario: Emit events during token expiration
+    Given I have an auth module with event observation enabled
+    And I have an expired token for refresh
+    When I attempt to refresh the expired token
+    Then the token refresh should fail
+    And a token expired event should be emitted
+
+  Scenario: Emit session expired event
+    Given I have an auth module with event observation enabled
+    When I access an expired session
+    Then a session expired event should be emitted
+    And the session access should fail
+
+  Scenario: Emit token expired event
+    Given I have an auth module with event observation enabled
+    When I validate an expired token
+    Then a token expired event should be emitted
+    And the token should be rejected
+
+  Scenario: Emit token refreshed event
+    Given I have an auth module with event observation enabled
+    And I have a valid refresh token
+    When I refresh the token
+    Then a token refreshed event should be emitted
+    And a new access token should be provided

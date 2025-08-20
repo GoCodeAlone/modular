@@ -65,7 +65,7 @@ func TestChimuxTenantRaceConditionWithComplexDependencies(t *testing.T) {
 		logger := &chimux.MockLogger{}
 
 		// Create a simplified application that shows the race condition
-		app := modular.NewStdApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
+		app := modular.NewObservableApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
 
 		// Register modules in an order that will trigger the race condition
 		chimuxModule := chimux.NewChiMuxModule()
@@ -118,6 +118,10 @@ func TestChimuxInitializationLifecycle(t *testing.T) {
 
 		// Before Init - router should still be nil
 		assert.Nil(t, module.ChiRouter(), "Router should still be nil after RegisterConfig")
+
+		// Register observers before Init
+		err = module.RegisterObservers(mockApp)
+		require.NoError(t, err)
 
 		// Init should create the router
 		err = module.Init(mockApp)

@@ -65,3 +65,42 @@ Feature: Scheduler Module
     When the module is stopped
     Then running jobs should be allowed to complete
     And new jobs should not be accepted
+
+  Scenario: Emit events during scheduler lifecycle
+    Given I have a scheduler with event observation enabled
+    When the scheduler module starts
+    Then a scheduler started event should be emitted
+    And a config loaded event should be emitted
+    And the events should contain scheduler configuration details
+    When the scheduler module stops
+    Then a scheduler stopped event should be emitted
+
+  Scenario: Emit events during job scheduling
+    Given I have a scheduler with event observation enabled
+    When I schedule a new job
+    Then a job scheduled event should be emitted
+    And the event should contain job details
+    When the job starts execution
+    Then a job started event should be emitted
+    When the job completes successfully
+    Then a job completed event should be emitted
+
+  Scenario: Emit events during job failures
+    Given I have a scheduler with event observation enabled
+    When I schedule a job that will fail
+    Then a job scheduled event should be emitted
+    When the job starts execution
+    Then a job started event should be emitted
+    When the job fails during execution
+    Then a job failed event should be emitted
+    And the event should contain error information
+
+  Scenario: Emit events during worker pool management
+    Given I have a scheduler with event observation enabled
+    When the scheduler starts worker pool
+    Then worker started events should be emitted
+    And the events should contain worker information
+    When workers become busy processing jobs
+    Then worker busy events should be emitted
+    When workers become idle after job completion
+    Then worker idle events should be emitted

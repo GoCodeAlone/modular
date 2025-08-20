@@ -1,10 +1,13 @@
 package jsonschema
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 
+	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -120,27 +123,49 @@ type JSONSchemaService interface {
 	ValidateInterface(schema Schema, data interface{}) error
 }
 
+// EventEmitter interface for emitting events from the service
+type EventEmitter interface {
+	EmitEvent(ctx context.Context, event cloudevents.Event) error
+}
+
 // schemaServiceImpl is the concrete implementation of JSONSchemaService.
 // It uses the santhosh-tekuri/jsonschema library for JSON schema compilation
 // and validation. The implementation is thread-safe and can handle concurrent
 // schema compilation and validation operations.
 type schemaServiceImpl struct {
-	compiler *jsonschema.Compiler
+	compiler     *jsonschema.Compiler
+	eventEmitter EventEmitter
 }
 
 // schemaWrapper wraps the jsonschema.Schema to implement our Schema interface.
 // This wrapper provides a consistent interface while hiding the underlying
 // implementation details from consumers of the service.
 type schemaWrapper struct {
-	schema *jsonschema.Schema
+	schema  *jsonschema.Schema
+	service *schemaServiceImpl
 }
 
 // Validate validates the given value against the JSON schema.
 // Returns a wrapped error with additional context if validation fails.
 func (s *schemaWrapper) Validate(value interface{}) error {
-	if err := s.schema.Validate(value); err != nil {
+	ctx := context.Background()
+
+	err := s.schema.Validate(value)
+	if err != nil {
+		// Emit validation failed event
+		if s.service != nil {
+			s.service.emitEvent(ctx, EventTypeValidationFailed, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
 		return fmt.Errorf("schema validation failed: %w", err)
 	}
+
+	// Emit validation success event
+	if s.service != nil {
+		s.service.emitEvent(ctx, EventTypeValidationSuccess, map[string]interface{}{})
+	}
+
 	return nil
 }
 
@@ -156,21 +181,60 @@ func NewJSONSchemaService() JSONSchemaService {
 	}
 }
 
+// NewJSONSchemaServiceWithEventEmitter creates a new JSON schema service with event emission capability.
+func NewJSONSchemaServiceWithEventEmitter(eventEmitter EventEmitter) JSONSchemaService {
+	return &schemaServiceImpl{
+		compiler:     jsonschema.NewCompiler(),
+		eventEmitter: eventEmitter,
+	}
+}
+
+// emitEvent emits an event through the event emitter if available
+func (s *schemaServiceImpl) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	if s.eventEmitter != nil {
+		event := modular.NewCloudEvent(eventType, "jsonschema-service", data, nil)
+		if err := s.eventEmitter.EmitEvent(ctx, event); err != nil {
+			// Log error but don't fail the operation
+			_ = err
+		}
+	}
+}
+
 // CompileSchema compiles a JSON schema from the specified source.
 // The source can be a file path, URL, or other URI supported by the compiler.
 // Returns a Schema interface that can be used for validation operations.
 func (s *schemaServiceImpl) CompileSchema(source string) (Schema, error) {
+	ctx := context.Background()
+
 	schema, err := s.compiler.Compile(source)
 	if err != nil {
+		// Emit schema compilation error event
+		s.emitEvent(ctx, EventTypeSchemaError, map[string]interface{}{
+			"source": source,
+			"error":  err.Error(),
+		})
 		return nil, fmt.Errorf("failed to compile schema from %s: %w", source, err)
 	}
-	return &schemaWrapper{schema: schema}, nil
+
+	// Emit schema compilation success event
+	s.emitEvent(ctx, EventTypeSchemaCompiled, map[string]interface{}{
+		"source": source,
+	})
+
+	return &schemaWrapper{schema: schema, service: s}, nil
 }
 
 // ValidateBytes validates raw JSON data against a compiled schema.
 // The method unmarshals the JSON data and then validates it against the schema.
 // Returns an error if either unmarshaling or validation fails.
 func (s *schemaServiceImpl) ValidateBytes(schema Schema, data []byte) error {
+	ctx := context.Background()
+
+	// Emit validation method event
+	s.emitEvent(ctx, EventTypeValidateBytes, map[string]interface{}{
+		"data_size": len(data),
+	})
+
 	var v interface{}
 	if err := json.Unmarshal(data, &v); err != nil {
 		return fmt.Errorf("failed to unmarshal JSON data: %w", err)
@@ -185,6 +249,11 @@ func (s *schemaServiceImpl) ValidateBytes(schema Schema, data []byte) error {
 // The method reads and unmarshals JSON from the reader, then validates it.
 // The reader is consumed entirely during the operation.
 func (s *schemaServiceImpl) ValidateReader(schema Schema, reader io.Reader) error {
+	ctx := context.Background()
+
+	// Emit validation method event
+	s.emitEvent(ctx, EventTypeValidateReader, map[string]interface{}{})
+
 	v, err := jsonschema.UnmarshalJSON(reader)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal JSON from reader: %w", err)
@@ -199,6 +268,11 @@ func (s *schemaServiceImpl) ValidateReader(schema Schema, reader io.Reader) erro
 // The data should be a structure that represents JSON data (maps, slices, primitives).
 // This is the most direct validation method when you already have unmarshaled data.
 func (s *schemaServiceImpl) ValidateInterface(schema Schema, data interface{}) error {
+	ctx := context.Background()
+
+	// Emit validation method event
+	s.emitEvent(ctx, EventTypeValidateInterface, map[string]interface{}{})
+
 	if err := schema.Validate(data); err != nil {
 		return fmt.Errorf("interface validation failed: %w", err)
 	}

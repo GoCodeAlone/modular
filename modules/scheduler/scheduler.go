@@ -4,12 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+)
+
+// Context key types to avoid collisions
+type contextKey string
+
+const (
+	workerIDKey  contextKey = "worker_id"
+	schedulerKey contextKey = "scheduler"
 )
 
 // Scheduler errors
@@ -25,6 +35,11 @@ var (
 
 // JobFunc defines a function that can be executed as a job
 type JobFunc func(ctx context.Context) error
+
+// EventEmitter interface for emitting events from the scheduler
+type EventEmitter interface {
+	EmitEvent(ctx context.Context, event cloudevents.Event) error
+}
 
 // JobExecution records details about a single execution of a job
 type JobExecution struct {
@@ -73,6 +88,7 @@ type Scheduler struct {
 	queueSize      int
 	checkInterval  time.Duration
 	logger         modular.Logger
+	eventEmitter   EventEmitter
 	jobQueue       chan Job
 	cronScheduler  *cron.Cron
 	cronEntries    map[string]cron.EntryID
@@ -82,6 +98,20 @@ type Scheduler struct {
 	wg             sync.WaitGroup
 	isStarted      bool
 	schedulerMutex sync.Mutex
+}
+
+// debugEnabled returns true when SCHEDULER_DEBUG env var is set to a non-empty value
+func debugEnabled() bool { return os.Getenv("SCHEDULER_DEBUG") != "" }
+
+// dbg prints verbose scheduler debugging information when SCHEDULER_DEBUG is set
+func dbg(format string, args ...interface{}) {
+	if !debugEnabled() {
+		return
+	}
+	ts := time.Now().Format(time.RFC3339Nano)
+	// Render the message first to avoid placeholder issues
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("[SCHEDULER_DEBUG %s] %s\n", ts, msg)
 }
 
 // SchedulerOption defines a function that can configure a scheduler
@@ -120,6 +150,13 @@ func WithLogger(logger modular.Logger) SchedulerOption {
 		if logger != nil {
 			s.logger = logger
 		}
+	}
+}
+
+// WithEventEmitter sets the event emitter
+func WithEventEmitter(emitter EventEmitter) SchedulerOption {
+	return func(s *Scheduler) {
+		s.eventEmitter = emitter
 	}
 }
 
@@ -165,6 +202,12 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		s.wg.Add(1)
 		//nolint:contextcheck // Context is passed through s.ctx field
 		go s.worker(i)
+
+		// Emit worker started event
+		s.emitEvent(context.WithValue(ctx, workerIDKey, i), EventTypeWorkerStarted, map[string]interface{}{
+			"worker_id":     i,
+			"total_workers": s.workerCount,
+		})
 	}
 
 	// Start cron scheduler
@@ -174,7 +217,19 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	s.wg.Add(1)
 	go s.dispatchPendingJobs()
 
+	// Immediately check for due jobs (e.g., recovered from persistence) so execution resumes promptly
+	dbg("Start: running initial due-jobs dispatch (checkInterval=%s)", s.checkInterval.String())
+	s.checkAndDispatchJobs()
+
 	s.isStarted = true
+
+	// Emit scheduler started event
+	s.emitEvent(context.WithValue(ctx, schedulerKey, "started"), EventTypeSchedulerStarted, map[string]interface{}{
+		"worker_count":   s.workerCount,
+		"queue_size":     s.queueSize,
+		"check_interval": s.checkInterval.String(),
+	})
+
 	return nil
 }
 
@@ -206,6 +261,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 		close(done)
 	}()
 
+	var shutdownErr error
 	select {
 	case <-done:
 		if s.logger != nil {
@@ -215,7 +271,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 		if s.logger != nil {
 			s.logger.Warn("Scheduler shutdown timed out")
 		}
-		return ErrSchedulerShutdownTimeout
+		shutdownErr = ErrSchedulerShutdownTimeout
 	case <-cronCtx.Done():
 		if s.logger != nil {
 			s.logger.Info("Cron scheduler stopped")
@@ -223,7 +279,13 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 	}
 
 	s.isStarted = false
-	return nil
+
+	// Emit scheduler stopped event
+	s.emitEvent(context.WithValue(ctx, schedulerKey, "stopped"), EventTypeSchedulerStopped, map[string]interface{}{
+		"worker_count": s.workerCount,
+	})
+
+	return shutdownErr
 }
 
 // worker processes jobs from the queue
@@ -240,9 +302,29 @@ func (s *Scheduler) worker(id int) {
 			if s.logger != nil {
 				s.logger.Debug("Worker stopping", "id", id)
 			}
+
+			// Emit worker stopped event
+			s.emitEvent(context.Background(), EventTypeWorkerStopped, map[string]interface{}{
+				"worker_id": id,
+			})
+
 			return
 		case job := <-s.jobQueue:
+			dbg("Worker %d: picked job id=%s name=%s nextRun=%v status=%s", id, job.ID, job.Name, job.NextRun, job.Status)
+			// Emit worker busy event
+			s.emitEvent(context.Background(), EventTypeWorkerBusy, map[string]interface{}{
+				"worker_id": id,
+				"job_id":    job.ID,
+				"job_name":  job.Name,
+			})
+
 			s.executeJob(job)
+
+			// Emit worker idle event
+			s.emitEvent(context.Background(), EventTypeWorkerIdle, map[string]interface{}{
+				"worker_id": id,
+			})
+			dbg("Worker %d: completed job id=%s", id, job.ID)
 		}
 	}
 }
@@ -252,6 +334,13 @@ func (s *Scheduler) executeJob(job Job) {
 	if s.logger != nil {
 		s.logger.Debug("Executing job", "id", job.ID, "name", job.Name)
 	}
+
+	// Emit job started event
+	s.emitEvent(context.Background(), EventTypeJobStarted, map[string]interface{}{
+		"job_id":     job.ID,
+		"job_name":   job.Name,
+		"start_time": time.Now().Format(time.RFC3339),
+	})
 
 	// Update job status to running
 	job.Status = JobStatusRunning
@@ -287,11 +376,27 @@ func (s *Scheduler) executeJob(job Job) {
 		if s.logger != nil {
 			s.logger.Error("Job execution failed", "id", job.ID, "name", job.Name, "error", err)
 		}
+
+		// Emit job failed event
+		s.emitEvent(context.Background(), EventTypeJobFailed, map[string]interface{}{
+			"job_id":   job.ID,
+			"job_name": job.Name,
+			"error":    err.Error(),
+			"end_time": time.Now().Format(time.RFC3339),
+		})
 	} else {
 		execution.Status = string(JobStatusCompleted)
 		if s.logger != nil {
 			s.logger.Debug("Job execution completed", "id", job.ID, "name", job.Name)
 		}
+
+		// Emit job completed event
+		s.emitEvent(context.Background(), EventTypeJobCompleted, map[string]interface{}{
+			"job_id":   job.ID,
+			"job_name": job.Name,
+			"end_time": time.Now().Format(time.RFC3339),
+			"duration": execution.EndTime.Sub(execution.StartTime).String(),
+		})
 	}
 	if updateErr := s.jobStore.UpdateJobExecution(execution); updateErr != nil && s.logger != nil {
 		s.logger.Warn("Failed to update job execution", "jobID", job.ID, "error", updateErr)
@@ -348,15 +453,37 @@ func (s *Scheduler) dispatchPendingJobs() {
 	}
 }
 
+// emitEvent is a helper method to emit events from the scheduler
+func (s *Scheduler) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	if s.eventEmitter != nil {
+		event := modular.NewCloudEvent(eventType, "scheduler-service", data, nil)
+		if err := s.eventEmitter.EmitEvent(ctx, event); err != nil {
+			if s.logger != nil {
+				s.logger.Warn("Failed to emit scheduler event", "eventType", eventType, "error", err)
+			}
+		}
+	}
+}
+
 // checkAndDispatchJobs checks for due jobs and dispatches them
 func (s *Scheduler) checkAndDispatchJobs() {
 	now := time.Now()
+	dbg("Dispatcher: checking due jobs at %s", now.Format(time.RFC3339Nano))
 	dueJobs, err := s.jobStore.GetDueJobs(now)
 	if err != nil {
 		if s.logger != nil {
 			s.logger.Error("Failed to get due jobs", "error", err)
 		}
+		dbg("Dispatcher: error retrieving due jobs: %v", err)
 		return
+	}
+
+	if len(dueJobs) == 0 {
+		dbg("Dispatcher: no due jobs found")
+	} else {
+		for _, j := range dueJobs {
+			dbg("Dispatcher: due job id=%s name=%s nextRun=%v", j.ID, j.Name, j.NextRun)
+		}
 	}
 
 	for _, job := range dueJobs {
@@ -365,10 +492,12 @@ func (s *Scheduler) checkAndDispatchJobs() {
 			if s.logger != nil {
 				s.logger.Debug("Dispatched job", "id", job.ID, "name", job.Name)
 			}
+			dbg("Dispatcher: queued job id=%s", job.ID)
 		default:
 			if s.logger != nil {
 				s.logger.Warn("Job queue is full, job execution delayed", "id", job.ID, "name", job.Name)
 			}
+			dbg("Dispatcher: queue full for job id=%s", job.ID)
 			// If queue is full, we'll try again next tick
 		}
 	}
@@ -501,6 +630,13 @@ func (s *Scheduler) CancelJob(jobID string) error {
 		}
 		s.entryMutex.Unlock()
 	}
+
+	// Emit job cancelled event
+	s.emitEvent(context.Background(), EventTypeJobCancelled, map[string]interface{}{
+		"job_id":       job.ID,
+		"job_name":     job.Name,
+		"cancelled_at": time.Now().Format(time.RFC3339),
+	})
 
 	return nil
 }

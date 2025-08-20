@@ -89,3 +89,23 @@ Feature: HTTPClient Module
     And retry logic is configured
     Then the client should retry the request
     And eventually succeed or return the final error
+
+  Scenario: Emit events during httpclient lifecycle
+    Given I have an httpclient with event observation enabled
+    When the httpclient module starts
+    Then a client started event should be emitted
+    And a config loaded event should be emitted
+    And the events should contain client configuration details
+
+  Scenario: Emit events during request modifier management
+    Given I have an httpclient with event observation enabled
+    When I add a request modifier
+    Then a modifier added event should be emitted
+    When I remove a request modifier
+    Then a modifier removed event should be emitted
+
+  Scenario: Emit events during timeout changes
+    Given I have an httpclient with event observation enabled
+    When I change the client timeout
+    Then a timeout changed event should be emitted
+    And the event should contain the new timeout value

@@ -3,7 +3,7 @@ module github.com/CrisisTextLine/modular/modules/httpserver
 go 1.24.2
 
 require (
-	github.com/CrisisTextLine/modular v1.5.0
+	github.com/CrisisTextLine/modular v1.5.3
 	github.com/cucumber/godog v0.15.1
 	github.com/stretchr/testify v1.10.0
 )
@@ -30,3 +30,6 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+
+replace github.com/CrisisTextLine/modular => ../..

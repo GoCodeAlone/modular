@@ -142,6 +142,9 @@ type EventLoggerModule struct {
 	wg        sync.WaitGroup
 	started   bool
 	mutex     sync.RWMutex
+	subject   modular.Subject
+	// observerRegistered ensures we only register with the subject once
+	observerRegistered bool
 }
 
 // NewModule creates a new instance of the event logger module.
@@ -164,6 +167,11 @@ func (m *EventLoggerModule) Name() string {
 
 // RegisterConfig registers the module's configuration structure.
 func (m *EventLoggerModule) RegisterConfig(app modular.Application) error {
+	// If a non-nil config provider is already registered (e.g., tests), don't override it
+	if existing, err := app.GetConfigSection(m.Name()); err == nil && existing != nil {
+		return nil
+	}
+
 	// Register the configuration with default values
 	defaultConfig := &EventLoggerConfig{
 		Enabled:           true,
@@ -215,7 +223,10 @@ func (m *EventLoggerModule) Init(app modular.Application) error {
 	m.eventChan = make(chan cloudevents.Event, m.config.BufferSize)
 	m.stopChan = make(chan struct{})
 
-	m.logger.Info("Event logger module initialized", "targets", len(m.outputs))
+	if m.logger != nil {
+		m.logger.Info("Event logger module initialized", "targets", len(m.outputs))
+	}
+
 	return nil
 }
 
@@ -242,10 +253,40 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 
 	// Start event processing goroutine
 	m.wg.Add(1)
-	go m.processEvents()
+	go m.processEvents(ctx)
 
 	m.started = true
 	m.logger.Info("Event logger started")
+
+	// Emit configuration loaded event (synchronous for reliable test capture)
+	if err := m.emitSyncOperationalEvent(ctx, EventTypeConfigLoaded, map[string]interface{}{
+		"enabled":              m.config.Enabled,
+		"buffer_size":          m.config.BufferSize,
+		"output_targets_count": len(m.config.OutputTargets),
+		"log_level":            m.config.LogLevel,
+	}); err != nil {
+		m.logger.Debug("Failed to emit config loaded event", "error", err)
+	}
+
+	// Emit output registered events (synchronous for reliable test capture)
+	for i, targetConfig := range m.config.OutputTargets {
+		err := m.emitSyncOperationalEvent(ctx, EventTypeOutputRegistered, map[string]interface{}{
+			"output_index": i,
+			"output_type":  targetConfig.Type,
+			"output_level": targetConfig.Level,
+		})
+		if err != nil {
+			m.logger.Debug("Failed to emit output registered event", "error", err, "index", i)
+			// Continue anyway to try to emit the other events
+		}
+	}
+
+	// Emit logger started event
+	m.emitOperationalEvent(ctx, EventTypeLoggerStarted, map[string]interface{}{
+		"output_count": len(m.outputs),
+		"buffer_size":  len(m.eventChan),
+	})
+
 	return nil
 }
 
@@ -273,6 +314,10 @@ func (m *EventLoggerModule) Stop(ctx context.Context) error {
 
 	m.started = false
 	m.logger.Info("Event logger stopped")
+
+	// Emit logger stopped event
+	m.emitOperationalEvent(ctx, EventTypeLoggerStopped, map[string]interface{}{})
+
 	return nil
 }
 
@@ -307,32 +352,100 @@ func (m *EventLoggerModule) Constructor() modular.ModuleConstructor {
 // RegisterObservers implements the ObservableModule interface to auto-register
 // with the application as an observer.
 func (m *EventLoggerModule) RegisterObservers(subject modular.Subject) error {
-	if !m.config.Enabled {
-		m.logger.Info("Event logger is disabled, skipping observer registration")
+	// Set subject reference for emitting operational events later
+	m.subject = subject
+
+	// Avoid duplicate registrations
+	if m.observerRegistered {
+		if m.logger != nil {
+			m.logger.Debug("RegisterObservers called - already registered, skipping")
+		}
+		return nil
+	}
+
+	// If config isn't initialized yet (RegisterObservers can be called before Init),
+	// register for all events now; filtering will be applied during processing.
+	// Also guard logger usage when it's not available yet.
+	if m.config != nil && !m.config.Enabled {
+		if m.logger != nil {
+			m.logger.Info("Event logger is disabled, skipping observer registration")
+		}
+		m.observerRegistered = true // Consider as handled to avoid repeated attempts
 		return nil
 	}
 
 	// Register for all events or filtered events
-	if len(m.config.EventTypeFilters) == 0 {
-		err := subject.RegisterObserver(m)
+	var err error
+	if m.config != nil && len(m.config.EventTypeFilters) > 0 {
+		err = subject.RegisterObserver(m, m.config.EventTypeFilters...)
 		if err != nil {
 			return fmt.Errorf("failed to register event logger as observer: %w", err)
 		}
-		m.logger.Info("Event logger registered as observer for all events")
+		if m.logger != nil {
+			m.logger.Info("Event logger registered as observer for filtered events", "filters", m.config.EventTypeFilters)
+		}
 	} else {
-		err := subject.RegisterObserver(m, m.config.EventTypeFilters...)
+		err = subject.RegisterObserver(m)
 		if err != nil {
 			return fmt.Errorf("failed to register event logger as observer: %w", err)
 		}
-		m.logger.Info("Event logger registered as observer for filtered events", "filters", m.config.EventTypeFilters)
+		if m.logger != nil {
+			m.logger.Info("Event logger registered as observer for all events")
+		}
 	}
+
+	m.observerRegistered = true
 
 	return nil
 }
 
-// EmitEvent allows the module to emit its own events (not implemented for logger).
+// EmitEvent allows the module to emit its own operational events.
 func (m *EventLoggerModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	return ErrLoggerDoesNotEmitEvents
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// emitOperationalEvent emits an event about the eventlogger's own operations
+func (m *EventLoggerModule) emitOperationalEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	if m.subject == nil {
+		return // No subject available, skip event emission
+	}
+
+	event := modular.NewCloudEvent(eventType, "eventlogger-module", data, nil)
+
+	// Emit in background to avoid blocking operations and prevent infinite loops
+	go func() {
+		if err := m.EmitEvent(ctx, event); err != nil {
+			// Use the regular logger to avoid recursion
+			m.logger.Debug("Failed to emit operational event", "error", err, "event_type", eventType)
+		}
+	}()
+}
+
+// emitSyncOperationalEvent emits an event synchronously for reliable test capture
+func (m *EventLoggerModule) emitSyncOperationalEvent(ctx context.Context, eventType string, data map[string]interface{}) error {
+	if m.subject == nil {
+		m.logger.Debug("Subject not available, skipping event emission", "event_type", eventType)
+		return nil // Don't return error, just skip
+	}
+
+	// Use a different source for config/output events to avoid any filtering issues during testing
+	event := modular.NewCloudEvent(eventType, "eventlogger-config", data, nil)
+	return m.EmitEvent(ctx, event)
+}
+
+// isOwnEvent checks if an event is emitted by this eventlogger module to avoid infinite loops
+func (m *EventLoggerModule) isOwnEvent(event cloudevents.Event) bool {
+	// Treat events originating from this module (including config/operational emissions)
+	// as "own events" to avoid generating recursive log/output-success events that
+	// can cause unbounded amplification and buffer overflows during processing.
+	src := event.Source()
+	return src == "eventlogger-module" || src == "eventlogger-config"
 }
 
 // OnEvent implements the Observer interface to receive and log CloudEvents.
@@ -348,10 +461,30 @@ func (m *EventLoggerModule) OnEvent(ctx context.Context, event cloudevents.Event
 	// Try to send event to processing channel
 	select {
 	case m.eventChan <- event:
+		// Emit event received event (avoid emitting for our own events to prevent loops)
+		if !m.isOwnEvent(event) {
+			m.emitOperationalEvent(ctx, EventTypeEventReceived, map[string]interface{}{
+				"event_type":   event.Type(),
+				"event_source": event.Source(),
+			})
+		}
 		return nil
 	default:
 		// Buffer is full, drop event and log warning
 		m.logger.Warn("Event buffer full, dropping event", "eventType", event.Type())
+
+		// Emit buffer full and event dropped events
+		if !m.isOwnEvent(event) {
+			m.emitOperationalEvent(ctx, EventTypeBufferFull, map[string]interface{}{
+				"buffer_size": cap(m.eventChan),
+			})
+			m.emitOperationalEvent(ctx, EventTypeEventDropped, map[string]interface{}{
+				"event_type":   event.Type(),
+				"event_source": event.Source(),
+				"reason":       "buffer_full",
+			})
+		}
+
 		return ErrEventBufferFull
 	}
 }
@@ -362,7 +495,7 @@ func (m *EventLoggerModule) ObserverID() string {
 }
 
 // processEvents processes events from both event channels.
-func (m *EventLoggerModule) processEvents() {
+func (m *EventLoggerModule) processEvents(ctx context.Context) {
 	defer m.wg.Done()
 
 	flushTicker := time.NewTicker(m.config.FlushInterval)
@@ -371,7 +504,15 @@ func (m *EventLoggerModule) processEvents() {
 	for {
 		select {
 		case event := <-m.eventChan:
-			m.logEvent(event)
+			m.logEvent(ctx, event)
+
+			// Emit event processed event (avoid emitting for our own events to prevent loops)
+			if !m.isOwnEvent(event) {
+				m.emitOperationalEvent(ctx, EventTypeEventProcessed, map[string]interface{}{
+					"event_type":   event.Type(),
+					"event_source": event.Source(),
+				})
+			}
 
 		case <-flushTicker.C:
 			m.flushOutputs()
@@ -381,7 +522,15 @@ func (m *EventLoggerModule) processEvents() {
 			for {
 				select {
 				case event := <-m.eventChan:
-					m.logEvent(event)
+					m.logEvent(ctx, event)
+
+					// Emit event processed event (avoid emitting for our own events to prevent loops)
+					if !m.isOwnEvent(event) {
+						m.emitOperationalEvent(ctx, EventTypeEventProcessed, map[string]interface{}{
+							"event_type":   event.Type(),
+							"event_source": event.Source(),
+						})
+					}
 				default:
 					m.flushOutputs()
 					return
@@ -392,7 +541,7 @@ func (m *EventLoggerModule) processEvents() {
 }
 
 // logEvent logs a CloudEvent to all configured output targets.
-func (m *EventLoggerModule) logEvent(event cloudevents.Event) {
+func (m *EventLoggerModule) logEvent(ctx context.Context, event cloudevents.Event) {
 	// Check if event should be logged based on level and filters
 	if !m.shouldLogEvent(event) {
 		return
@@ -432,10 +581,35 @@ func (m *EventLoggerModule) logEvent(event cloudevents.Event) {
 	}
 
 	// Send to all output targets
+	successCount := 0
+	errorCount := 0
+
 	for _, output := range m.outputs {
 		if err := output.WriteEvent(entry); err != nil {
 			m.logger.Error("Failed to write event to output target", "error", err, "eventType", event.Type())
+			errorCount++
+
+			// Emit output error event (avoid emitting for our own events to prevent loops)
+			if !m.isOwnEvent(event) {
+				m.emitOperationalEvent(ctx, EventTypeOutputError, map[string]interface{}{
+					"error":        err.Error(),
+					"event_type":   event.Type(),
+					"event_source": event.Source(),
+				})
+			}
+		} else {
+			successCount++
 		}
+	}
+
+	// Emit output success event synchronously if at least one output succeeded (avoid emitting for our own events)
+	if successCount > 0 && !m.isOwnEvent(event) {
+		_ = m.emitSyncOperationalEvent(ctx, EventTypeOutputSuccess, map[string]interface{}{
+			"success_count": successCount,
+			"error_count":   errorCount,
+			"event_type":    event.Type(),
+			"event_source":  event.Source(),
+		})
 	}
 }
 
@@ -509,4 +683,21 @@ type LogEntry struct {
 	Source    string                 `json:"source"`
 	Data      interface{}            `json:"data"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this eventlogger module can emit.
+func (m *EventLoggerModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeLoggerStarted,
+		EventTypeLoggerStopped,
+		EventTypeEventReceived,
+		EventTypeEventProcessed,
+		EventTypeEventDropped,
+		EventTypeBufferFull,
+		EventTypeOutputSuccess,
+		EventTypeOutputError,
+		EventTypeConfigLoaded,
+		EventTypeOutputRegistered,
+	}
 }

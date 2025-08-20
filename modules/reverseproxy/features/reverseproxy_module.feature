@@ -65,6 +65,76 @@ Feature: Reverse Proxy Module
     Then ongoing requests should be completed
     And new requests should be rejected gracefully
 
+  Scenario: Emit events during proxy lifecycle
+    Given I have a reverse proxy with event observation enabled
+    When the reverse proxy module starts
+    Then a proxy created event should be emitted
+    And a proxy started event should be emitted
+    And a module started event should be emitted
+    And the events should contain proxy configuration details
+    When the reverse proxy module stops
+    Then a proxy stopped event should be emitted
+    And a module stopped event should be emitted
+
+  Scenario: Emit events during request routing
+    Given I have a reverse proxy with event observation enabled
+    And I have a backend service configured
+    When I send a request to the reverse proxy
+    Then a request received event should be emitted
+    And the event should contain request details
+    When the request is successfully proxied to the backend
+    Then a request proxied event should be emitted
+    And the event should contain backend and response details
+
+  Scenario: Emit events during request failures
+    Given I have a reverse proxy with event observation enabled
+    And I have an unavailable backend service configured
+    When I send a request to the reverse proxy
+    Then a request received event should be emitted
+    When the request fails to reach the backend
+    Then a request failed event should be emitted
+    And the event should contain error details
+
+  Scenario: Emit events during backend health management
+    Given I have a reverse proxy with event observation enabled
+    And I have backends with health checking enabled
+    When a backend becomes healthy
+    Then a backend healthy event should be emitted
+    And the event should contain backend health details
+    When a backend becomes unhealthy
+    Then a backend unhealthy event should be emitted
+    And the event should contain health failure details
+
+  Scenario: Emit events during backend management
+    Given I have a reverse proxy with event observation enabled
+    When a new backend is added to the configuration
+    Then a backend added event should be emitted
+    And the event should contain backend configuration
+    When a backend is removed from the configuration
+    Then a backend removed event should be emitted
+    And the event should contain removal details
+
+  Scenario: Emit events during load balancing decisions
+    Given I have a reverse proxy with event observation enabled
+    And I have multiple backends configured
+    When load balancing decisions are made
+    Then load balance decision events should be emitted
+    And the events should contain selected backend information
+    When round-robin load balancing is used
+    Then round-robin events should be emitted
+    And the events should contain rotation details
+
+  Scenario: Emit events during circuit breaker operations
+    Given I have a reverse proxy with event observation enabled
+    And I have circuit breaker enabled for backends
+    When a circuit breaker opens due to failures
+    Then a circuit breaker open event should be emitted
+    And the event should contain failure threshold details
+    When a circuit breaker transitions to half-open
+    Then a circuit breaker half-open event should be emitted
+    When a circuit breaker closes after recovery
+    Then a circuit breaker closed event should be emitted
+
   Scenario: Health check DNS resolution
     Given I have a reverse proxy with health checks configured for DNS resolution
     When health checks are performed

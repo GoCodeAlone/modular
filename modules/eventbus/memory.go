@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CrisisTextLine/modular"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +23,7 @@ type MemoryEventBus struct {
 	eventHistory   map[string][]Event
 	historyMutex   sync.RWMutex
 	retentionTimer *time.Timer
+	module         *EventBusModule // Reference to emit events
 }
 
 // memorySubscription represents a subscription in the memory event bus
@@ -71,6 +73,25 @@ func NewMemoryEventBus(config *EventBusConfig) *MemoryEventBus {
 		config:        config,
 		subscriptions: make(map[string]map[string]*memorySubscription),
 		eventHistory:  make(map[string][]Event),
+		module:        nil, // Will be set when attached to a module
+	}
+}
+
+// SetModule sets the parent module for event emission
+func (m *MemoryEventBus) SetModule(module *EventBusModule) {
+	m.module = module
+}
+
+// emitEvent emits an event through the module if available
+func (m *MemoryEventBus) emitEvent(ctx context.Context, eventType, source string, data map[string]interface{}) {
+	if m.module != nil {
+		event := modular.NewCloudEvent(eventType, source, data, nil)
+		go func() {
+			if err := m.module.EmitEvent(ctx, event); err != nil {
+				// Log but don't fail the operation
+				slog.Debug("Failed to emit event", "type", eventType, "error", err)
+			}
+		}()
 	}
 }
 
@@ -234,11 +255,20 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 
 	// Add to subscriptions map
 	m.topicMutex.Lock()
+	isNewTopic := false
 	if _, ok := m.subscriptions[topic]; !ok {
 		m.subscriptions[topic] = make(map[string]*memorySubscription)
+		isNewTopic = true
 	}
 	m.subscriptions[topic][sub.id] = sub
 	m.topicMutex.Unlock()
+
+	// Emit topic created event if this is a new topic
+	if isNewTopic {
+		m.emitEvent(ctx, EventTypeTopicCreated, "memory-eventbus", map[string]interface{}{
+			"topic": topic,
+		})
+	}
 
 	// Start event listener goroutine and wait for it to be ready
 	started := make(chan struct{})
@@ -275,11 +305,20 @@ func (m *MemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscript
 	m.topicMutex.Lock()
 	defer m.topicMutex.Unlock()
 
+	topicDeleted := false
 	if subs, ok := m.subscriptions[sub.topic]; ok {
 		delete(subs, sub.id)
 		if len(subs) == 0 {
 			delete(m.subscriptions, sub.topic)
+			topicDeleted = true
 		}
+	}
+
+	// Emit topic deleted event if this topic no longer has subscribers
+	if topicDeleted {
+		m.emitEvent(ctx, EventTypeTopicDeleted, "memory-eventbus", map[string]interface{}{
+			"topic": sub.topic,
+		})
 	}
 
 	return nil
@@ -332,6 +371,12 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 				now := time.Now()
 				event.ProcessingStarted = &now
 
+				// Emit message received event
+				m.emitEvent(m.ctx, EventTypeMessageReceived, "memory-eventbus", map[string]interface{}{
+					"topic":           event.Topic,
+					"subscription_id": sub.id,
+				})
+
 				// Process the event
 				err := sub.handler(m.ctx, event)
 
@@ -340,6 +385,12 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 				event.ProcessingCompleted = &completed
 
 				if err != nil {
+					// Emit message failed event for handler errors
+					m.emitEvent(m.ctx, EventTypeMessageFailed, "memory-eventbus", map[string]interface{}{
+						"topic":           event.Topic,
+						"subscription_id": sub.id,
+						"error":           err.Error(),
+					})
 					// Log error but continue processing
 					slog.Error("Event handler failed", "error", err, "topic", event.Topic)
 				}
@@ -355,6 +406,12 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 		now := time.Now()
 		event.ProcessingStarted = &now
 
+		// Emit message received event
+		m.emitEvent(m.ctx, EventTypeMessageReceived, "memory-eventbus", map[string]interface{}{
+			"topic":           event.Topic,
+			"subscription_id": sub.id,
+		})
+
 		// Process the event
 		err := sub.handler(m.ctx, event)
 
@@ -363,6 +420,12 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 		event.ProcessingCompleted = &completed
 
 		if err != nil {
+			// Emit message failed event for handler errors
+			m.emitEvent(m.ctx, EventTypeMessageFailed, "memory-eventbus", map[string]interface{}{
+				"topic":           event.Topic,
+				"subscription_id": sub.id,
+				"error":           err.Error(),
+			})
 			// Log error but continue processing
 			slog.Error("Event handler failed", "error", err, "topic", event.Topic)
 		}

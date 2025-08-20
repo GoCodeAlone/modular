@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
+
+	"github.com/CrisisTextLine/modular"
 )
 
 // Define static errors
@@ -38,6 +41,14 @@ type DatabaseService interface {
 	// Exec executes a query without returning any rows (using default context)
 	Exec(query string, args ...interface{}) (sql.Result, error)
 
+	// ExecuteContext executes a query without returning any rows (alias for ExecContext)
+	// Kept for backwards compatibility with earlier API docs/tests
+	ExecuteContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+
+	// Execute executes a query without returning any rows (alias for Exec)
+	// Kept for backwards compatibility with earlier API docs/tests
+	Execute(query string, args ...interface{}) (sql.Result, error)
+
 	// PrepareContext prepares a statement for execution
 	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 
@@ -61,6 +72,25 @@ type DatabaseService interface {
 
 	// Begin starts a transaction with default options
 	Begin() (*sql.Tx, error)
+
+	// CommitTransaction commits a transaction and emits appropriate events
+	CommitTransaction(ctx context.Context, tx *sql.Tx) error
+
+	// RollbackTransaction rolls back a transaction and emits appropriate events
+	RollbackTransaction(ctx context.Context, tx *sql.Tx) error
+
+	// Migration operations
+	// RunMigration executes a database migration
+	RunMigration(ctx context.Context, migration Migration) error
+
+	// GetAppliedMigrations returns a list of applied migration IDs
+	GetAppliedMigrations(ctx context.Context) ([]string, error)
+
+	// CreateMigrationsTable ensures the migrations tracking table exists
+	CreateMigrationsTable(ctx context.Context) error
+
+	// SetEventEmitter sets the event emitter for migration events
+	SetEventEmitter(emitter EventEmitter)
 }
 
 // databaseServiceImpl implements the DatabaseService interface
@@ -68,6 +98,8 @@ type databaseServiceImpl struct {
 	config           ConnectionConfig
 	db               *sql.DB
 	awsTokenProvider *AWSIAMTokenProvider
+	migrationService MigrationService
+	eventEmitter     EventEmitter
 	ctx              context.Context
 	cancel           context.CancelFunc
 }
@@ -158,6 +190,12 @@ func (s *databaseServiceImpl) Connect() error {
 	}
 
 	s.db = db
+
+	// Initialize migration service after successful connection
+	if s.eventEmitter != nil {
+		s.migrationService = NewMigrationService(s.db, s.eventEmitter)
+	}
+
 	return nil
 }
 
@@ -219,6 +257,16 @@ func (s *databaseServiceImpl) Exec(query string, args ...interface{}) (sql.Resul
 	return s.ExecContext(context.Background(), query, args...)
 }
 
+// ExecuteContext is a backward-compatible alias for ExecContext
+func (s *databaseServiceImpl) ExecuteContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return s.ExecContext(ctx, query, args...)
+}
+
+// Execute is a backward-compatible alias for Exec
+func (s *databaseServiceImpl) Execute(query string, args ...interface{}) (sql.Result, error) {
+	return s.Exec(query, args...)
+}
+
 func (s *databaseServiceImpl) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	if s.db == nil {
 		return nil, ErrDatabaseNotConnected
@@ -267,6 +315,71 @@ func (s *databaseServiceImpl) Begin() (*sql.Tx, error) {
 	return tx, nil
 }
 
+// CommitTransaction commits a transaction and emits appropriate events
+func (s *databaseServiceImpl) CommitTransaction(ctx context.Context, tx *sql.Tx) error {
+	if tx == nil {
+		return ErrTransactionNil
+	}
+
+	startTime := time.Now()
+	err := tx.Commit()
+	duration := time.Since(startTime)
+
+	// Emit transaction committed event
+	if s.eventEmitter != nil {
+		go func() {
+			event := modular.NewCloudEvent(EventTypeTransactionCommitted, "database-service", map[string]interface{}{
+				"connection":   "default",
+				"committed_at": startTime.Format(time.RFC3339),
+				"duration_ms":  duration.Milliseconds(),
+			}, nil)
+
+			if emitErr := s.eventEmitter.EmitEvent(ctx, event); emitErr != nil {
+				log.Printf("Failed to emit transaction committed event: %v", emitErr)
+			}
+		}()
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// RollbackTransaction rolls back a transaction and emits appropriate events
+func (s *databaseServiceImpl) RollbackTransaction(ctx context.Context, tx *sql.Tx) error {
+	if tx == nil {
+		return ErrTransactionNil
+	}
+
+	startTime := time.Now()
+	err := tx.Rollback()
+	duration := time.Since(startTime)
+
+	// Emit transaction rolled back event
+	if s.eventEmitter != nil {
+		go func() {
+			event := modular.NewCloudEvent(EventTypeTransactionRolledBack, "database-service", map[string]interface{}{
+				"connection":     "default",
+				"rolled_back_at": startTime.Format(time.RFC3339),
+				"duration_ms":    duration.Milliseconds(),
+				"reason":         "manual rollback",
+			}, nil)
+
+			if emitErr := s.eventEmitter.EmitEvent(ctx, event); emitErr != nil {
+				log.Printf("Failed to emit transaction rolled back event: %v", emitErr)
+			}
+		}()
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to rollback transaction: %w", err)
+	}
+
+	return nil
+}
+
 func (s *databaseServiceImpl) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
 	if s.db == nil {
 		return nil, ErrDatabaseNotConnected
@@ -280,4 +393,47 @@ func (s *databaseServiceImpl) PrepareContext(ctx context.Context, query string) 
 
 func (s *databaseServiceImpl) Prepare(query string) (*sql.Stmt, error) {
 	return s.PrepareContext(context.Background(), query)
+}
+
+// SetEventEmitter sets the event emitter for migration events
+func (s *databaseServiceImpl) SetEventEmitter(emitter EventEmitter) {
+	s.eventEmitter = emitter
+	// Re-initialize migration service if database is already connected
+	if s.db != nil {
+		s.migrationService = NewMigrationService(s.db, s.eventEmitter)
+	}
+}
+
+// Migration methods - delegate to migration service
+
+func (s *databaseServiceImpl) RunMigration(ctx context.Context, migration Migration) error {
+	if s.migrationService == nil {
+		return ErrMigrationServiceNotInitialized
+	}
+	err := s.migrationService.RunMigration(ctx, migration)
+	if err != nil {
+		return fmt.Errorf("failed to run migration: %w", err)
+	}
+	return nil
+}
+
+func (s *databaseServiceImpl) GetAppliedMigrations(ctx context.Context) ([]string, error) {
+	if s.migrationService == nil {
+		return nil, ErrMigrationServiceNotInitialized
+	}
+	migrations, err := s.migrationService.GetAppliedMigrations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied migrations: %w", err)
+	}
+	return migrations, nil
+}
+
+func (s *databaseServiceImpl) CreateMigrationsTable(ctx context.Context) error {
+	if s.migrationService == nil {
+		return ErrMigrationServiceNotInitialized
+	}
+	if err := s.migrationService.CreateMigrationsTable(ctx); err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+	return nil
 }

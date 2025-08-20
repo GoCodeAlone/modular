@@ -4,7 +4,6 @@ go 1.23.0
 
 require github.com/CrisisTextLine/modular v1.5.3
 
-replace github.com/CrisisTextLine/modular => ../..
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
@@ -18,3 +17,5 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/CrisisTextLine/modular => ../..

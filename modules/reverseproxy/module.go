@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/gobwas/glob"
 )
 
@@ -52,7 +53,8 @@ type ReverseProxyModule struct {
 	backendRoutes   map[string]map[string]http.HandlerFunc
 	compositeRoutes map[string]http.HandlerFunc
 	defaultBackend  string
-	app             modular.TenantApplication
+	app             modular.Application
+	tenantApp       modular.TenantApplication
 	responseCache   *responseCache
 	circuitBreakers map[string]*CircuitBreaker
 	directorFactory func(backend string, tenant modular.TenantID) func(*http.Request)
@@ -75,6 +77,9 @@ type ReverseProxyModule struct {
 
 	// Dry run handling
 	dryRunHandler *DryRunHandler
+
+	// Event observation
+	subject modular.Subject
 }
 
 // Compile-time assertions to ensure interface compliance
@@ -134,7 +139,19 @@ func (m *ReverseProxyModule) Name() string {
 // It also stores the provided app as a TenantApplication for later use with
 // tenant-specific functionality.
 func (m *ReverseProxyModule) RegisterConfig(app modular.Application) error {
-	m.app = app.(modular.TenantApplication)
+	// Always store the application reference
+	m.app = app
+
+	// Store tenant application if it implements the interface
+	if ta, ok := app.(modular.TenantApplication); ok {
+		m.tenantApp = ta
+	}
+
+	// Bind subject early for events that may be emitted during Init
+	if subj, ok := any(app).(modular.Subject); ok {
+		m.subject = subj
+	}
+
 	// Register the config section only if it doesn't already exist (for BDD tests)
 	if _, err := app.GetConfigSection(m.Name()); err != nil {
 		// Config section doesn't exist, register a default one
@@ -142,12 +159,21 @@ func (m *ReverseProxyModule) RegisterConfig(app modular.Application) error {
 	}
 
 	return nil
-}
-
-// Init initializes the module with the provided application.
+} // Init initializes the module with the provided application.
 // It retrieves the module's configuration and sets up the internal data structures
 // for each configured backend, including tenant-specific configurations.
 func (m *ReverseProxyModule) Init(app modular.Application) error {
+	// Store both interfaces - broader Application for Subject interface, TenantApplication for specific methods
+	m.app = app
+	if ta, ok := app.(modular.TenantApplication); ok {
+		m.tenantApp = ta
+	}
+
+	// If observable, opportunistically bind subject for early Init events
+	if subj, ok := app.(modular.Subject); ok {
+		m.subject = subj
+	}
+
 	// Get the config section
 	cfg, err := app.GetConfigSection(m.Name())
 	if err != nil {
@@ -338,6 +364,16 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 		app.Logger().Info("Circuit breakers initialized", "backends", len(m.circuitBreakers))
 	}
 
+	// Emit config loaded event
+	m.emitEvent(context.Background(), EventTypeConfigLoaded, map[string]interface{}{
+		"backend_count":            len(m.config.BackendServices),
+		"composite_routes_count":   len(m.config.CompositeRoutes),
+		"circuit_breakers_enabled": len(m.circuitBreakers) > 0,
+		"metrics_enabled":          m.enableMetrics,
+		"cache_enabled":            m.config.CacheEnabled,
+		"request_timeout":          m.config.RequestTimeout.String(),
+	})
+
 	return nil
 }
 
@@ -511,6 +547,20 @@ func (m *ReverseProxyModule) Start(ctx context.Context) error {
 		}
 	}
 
+	// Emit module started event
+	m.emitEvent(ctx, EventTypeModuleStarted, map[string]interface{}{
+		"backend_count":          len(m.config.BackendServices),
+		"composite_routes_count": len(m.config.CompositeRoutes),
+		"health_checker_enabled": m.healthChecker != nil,
+		"metrics_enabled":        m.enableMetrics,
+	})
+
+	// Emit proxy started event
+	m.emitEvent(ctx, EventTypeProxyStarted, map[string]interface{}{
+		"backend_count":  len(m.config.BackendServices),
+		"server_running": true,
+	})
+
 	return nil
 }
 
@@ -574,6 +624,21 @@ func (m *ReverseProxyModule) Stop(ctx context.Context) error {
 		}
 	}
 
+	// Emit proxy stopped event
+	backendCount := 0
+	if m.config != nil && m.config.BackendServices != nil {
+		backendCount = len(m.config.BackendServices)
+	}
+	m.emitEvent(ctx, EventTypeProxyStopped, map[string]interface{}{
+		"backend_count":  backendCount,
+		"server_running": false,
+	})
+
+	// Emit module stopped event
+	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{
+		"cleanup_complete": true,
+	})
+
 	if m.app != nil && m.app.Logger() != nil {
 		m.app.Logger().Info("Reverseproxy module shutdown complete")
 	}
@@ -600,8 +665,22 @@ func (m *ReverseProxyModule) loadTenantConfigs() {
 	if m.app != nil && m.app.Logger() != nil {
 		m.app.Logger().Debug("Loading tenant configs", "count", len(m.tenants))
 	}
+
+	// Ensure we have a tenant application reference (tests may call this before Init)
+	ta := m.tenantApp
+	if ta == nil {
+		if cast, ok := any(m.app).(modular.TenantApplication); ok {
+			ta = cast
+			m.tenantApp = cast
+		} else {
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Warn("Tenant application not available; skipping tenant config load")
+			}
+			return
+		}
+	}
 	for tenantID := range m.tenants {
-		cp, err := m.app.GetTenantConfig(tenantID, m.Name())
+		cp, err := ta.GetTenantConfig(tenantID, m.Name())
 		if err != nil {
 			m.app.Logger().Error("Failed to get config for tenant", "tenant", tenantID, "module", m.Name(), "error", err)
 			continue
@@ -1150,6 +1229,13 @@ func (m *ReverseProxyModule) SetHttpClient(client *http.Client) {
 func (m *ReverseProxyModule) createReverseProxyForBackend(target *url.URL, backendID string, endpoint string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
+	// Emit proxy created event
+	m.emitEvent(context.Background(), EventTypeProxyCreated, map[string]interface{}{
+		"backend_id": backendID,
+		"target_url": target.String(),
+		"endpoint":   endpoint,
+	})
+
 	// Use the module's custom transport if available
 	if m.httpClient != nil && m.httpClient.Transport != nil {
 		proxy.Transport = m.httpClient.Transport
@@ -1472,10 +1558,31 @@ func (m *ReverseProxyModule) applyPatternReplacement(path, pattern, replacement 
 	return replacement
 }
 
+// statusCapturingResponseWriter wraps http.ResponseWriter to capture the status code
+type statusCapturingResponseWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (w *statusCapturingResponseWriter) WriteHeader(code int) {
+	w.status = code
+	w.wroteHeader = true
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // createBackendProxyHandler creates an http.HandlerFunc that handles proxying requests
 // to a specific backend, with support for tenant-specific backends and feature flag evaluation
 func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Emit request received event
+		m.emitEvent(r.Context(), EventTypeRequestReceived, map[string]interface{}{
+			"backend":     backend,
+			"method":      r.Method,
+			"path":        r.URL.Path,
+			"remote_addr": r.RemoteAddr,
+		})
+
 		// Extract tenant ID from request header, if present
 		tenantHeader := m.config.TenantIDHeader
 		tenantID := modular.TenantID(r.Header.Get(tenantHeader))
@@ -1601,8 +1708,27 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 				}
 			}
 		} else {
-			// No circuit breaker, use the proxy directly
-			proxy.ServeHTTP(w, r)
+			// No circuit breaker, use the proxy directly but capture status
+			sw := &statusCapturingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+			proxy.ServeHTTP(sw, r)
+
+			// Emit success or failure event based on status code
+			if sw.status >= 400 {
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"status":  sw.status,
+					"error":   fmt.Sprintf("upstream returned status %d", sw.status),
+				})
+			} else {
+				m.emitEvent(r.Context(), EventTypeRequestProxied, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"status":  sw.status,
+				})
+			}
 		}
 	}
 }
@@ -1635,6 +1761,14 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Emit request received event (tenant-aware)
+		m.emitEvent(r.Context(), EventTypeRequestReceived, map[string]interface{}{
+			"backend": backend,
+			"method":  r.Method,
+			"path":    r.URL.Path,
+			"tenant":  string(tenantID),
+		})
+
 		// Record request to backend for health checking
 		if m.healthChecker != nil {
 			m.healthChecker.RecordBackendRequest(backend)
@@ -1689,10 +1823,27 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 						m.app.Logger().Error("Failed to write circuit breaker response", "error", err)
 					}
 				}
+				// Emit failed event for tenant path when circuit is open
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"tenant":  string(tenantID),
+					"status":  http.StatusServiceUnavailable,
+					"error":   "circuit open",
+				})
 				return
 			} else if err != nil {
 				// Some other error occurred
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"tenant":  string(tenantID),
+					"status":  http.StatusInternalServerError,
+					"error":   err.Error(),
+				})
 				return
 			}
 
@@ -1711,9 +1862,50 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 					m.app.Logger().Error("Failed to copy response body", "error", err)
 				}
 			}
+
+			// Emit event based on response status
+			if resp.StatusCode >= 400 {
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"tenant":  string(tenantID),
+					"status":  resp.StatusCode,
+					"error":   fmt.Sprintf("upstream returned status %d", resp.StatusCode),
+				})
+			} else {
+				m.emitEvent(r.Context(), EventTypeRequestProxied, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"tenant":  string(tenantID),
+					"status":  resp.StatusCode,
+				})
+			}
 		} else {
-			// No circuit breaker, use the proxy directly
-			proxy.ServeHTTP(w, r)
+			// No circuit breaker, use the proxy directly but capture status
+			sw := &statusCapturingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+			proxy.ServeHTTP(sw, r)
+
+			// Emit success or failure event based on status code
+			if sw.status >= 400 {
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"tenant":  string(tenantID),
+					"status":  sw.status,
+					"error":   fmt.Sprintf("upstream returned status %d", sw.status),
+				})
+			} else {
+				m.emitEvent(r.Context(), EventTypeRequestProxied, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"tenant":  string(tenantID),
+					"status":  sw.status,
+				})
+			}
 		}
 	}
 }
@@ -2685,4 +2877,78 @@ func isEmptyComparisonResult(result ComparisonResult) bool {
 	// Default case: If none of the above conditions matched, we conservatively assume the result is empty.
 	// This ensures that only explicit differences or matches are treated as non-empty; ambiguous or default-initialized results are considered empty.
 	return true
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the reverseproxy module to register as an observer for events it's interested in.
+func (m *ReverseProxyModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the reverseproxy module to emit events that other modules or observers can receive.
+func (m *ReverseProxyModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	// Lazily bind to application's subject if not already set, so events emitted
+	// during Init/early lifecycle still reach observers when using ObservableApplication.
+	if m.subject == nil && m.app != nil {
+		if subj, ok := any(m.app).(modular.Subject); ok {
+			m.subject = subj
+		}
+	}
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the reverseproxy module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+func (m *ReverseProxyModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	event := modular.NewCloudEvent(eventType, "reverseproxy-service", data, nil)
+
+	// Try to emit through the module's registered subject first
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If module subject isn't available, try to emit directly through app if it's a Subject
+		if m.app != nil {
+			if subj, ok := any(m.app).(modular.Subject); ok {
+				if appErr := subj.NotifyObservers(ctx, event); appErr != nil {
+					fmt.Printf("Failed to emit reverseproxy event %s via app subject: %v\n", eventType, appErr)
+				}
+				return // Successfully emitted via app, no need to log error
+			}
+		}
+		// Log the original error if we couldn't emit via app either
+		fmt.Printf("Failed to emit reverseproxy event %s: %v\n", eventType, emitErr)
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this reverseproxy module can emit.
+func (m *ReverseProxyModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeConfigLoaded,
+		EventTypeConfigValidated,
+		EventTypeProxyCreated,
+		EventTypeProxyStarted,
+		EventTypeProxyStopped,
+		EventTypeRequestReceived,
+		EventTypeRequestProxied,
+		EventTypeRequestFailed,
+		EventTypeBackendHealthy,
+		EventTypeBackendUnhealthy,
+		EventTypeBackendAdded,
+		EventTypeBackendRemoved,
+		EventTypeLoadBalanceDecision,
+		EventTypeLoadBalanceRoundRobin,
+		EventTypeCircuitBreakerOpen,
+		EventTypeCircuitBreakerClosed,
+		EventTypeCircuitBreakerHalfOpen,
+		EventTypeModuleStarted,
+		EventTypeModuleStopped,
+		EventTypeError,
+	}
 }

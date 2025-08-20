@@ -89,7 +89,9 @@ func (app *ObservableApplication) NotifyObservers(ctx context.Context, event clo
 		return err
 	}
 
-	// Notify observers in goroutines to avoid blocking
+	// If the context requests synchronous delivery, invoke observers directly.
+	// Otherwise, notify observers in goroutines to avoid blocking.
+	synchronous := IsSynchronousNotification(ctx)
 	for _, registration := range app.observers {
 		registration := registration // capture for goroutine
 
@@ -98,7 +100,7 @@ func (app *ObservableApplication) NotifyObservers(ctx context.Context, event clo
 			continue // observer not interested in this event type
 		}
 
-		go func() {
+		notify := func() {
 			defer func() {
 				if r := recover(); r != nil {
 					app.logger.Error("Observer panicked", "observerID", registration.observer.ObserverID(), "event", event.Type(), "panic", r)
@@ -108,7 +110,13 @@ func (app *ObservableApplication) NotifyObservers(ctx context.Context, event clo
 			if err := registration.observer.OnEvent(ctx, event); err != nil {
 				app.logger.Error("Observer error", "observerID", registration.observer.ObserverID(), "event", event.Type(), "error", err)
 			}
-		}()
+		}
+
+		if synchronous {
+			notify()
+		} else {
+			go notify()
+		}
 	}
 
 	return nil
@@ -186,12 +194,29 @@ func (app *ObservableApplication) RegisterService(name string, service any) erro
 func (app *ObservableApplication) Init() error {
 	ctx := context.Background()
 
+	app.logger.Debug("ObservableApplication initializing", "modules", len(app.moduleRegistry))
+
 	// Emit application starting initialization
 	app.emitEvent(ctx, EventTypeConfigLoaded, nil, map[string]interface{}{
 		"phase": "init_start",
 	})
 
-	err := app.StdApplication.Init()
+	// Register observers for any ObservableModule instances BEFORE calling module Init()
+	for _, module := range app.moduleRegistry {
+		app.logger.Debug("Checking module for ObservableModule interface", "module", module.Name())
+		if observableModule, ok := module.(ObservableModule); ok {
+			app.logger.Debug("ObservableApplication registering observers for module", "module", module.Name())
+			if err := observableModule.RegisterObservers(app); err != nil {
+				app.logger.Error("Failed to register observers for module", "module", module.Name(), "error", err)
+			}
+		} else {
+			app.logger.Debug("Module does not implement ObservableModule", "module", module.Name())
+		}
+	}
+	app.logger.Debug("ObservableApplication finished registering observers")
+
+	app.logger.Debug("ObservableApplication initializing modules with observable application instance")
+	err := app.InitWithApp(app)
 	if err != nil {
 		failureData := map[string]interface{}{
 			"phase": "init",
@@ -199,15 +224,6 @@ func (app *ObservableApplication) Init() error {
 		}
 		app.emitEvent(ctx, EventTypeApplicationFailed, failureData, nil)
 		return err
-	}
-
-	// Register observers for any ObservableModule instances
-	for _, module := range app.moduleRegistry {
-		if observableModule, ok := module.(ObservableModule); ok {
-			if err := observableModule.RegisterObservers(app); err != nil {
-				app.logger.Error("Failed to register observers for module", "module", module.Name(), "error", err)
-			}
-		}
 	}
 
 	// Emit initialization complete

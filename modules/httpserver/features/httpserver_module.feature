@@ -72,3 +72,24 @@ Feature: HTTP Server Module
     When the server processes requests
     Then server metrics should be collected
     And the metrics should include request counts and response times
+
+  Scenario: Emit events during httpserver lifecycle
+    Given I have an httpserver with event observation enabled
+    When the httpserver module starts
+    Then a server started event should be emitted
+    And a config loaded event should be emitted
+    And the events should contain server configuration details
+
+  Scenario: Emit events during TLS configuration
+    Given I have an httpserver with TLS and event observation enabled
+    When the TLS server module starts
+    Then a TLS enabled event should be emitted
+    And a TLS configured event should be emitted
+    And the events should contain TLS configuration details
+
+  Scenario: Emit events during request handling  
+    Given I have an httpserver with event observation enabled
+    When the httpserver processes a request
+    Then a request received event should be emitted
+    And a request handled event should be emitted
+    And the events should contain request details

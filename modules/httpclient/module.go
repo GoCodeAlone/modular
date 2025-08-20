@@ -126,6 +126,7 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // ModuleName is the unique identifier for the httpclient module.
@@ -143,17 +144,20 @@ const ServiceName = "httpclient"
 //   - modular.Module: Basic module lifecycle
 //   - modular.Configurable: Configuration management
 //   - modular.ServiceAware: Service dependency management
+//   - modular.ObservableModule: Event observation and emission
 //   - ClientService: HTTP client service interface
 //
 // The HTTP client is thread-safe and can be used concurrently from multiple goroutines.
 type HTTPClientModule struct {
-	config     *Config
-	app        modular.Application
-	logger     modular.Logger
-	fileLogger *FileLogger
-	httpClient *http.Client
-	transport  *http.Transport
-	modifier   RequestModifierFunc
+	config         *Config
+	app            modular.Application
+	logger         modular.Logger
+	fileLogger     *FileLogger
+	httpClient     *http.Client
+	transport      *http.Transport
+	modifier       RequestModifierFunc
+	namedModifiers map[string]func(*http.Request) error // For named modifier management
+	subject        modular.Subject
 }
 
 // Make sure HTTPClientModule implements necessary interfaces
@@ -171,7 +175,8 @@ var (
 //	app.RegisterModule(httpclient.NewHTTPClientModule())
 func NewHTTPClientModule() modular.Module {
 	return &HTTPClientModule{
-		modifier: func(r *http.Request) *http.Request { return r }, // Default no-op modifier
+		modifier:       func(r *http.Request) *http.Request { return r }, // Default no-op modifier
+		namedModifiers: make(map[string]func(*http.Request) error),       // Initialize named modifiers map
 	}
 }
 
@@ -297,17 +302,46 @@ func (m *HTTPClientModule) Init(app modular.Application) error {
 		Timeout:   m.config.RequestTimeout,
 	}
 
+	// Emit client created event (but not config loaded yet - that happens in Start)
+	ctx := context.Background()
+	m.emitEvent(ctx, EventTypeClientCreated, map[string]interface{}{
+		"timeout_seconds": m.config.RequestTimeout.Seconds(),
+	})
+
 	return nil
 }
 
 // Start performs startup logic for the module.
-func (m *HTTPClientModule) Start(context.Context) error {
+func (m *HTTPClientModule) Start(ctx context.Context) error {
 	m.logger.Info("Starting HTTP client module")
+
+	// Emit configuration loaded event (now that observers are set up)
+	m.emitEvent(ctx, EventTypeConfigLoaded, map[string]interface{}{
+		"request_timeout":         m.config.RequestTimeout.Seconds(),
+		"max_idle_conns":          m.config.MaxIdleConns,
+		"max_idle_conns_per_host": m.config.MaxIdleConnsPerHost,
+		"compression_disabled":    m.config.DisableCompression,
+		"keep_alive_disabled":     m.config.DisableKeepAlives,
+		"verbose_enabled":         m.config.Verbose,
+	})
+
+	// Emit client started event
+	m.emitEvent(ctx, EventTypeClientStarted, map[string]interface{}{
+		"request_timeout_seconds": m.config.RequestTimeout.Seconds(),
+		"max_idle_conns":          m.config.MaxIdleConns,
+	})
+
+	// Emit module started event
+	m.emitEvent(ctx, EventTypeModuleStarted, map[string]interface{}{
+		"request_timeout_seconds": m.config.RequestTimeout.Seconds(),
+		"max_idle_conns":          m.config.MaxIdleConns,
+	})
+
 	return nil
 }
 
 // Stop performs shutdown logic for the module.
-func (m *HTTPClientModule) Stop(context.Context) error {
+func (m *HTTPClientModule) Stop(ctx context.Context) error {
 	m.logger.Info("Stopping HTTP client module")
 	m.transport.CloseIdleConnections()
 
@@ -317,6 +351,9 @@ func (m *HTTPClientModule) Stop(context.Context) error {
 			m.logger.Warn("Failed to close file logger", "error", closeErr)
 		}
 	}
+
+	// Emit module stopped event
+	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{})
 
 	return nil
 }
@@ -364,17 +401,112 @@ func (m *HTTPClientModule) WithTimeout(timeoutSeconds int) *http.Client {
 	}
 
 	// Create a new client with the specified timeout
-	return &http.Client{
+	client := &http.Client{
 		Transport: m.httpClient.Transport,
 		Timeout:   time.Duration(timeoutSeconds) * time.Second,
 	}
+
+	// Emit timeout changed event
+	ctx := context.Background()
+	m.emitEvent(ctx, EventTypeTimeoutChanged, map[string]interface{}{
+		"old_timeout":    m.httpClient.Timeout.Seconds(),
+		"new_timeout":    timeoutSeconds,
+		"timeout_source": "custom",
+	})
+
+	// Emit client configured event
+	m.emitEvent(ctx, EventTypeClientConfigured, map[string]interface{}{
+		"timeout_seconds": timeoutSeconds,
+		"custom_timeout":  true,
+	})
+
+	return client
 }
 
 // SetRequestModifier sets the request modifier function.
 func (m *HTTPClientModule) SetRequestModifier(modifier RequestModifierFunc) {
 	if modifier != nil {
 		m.modifier = modifier
+
+		// Emit modifier set event
+		ctx := context.Background()
+		m.emitEvent(ctx, EventTypeModifierSet, map[string]interface{}{})
 	}
+}
+
+// AddRequestModifier adds a named request modifier function.
+// Named modifiers can be added and removed individually, providing fine-grained
+// control over request modification. Multiple modifiers can be active simultaneously.
+//
+// The modifier function should return an error if the request modification fails.
+// If any modifier returns an error, the request will not be sent.
+func (m *HTTPClientModule) AddRequestModifier(name string, modifier func(*http.Request) error) {
+	if name != "" && modifier != nil {
+		if m.namedModifiers == nil {
+			m.namedModifiers = make(map[string]func(*http.Request) error)
+		}
+		m.namedModifiers[name] = modifier
+
+		// Emit modifier added event
+		ctx := context.Background()
+		m.emitEvent(ctx, EventTypeModifierAdded, map[string]interface{}{
+			"modifier_name": name,
+		})
+	}
+}
+
+// RemoveRequestModifier removes a named request modifier function.
+// If the named modifier does not exist, this operation is a no-op.
+func (m *HTTPClientModule) RemoveRequestModifier(name string) {
+	if name != "" && m.namedModifiers != nil {
+		if _, exists := m.namedModifiers[name]; exists {
+			delete(m.namedModifiers, name)
+
+			// Emit modifier removed event
+			ctx := context.Background()
+			m.emitEvent(ctx, EventTypeModifierRemoved, map[string]interface{}{
+				"modifier_name": name,
+			})
+		}
+	}
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the httpclient module to register as an observer for events it's interested in.
+func (m *HTTPClientModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	// The httpclient module currently does not need to observe other events,
+	// but this method stores the subject for event emission.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the httpclient module to emit events to registered observers.
+func (m *HTTPClientModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// emitEvent emits an event through the event emitter if available
+func (m *HTTPClientModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	if m.subject == nil {
+		return // No subject available, skip event emission
+	}
+
+	event := modular.NewCloudEvent(eventType, "httpclient-module", data, nil)
+
+	// Emit in background to avoid blocking HTTP operations
+	go func() {
+		if err := m.EmitEvent(ctx, event); err != nil {
+			// Use the logger to avoid blocking
+			m.logger.Debug("Failed to emit HTTP client event", "error", err, "event_type", eventType)
+		}
+	}()
 }
 
 // loggingTransport provides verbose logging of HTTP requests and responses.
@@ -810,5 +942,23 @@ func (t *loggingTransport) handleFileLogging(requestID string, req *http.Request
 			"id", requestID,
 			"error", err,
 		)
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this httpclient module can emit.
+func (m *HTTPClientModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeClientCreated,
+		EventTypeClientStarted,
+		EventTypeClientConfigured,
+		EventTypeModifierSet,
+		EventTypeModifierApplied,
+		EventTypeModifierAdded,
+		EventTypeModifierRemoved,
+		EventTypeModuleStarted,
+		EventTypeModuleStopped,
+		EventTypeConfigLoaded,
+		EventTypeTimeoutChanged,
 	}
 }

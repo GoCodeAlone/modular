@@ -446,18 +446,23 @@ func TestService_Sessions(t *testing.T) {
 }
 
 func TestService_OAuth2(t *testing.T) {
+	// Create mock OAuth2 server
+	mockServer := NewMockOAuth2Server()
+	defer mockServer.Close()
+
+	// Set up realistic user info for the mock server
+	expectedUserInfo := map[string]interface{}{
+		"id":      "12345",
+		"email":   "testuser@example.com",  
+		"name":    "Test User",
+		"picture": "https://example.com/avatar.jpg",
+	}
+	mockServer.SetUserInfo(expectedUserInfo)
+
 	config := &Config{
 		OAuth2: OAuth2Config{
 			Providers: map[string]OAuth2Provider{
-				"google": {
-					ClientID:     "test-client-id",
-					ClientSecret: "test-client-secret",
-					RedirectURL:  "http://localhost:8080/auth/google/callback",
-					Scopes:       []string{"openid", "email", "profile"},
-					AuthURL:      "https://accounts.google.com/o/oauth2/auth",
-					TokenURL:     "https://oauth2.googleapis.com/token",
-					UserInfoURL:  "https://www.googleapis.com/oauth2/v2/userinfo",
-				},
+				"google": mockServer.OAuth2Config("http://localhost:8080/auth/google/callback"),
 			},
 		},
 	}
@@ -469,14 +474,36 @@ func TestService_OAuth2(t *testing.T) {
 	// Test getting OAuth2 auth URL
 	authURL, err := service.GetOAuth2AuthURL("google", "test-state")
 	require.NoError(t, err)
-	assert.Contains(t, authURL, "accounts.google.com")
-	assert.Contains(t, authURL, "test-client-id")
+	assert.Contains(t, authURL, mockServer.GetBaseURL())
+	assert.Contains(t, authURL, mockServer.GetClientID())
 	assert.Contains(t, authURL, "test-state")
 
 	// Test with non-existent provider
 	_, err = service.GetOAuth2AuthURL("nonexistent", "test-state")
 	assert.ErrorIs(t, err, ErrProviderNotFound)
 
-	// Note: ExchangeOAuth2Code would require actual OAuth2 flow to test properly
-	// In a real implementation, this would be tested with mock HTTP clients
+	// Test OAuth2 code exchange - now with real implementation
+	result, err := service.ExchangeOAuth2Code("google", mockServer.GetValidCode(), "test-state")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Verify the result contains expected data
+	assert.Equal(t, "google", result.Provider)
+	assert.Equal(t, mockServer.GetValidToken(), result.AccessToken)
+	assert.NotNil(t, result.UserInfo)
+	
+	// Verify user info contains expected data plus provider info
+	assert.Equal(t, "google", result.UserInfo["provider"])
+	assert.Equal(t, expectedUserInfo["email"], result.UserInfo["email"])
+	assert.Equal(t, expectedUserInfo["name"], result.UserInfo["name"])
+	assert.Equal(t, expectedUserInfo["id"], result.UserInfo["id"])
+
+	// Test OAuth2 exchange with invalid code
+	_, err = service.ExchangeOAuth2Code("google", "invalid-code", "test-state")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "oauth2 authentication failed")
+
+	// Test OAuth2 exchange with non-existent provider
+	_, err = service.ExchangeOAuth2Code("nonexistent", mockServer.GetValidCode(), "test-state")
+	assert.ErrorIs(t, err, ErrProviderNotFound)
 }

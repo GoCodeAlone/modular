@@ -100,6 +100,16 @@ func createEngine(engineType string, config map[string]interface{}) (EventBus, e
 	return factory(config)
 }
 
+// SetModuleReference sets the module reference for all memory event buses
+// This enables memory engines to emit events through the module
+func (r *EngineRouter) SetModuleReference(module *EventBusModule) {
+	for _, engine := range r.engines {
+		if memoryEngine, ok := engine.(*MemoryEventBus); ok {
+			memoryEngine.SetModule(module)
+		}
+	}
+}
+
 // Start starts all managed engines.
 func (r *EngineRouter) Start(ctx context.Context) error {
 	for name, engine := range r.engines {

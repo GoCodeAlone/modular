@@ -226,7 +226,9 @@ func TestConstructor(t *testing.T) {
 	result, err := constructor(mockApp, services)
 	assert.NoError(t, err)
 	assert.Equal(t, module, result)
-	assert.Equal(t, mockHandler, module.handler)
+	// The handler is now wrapped with request events, so we can't do direct equality
+	// Instead, verify that handler is set and is not nil
+	assert.NotNil(t, module.handler)
 }
 
 func TestConstructorErrors(t *testing.T) {
@@ -277,6 +279,12 @@ func TestStartStop(t *testing.T) {
 	mockLogger.On("Info", "HTTP server started successfully", "address", fmt.Sprintf("127.0.0.1:%d", port)).Return()
 	mockLogger.On("Info", "Stopping HTTP server", "timeout", mock.Anything).Return()
 	mockLogger.On("Info", "HTTP server stopped successfully").Return()
+	// Expect Debug calls for failed event emissions (when no observer is configured)
+	mockLogger.On("Debug", "Failed to emit server started event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	mockLogger.On("Debug", "Failed to emit server stopped event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	// Allow for request event debug calls as well
+	mockLogger.On("Debug", "Failed to emit request received event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
+	mockLogger.On("Debug", "Failed to emit request handled event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
 
 	// Start the server
 	ctx := context.Background()
@@ -421,6 +429,13 @@ func TestTLSSupport(t *testing.T) {
 	mockLogger.On("Info", "HTTP server started successfully", "address", fmt.Sprintf("127.0.0.1:%d", port)).Return()
 	mockLogger.On("Info", "Stopping HTTP server", "timeout", mock.Anything).Return()
 	mockLogger.On("Info", "HTTP server stopped successfully").Return()
+	// Expect Debug calls for failed event emissions (when no observer is configured)
+	mockLogger.On("Debug", "Failed to emit server started event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	mockLogger.On("Debug", "Failed to emit server stopped event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	mockLogger.On("Debug", "Failed to emit TLS configured event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	// Allow for request event debug calls as well
+	mockLogger.On("Debug", "Failed to emit request received event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
+	mockLogger.On("Debug", "Failed to emit request handled event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
 
 	// Start the server
 	ctx := context.Background()

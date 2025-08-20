@@ -143,7 +143,11 @@
 package jsonschema
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // Name is the unique identifier for the jsonschema module.
@@ -156,11 +160,13 @@ const Name = "modular.jsonschema"
 // The module implements the following interfaces:
 //   - modular.Module: Basic module lifecycle
 //   - modular.ServiceAware: Service dependency management
+//   - modular.ObservableModule: Event observation and emission
 //
 // The module is stateless and thread-safe, making it suitable for
 // concurrent validation operations in web applications and services.
 type Module struct {
 	schemaService JSONSchemaService
+	subject       modular.Subject
 }
 
 // NewModule creates a new instance of the JSON schema module.
@@ -174,9 +180,9 @@ type Module struct {
 //
 //	app.RegisterModule(jsonschema.NewModule())
 func NewModule() *Module {
-	return &Module{
-		schemaService: NewJSONSchemaService(),
-	}
+	module := &Module{}
+	module.schemaService = NewJSONSchemaServiceWithEventEmitter(module)
+	return module
 }
 
 // Name returns the unique identifier for this module.
@@ -212,4 +218,39 @@ func (m *Module) ProvidesServices() []modular.ServiceProvider {
 // The jsonschema module operates independently and requires no external services.
 func (m *Module) RequiresServices() []modular.ServiceDependency {
 	return nil
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the jsonschema module to register as an observer for events it's interested in.
+func (m *Module) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	// The jsonschema module currently does not need to observe other events,
+	// but this method stores the subject for event emission.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the jsonschema module to emit events to registered observers.
+func (m *Module) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this jsonschema module can emit.
+func (m *Module) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeSchemaCompiled,
+		EventTypeSchemaError,
+		EventTypeValidationSuccess,
+		EventTypeValidationFailed,
+		EventTypeValidateBytes,
+		EventTypeValidateReader,
+		EventTypeValidateInterface,
+	}
 }

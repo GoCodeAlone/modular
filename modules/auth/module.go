@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 const (
@@ -44,6 +45,7 @@ type Module struct {
 	config  *Config
 	service *Service
 	logger  modular.Logger
+	subject modular.Subject // For event emission
 }
 
 // NewModule creates a new authentication module.
@@ -107,6 +109,12 @@ func (m *Module) Init(app modular.Application) error {
 	userStore := NewMemoryUserStore()
 	sessionStore := NewMemorySessionStore()
 	m.service = NewService(m.config, userStore, sessionStore)
+
+	// Set the event emitter in the service so it can emit events
+	if observableApp, ok := app.(modular.Subject); ok {
+		m.subject = observableApp
+		m.service.SetEventEmitter(m)
+	}
 
 	m.logger.Info("Authentication module initialized", "module", m.Name())
 	return nil
@@ -217,6 +225,48 @@ func (m *Module) Constructor() modular.ModuleConstructor {
 			}, userStore, sessionStore)
 		}
 
+		// Set the event emitter in the service
+		m.service.SetEventEmitter(m)
+
 		return m, nil
+	}
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the auth module to register as an observer for events it's interested in.
+func (m *Module) RegisterObservers(subject modular.Subject) error {
+	// The auth module currently does not need to observe other events,
+	// but this method is required by the ObservableModule interface.
+	// Future implementations might want to observe user-related events
+	// from other modules.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the auth module to emit events to registered observers.
+func (m *Module) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this auth module can emit.
+func (m *Module) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeTokenGenerated,
+		EventTypeTokenValidated,
+		EventTypeTokenExpired,
+		EventTypeTokenRefreshed,
+		EventTypeSessionCreated,
+		EventTypeSessionAccessed,
+		EventTypeSessionExpired,
+		EventTypeSessionDestroyed,
+		EventTypeOAuth2AuthURL,
+		EventTypeOAuth2Exchange,
 	}
 }

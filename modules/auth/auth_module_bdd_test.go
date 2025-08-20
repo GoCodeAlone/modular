@@ -7,30 +7,65 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cucumber/godog"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // Auth BDD Test Context
 type AuthBDDTestContext struct {
-	app             modular.Application
-	module          *Module
-	service         *Service
-	token           string
-	claims          *Claims
-	password        string
-	hashedPassword  string
-	verifyResult    bool
-	strengthError   error
-	session         *Session
-	sessionID       string
-	user            *User
-	userID          string
-	authResult      *User
-	authError       error
-	oauthURL        string
-	lastError       error
-	originalFeeders []modular.Feeder
+	app               modular.Application
+	module            *Module
+	service           *Service
+	token             string
+	refreshToken      string
+	newToken          string
+	claims            *Claims
+	password          string
+	hashedPassword    string
+	verifyResult      bool
+	strengthError     error
+	session           *Session
+	sessionID         string
+	originalExpiresAt time.Time
+	user              *User
+	userID            string
+	authResult        *User
+	authError         error
+	oauthURL          string
+	oauthResult       *OAuth2Result
+	lastError         error
+	originalFeeders   []modular.Feeder
+	// OAuth2 mock server for testing
+	mockOAuth2Server  *MockOAuth2Server
+	// Event observation fields
+	observableApp  *modular.ObservableApplication
+	capturedEvents []cloudevents.Event
+	testObserver   *testObserver
 }
+
+// testObserver captures events for testing
+type testObserver struct {
+	id     string
+	events []cloudevents.Event
+}
+
+func (o *testObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
+	o.events = append(o.events, event)
+	return nil
+}
+
+func (o *testObserver) ObserverID() string {
+	return o.id
+}
+
+// testLogger is a simple logger for testing
+type testLogger struct{}
+
+func (l *testLogger) Debug(msg string, args ...interface{}) {}
+func (l *testLogger) Info(msg string, args ...interface{})  {}
+func (l *testLogger) Warn(msg string, args ...interface{})  {}
+func (l *testLogger) Error(msg string, args ...interface{}) {}
 
 // Test data structures
 type testUser struct {
@@ -47,6 +82,12 @@ func (ctx *AuthBDDTestContext) resetContext() {
 		ctx.originalFeeders = nil
 	}
 
+	// Clean up mock OAuth2 server
+	if ctx.mockOAuth2Server != nil {
+		ctx.mockOAuth2Server.Close()
+		ctx.mockOAuth2Server = nil
+	}
+
 	ctx.app = nil
 	ctx.module = nil
 	ctx.service = nil
@@ -58,12 +99,20 @@ func (ctx *AuthBDDTestContext) resetContext() {
 	ctx.strengthError = nil
 	ctx.session = nil
 	ctx.sessionID = ""
+	ctx.originalExpiresAt = time.Time{}
 	ctx.user = nil
 	ctx.userID = ""
 	ctx.authResult = nil
 	ctx.authError = nil
 	ctx.oauthURL = ""
+	ctx.oauthResult = nil
 	ctx.lastError = nil
+	ctx.refreshToken = ""
+	ctx.newToken = ""
+	// Reset event observation fields
+	ctx.observableApp = nil
+	ctx.capturedEvents = nil
+	ctx.testObserver = nil
 }
 
 func (ctx *AuthBDDTestContext) iHaveAModularApplicationWithAuthModuleConfigured() error {
@@ -74,10 +123,21 @@ func (ctx *AuthBDDTestContext) iHaveAModularApplicationWithAuthModuleConfigured(
 	ctx.originalFeeders = modular.ConfigFeeders
 	modular.ConfigFeeders = []modular.Feeder{} // No feeders for controlled testing
 
+	// Create mock OAuth2 server for realistic testing
+	ctx.mockOAuth2Server = NewMockOAuth2Server()
+	
+	// Set up realistic user info for OAuth2 testing
+	ctx.mockOAuth2Server.SetUserInfo(map[string]interface{}{
+		"id":      "oauth-user-123",
+		"email":   "oauth.user@example.com",
+		"name":    "OAuth Test User",
+		"picture": "https://example.com/avatar.jpg",
+	})
+
 	// Create application
 	logger := &MockLogger{}
 
-	// Create proper auth configuration
+	// Create proper auth configuration using the mock OAuth2 server
 	authConfig := &Config{
 		JWT: JWTConfig{
 			Secret:            "test-secret-key-for-bdd-tests",
@@ -105,15 +165,7 @@ func (ctx *AuthBDDTestContext) iHaveAModularApplicationWithAuthModuleConfigured(
 		},
 		OAuth2: OAuth2Config{
 			Providers: map[string]OAuth2Provider{
-				"google": {
-					ClientID:     "test-client-id",
-					ClientSecret: "test-client-secret",
-					RedirectURL:  "http://localhost:8080/auth/callback",
-					Scopes:       []string{"openid", "email", "profile"},
-					AuthURL:      "https://accounts.google.com/o/oauth2/auth",
-					TokenURL:     "https://oauth2.googleapis.com/token",
-					UserInfoURL:  "https://www.googleapis.com/oauth2/v2/userinfo",
-				},
+				"google": ctx.mockOAuth2Server.OAuth2Config("http://localhost:8080/auth/callback"),
 			},
 		},
 	}
@@ -165,6 +217,7 @@ func (ctx *AuthBDDTestContext) iGenerateAJWTTokenForTheUser() error {
 	}
 
 	ctx.token = tokenPair.AccessToken
+	ctx.refreshToken = tokenPair.RefreshToken
 	return nil
 }
 
@@ -313,6 +366,7 @@ func (ctx *AuthBDDTestContext) iRefreshTheToken() error {
 	}
 
 	ctx.token = newTokenPair.AccessToken
+	ctx.newToken = newTokenPair.AccessToken // Set the new token for validation
 	return nil
 }
 
@@ -738,6 +792,7 @@ func InitializeAuthScenario(ctx *godog.ScenarioContext) {
 	// JWT token steps
 	ctx.Step(`^I have user credentials and JWT configuration$`, testCtx.iHaveUserCredentialsAndJWTConfiguration)
 	ctx.Step(`^I generate a JWT token for the user$`, testCtx.iGenerateAJWTTokenForTheUser)
+	ctx.Step(`^I generate a JWT token for a user$`, testCtx.iGenerateAJWTTokenForTheUser)
 	ctx.Step(`^the token should be created successfully$`, testCtx.theTokenShouldBeCreatedSuccessfully)
 	ctx.Step(`^the token should contain the user information$`, testCtx.theTokenShouldContainTheUserInformation)
 
@@ -812,6 +867,48 @@ func InitializeAuthScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I authenticate with incorrect credentials$`, testCtx.iAuthenticateWithIncorrectCredentials)
 	ctx.Step(`^the authentication should fail$`, testCtx.theAuthenticationShouldFail)
 	ctx.Step(`^an error should be returned$`, testCtx.anErrorShouldBeReturned)
+
+	// Event observation steps
+	ctx.Step(`^I have an auth module with event observation enabled$`, testCtx.iHaveAnAuthModuleWithEventObservationEnabled)
+	ctx.Step(`^a token generated event should be emitted$`, testCtx.aTokenGeneratedEventShouldBeEmitted)
+	ctx.Step(`^the event should contain user and token information$`, testCtx.theEventShouldContainUserAndTokenInformation)
+	ctx.Step(`^a token validated event should be emitted$`, testCtx.aTokenValidatedEventShouldBeEmitted)
+	ctx.Step(`^the event should contain validation information$`, testCtx.theEventShouldContainValidationInformation)
+	ctx.Step(`^I create a session for a user$`, testCtx.iCreateASessionForAUser)
+	ctx.Step(`^a session created event should be emitted$`, testCtx.aSessionCreatedEventShouldBeEmitted)
+	ctx.Step(`^I access the session$`, testCtx.iAccessTheSession)
+	ctx.Step(`^a session accessed event should be emitted$`, testCtx.aSessionAccessedEventShouldBeEmitted)
+	ctx.Step(`^a session destroyed event should be emitted$`, testCtx.aSessionDestroyedEventShouldBeEmitted)
+	ctx.Step(`^I have OAuth2 providers configured$`, testCtx.iHaveOAuth2ProvidersConfigured)
+	ctx.Step(`^I get an OAuth2 authorization URL$`, testCtx.iGetAnOAuth2AuthorizationURL)
+	ctx.Step(`^an OAuth2 auth URL event should be emitted$`, testCtx.anOAuth2AuthURLEventShouldBeEmitted)
+	ctx.Step(`^I exchange an OAuth2 code for tokens$`, testCtx.iExchangeAnOAuth2CodeForTokens)
+	ctx.Step(`^an OAuth2 exchange event should be emitted$`, testCtx.anOAuth2ExchangeEventShouldBeEmitted)
+
+	// Additional event observation steps
+	ctx.Step(`^I generate a JWT token for a user$`, testCtx.iGenerateAJWTTokenForAUser)
+	ctx.Step(`^a token expired event should be emitted$`, testCtx.aTokenExpiredEventShouldBeEmitted)
+	ctx.Step(`^a token refreshed event should be emitted$`, testCtx.aTokenRefreshedEventShouldBeEmitted)
+	ctx.Step(`^a session expired event should be emitted$`, testCtx.aSessionExpiredEventShouldBeEmitted)
+	ctx.Step(`^I have an expired session$`, testCtx.iHaveAnExpiredSession)
+	ctx.Step(`^I attempt to access the expired session$`, testCtx.iAttemptToAccessTheExpiredSession)
+	ctx.Step(`^the session access should fail$`, testCtx.theSessionAccessShouldFail)
+	ctx.Step(`^I have an expired token for refresh$`, testCtx.iHaveAnExpiredTokenForRefresh)
+	ctx.Step(`^I attempt to refresh the expired token$`, testCtx.iAttemptToRefreshTheExpiredToken)
+	ctx.Step(`^the token refresh should fail$`, testCtx.theTokenRefreshShouldFail)
+	// Session expired event testing
+	ctx.Step(`^I access an expired session$`, testCtx.iAccessAnExpiredSession)
+	ctx.Step(`^a session expired event should be emitted$`, testCtx.aSessionExpiredEventShouldBeEmitted)
+	ctx.Step(`^the session access should fail$`, testCtx.theSessionAccessShouldFail)
+
+	// Token expired event testing
+	ctx.Step(`^I validate an expired token$`, testCtx.iValidateAnExpiredToken)
+	ctx.Step(`^a token expired event should be emitted$`, testCtx.aTokenExpiredEventShouldBeEmitted)
+
+	// Token refresh event testing
+	ctx.Step(`^I have a valid refresh token$`, testCtx.iHaveAValidRefreshToken)
+	ctx.Step(`^a token refreshed event should be emitted$`, testCtx.aTokenRefreshedEventShouldBeEmitted)
+	ctx.Step(`^a new access token should be provided$`, testCtx.aNewAccessTokenShouldBeProvided)
 }
 
 // TestAuthModule runs the BDD tests for the auth module
@@ -821,6 +918,599 @@ func TestAuthModule(t *testing.T) {
 		Options: &godog.Options{
 			Format:   "pretty",
 			Paths:    []string{"features/auth_module.feature"},
+			TestingT: t,
+		},
+	}
+
+	if suite.Run() != 0 {
+		t.Fatal("non-zero status returned, failed to run feature tests")
+	}
+}
+
+// Event observation step implementations
+
+func (ctx *AuthBDDTestContext) iHaveAnAuthModuleWithEventObservationEnabled() error {
+	ctx.resetContext()
+
+	// Save original feeders and disable env feeder for BDD tests
+	ctx.originalFeeders = modular.ConfigFeeders
+	modular.ConfigFeeders = []modular.Feeder{} // No feeders for controlled testing
+
+	// Create mock OAuth2 server for realistic testing
+	ctx.mockOAuth2Server = NewMockOAuth2Server()
+	
+	// Set up realistic user info for OAuth2 testing
+	ctx.mockOAuth2Server.SetUserInfo(map[string]interface{}{
+		"id":      "oauth-user-123",
+		"email":   "oauth.user@example.com",
+		"name":    "OAuth Test User",
+		"picture": "https://example.com/avatar.jpg",
+	})
+
+	// Create proper auth configuration using the mock OAuth2 server
+	authConfig := &Config{
+		JWT: JWTConfig{
+			Secret:            "test-secret-key-for-event-tests",
+			Expiration:        1 * time.Hour,
+			RefreshExpiration: 24 * time.Hour,
+			Issuer:            "test-issuer",
+		},
+		Password: PasswordConfig{
+			MinLength:      8,
+			RequireUpper:   true,
+			RequireLower:   true,
+			RequireDigit:   true,
+			RequireSpecial: true,
+			BcryptCost:     10,
+		},
+		Session: SessionConfig{
+			MaxAge:   1 * time.Hour,
+			Secure:   false,
+			HTTPOnly: true,
+		},
+		OAuth2: OAuth2Config{
+			Providers: map[string]OAuth2Provider{
+				"google": ctx.mockOAuth2Server.OAuth2Config("http://127.0.0.1:8080/callback"),
+			},
+		},
+	}
+
+	// Create provider with the auth config
+	authConfigProvider := modular.NewStdConfigProvider(authConfig)
+
+	// Create observable application instead of standard application
+	logger := &testLogger{}
+	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
+	ctx.observableApp = modular.NewObservableApplication(mainConfigProvider, logger)
+
+	// Debug: check the type
+	_, implements := interface{}(ctx.observableApp).(modular.Subject)
+	_ = implements // Avoid unused variable warning
+
+	// Create test observer to capture events
+	ctx.testObserver = &testObserver{
+		id:     "test-observer",
+		events: make([]cloudevents.Event, 0),
+	}
+
+	// Register the test observer to capture all events
+	err := ctx.observableApp.RegisterObserver(ctx.testObserver)
+	if err != nil {
+		return fmt.Errorf("failed to register test observer: %w", err)
+	}
+
+	// Create and configure auth module
+	ctx.module = NewModule().(*Module)
+
+	// Register the auth config section first
+	ctx.observableApp.RegisterConfigSection("auth", authConfigProvider)
+
+	// Register module
+	ctx.observableApp.RegisterModule(ctx.module)
+
+	// Initialize the app - this will set up event emission capabilities
+	if err := ctx.observableApp.Init(); err != nil {
+		return fmt.Errorf("failed to initialize observable app: %w", err)
+	}
+
+	// Manually set up the event emitter since dependency injection might not preserve the observable wrapper
+	// This ensures the module has the correct subject reference for event emission
+	ctx.module.subject = ctx.observableApp
+	ctx.module.service.SetEventEmitter(ctx.module)
+
+	// Use the service from the module directly instead of getting it from the service registry
+	// This ensures we're using the same instance that has the event emitter set up
+	ctx.service = ctx.module.service
+	ctx.app = ctx.observableApp
+
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) aTokenGeneratedEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeTokenGenerated)
+}
+
+func (ctx *AuthBDDTestContext) theEventShouldContainUserAndTokenInformation() error {
+	event := ctx.findLatestEvent(EventTypeTokenGenerated)
+	if event == nil {
+		return fmt.Errorf("token generated event not found")
+	}
+
+	// Verify event contains expected data
+	data := event.Data()
+	if len(data) == 0 {
+		return fmt.Errorf("event data is empty")
+	}
+
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) aTokenValidatedEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeTokenValidated)
+}
+
+func (ctx *AuthBDDTestContext) theEventShouldContainValidationInformation() error {
+	event := ctx.findLatestEvent(EventTypeTokenValidated)
+	if event == nil {
+		return fmt.Errorf("token validated event not found")
+	}
+
+	// Verify event contains expected data
+	data := event.Data()
+	if len(data) == 0 {
+		return fmt.Errorf("event data is empty")
+	}
+
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) iCreateASessionForAUser() error {
+	ctx.userID = "test-user"
+	metadata := map[string]interface{}{
+		"ip_address": "127.0.0.1",
+		"user_agent": "test-agent",
+	}
+
+	session, err := ctx.service.CreateSession(ctx.userID, metadata)
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+
+	ctx.session = session
+	ctx.sessionID = session.ID
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) aSessionCreatedEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeSessionCreated)
+}
+
+func (ctx *AuthBDDTestContext) iAccessTheSession() error {
+	session, err := ctx.service.GetSession(ctx.sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to access session: %w", err)
+	}
+
+	ctx.session = session
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) aSessionAccessedEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeSessionAccessed)
+}
+
+func (ctx *AuthBDDTestContext) aSessionDestroyedEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeSessionDestroyed)
+}
+
+func (ctx *AuthBDDTestContext) iHaveOAuth2ProvidersConfigured() error {
+	// This step is already covered by the module configuration
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) iGetAnOAuth2AuthorizationURL() error {
+	url, err := ctx.service.GetOAuth2AuthURL("google", "test-state")
+	if err != nil {
+		return fmt.Errorf("failed to get OAuth2 auth URL: %w", err)
+	}
+
+	ctx.oauthURL = url
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) anOAuth2AuthURLEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeOAuth2AuthURL)
+}
+
+func (ctx *AuthBDDTestContext) iExchangeAnOAuth2CodeForTokens() error {
+	// Use the real OAuth2 exchange with the mock server's valid code
+	if ctx.mockOAuth2Server == nil {
+		return fmt.Errorf("mock OAuth2 server not initialized")
+	}
+
+	// Perform real OAuth2 code exchange using the mock server
+	result, err := ctx.service.ExchangeOAuth2Code("google", ctx.mockOAuth2Server.GetValidCode(), "test-state")
+	if err != nil {
+		ctx.lastError = err
+		return fmt.Errorf("OAuth2 code exchange failed: %w", err)
+	}
+
+	ctx.oauthResult = result
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) anOAuth2ExchangeEventShouldBeEmitted() error {
+	// Now we can properly check for the OAuth2 exchange event emission
+	return ctx.checkEventEmitted(EventTypeOAuth2Exchange)
+}
+
+// Helper methods for event validation
+
+func (ctx *AuthBDDTestContext) checkEventEmitted(eventType string) error {
+	// Give a little time for event processing, but since we made it synchronous, this should be quick
+	time.Sleep(10 * time.Millisecond)
+
+	for _, event := range ctx.testObserver.events {
+		if event.Type() == eventType {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("event of type %s was not emitted. Captured events: %v",
+		eventType, ctx.getEmittedEventTypes())
+}
+
+func (ctx *AuthBDDTestContext) findLatestEvent(eventType string) *cloudevents.Event {
+	for i := len(ctx.testObserver.events) - 1; i >= 0; i-- {
+		if ctx.testObserver.events[i].Type() == eventType {
+			return &ctx.testObserver.events[i]
+		}
+	}
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) getEmittedEventTypes() []string {
+	var types []string
+	for _, event := range ctx.testObserver.events {
+		types = append(types, event.Type())
+	}
+	return types
+}
+
+// Additional step definitions for missing events
+
+func (ctx *AuthBDDTestContext) iGenerateAJWTTokenForAUser() error {
+	return ctx.iGenerateAJWTTokenForTheUser()
+}
+
+func (ctx *AuthBDDTestContext) aSessionExpiredEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeSessionExpired)
+}
+
+func (ctx *AuthBDDTestContext) iHaveAnExpiredSession() error {
+	ctx.userID = "expired-session-user"
+	// Create session that expires immediately
+	session := &Session{
+		ID:        "expired-session-123",
+		UserID:    ctx.userID,
+		CreatedAt: time.Now().Add(-2 * time.Hour),
+		ExpiresAt: time.Now().Add(-1 * time.Hour), // Already expired
+		Active:    true,
+		Metadata: map[string]interface{}{
+			"test": "expired_session",
+		},
+	}
+
+	// Store the expired session directly in the session store
+	err := ctx.service.sessionStore.Store(context.Background(), session)
+	if err != nil {
+		return fmt.Errorf("failed to create expired session: %v", err)
+	}
+
+	ctx.sessionID = session.ID
+	ctx.session = session
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) iAttemptToAccessTheExpiredSession() error {
+	// This should trigger the session expired event
+	_, err := ctx.service.GetSession(ctx.sessionID)
+	ctx.lastError = err // Store error but don't return it as this is expected behavior
+	return nil
+}
+// Additional BDD step implementations for missing events
+
+func (ctx *AuthBDDTestContext) iAccessAnExpiredSession() error {
+	// Create an expired session directly in the store
+	expiredSession := &Session{
+		ID:        "expired-session",
+		UserID:    "test-user",
+		CreatedAt: time.Now().Add(-2 * time.Hour),
+		ExpiresAt: time.Now().Add(-1 * time.Hour), // Already expired
+		Active:    true,
+		Metadata:  map[string]interface{}{"test": "data"},
+	}
+
+	// Store the expired session
+	err := ctx.service.sessionStore.Store(context.Background(), expiredSession)
+	if err != nil {
+		return fmt.Errorf("failed to store expired session: %w", err)
+	}
+
+	ctx.sessionID = expiredSession.ID
+
+	// Try to access the expired session
+	_, err = ctx.service.GetSession(ctx.sessionID)
+	ctx.lastError = err
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) theSessionAccessShouldFail() error {
+	if ctx.lastError == nil {
+		return fmt.Errorf("expected session access to fail for expired session")
+	}
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) iHaveAnExpiredTokenForRefresh() error {
+	// Create a token that's already expired for testing expired token during refresh
+	now := time.Now().Add(-2 * time.Hour) // 2 hours ago
+	claims := jwt.MapClaims{
+		"user_id": "expired-refresh-user",
+		"type":    "refresh",
+		"iat":     now.Unix(),
+		"exp":     now.Add(-1 * time.Hour).Unix(), // Expired 1 hour ago
+	}
+
+	if ctx.service.config.JWT.Issuer != "" {
+		claims["iss"] = ctx.service.config.JWT.Issuer
+	}
+	claims["sub"] = "expired-refresh-user"
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	expiredToken, err := token.SignedString([]byte(ctx.service.config.JWT.Secret))
+	if err != nil {
+		return fmt.Errorf("failed to create expired token: %w", err)
+	}
+
+	ctx.token = expiredToken
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) iAttemptToRefreshTheExpiredToken() error {
+	_, err := ctx.service.RefreshToken(ctx.token)
+	ctx.lastError = err // Store error but don't return it as this is expected behavior
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) theTokenRefreshShouldFail() error {
+	if ctx.lastError == nil {
+		return fmt.Errorf("expected token refresh to fail for expired token")
+	}
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) iValidateAnExpiredToken() error {
+	// Create an expired token
+	err := ctx.iHaveUserCredentialsAndJWTConfiguration()
+	if err != nil {
+		return err
+	}
+
+	// Generate a token with very short expiration
+	oldExpiration := ctx.service.config.JWT.Expiration
+	ctx.service.config.JWT.Expiration = 1 * time.Millisecond // Very short expiration
+
+	err = ctx.iGenerateAJWTTokenForTheUser()
+	if err != nil {
+		return err
+	}
+
+	// Restore original expiration
+	ctx.service.config.JWT.Expiration = oldExpiration
+
+	// Wait for token to expire
+	time.Sleep(10 * time.Millisecond)
+
+	// Try to validate the expired token
+	_, err = ctx.service.ValidateToken(ctx.token)
+	ctx.lastError = err
+
+	return nil
+}
+
+func (ctx *AuthBDDTestContext) aTokenExpiredEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeTokenExpired)
+}
+
+func (ctx *AuthBDDTestContext) iHaveAValidRefreshToken() error {
+	// Generate a token pair first
+	err := ctx.iHaveUserCredentialsAndJWTConfiguration()
+	if err != nil {
+		return err
+	}
+
+	return ctx.iGenerateAJWTTokenForTheUser()
+}
+
+func (ctx *AuthBDDTestContext) aTokenRefreshedEventShouldBeEmitted() error {
+	return ctx.checkEventEmitted(EventTypeTokenRefreshed)
+}
+
+func (ctx *AuthBDDTestContext) aNewAccessTokenShouldBeProvided() error {
+	if ctx.newToken == "" {
+		return fmt.Errorf("no new access token was provided")
+	}
+	return nil
+}
+
+// Event validation step - ensures all registered events are emitted during testing
+func (ctx *AuthBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTesting() error {
+	// Get all registered event types from the module
+	registeredEvents := ctx.module.GetRegisteredEventTypes()
+	
+	// Create event validation observer
+	validator := modular.NewEventValidationObserver("event-validator", registeredEvents)
+	_ = validator // Use validator to avoid unused variable error
+	
+	// Check which events were emitted during testing
+	emittedEvents := make(map[string]bool)
+	for _, event := range ctx.testObserver.events {
+		emittedEvents[event.Type()] = true
+	}
+	
+	// Check for missing events
+	var missingEvents []string
+	for _, eventType := range registeredEvents {
+			if !emittedEvents[eventType] {
+				missingEvents = append(missingEvents, eventType)
+			}
+		}
+		
+		if len(missingEvents) > 0 {
+			return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
+		}
+		
+		return nil
+}
+
+// initBDDSteps initializes all the BDD steps for the auth module
+func (ctx *AuthBDDTestContext) initBDDSteps(s *godog.ScenarioContext) {
+	// Background
+	s.Given(`^I have a modular application with auth module configured$`, ctx.iHaveAModularApplicationWithAuthModuleConfigured)
+
+	// JWT Token generation and validation
+	s.Given(`^I have user credentials and JWT configuration$`, ctx.iHaveUserCredentialsAndJWTConfiguration)
+	s.When(`^I generate a JWT token for the user$`, ctx.iGenerateAJWTTokenForTheUser)
+	s.Then(`^the token should be created successfully$`, ctx.theTokenShouldBeCreatedSuccessfully)
+	s.Then(`^the token should contain the user information$`, ctx.theTokenShouldContainTheUserInformation)
+
+	s.Given(`^I have a valid JWT token$`, ctx.iHaveAValidJWTToken)
+	s.When(`^I validate the token$`, ctx.iValidateTheToken)
+	s.Then(`^the token should be accepted$`, ctx.theTokenShouldBeAccepted)
+	s.Then(`^the user claims should be extracted$`, ctx.theUserClaimsShouldBeExtracted)
+
+	s.Given(`^I have an invalid JWT token$`, ctx.iHaveAnInvalidJWTToken)
+	s.Then(`^the token should be rejected$`, ctx.theTokenShouldBeRejected)
+	s.Then(`^an appropriate error should be returned$`, ctx.anAppropriateErrorShouldBeReturned)
+
+	s.Given(`^I have an expired JWT token$`, ctx.iHaveAnExpiredJWTToken)
+	s.Then(`^the error should indicate token expiration$`, ctx.theErrorShouldIndicateTokenExpiration)
+
+	s.When(`^I refresh the token$`, ctx.iRefreshTheToken)
+	s.Then(`^a new token should be generated$`, ctx.aNewTokenShouldBeGenerated)
+	s.Then(`^the new token should have updated expiration$`, ctx.theNewTokenShouldHaveUpdatedExpiration)
+
+	// Password hashing and verification
+	s.Given(`^I have a plain text password$`, ctx.iHaveAPlainTextPassword)
+	s.When(`^I hash the password using bcrypt$`, ctx.iHashThePasswordUsingBcrypt)
+	s.Then(`^the password should be hashed successfully$`, ctx.thePasswordShouldBeHashedSuccessfully)
+	s.Then(`^the hash should be different from the original password$`, ctx.theHashShouldBeDifferentFromTheOriginalPassword)
+
+	s.Given(`^I have a password and its hash$`, ctx.iHaveAPasswordAndItsHash)
+	s.When(`^I verify the password against the hash$`, ctx.iVerifyThePasswordAgainstTheHash)
+	s.Then(`^the verification should succeed$`, ctx.theVerificationShouldSucceed)
+
+	s.Given(`^I have a password and a different hash$`, ctx.iHaveAPasswordAndADifferentHash)
+	s.Then(`^the verification should fail$`, ctx.theVerificationShouldFail)
+
+	// Password strength validation
+	s.Given(`^I have a strong password$`, ctx.iHaveAStrongPassword)
+	s.When(`^I validate the password strength$`, ctx.iValidateThePasswordStrength)
+	s.Then(`^the password should be accepted$`, ctx.thePasswordShouldBeAccepted)
+	s.Then(`^no strength errors should be reported$`, ctx.noStrengthErrorsShouldBeReported)
+
+	s.Given(`^I have a weak password$`, ctx.iHaveAWeakPassword)
+	s.Then(`^the password should be rejected$`, ctx.thePasswordShouldBeRejected)
+	s.Then(`^appropriate strength errors should be reported$`, ctx.appropriateStrengthErrorsShouldBeReported)
+
+	// Session management
+	s.Given(`^I have a user identifier$`, ctx.iHaveAUserIdentifier)
+	s.When(`^I create a new session for the user$`, ctx.iCreateANewSessionForTheUser)
+	s.Then(`^the session should be created successfully$`, ctx.theSessionShouldBeCreatedSuccessfully)
+	s.Then(`^the session should have a unique ID$`, ctx.theSessionShouldHaveAUniqueID)
+
+	s.Given(`^I have an existing user session$`, ctx.iHaveAnExistingUserSession)
+	s.When(`^I retrieve the session by ID$`, ctx.iRetrieveTheSessionByID)
+	s.Then(`^the session should be found$`, ctx.theSessionShouldBeFound)
+	s.Then(`^the session data should match$`, ctx.theSessionDataShouldMatch)
+
+	s.When(`^I delete the session$`, ctx.iDeleteTheSession)
+	s.Then(`^the session should be removed$`, ctx.theSessionShouldBeRemoved)
+	s.Then(`^subsequent retrieval should fail$`, ctx.subsequentRetrievalShouldFail)
+
+	// OAuth2
+	s.Given(`^I have OAuth2 configuration$`, ctx.iHaveOAuth2Configuration)
+	s.When(`^I initiate OAuth2 authorization$`, ctx.iInitiateOAuth2Authorization)
+	s.Then(`^the authorization URL should be generated$`, ctx.theAuthorizationURLShouldBeGenerated)
+	s.Then(`^the URL should contain proper parameters$`, ctx.theURLShouldContainProperParameters)
+
+	// User store
+	s.Given(`^I have a user store configured$`, ctx.iHaveAUserStoreConfigured)
+	s.When(`^I create a new user$`, ctx.iCreateANewUser)
+	s.Then(`^the user should be stored successfully$`, ctx.theUserShouldBeStoredSuccessfully)
+	s.Then(`^I should be able to retrieve the user by ID$`, ctx.iShouldBeAbleToRetrieveTheUserByID)
+
+	s.Given(`^I have a user with credentials in the store$`, ctx.iHaveAUserWithCredentialsInTheStore)
+	s.When(`^I authenticate with correct credentials$`, ctx.iAuthenticateWithCorrectCredentials)
+	s.Then(`^the authentication should succeed$`, ctx.theAuthenticationShouldSucceed)
+	s.Then(`^the user should be returned$`, ctx.theUserShouldBeReturned)
+
+	s.When(`^I authenticate with incorrect credentials$`, ctx.iAuthenticateWithIncorrectCredentials)
+	s.Then(`^the authentication should fail$`, ctx.theAuthenticationShouldFail)
+	s.Then(`^an error should be returned$`, ctx.anErrorShouldBeReturned)
+
+	// Event observation scenarios
+	s.Given(`^I have an auth module with event observation enabled$`, ctx.iHaveAnAuthModuleWithEventObservationEnabled)
+	s.Then(`^a token generated event should be emitted$`, ctx.aTokenGeneratedEventShouldBeEmitted)
+	s.Then(`^the event should contain user and token information$`, ctx.theEventShouldContainUserAndTokenInformation)
+	s.Then(`^a token validated event should be emitted$`, ctx.aTokenValidatedEventShouldBeEmitted)
+	s.Then(`^the event should contain validation information$`, ctx.theEventShouldContainValidationInformation)
+
+	s.When(`^I create a session for a user$`, ctx.iCreateASessionForAUser)
+	s.Then(`^a session created event should be emitted$`, ctx.aSessionCreatedEventShouldBeEmitted)
+	s.When(`^I access the session$`, ctx.iAccessTheSession)
+	s.Then(`^a session accessed event should be emitted$`, ctx.aSessionAccessedEventShouldBeEmitted)
+	s.Then(`^a session destroyed event should be emitted$`, ctx.aSessionDestroyedEventShouldBeEmitted)
+
+	s.Given(`^I have OAuth2 providers configured$`, ctx.iHaveOAuth2ProvidersConfigured)
+	s.When(`^I get an OAuth2 authorization URL$`, ctx.iGetAnOAuth2AuthorizationURL)
+	s.Then(`^an OAuth2 auth URL event should be emitted$`, ctx.anOAuth2AuthURLEventShouldBeEmitted)
+	s.When(`^I exchange an OAuth2 code for tokens$`, ctx.iExchangeAnOAuth2CodeForTokens)
+	s.Then(`^an OAuth2 exchange event should be emitted$`, ctx.anOAuth2ExchangeEventShouldBeEmitted)
+
+	s.Then(`^a token refreshed event should be emitted$`, ctx.aTokenRefreshedEventShouldBeEmitted)
+	s.Given(`^I have an expired session$`, ctx.iHaveAnExpiredSession)
+	s.When(`^I attempt to access the expired session$`, ctx.iAttemptToAccessTheExpiredSession)
+	s.Then(`^the session access should fail$`, ctx.theSessionAccessShouldFail)
+	s.Then(`^a session expired event should be emitted$`, ctx.aSessionExpiredEventShouldBeEmitted)
+
+	s.Given(`^I have an expired token for refresh$`, ctx.iHaveAnExpiredTokenForRefresh)
+	s.When(`^I attempt to refresh the expired token$`, ctx.iAttemptToRefreshTheExpiredToken)
+	s.Then(`^the token refresh should fail$`, ctx.theTokenRefreshShouldFail)
+	s.Then(`^a token expired event should be emitted$`, ctx.aTokenExpiredEventShouldBeEmitted)
+
+	s.When(`^I access an expired session$`, ctx.iAccessAnExpiredSession)
+	s.When(`^I validate an expired token$`, ctx.iValidateAnExpiredToken)
+	s.Then(`^the token should be rejected$`, ctx.theTokenShouldBeRejected)
+
+	s.Given(`^I have a valid refresh token$`, ctx.iHaveAValidRefreshToken)
+	s.Then(`^a new access token should be provided$`, ctx.aNewAccessTokenShouldBeProvided)
+
+	// Event validation
+	s.Then(`^all registered events should be emitted during testing$`, ctx.allRegisteredEventsShouldBeEmittedDuringTesting)
+}
+
+// TestAuthModuleBDD runs the BDD tests for the auth module
+func TestAuthModuleBDD(t *testing.T) {
+	suite := godog.TestSuite{
+		ScenarioInitializer: func(ctx *godog.ScenarioContext) {
+			testCtx := &AuthBDDTestContext{}
+			testCtx.initBDDSteps(ctx)
+		},
+		Options: &godog.Options{
+			Format:   "pretty",
+			Paths:    []string{"features"},
 			TestingT: t,
 		},
 	}

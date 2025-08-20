@@ -93,6 +93,7 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -135,6 +136,7 @@ type ChiMuxModule struct {
 	router        *chi.Mux
 	app           modular.TenantApplication
 	logger        modular.Logger
+	subject       modular.Subject // Added for event observation
 }
 
 // NewChiMuxModule creates a new instance of the chimux module.
@@ -218,6 +220,24 @@ func (m *ChiMuxModule) Init(app modular.Application) error {
 		return err
 	}
 
+	// Emit configuration loaded event
+	ctx := context.Background()
+	m.emitEvent(ctx, EventTypeConfigLoaded, map[string]interface{}{
+		"allowed_origins":   m.config.AllowedOrigins,
+		"allowed_methods":   m.config.AllowedMethods,
+		"allowed_headers":   m.config.AllowedHeaders,
+		"allow_credentials": m.config.AllowCredentials,
+		"max_age":           m.config.MaxAge,
+		"timeout_ms":        m.config.Timeout,
+		"base_path":         m.config.BasePath,
+	})
+
+	// Emit configuration validated event
+	m.emitEvent(ctx, EventTypeConfigValidated, map[string]interface{}{
+		"validation_status": "success",
+		"config_sections":   []string{"cors", "router", "middleware"},
+	})
+
 	m.logger.Info("Chimux module initialized")
 	return nil
 }
@@ -267,6 +287,24 @@ func (m *ChiMuxModule) initRouter() error {
 
 	// Apply CORS middleware using the configuration
 	m.router.Use(m.corsMiddleware())
+
+	// Apply request monitoring middleware for event emission
+	m.router.Use(m.requestMonitoringMiddleware())
+
+	// Emit CORS configured event
+	m.emitEvent(context.Background(), EventTypeCorsConfigured, map[string]interface{}{
+		"allowed_origins":     m.config.AllowedOrigins,
+		"allowed_methods":     m.config.AllowedMethods,
+		"allowed_headers":     m.config.AllowedHeaders,
+		"credentials_enabled": m.config.AllowCredentials,
+	})
+
+	// Emit router created event
+	m.emitEvent(context.Background(), EventTypeRouterCreated, map[string]interface{}{
+		"base_path":    m.config.BasePath,
+		"cors_enabled": len(m.config.AllowedOrigins) > 0,
+	})
+
 	m.logger.Debug("Applied CORS middleware with config",
 		"allowedOrigins", m.config.AllowedOrigins,
 		"allowedMethods", m.config.AllowedMethods,
@@ -319,11 +357,27 @@ func (m *ChiMuxModule) setupMiddleware(app modular.Application) error {
 //  1. Loads configurations for all registered tenants
 //  2. Applies tenant-specific CORS and routing settings
 //  3. Prepares the router for incoming requests
-func (m *ChiMuxModule) Start(context.Context) error {
+func (m *ChiMuxModule) Start(ctx context.Context) error {
 	m.logger.Info("Starting chimux module")
 
 	// Load tenant configurations now that it's safe to do so
 	m.loadTenantConfigs()
+
+	// Emit router started event (router is ready to handle requests)
+	m.emitEvent(ctx, EventTypeRouterStarted, map[string]interface{}{
+		"router_status": "started",
+		"start_time":    time.Now(),
+		"tenant_count":  len(m.tenantConfigs),
+		"base_path":     m.config.BasePath,
+	})
+
+	// Emit module started event
+	m.emitEvent(ctx, EventTypeModuleStarted, map[string]interface{}{
+		"tenant_count":     len(m.tenantConfigs),
+		"base_path":        m.config.BasePath,
+		"cors_enabled":     len(m.config.AllowedOrigins) > 0,
+		"middleware_count": len(m.router.Middlewares()),
+	})
 
 	return nil
 }
@@ -332,8 +386,22 @@ func (m *ChiMuxModule) Start(context.Context) error {
 // This method gracefully shuts down the router and cleans up resources.
 // Note that the HTTP server itself is typically managed by a separate
 // HTTP server module.
-func (m *ChiMuxModule) Stop(context.Context) error {
+func (m *ChiMuxModule) Stop(ctx context.Context) error {
 	m.logger.Info("Stopping chimux module")
+
+	// Emit router stopped event (router is shutting down)
+	m.emitEvent(ctx, EventTypeRouterStopped, map[string]interface{}{
+		"router_status": "stopped",
+		"stop_time":     time.Now(),
+		"tenant_count":  len(m.tenantConfigs),
+	})
+
+	// Emit module stopped event
+	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{
+		"tenant_count": len(m.tenantConfigs),
+		"routes_count": len(m.router.Routes()),
+	})
+
 	return nil
 }
 
@@ -467,21 +535,45 @@ func (m *ChiMuxModule) ChiRouter() chi.Router {
 // Get registers a GET handler for the pattern
 func (m *ChiMuxModule) Get(pattern string, handler http.HandlerFunc) {
 	m.router.Get(pattern, handler)
+
+	// Emit route registered event
+	m.emitEvent(context.Background(), EventTypeRouteRegistered, map[string]interface{}{
+		"method":  "GET",
+		"pattern": pattern,
+	})
 }
 
 // Post registers a POST handler for the pattern
 func (m *ChiMuxModule) Post(pattern string, handler http.HandlerFunc) {
 	m.router.Post(pattern, handler)
+
+	// Emit route registered event
+	m.emitEvent(context.Background(), EventTypeRouteRegistered, map[string]interface{}{
+		"method":  "POST",
+		"pattern": pattern,
+	})
 }
 
 // Put registers a PUT handler for the pattern
 func (m *ChiMuxModule) Put(pattern string, handler http.HandlerFunc) {
 	m.router.Put(pattern, handler)
+
+	// Emit route registered event
+	m.emitEvent(context.Background(), EventTypeRouteRegistered, map[string]interface{}{
+		"method":  "PUT",
+		"pattern": pattern,
+	})
 }
 
 // Delete registers a DELETE handler for the pattern
 func (m *ChiMuxModule) Delete(pattern string, handler http.HandlerFunc) {
 	m.router.Delete(pattern, handler)
+
+	// Emit route registered event
+	m.emitEvent(context.Background(), EventTypeRouteRegistered, map[string]interface{}{
+		"method":  "DELETE",
+		"pattern": pattern,
+	})
 }
 
 // Patch registers a PATCH handler for the pattern
@@ -507,6 +599,12 @@ func (m *ChiMuxModule) Mount(pattern string, handler http.Handler) {
 // Use appends middleware to the chain
 func (m *ChiMuxModule) Use(middlewares ...func(http.Handler) http.Handler) {
 	m.router.Use(middlewares...)
+
+	// Emit middleware added event
+	m.emitEvent(context.Background(), EventTypeMiddlewareAdded, map[string]interface{}{
+		"middleware_count": len(middlewares),
+		"total_middleware": len(m.router.Middlewares()),
+	})
 }
 
 // Handle registers a handler for a specific pattern
@@ -645,5 +743,122 @@ func (m *ChiMuxModule) corsMiddleware() func(http.Handler) http.Handler {
 
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// requestMonitoringMiddleware creates a middleware that emits request events
+func (m *ChiMuxModule) requestMonitoringMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Emit request received event
+			m.emitEvent(r.Context(), EventTypeRequestReceived, map[string]interface{}{
+				"method":      r.Method,
+				"path":        r.URL.Path,
+				"remote_addr": r.RemoteAddr,
+				"user_agent":  r.UserAgent(),
+			})
+
+			// Wrap response writer to capture status code
+			wrapper := &responseWriterWrapper{ResponseWriter: w, statusCode: 200}
+
+			// Capture context for defer function
+			ctx := r.Context()
+
+			// Process request
+			defer func() {
+				if err := recover(); err != nil {
+					// Emit request failed event for panics
+					m.emitEvent(ctx, EventTypeRequestFailed, map[string]interface{}{
+						"method":      r.Method,
+						"path":        r.URL.Path,
+						"error":       fmt.Sprintf("%v", err),
+						"status_code": 500,
+					})
+					panic(err) // Re-panic to maintain behavior
+				} else {
+					// Emit request processed event for successful requests
+					m.emitEvent(ctx, EventTypeRequestProcessed, map[string]interface{}{
+						"method":      r.Method,
+						"path":        r.URL.Path,
+						"status_code": wrapper.statusCode,
+					})
+				}
+			}()
+
+			next.ServeHTTP(wrapper, r)
+
+			// Check for error status codes
+			if wrapper.statusCode >= 400 {
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"method":      r.Method,
+					"path":        r.URL.Path,
+					"status_code": wrapper.statusCode,
+					"error":       "HTTP error status",
+				})
+			}
+		})
+	}
+}
+
+// responseWriterWrapper wraps http.ResponseWriter to capture status code
+type responseWriterWrapper struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *responseWriterWrapper) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the chimux module to register as an observer for events it's interested in.
+func (m *ChiMuxModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the chimux module to emit events that other modules or observers can receive.
+func (m *ChiMuxModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the chimux module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+func (m *ChiMuxModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	event := modular.NewCloudEvent(eventType, "chimux-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		fmt.Printf("Failed to emit chimux event %s: %v\n", eventType, emitErr)
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this chimux module can emit.
+func (m *ChiMuxModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeConfigLoaded,
+		EventTypeConfigValidated,
+		EventTypeRouterCreated,
+		EventTypeRouterStarted,
+		EventTypeRouterStopped,
+		EventTypeRouteRegistered,
+		EventTypeRouteRemoved,
+		EventTypeMiddlewareAdded,
+		EventTypeMiddlewareRemoved,
+		EventTypeCorsConfigured,
+		EventTypeCorsEnabled,
+		EventTypeModuleStarted,
+		EventTypeModuleStopped,
+		EventTypeRequestReceived,
+		EventTypeRequestProcessed,
+		EventTypeRequestFailed,
 	}
 }

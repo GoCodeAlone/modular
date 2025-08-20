@@ -64,6 +64,7 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // Module errors
@@ -98,6 +99,7 @@ type SchedulerModule struct {
 	jobStore      JobStore
 	running       bool
 	schedulerLock sync.Mutex
+	subject       modular.Subject // Added for event observation
 }
 
 // NewModule creates a new instance of the scheduler module.
@@ -132,6 +134,11 @@ func (m *SchedulerModule) Name() string {
 //   - CheckInterval: 1s for job polling
 //   - RetentionDays: 7 days for completed job retention
 func (m *SchedulerModule) RegisterConfig(app modular.Application) error {
+	// If a non-nil config provider is already registered (e.g., tests), don't override it
+	if existing, err := app.GetConfigSection(m.Name()); err == nil && existing != nil {
+		return nil
+	}
+
 	// Register the configuration with default values
 	defaultConfig := &SchedulerConfig{
 		WorkerCount:       5,
@@ -159,6 +166,17 @@ func (m *SchedulerModule) Init(app modular.Application) error {
 	m.config = cfg.GetConfig().(*SchedulerConfig)
 	m.logger = app.Logger()
 
+	// Emit config loaded event
+	m.emitEvent(context.Background(), EventTypeConfigLoaded, map[string]interface{}{
+		"worker_count":       m.config.WorkerCount,
+		"queue_size":         m.config.QueueSize,
+		"shutdown_timeout":   m.config.ShutdownTimeout.String(),
+		"storage_type":       m.config.StorageType,
+		"check_interval":     m.config.CheckInterval.String(),
+		"retention_days":     m.config.RetentionDays,
+		"enable_persistence": m.config.EnablePersistence,
+	})
+
 	// Initialize job store based on configuration
 	switch m.config.StorageType {
 	case "memory":
@@ -176,6 +194,7 @@ func (m *SchedulerModule) Init(app modular.Application) error {
 		WithQueueSize(m.config.QueueSize),
 		WithCheckInterval(m.config.CheckInterval),
 		WithLogger(m.logger),
+		WithEventEmitter(m),
 	)
 
 	// Load persisted jobs if enabled
@@ -208,7 +227,22 @@ func (m *SchedulerModule) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Ensure a scheduler started event is emitted at module level as well
+	m.emitEvent(ctx, EventTypeSchedulerStarted, map[string]interface{}{
+		"worker_count":   m.config.WorkerCount,
+		"queue_size":     m.config.QueueSize,
+		"check_interval": m.config.CheckInterval.String(),
+	})
+
 	m.running = true
+
+	// Emit module started event
+	m.emitEvent(ctx, EventTypeModuleStarted, map[string]interface{}{
+		"worker_count": m.config.WorkerCount,
+		"queue_size":   m.config.QueueSize,
+		"storage_type": m.config.StorageType,
+	})
+
 	m.logger.Info("Scheduler started successfully")
 	return nil
 }
@@ -228,21 +262,39 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, m.config.ShutdownTimeout)
 	defer cancel()
 
+	// Save pending jobs before stopping to ensure recovery even if jobs execute during shutdown
+	if m.config.EnablePersistence {
+		if preSaveErr := m.savePersistedJobs(); preSaveErr != nil {
+			if m.logger != nil {
+				m.logger.Warn("Pre-stop save of jobs failed", "error", preSaveErr, "file", m.config.PersistenceFile)
+			}
+		}
+	}
+
 	// Stop the scheduler
 	err := m.scheduler.Stop(shutdownCtx)
+
+	// Save pending jobs if persistence is enabled (even if stop errored)
+	if m.config.EnablePersistence {
+		if saveErr := m.savePersistedJobs(); saveErr != nil {
+			if m.logger != nil {
+				m.logger.Error("Failed to save jobs to persistence file", "error", saveErr, "file", m.config.PersistenceFile)
+			}
+		}
+	}
+
 	if err != nil {
 		return err
 	}
 
-	// Save pending jobs if persistence is enabled
-	if m.config.EnablePersistence {
-		err := m.savePersistedJobs()
-		if err != nil {
-			m.logger.Error("Failed to save jobs to persistence file", "error", err, "file", m.config.PersistenceFile)
-		}
-	}
-
 	m.running = false
+
+	// Emit module stopped event
+	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{
+		"worker_count": m.config.WorkerCount,
+		"jobs_saved":   m.config.EnablePersistence,
+	})
+
 	m.logger.Info("Scheduler stopped")
 	return nil
 }
@@ -277,7 +329,20 @@ func (m *SchedulerModule) Constructor() modular.ModuleConstructor {
 
 // ScheduleJob schedules a new job
 func (m *SchedulerModule) ScheduleJob(job Job) (string, error) {
-	return m.scheduler.ScheduleJob(job)
+	jobID, err := m.scheduler.ScheduleJob(job)
+	if err != nil {
+		return "", err
+	}
+
+	// Emit job scheduled event
+	m.emitEvent(context.Background(), EventTypeJobScheduled, map[string]interface{}{
+		"job_id":        jobID,
+		"job_name":      job.Name,
+		"schedule_time": job.RunAt.Format(time.RFC3339),
+		"is_recurring":  job.IsRecurring,
+	})
+
+	return jobID, nil
 }
 
 // ScheduleRecurring schedules a recurring job using a cron expression
@@ -315,27 +380,74 @@ func (m *SchedulerModule) loadPersistedJobs() error {
 		if err != nil {
 			return fmt.Errorf("failed to load jobs from persistence file: %w", err)
 		}
+		if debugEnabled() {
+			dbg("LoadPersisted: loaded %d jobs from %s", len(jobs), m.config.PersistenceFile)
+		}
 
-		// Re-schedule all loaded jobs
+		// Reinsert all relevant jobs into the fresh job store so the dispatcher can pick them up
 		for _, job := range jobs {
+			// Debug before normalization
+			if debugEnabled() {
+				preNR := "<nil>"
+				if job.NextRun != nil {
+					preNR = job.NextRun.Format(time.RFC3339Nano)
+				}
+				runAtStr := job.RunAt.Format(time.RFC3339Nano)
+				dbg("LoadPersisted: job=%s name=%s status=%s runAt=%s nextRun=%s", job.ID, job.Name, job.Status, runAtStr, preNR)
+			}
 			// Skip already completed or cancelled jobs
 			if job.Status == JobStatusCompleted || job.Status == JobStatusCancelled {
 				continue
 			}
 
-			// For recurring jobs, re-register with the scheduler
-			if job.IsRecurring {
-				_, err = m.scheduler.ResumeRecurringJob(job)
-			} else if time.Until(job.RunAt) > 0 {
-				// Only schedule future one-time jobs
-				_, err = m.scheduler.ResumeJob(job)
+			// Normalize NextRun so due jobs are picked up promptly after restart
+			now := time.Now()
+			if job.NextRun == nil {
+				if !job.RunAt.IsZero() {
+					// If run time already passed, schedule immediately; otherwise keep original RunAt
+					if !job.RunAt.After(now) {
+						nr := now
+						job.NextRun = &nr
+					} else {
+						j := job.RunAt
+						job.NextRun = &j
+					}
+				} else {
+					// No scheduling info — set to now to avoid being stuck
+					nr := now
+					job.NextRun = &nr
+				}
+			} else if job.NextRun.Before(now) {
+				// If persisted NextRun is in the past, schedule immediately
+				nr := now
+				job.NextRun = &nr
+			} else {
+				// If NextRun is very near-future (within 750ms), pull it to now to avoid timing flakes on restart
+				if job.NextRun.Sub(now) <= 750*time.Millisecond {
+					nr := now
+					job.NextRun = &nr
+				}
 			}
 
-			if err != nil {
-				m.logger.Warn("Failed to resume job from persistence",
-					"jobID", job.ID,
-					"jobName", job.Name,
-					"error", err)
+			// Normalize status back to pending for rescheduled work
+			job.Status = JobStatusPending
+			job.UpdatedAt = time.Now()
+
+			// Debug after normalization
+			if debugEnabled() {
+				postNR := "<nil>"
+				if job.NextRun != nil {
+					postNR = job.NextRun.Format(time.RFC3339Nano)
+				}
+				dbg("LoadPersisted: normalized job=%s status=%s nextRun=%s (now=%s)", job.ID, job.Status, postNR, now.Format(time.RFC3339Nano))
+			}
+
+			// Persist normalized job back into the store
+			if err := m.scheduler.jobStore.UpdateJob(job); err != nil {
+				// If job wasn't present (unexpected), attempt to add it
+				if addErr := m.scheduler.jobStore.AddJob(job); addErr != nil {
+					m.logger.Warn("Failed to persist normalized job to store", "jobID", job.ID, "updateErr", err, "addErr", addErr)
+				}
 			}
 		}
 
@@ -364,9 +476,85 @@ func (m *SchedulerModule) savePersistedJobs() error {
 		}
 
 		m.logger.Info("Saved jobs to persistence file", "count", len(jobs))
+		if debugEnabled() {
+			dbg("SavePersisted: saved %d jobs to %s", len(jobs), m.config.PersistenceFile)
+		}
 		return nil
 	}
 
 	m.logger.Warn("Job store does not support persistence")
 	return ErrJobStoreNotPersistable
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the scheduler module to register as an observer for events it's interested in.
+func (m *SchedulerModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the scheduler module to emit events that other modules or observers can receive.
+func (m *SchedulerModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the scheduler module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
+func (m *SchedulerModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
+	event := modular.NewCloudEvent(eventType, "scheduler-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Use structured logger to avoid noisy stdout during tests
+		if m.logger != nil {
+			m.logger.Warn("Failed to emit scheduler event", "eventType", eventType, "error", emitErr)
+		} else {
+			// Fallback to stdout only when no logger is available
+			fmt.Printf("Failed to emit scheduler event %s: %v\n", eventType, emitErr)
+		}
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this scheduler module can emit.
+func (m *SchedulerModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeConfigLoaded,
+		EventTypeConfigValidated,
+		EventTypeJobScheduled,
+		EventTypeJobStarted,
+		EventTypeJobCompleted,
+		EventTypeJobFailed,
+		EventTypeJobCancelled,
+		EventTypeJobRemoved,
+		EventTypeSchedulerStarted,
+		EventTypeSchedulerStopped,
+		EventTypeSchedulerPaused,
+		EventTypeSchedulerResumed,
+		EventTypeWorkerStarted,
+		EventTypeWorkerStopped,
+		EventTypeWorkerBusy,
+		EventTypeWorkerIdle,
+		EventTypeModuleStarted,
+		EventTypeModuleStopped,
+		EventTypeError,
+		EventTypeWarning,
+	}
 }

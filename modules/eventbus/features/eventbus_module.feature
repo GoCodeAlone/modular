@@ -89,6 +89,58 @@ Feature: EventBus Module
     And worker pools should be shut down gracefully
     And no memory leaks should occur
 
+  Scenario: Event observation during message publishing
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "user.created" with a handler
+    And I publish an event to topic "user.created" with payload "test-user"
+    Then a message published event should be emitted
+    And a subscription created event should be emitted
+
+  Scenario: Event observation during bus lifecycle
+    Given I have an eventbus service with event observation enabled
+    When the eventbus module starts
+    Then a config loaded event should be emitted
+    And a bus started event should be emitted
+    When the eventbus is stopped
+    Then a bus stopped event should be emitted
+
+  Scenario: Event observation during subscription management
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "user.created" with a handler
+    Then a subscription created event should be emitted
+    When I unsubscribe from the topic
+    Then a subscription removed event should be emitted
+
+  Scenario: Event observation during message publishing
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "message.test" with a handler
+    And I publish an event to topic "message.test" with payload "test-data"
+    Then a message published event should be emitted
+
+  # New scenarios for missing event types
+  Scenario: Event observation during message reception
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "message.received" with a handler
+    And I publish an event to topic "message.received" with payload "test-data"
+    Then a message received event should be emitted
+
+  Scenario: Event observation during handler failures
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "error.handler" with a failing handler
+    And I publish an event to topic "error.handler" with payload "fail-data"
+    Then a message failed event should be emitted
+
+  Scenario: Event observation during topic creation
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "new.topic" with a handler
+    Then a topic created event should be emitted
+
+  Scenario: Event observation during topic deletion
+    Given I have an eventbus service with event observation enabled
+    When I subscribe to topic "delete.topic" with a handler
+    And I unsubscribe from the topic
+    Then a topic deleted event should be emitted
+
   # Multi-Engine Scenarios
   Scenario: Multi-engine configuration
     Given I have a multi-engine eventbus configuration with memory and custom engines

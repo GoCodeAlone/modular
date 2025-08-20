@@ -308,6 +308,23 @@ func (m *LogMaskerModule) ProvidesServices() []modular.ServiceProvider {
 	}
 }
 
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this logmasker module can emit.
+func (m *LogMaskerModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeModuleStarted,
+		EventTypeModuleStopped,
+		EventTypeConfigLoaded,
+		EventTypeConfigValidated,
+		EventTypeRulesUpdated,
+		EventTypeMaskingApplied,
+		EventTypeMaskingSkipped,
+		EventTypeFieldMasked,
+		EventTypePatternMatched,
+		EventTypeMaskingError,
+	}
+}
+
 // MaskingLogger implements modular.LoggerDecorator with masking capabilities.
 // It extends BaseLoggerDecorator to leverage the framework's decorator infrastructure.
 type MaskingLogger struct {

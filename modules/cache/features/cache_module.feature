@@ -70,3 +70,46 @@ Feature: Cache Module
     Given I have a cache service with default TTL configured
     When I set a cache item without specifying TTL
     Then the item should use the default TTL from configuration
+
+  Scenario: Emit events during cache operations
+    Given I have a cache service with event observation enabled
+    When I set a cache item with key "event-key" and value "event-value"
+    Then a cache set event should be emitted
+    And the event should contain the cache key "event-key"
+    When I get the cache item with key "event-key"
+    Then a cache hit event should be emitted
+    When I get a non-existent key "missing-key"
+    Then a cache miss event should be emitted
+    When I delete the cache item with key "event-key"
+    Then a cache delete event should be emitted
+
+  Scenario: Emit events during cache lifecycle
+    Given I have a cache service with event observation enabled
+    When the cache module starts
+    Then a cache connected event should be emitted
+    When I flush all cache items
+    Then a cache flush event should be emitted
+    When the cache module stops
+    Then a cache disconnected event should be emitted
+
+  Scenario: Emit error events during cache operations
+    Given I have a cache service with event observation enabled
+    And the cache engine encounters a connection error
+    When I attempt to start the cache module
+    Then a cache error event should be emitted
+    And the error event should contain connection error details
+
+  Scenario: Emit expired events when items expire
+    Given I have a cache service with event observation enabled
+    When I set a cache item with key "expire-key" and value "expire-value" with TTL 1 seconds
+    And I wait for 2 seconds
+    And the cache cleanup process runs
+    Then a cache expired event should be emitted
+    And the expired event should contain the expired key "expire-key"
+
+  Scenario: Emit evicted events when cache is full
+    Given I have a cache service with small memory limit configured
+    And I have event observation enabled
+    When I fill the cache beyond its maximum capacity
+    Then a cache evicted event should be emitted
+    And the evicted event should contain eviction details

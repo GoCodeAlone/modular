@@ -1,9 +1,11 @@
 module observer-pattern
 
-go 1.23.0
+go 1.24.2
+
+toolchain go1.24.5
 
 require (
-	github.com/CrisisTextLine/modular v1.5.0
+	github.com/CrisisTextLine/modular v1.5.3
 	github.com/CrisisTextLine/modular/modules/eventlogger v0.0.0-00010101000000-000000000000
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 )
