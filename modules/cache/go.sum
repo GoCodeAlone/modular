@@ -1,7 +1,7 @@
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/CrisisTextLine/modular v1.5.0 h1:SY1WUTzRSTmcLABCUAmtYFoy8NBDkxdisSHbRH4QksM=
-github.com/CrisisTextLine/modular v1.5.0/go.mod h1:dOnEKi0t5kDYfKSt+pj+itUEuxQSY9ZNlxW6w+5W3lY=
+github.com/CrisisTextLine/modular v1.6.0 h1:zITKcDD3AKxjkcqgf4fbQ93c9oyFV6VYa1p9clHk5es=
+github.com/CrisisTextLine/modular v1.6.0/go.mod h1:juVq3KG0NZ5VCAJbwN6F/wyWvc08JQsroUAckWFZ4Ms=
 github.com/alicebob/miniredis/v2 v2.35.0 h1:QwLphYqCEAo1eu1TqPRN2jgVMPBweeQcR21jeqDCONI=
 github.com/alicebob/miniredis/v2 v2.35.0/go.mod h1:TcL7YfarKPGDAthEtl5NBeHZfeUQj6OXMm/+iu5cLMM=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

@@ -3,7 +3,8 @@ module github.com/CrisisTextLine/modular/modules/chimux
 go 1.24.2
 
 require (
-	github.com/CrisisTextLine/modular v1.5.0
+	github.com/CrisisTextLine/modular v1.6.0
+	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/stretchr/testify v1.10.0
@@ -11,7 +12,6 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
-	github.com/cloudevents/sdk-go/v2 v2.16.1 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -30,4 +30,3 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-replace github.com/CrisisTextLine/modular => ../..

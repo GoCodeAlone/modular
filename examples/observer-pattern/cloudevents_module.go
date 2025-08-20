@@ -14,6 +14,7 @@ type CloudEventsModule struct {
 	name   string
 	app    modular.Application
 	logger modular.Logger
+	cancel context.CancelFunc
 }
 
 // CloudEventsConfig holds configuration for the CloudEvents demo module.
@@ -72,8 +73,12 @@ func (m *CloudEventsModule) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid demo interval: %w", err)
 	}
 
+	// Create a cancellable context for the demo
+	demoCtx, cancel := context.WithCancel(ctx)
+	m.cancel = cancel
+
 	// Start demonstration in background
-	go m.runDemo(ctx, config, interval)
+	go m.runDemo(demoCtx, config, interval)
 
 	m.logger.Info("CloudEvents demo started", "interval", interval)
 	return nil
@@ -81,6 +86,10 @@ func (m *CloudEventsModule) Start(ctx context.Context) error {
 
 // Stop stops the module.
 func (m *CloudEventsModule) Stop(ctx context.Context) error {
+	// Cancel the demo goroutine
+	if m.cancel != nil {
+		m.cancel()
+	}
 	m.logger.Info("CloudEvents demo stopped")
 	return nil
 }

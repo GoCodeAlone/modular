@@ -29,8 +29,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2 h1:oygO0locgZJ
 github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2/go.mod h1:wP83P5OoQ5p6ip3ScPr0BAq0BvuPAvacpEuSzyouqAI=
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/CrisisTextLine/modular v1.5.0 h1:SY1WUTzRSTmcLABCUAmtYFoy8NBDkxdisSHbRH4QksM=
-github.com/CrisisTextLine/modular v1.5.0/go.mod h1:dOnEKi0t5kDYfKSt+pj+itUEuxQSY9ZNlxW6w+5W3lY=
+github.com/CrisisTextLine/modular v1.6.0 h1:zITKcDD3AKxjkcqgf4fbQ93c9oyFV6VYa1p9clHk5es=
+github.com/CrisisTextLine/modular v1.6.0/go.mod h1:juVq3KG0NZ5VCAJbwN6F/wyWvc08JQsroUAckWFZ4Ms=
 github.com/CrisisTextLine/modular/modules/httpserver v0.1.1 h1:iO43yrUpDuu/6H2FfPAd/Nt61TINrf3AxI0QBhvBwr8=
 github.com/CrisisTextLine/modular/modules/httpserver v0.1.1/go.mod h1:igtxcf63nptNwrFjDgz7IGHsKjpL56+2Dv8XgQ1Eq5M=
 github.com/aws/aws-sdk-go-v2 v1.36.6 h1:zJqGjVbRdTPojeCGWn5IR5pbJwSQSBh5RWFTQcEQGdU=

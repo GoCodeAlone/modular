@@ -3,8 +3,9 @@ module github.com/CrisisTextLine/modular/modules/letsencrypt
 go 1.24.2
 
 require (
-	github.com/CrisisTextLine/modular v1.5.0
+	github.com/CrisisTextLine/modular v1.6.0
 	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1
+	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/go-acme/lego/v4 v4.25.2
 )
@@ -36,7 +37,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.34.1 // indirect
 	github.com/aws/smithy-go v1.22.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cloudevents/sdk-go/v2 v2.16.1 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -81,4 +81,3 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-replace github.com/CrisisTextLine/modular => ../..

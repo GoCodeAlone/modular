@@ -5,7 +5,7 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	github.com/CrisisTextLine/modular v1.5.0
+	github.com/CrisisTextLine/modular v1.6.0
 	github.com/CrisisTextLine/modular/modules/database v1.1.0
 	modernc.org/sqlite v1.38.0
 )

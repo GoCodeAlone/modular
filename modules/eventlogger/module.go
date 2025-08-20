@@ -258,30 +258,34 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 	m.started = true
 	m.logger.Info("Event logger started")
 
-	// Emit configuration loaded event (synchronous for reliable test capture)
-	syncCtx := modular.WithSynchronousNotification(ctx)
-	m.emitOperationalEvent(syncCtx, EventTypeConfigLoaded, map[string]interface{}{
-		"enabled":              m.config.Enabled,
-		"buffer_size":          m.config.BufferSize,
-		"output_targets_count": len(m.config.OutputTargets),
-		"log_level":            m.config.LogLevel,
-	})
-
-	// Emit output registered events (synchronous for reliable test capture)
-	syncCtx = modular.WithSynchronousNotification(ctx)
-	for i, targetConfig := range m.config.OutputTargets {
-		m.emitOperationalEvent(syncCtx, EventTypeOutputRegistered, map[string]interface{}{
-			"output_index": i,
-			"output_type":  targetConfig.Type,
-			"output_level": targetConfig.Level,
+	// Emit startup events asynchronously to avoid deadlock during module startup
+	go func() {
+		// Small delay to ensure the Start() method has completed
+		time.Sleep(10 * time.Millisecond)
+		
+		// Emit configuration loaded event
+		m.emitOperationalEvent(ctx, EventTypeConfigLoaded, map[string]interface{}{
+			"enabled":              m.config.Enabled,
+			"buffer_size":          m.config.BufferSize,
+			"output_targets_count": len(m.config.OutputTargets),
+			"log_level":            m.config.LogLevel,
 		})
-	}
 
-	// Emit logger started event
-	m.emitOperationalEvent(ctx, EventTypeLoggerStarted, map[string]interface{}{
-		"output_count": len(m.outputs),
-		"buffer_size":  len(m.eventChan),
-	})
+		// Emit output registered events
+		for i, targetConfig := range m.config.OutputTargets {
+			m.emitOperationalEvent(ctx, EventTypeOutputRegistered, map[string]interface{}{
+				"output_index": i,
+				"output_type":  targetConfig.Type,
+				"output_level": targetConfig.Level,
+			})
+		}
+
+		// Emit logger started event
+		m.emitOperationalEvent(ctx, EventTypeLoggerStarted, map[string]interface{}{
+			"output_count": len(m.outputs),
+			"buffer_size":  len(m.eventChan),
+		})
+	}()
 
 	return nil
 }

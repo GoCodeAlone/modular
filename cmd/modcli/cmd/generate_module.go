@@ -1509,7 +1509,7 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 	// }
 
 	// Add requirements (adjust versions as needed)
-	if err := newModFile.AddRequire("github.com/CrisisTextLine/modular", "v1"); err != nil {
+	if err := newModFile.AddRequire("github.com/CrisisTextLine/modular", "v1.6.0"); err != nil {
 		return fmt.Errorf("failed to add modular requirement: %w", err)
 	}
 	if options.GenerateTests {
@@ -1580,7 +1580,7 @@ func generateGoldenGoMod(options *ModuleOptions, goModPath string) error {
 go 1.23.5
 
 require (
-	github.com/CrisisTextLine/modular v1
+	github.com/CrisisTextLine/modular v1.6.0
 	github.com/stretchr/testify v1.10.0
 )
 
