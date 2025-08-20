@@ -259,26 +259,22 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 	m.logger.Info("Event logger started")
 
 	// Emit configuration loaded event (synchronous for reliable test capture)
-	if err := m.emitSyncOperationalEvent(ctx, EventTypeConfigLoaded, map[string]interface{}{
+	syncCtx := modular.WithSynchronousNotification(ctx)
+	m.emitOperationalEvent(syncCtx, EventTypeConfigLoaded, map[string]interface{}{
 		"enabled":              m.config.Enabled,
 		"buffer_size":          m.config.BufferSize,
 		"output_targets_count": len(m.config.OutputTargets),
 		"log_level":            m.config.LogLevel,
-	}); err != nil {
-		m.logger.Debug("Failed to emit config loaded event", "error", err)
-	}
+	})
 
 	// Emit output registered events (synchronous for reliable test capture)
+	syncCtx = modular.WithSynchronousNotification(ctx)
 	for i, targetConfig := range m.config.OutputTargets {
-		err := m.emitSyncOperationalEvent(ctx, EventTypeOutputRegistered, map[string]interface{}{
+		m.emitOperationalEvent(syncCtx, EventTypeOutputRegistered, map[string]interface{}{
 			"output_index": i,
 			"output_type":  targetConfig.Type,
 			"output_level": targetConfig.Level,
 		})
-		if err != nil {
-			m.logger.Debug("Failed to emit output registered event", "error", err, "index", i)
-			// Continue anyway to try to emit the other events
-		}
 	}
 
 	// Emit logger started event
@@ -418,34 +414,30 @@ func (m *EventLoggerModule) emitOperationalEvent(ctx context.Context, eventType 
 
 	event := modular.NewCloudEvent(eventType, "eventlogger-module", data, nil)
 
-	// Emit in background to avoid blocking operations and prevent infinite loops
-	go func() {
+	// Check if synchronous notification is requested
+	if modular.IsSynchronousNotification(ctx) {
+		// Emit synchronously for reliable test capture
 		if err := m.EmitEvent(ctx, event); err != nil {
 			// Use the regular logger to avoid recursion
 			m.logger.Debug("Failed to emit operational event", "error", err, "event_type", eventType)
 		}
-	}()
-}
-
-// emitSyncOperationalEvent emits an event synchronously for reliable test capture
-func (m *EventLoggerModule) emitSyncOperationalEvent(ctx context.Context, eventType string, data map[string]interface{}) error {
-	if m.subject == nil {
-		m.logger.Debug("Subject not available, skipping event emission", "event_type", eventType)
-		return nil // Don't return error, just skip
+	} else {
+		// Emit in background to avoid blocking operations and prevent infinite loops
+		go func() {
+			if err := m.EmitEvent(ctx, event); err != nil {
+				// Use the regular logger to avoid recursion
+				m.logger.Debug("Failed to emit operational event", "error", err, "event_type", eventType)
+			}
+		}()
 	}
-
-	// Use a different source for config/output events to avoid any filtering issues during testing
-	event := modular.NewCloudEvent(eventType, "eventlogger-config", data, nil)
-	return m.EmitEvent(ctx, event)
 }
 
 // isOwnEvent checks if an event is emitted by this eventlogger module to avoid infinite loops
 func (m *EventLoggerModule) isOwnEvent(event cloudevents.Event) bool {
-	// Treat events originating from this module (including config/operational emissions)
-	// as "own events" to avoid generating recursive log/output-success events that
-	// can cause unbounded amplification and buffer overflows during processing.
-	src := event.Source()
-	return src == "eventlogger-module" || src == "eventlogger-config"
+	// Treat events originating from this module as "own events" to avoid generating
+	// recursive log/output-success events that can cause unbounded amplification
+	// and buffer overflows during processing.
+	return event.Source() == "eventlogger-module"
 }
 
 // OnEvent implements the Observer interface to receive and log CloudEvents.
@@ -473,12 +465,13 @@ func (m *EventLoggerModule) OnEvent(ctx context.Context, event cloudevents.Event
 		// Buffer is full, drop event and log warning
 		m.logger.Warn("Event buffer full, dropping event", "eventType", event.Type())
 
-		// Emit buffer full and event dropped events
+		// Emit buffer full and event dropped events (synchronous for reliable test capture)
 		if !m.isOwnEvent(event) {
-			m.emitOperationalEvent(ctx, EventTypeBufferFull, map[string]interface{}{
+			syncCtx := modular.WithSynchronousNotification(ctx)
+			m.emitOperationalEvent(syncCtx, EventTypeBufferFull, map[string]interface{}{
 				"buffer_size": cap(m.eventChan),
 			})
-			m.emitOperationalEvent(ctx, EventTypeEventDropped, map[string]interface{}{
+			m.emitOperationalEvent(syncCtx, EventTypeEventDropped, map[string]interface{}{
 				"event_type":   event.Type(),
 				"event_source": event.Source(),
 				"reason":       "buffer_full",
@@ -604,7 +597,8 @@ func (m *EventLoggerModule) logEvent(ctx context.Context, event cloudevents.Even
 
 	// Emit output success event synchronously if at least one output succeeded (avoid emitting for our own events)
 	if successCount > 0 && !m.isOwnEvent(event) {
-		_ = m.emitSyncOperationalEvent(ctx, EventTypeOutputSuccess, map[string]interface{}{
+		syncCtx := modular.WithSynchronousNotification(ctx)
+		m.emitOperationalEvent(syncCtx, EventTypeOutputSuccess, map[string]interface{}{
 			"success_count": successCount,
 			"error_count":   errorCount,
 			"event_type":    event.Type(),
