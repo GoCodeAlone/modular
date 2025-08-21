@@ -253,19 +253,13 @@ func (m *EventBusModule) Init(app modular.Application) error {
 	}
 
 	// Emit config loaded event
-	event := modular.NewCloudEvent(EventTypeConfigLoaded, "eventbus-module", map[string]interface{}{
+	m.emitEvent(modular.WithSynchronousNotification(context.Background()), EventTypeConfigLoaded, map[string]interface{}{
 		"engine":         m.config.Engine,
 		"max_queue_size": m.config.MaxEventQueueSize,
 		"worker_count":   m.config.WorkerCount,
 		"event_ttl":      m.config.EventTTL,
 		"retention_days": m.config.RetentionDays,
-	}, nil)
-
-	go func() {
-		if emitErr := m.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
-			fmt.Printf("Failed to emit eventbus config loaded event: %v\n", emitErr)
-		}
-	}()
+	})
 
 	m.logger.Info("Event bus module initialized")
 	return nil
@@ -661,6 +655,27 @@ func (m *EventBusModule) EmitEvent(ctx context.Context, event cloudevents.Event)
 		}
 	}()
 	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the eventbus module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
+func (m *EventBusModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
+	event := modular.NewCloudEvent(eventType, "eventbus-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Further error logging handled by EmitEvent method itself
+	}
 }
 
 // GetRegisteredEventTypes implements the ObservableModule interface.

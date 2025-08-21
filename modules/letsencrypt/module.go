@@ -127,6 +127,7 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -914,11 +915,24 @@ func (m *LetsEncryptModule) EmitEvent(ctx context.Context, event cloudevents.Eve
 
 // emitEvent is a helper method to create and emit CloudEvents for the letsencrypt module.
 // This centralizes the event creation logic and ensures consistent event formatting.
+// emitEvent is a helper method to create and emit CloudEvents for the letsencrypt module.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
 func (m *LetsEncryptModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
 	event := modular.NewCloudEvent(eventType, "letsencrypt-service", data, nil)
 
 	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-		fmt.Printf("Failed to emit letsencrypt event %s: %v\n", eventType, emitErr)
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Note: No logger available in letsencrypt module, so we skip additional error logging
+		// to eliminate noisy test output. The error handling is centralized in EmitEvent.
 	}
 }
 

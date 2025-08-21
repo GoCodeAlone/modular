@@ -117,39 +117,23 @@ func (l *lazyDefaultService) ExecContext(ctx context.Context, query string, args
 
 	if err != nil {
 		// Emit query error event
-		event := modular.NewCloudEvent(EventTypeQueryError, "database-service", map[string]interface{}{
+		l.module.emitEvent(ctx, EventTypeQueryError, map[string]interface{}{
 			"query":       query,
 			"error":       err.Error(),
 			"duration_ms": duration.Milliseconds(),
 			"connection":  "default",
-		}, nil)
-
-		fmt.Printf("Creating query error event: %s\n", event.Type())
-
-		go func() {
-			if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
-				fmt.Printf("Failed to emit query error event: %v\n", emitErr)
-			}
-		}()
+		})
 
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	// Emit query executed event
-	event := modular.NewCloudEvent(EventTypeQueryExecuted, "database-service", map[string]interface{}{
+	l.module.emitEvent(ctx, EventTypeQueryExecuted, map[string]interface{}{
 		"query":       query,
 		"duration_ms": duration.Milliseconds(),
 		"connection":  "default",
 		"operation":   "exec",
-	}, nil)
-
-	fmt.Printf("Creating query executed event: %s\n", event.Type())
-
-	go func() {
-		if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
-			fmt.Printf("Failed to emit query executed event: %v\n", emitErr)
-		}
-	}()
+	})
 
 	return result, nil
 }
@@ -776,23 +760,40 @@ func (m *Module) RegisterObservers(subject modular.Subject) error {
 // This allows the database module to emit events to registered observers.
 func (m *Module) EmitEvent(ctx context.Context, event cloudevents.Event) error {
 	if m.subject == nil {
-		// Debug: print when subject is nil
-		fmt.Printf("EmitEvent called but subject is nil for event: %s\n", event.Type())
 		return ErrNoSubjectForEventEmission
 	}
-
-	// Debug: print event emission attempt
-	fmt.Printf("Emitting database event: %s\n", event.Type())
 
 	// Use a goroutine to prevent blocking database operations with event emission
 	go func() {
 		if err := m.subject.NotifyObservers(ctx, event); err != nil {
 			// Log error but don't fail the operation
 			// This ensures event emission issues don't affect database functionality
+			// Use a logger if available to avoid noisy stdout during tests
 			fmt.Printf("Failed to notify observers for event %s: %v\n", event.Type(), err)
 		}
 	}()
 	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the database module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
+func (m *Module) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
+	event := modular.NewCloudEvent(eventType, "database-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Note: Further error logging handled by EmitEvent method itself
+	}
 }
 
 // GetRegisteredEventTypes implements the ObservableModule interface.

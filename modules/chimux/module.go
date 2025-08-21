@@ -832,11 +832,26 @@ func (m *ChiMuxModule) EmitEvent(ctx context.Context, event cloudevents.Event) e
 
 // emitEvent is a helper method to create and emit CloudEvents for the chimux module.
 // This centralizes the event creation logic and ensures consistent event formatting.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
 func (m *ChiMuxModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
 	event := modular.NewCloudEvent(eventType, "chimux-service", data, nil)
 
 	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-		fmt.Printf("Failed to emit chimux event %s: %v\n", eventType, emitErr)
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Use structured logger to avoid noisy stdout during tests
+		if m.logger != nil {
+			m.logger.Debug("Failed to emit chimux event", "eventType", eventType, "error", emitErr)
+		}
+		// Note: Removed fmt.Printf to eliminate noisy test output
 	}
 }
 
