@@ -112,6 +112,7 @@ package eventbus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"

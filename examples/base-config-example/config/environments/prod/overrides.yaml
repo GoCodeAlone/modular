@@ -1,0 +1,29 @@
+# Production environment overrides
+environment: "production"
+
+# Production database configuration
+database:
+  host: "prod-db.example.com"
+  name: "prod_app_db"
+  password: "super_secure_prod_password"
+
+# Production feature flags  
+features:
+  metrics: true      # Enable metrics in production
+  debug: false       # Disable debug in production
+
+# Production server configuration
+server:
+  port: 443          # HTTPS port
+  timeout: 60        # Longer timeout for production
+  max_connections: 1000  # More connections in production
+
+# Enable external services in production
+external_services:
+  redis:
+    enabled: true
+    host: "prod-redis.example.com"
+    
+  rabbitmq:
+    enabled: true
+    host: "prod-rabbitmq.example.com"

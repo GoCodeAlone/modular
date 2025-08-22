@@ -408,15 +408,45 @@ func loadAppConfig(app *StdApplication) error {
 		app.logger.Debug("Starting configuration loading process")
 	}
 
+	// Auto-detect base config structure if not explicitly configured
+	if !IsBaseConfigEnabled() {
+		if DetectBaseConfigStructure() {
+			if app.IsVerboseConfig() {
+				app.logger.Debug("Auto-detected base configuration structure",
+					"configDir", BaseConfigSettings.ConfigDir,
+					"environment", BaseConfigSettings.Environment)
+			}
+		}
+	}
+
+	// Prepare config feeders - include base config feeder if enabled
+	configFeeders := make([]Feeder, 0, len(ConfigFeeders)+1)
+
+	// Add base config feeder first if enabled (so it gets processed first)
+	if IsBaseConfigEnabled() {
+		baseFeeder := GetBaseConfigFeeder()
+		if baseFeeder != nil {
+			configFeeders = append(configFeeders, baseFeeder)
+			if app.IsVerboseConfig() {
+				app.logger.Debug("Added base config feeder",
+					"configDir", BaseConfigSettings.ConfigDir,
+					"environment", BaseConfigSettings.Environment)
+			}
+		}
+	}
+
+	// Add standard feeders
+	configFeeders = append(configFeeders, ConfigFeeders...)
+
 	// Skip if no ConfigFeeders are defined
-	if len(ConfigFeeders) == 0 {
+	if len(configFeeders) == 0 {
 		app.logger.Info("No config feeders defined, skipping config loading")
 		return nil
 	}
 
 	if app.IsVerboseConfig() {
-		app.logger.Debug("Configuration feeders available", "count", len(ConfigFeeders))
-		for i, feeder := range ConfigFeeders {
+		app.logger.Debug("Configuration feeders available", "count", len(configFeeders))
+		for i, feeder := range configFeeders {
 			app.logger.Debug("Config feeder registered", "index", i, "type", fmt.Sprintf("%T", feeder))
 		}
 	}
@@ -426,7 +456,7 @@ func loadAppConfig(app *StdApplication) error {
 	if app.IsVerboseConfig() {
 		cfgBuilder.SetVerboseDebug(true, app.logger)
 	}
-	for _, feeder := range ConfigFeeders {
+	for _, feeder := range configFeeders {
 		cfgBuilder.AddFeeder(feeder)
 		if app.IsVerboseConfig() {
 			app.logger.Debug("Added config feeder to builder", "type", fmt.Sprintf("%T", feeder))
