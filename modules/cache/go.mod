@@ -1,11 +1,11 @@
-module github.com/CrisisTextLine/modular/modules/cache
+module github.com/GoCodeAlone/modular/modules/cache
 
 go 1.24.2
 
 toolchain go1.24.3
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
+	github.com/GoCodeAlone/modular v1.6.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
@@ -36,3 +36,5 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../../

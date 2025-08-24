@@ -1,8 +1,8 @@
 # chimux Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/chimux.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/chimux)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/chimux.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/chimux)
 
-A module for the [Modular](https://github.com/CrisisTextLine/modular) framework.
+A module for the [Modular](https://github.com/GoCodeAlone/modular) framework.
 
 ## Overview
 
@@ -22,7 +22,7 @@ The chimux module provides a powerful HTTP router and middleware system for Modu
 ## Installation
 
 ```go
-go get github.com/CrisisTextLine/modular/modules/chimux@v1.0.0
+go get github.com/GoCodeAlone/modular/modules/chimux@v1.0.0
 ```
 
 ## Usage
@@ -31,8 +31,8 @@ go get github.com/CrisisTextLine/modular/modules/chimux@v1.0.0
 package main
 
 import (
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/modules/chimux"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/chimux"
 	"log/slog"
 	"net/http"
 	"os"

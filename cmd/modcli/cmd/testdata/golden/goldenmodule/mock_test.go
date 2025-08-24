@@ -1,7 +1,7 @@
 package goldenmodule
 
 import (
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // MockApplication implements the modular.Application interface for testing

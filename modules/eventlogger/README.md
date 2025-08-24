@@ -1,6 +1,6 @@
 # EventLogger Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/eventlogger.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/eventlogger)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/eventlogger.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/eventlogger)
 
 The EventLogger Module provides structured logging capabilities for Observer pattern events in Modular applications. It acts as an Observer that can be registered with any Subject to log events to various output targets including console, files, and syslog.
 
@@ -19,8 +19,8 @@ The EventLogger Module provides structured logging capabilities for Observer pat
 
 ```go
 import (
-    "github.com/CrisisTextLine/modular"
-    "github.com/CrisisTextLine/modular/modules/eventlogger"
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/eventlogger"
 )
 
 // Register the eventlogger module with your Modular application
@@ -76,8 +76,8 @@ eventlogger:
 
 ```go
 import (
-    "github.com/CrisisTextLine/modular"
-    "github.com/CrisisTextLine/modular/modules/eventlogger"
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/eventlogger"
 )
 
 func main() {

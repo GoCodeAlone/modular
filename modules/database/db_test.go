@@ -10,9 +10,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/feeders"
-	"github.com/CrisisTextLine/modular/modules/database"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/GoCodeAlone/modular/modules/database"
 
 	_ "modernc.org/sqlite" // Import pure Go SQLite driver
 )

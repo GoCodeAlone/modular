@@ -5,10 +5,10 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
-	github.com/CrisisTextLine/modular/modules/chimux v1.1.0
-	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1
-	github.com/CrisisTextLine/modular/modules/reverseproxy v1.1.0
+	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular/modules/chimux v1.1.0
+	github.com/GoCodeAlone/modular/modules/httpserver v0.1.1
+	github.com/GoCodeAlone/modular/modules/reverseproxy v1.1.0
 )
 
 require (
@@ -26,10 +26,10 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/CrisisTextLine/modular => ../../
+replace github.com/GoCodeAlone/modular => ../../
 
-replace github.com/CrisisTextLine/modular/modules/chimux => ../../modules/chimux
+replace github.com/GoCodeAlone/modular/modules/chimux => ../../modules/chimux
 
-replace github.com/CrisisTextLine/modular/modules/httpserver => ../../modules/httpserver
+replace github.com/GoCodeAlone/modular/modules/httpserver => ../../modules/httpserver
 
-replace github.com/CrisisTextLine/modular/modules/reverseproxy => ../../modules/reverseproxy
+replace github.com/GoCodeAlone/modular/modules/reverseproxy => ../../modules/reverseproxy

@@ -1,9 +1,9 @@
-module github.com/CrisisTextLine/modular/modules/database
+module github.com/GoCodeAlone/modular/modules/database
 
 go 1.24.2
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
+	github.com/GoCodeAlone/modular v1.6.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.5.11
@@ -53,3 +53,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../../

@@ -8,7 +8,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Define static errors

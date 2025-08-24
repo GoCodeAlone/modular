@@ -1,10 +1,10 @@
-module github.com/CrisisTextLine/modular/modules/letsencrypt
+module github.com/GoCodeAlone/modular/modules/letsencrypt
 
 go 1.24.2
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
-	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1
+	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular/modules/httpserver v0.1.1
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/go-acme/lego/v4 v4.25.2
@@ -81,3 +81,7 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../../
+
+replace github.com/GoCodeAlone/modular/modules/httpserver => ../httpserver

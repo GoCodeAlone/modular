@@ -4,13 +4,13 @@ go 1.24.2
 
 toolchain go1.24.5
 
-replace github.com/CrisisTextLine/modular => ../..
+replace github.com/GoCodeAlone/modular => ../..
 
-replace github.com/CrisisTextLine/modular/modules/eventlogger => ../../modules/eventlogger
+replace github.com/GoCodeAlone/modular/modules/eventlogger => ../../modules/eventlogger
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
-	github.com/CrisisTextLine/modular/modules/eventlogger v0.0.0-00010101000000-000000000000
+	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular/modules/eventlogger v0.0.0-00010101000000-000000000000
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 )
 

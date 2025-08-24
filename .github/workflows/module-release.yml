@@ -192,7 +192,7 @@ jobs:
       - name: Announce to Go proxy
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
-          MODULE_NAME="github.com/CrisisTextLine/modular/modules/${{ steps.version.outputs.module }}"
+          MODULE_NAME="github.com/GoCodeAlone/modular/modules/${{ steps.version.outputs.module }}"
           
           go get ${MODULE_NAME}@${VERSION}
           

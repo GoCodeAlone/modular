@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/feeders"
-	"github.com/CrisisTextLine/modular/modules/chimux"
-	"github.com/CrisisTextLine/modular/modules/httpserver"
-	"github.com/CrisisTextLine/modular/modules/reverseproxy"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/GoCodeAlone/modular/modules/chimux"
+	"github.com/GoCodeAlone/modular/modules/httpserver"
+	"github.com/GoCodeAlone/modular/modules/reverseproxy"
 )
 
 type AppConfig struct {

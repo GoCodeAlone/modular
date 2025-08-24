@@ -3,8 +3,8 @@ module logmasker-example
 go 1.23.0
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
-	github.com/CrisisTextLine/modular/modules/logmasker v0.0.0
+	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular/modules/logmasker v0.0.0
 )
 
 require (
@@ -20,6 +20,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/CrisisTextLine/modular => ../../
+replace github.com/GoCodeAlone/modular => ../../
 
-replace github.com/CrisisTextLine/modular/modules/logmasker => ../../modules/logmasker
+replace github.com/GoCodeAlone/modular/modules/logmasker => ../../modules/logmasker

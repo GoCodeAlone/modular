@@ -1,6 +1,6 @@
 # EventBus Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/eventbus.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/eventbus)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/eventbus.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/eventbus)
 
 The EventBus Module provides a publish-subscribe messaging system for Modular applications with support for multiple concurrent engines, topic-based routing, and flexible configuration. It enables decoupled communication between components through a powerful event-driven architecture.
 
@@ -33,8 +33,8 @@ The EventBus Module provides a publish-subscribe messaging system for Modular ap
 
 ```go
 import (
-    "github.com/CrisisTextLine/modular"
-    "github.com/CrisisTextLine/modular/modules/eventbus"
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/eventbus"
 )
 
 // Register the eventbus module with your Modular application

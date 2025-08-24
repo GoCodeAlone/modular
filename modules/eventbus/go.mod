@@ -1,11 +1,11 @@
-module github.com/CrisisTextLine/modular/modules/eventbus
+module github.com/GoCodeAlone/modular/modules/eventbus
 
 go 1.24.2
 
 toolchain go1.24.3
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
+	github.com/GoCodeAlone/modular v1.6.0
 	github.com/IBM/sarama v1.45.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.0
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.38.0
@@ -67,3 +67,5 @@ require (
 	golang.org/x/net v0.40.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../../

@@ -3,7 +3,7 @@ package modular
 import (
 	"os"
 
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // BaseConfigOptions holds configuration for base config support

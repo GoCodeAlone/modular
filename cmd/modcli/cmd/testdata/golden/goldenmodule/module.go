@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	"log/slog"
 )
 
