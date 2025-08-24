@@ -239,6 +239,7 @@ type StdApplication struct {
 	cancel         context.CancelFunc
 	tenantService  TenantService // Added tenant service reference
 	verboseConfig  bool          // Flag for verbose configuration debugging
+	initialized    bool          // Tracks whether Init has already been successfully executed
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -273,13 +274,18 @@ type StdApplication struct {
 //	    log.Fatal(err)
 //	}
 func NewStdApplication(cp ConfigProvider, logger Logger) Application {
-	return &StdApplication{
+	app := &StdApplication{
 		cfgProvider:    cp,
 		cfgSections:    make(map[string]ConfigProvider),
 		svcRegistry:    make(ServiceRegistry),
 		moduleRegistry: make(ModuleRegistry),
 		logger:         logger,
 	}
+
+	// Register the logger as a service so modules can depend on it
+	app.svcRegistry["logger"] = logger
+
+	return app
 }
 
 // ConfigProvider retrieves the application config provider
@@ -319,7 +325,9 @@ func (app *StdApplication) GetConfigSection(section string) (ConfigProvider, err
 // RegisterService adds a service with type checking
 func (app *StdApplication) RegisterService(name string, service any) error {
 	if _, exists := app.svcRegistry[name]; exists {
-		return fmt.Errorf("%w: %s", ErrServiceAlreadyRegistered, name)
+		// Preserve contract: duplicate registrations are an error
+		app.logger.Debug("Service already registered", "name", name)
+		return ErrServiceAlreadyRegistered
 	}
 
 	app.svcRegistry[name] = service
@@ -381,6 +389,19 @@ func (app *StdApplication) GetService(name string, target any) error {
 
 // Init initializes the application with the provided modules
 func (app *StdApplication) Init() error {
+	return app.InitWithApp(app)
+}
+
+// InitWithApp initializes the application with the provided modules, using appToPass as the application instance passed to modules
+func (app *StdApplication) InitWithApp(appToPass Application) error {
+	// Make Init idempotent: if already initialized, skip re-initialization to avoid
+	// duplicate service registrations and other side effects. This supports tests
+	// and scenarios that may call Init more than once.
+	if app.initialized {
+		app.logger.Debug("Application already initialized, skipping Init")
+		return nil
+	}
+
 	errs := make([]error, 0)
 	for name, module := range app.moduleRegistry {
 		configurableModule, ok := module.(Configurable)
@@ -388,7 +409,7 @@ func (app *StdApplication) Init() error {
 			app.logger.Debug("Module does not implement Configurable, skipping", "module", name)
 			continue
 		}
-		err := configurableModule.RegisterConfig(app)
+		err := configurableModule.RegisterConfig(appToPass)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("module %s failed to register config: %w", name, err))
 			continue
@@ -417,7 +438,7 @@ func (app *StdApplication) Init() error {
 			}
 		}
 
-		if err = app.moduleRegistry[moduleName].Init(app); err != nil {
+		if err = app.moduleRegistry[moduleName].Init(appToPass); err != nil {
 			errs = append(errs, fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err))
 			continue
 		}
@@ -426,7 +447,8 @@ func (app *StdApplication) Init() error {
 			// Register services provided by modules
 			for _, svc := range app.moduleRegistry[moduleName].(ServiceAware).ProvidesServices() {
 				if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
-					errs = append(errs, fmt.Errorf("module '%s' failed to register service '%s': %w", svc.Name, moduleName, err))
+					// Collect registration errors (e.g., duplicates) for reporting
+					errs = append(errs, fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err))
 					continue
 				}
 			}
@@ -438,6 +460,11 @@ func (app *StdApplication) Init() error {
 	// Initialize tenant configuration after modules have registered their configurations
 	if err = app.initTenantConfigurations(); err != nil {
 		errs = append(errs, fmt.Errorf("failed to initialize tenant configurations: %w", err))
+	}
+
+	// Mark as initialized only after completing Init flow
+	if len(errs) == 0 {
+		app.initialized = true
 	}
 
 	return errors.Join(errs...)
@@ -823,6 +850,8 @@ func (app *StdApplication) Logger() Logger {
 // SetLogger sets the application's logger
 func (app *StdApplication) SetLogger(logger Logger) {
 	app.logger = logger
+	// Also update the service registry so modules get the new logger via DI
+	app.svcRegistry["logger"] = logger
 }
 
 // SetVerboseConfig enables or disables verbose configuration debugging

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -119,7 +119,7 @@ func TestEventBusModule(t *testing.T) {
 
 	// Test services provided
 	services := module.(*EventBusModule).ProvidesServices()
-	assert.Len(t, services, 1)
+	assert.Equal(t, 1, len(services))
 	assert.Equal(t, ServiceName, services[0].Name)
 
 	// Test module lifecycle
@@ -303,7 +303,7 @@ func TestEventBusConfiguration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify configuration was applied
-	assert.NotNil(t, module.eventbus)
+	assert.NotNil(t, module.router)
 }
 
 func TestEventBusServiceProvider(t *testing.T) {

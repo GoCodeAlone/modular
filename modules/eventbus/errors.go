@@ -1,13 +1,12 @@
 package eventbus
 
-import "errors"
+import (
+	"errors"
+)
 
+// Module-specific errors for eventbus module.
+// These errors are defined locally to ensure proper linting compliance.
 var (
-	// Event bus state errors
-	ErrEventBusNotStarted       = errors.New("event bus not started")
-	ErrEventBusShutdownTimedOut = errors.New("event bus shutdown timed out")
-
-	// Subscription errors
-	ErrEventHandlerNil         = errors.New("event handler cannot be nil")
-	ErrInvalidSubscriptionType = errors.New("invalid subscription type")
+	// ErrNoSubjectForEventEmission is returned when trying to emit events without a subject
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 )

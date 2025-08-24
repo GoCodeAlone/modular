@@ -1,0 +1,23 @@
+# Staging environment overrides  
+environment: "staging"
+
+# Staging database configuration
+database:
+  host: "staging-db.example.com" 
+  name: "staging_app_db"
+  password: "staging_password"
+
+# Staging feature flags
+features:
+  metrics: true      # Enable metrics in staging for testing
+
+# Staging server configuration
+server:
+  port: 8443         # Staging HTTPS port
+  max_connections: 500   # Medium load for staging
+
+# Partial external services in staging
+external_services:
+  redis:
+    enabled: true
+    host: "staging-redis.example.com"

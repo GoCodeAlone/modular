@@ -28,13 +28,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // Static errors for err113 compliance
 var (
-	ErrNoDefaultService = errors.New("no default database service available")
+	ErrNoDefaultService          = errors.New("no default database service available")
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 )
 
 // Module name constant for service registration and dependency resolution.
@@ -102,10 +105,36 @@ func (l *lazyDefaultService) ExecContext(ctx context.Context, query string, args
 	if service == nil {
 		return nil, ErrNoDefaultService
 	}
+
+	fmt.Printf("lazyDefaultService.ExecContext called with query: %s\n", query)
+
+	// Record start time for performance tracking
+	startTime := time.Now()
 	result, err := service.ExecContext(ctx, query, args...)
+	duration := time.Since(startTime)
+
+	fmt.Printf("Query execution completed, duration: %v, error: %v\n", duration, err)
+
 	if err != nil {
+		// Emit query error event
+		l.module.emitEvent(ctx, EventTypeQueryError, map[string]interface{}{
+			"query":       query,
+			"error":       err.Error(),
+			"duration_ms": duration.Milliseconds(),
+			"connection":  "default",
+		})
+
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
+
+	// Emit query executed event
+	l.module.emitEvent(ctx, EventTypeQueryExecuted, map[string]interface{}{
+		"query":       query,
+		"duration_ms": duration.Milliseconds(),
+		"connection":  "default",
+		"operation":   "exec",
+	})
+
 	return result, nil
 }
 
@@ -119,6 +148,16 @@ func (l *lazyDefaultService) Exec(query string, args ...interface{}) (sql.Result
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 	return result, nil
+}
+
+// ExecuteContext is a backward-compatible alias for ExecContext
+func (l *lazyDefaultService) ExecuteContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return l.ExecContext(ctx, query, args...)
+}
+
+// Execute is a backward-compatible alias for Exec
+func (l *lazyDefaultService) Execute(query string, args ...interface{}) (sql.Result, error) {
+	return l.Exec(query, args...)
 }
 
 func (l *lazyDefaultService) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
@@ -150,10 +189,44 @@ func (l *lazyDefaultService) QueryContext(ctx context.Context, query string, arg
 	if service == nil {
 		return nil, ErrNoDefaultService
 	}
+
+	// Record start time for performance tracking
+	startTime := time.Now()
 	rows, err := service.QueryContext(ctx, query, args...)
+	duration := time.Since(startTime)
+
 	if err != nil {
+		// Emit query error event
+		event := modular.NewCloudEvent(EventTypeQueryError, "database-service", map[string]interface{}{
+			"query":       query,
+			"error":       err.Error(),
+			"duration_ms": duration.Milliseconds(),
+			"connection":  "default",
+		}, nil)
+
+		go func() {
+			if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
+				fmt.Printf("Failed to emit query error event: %v\n", emitErr)
+			}
+		}()
+
 		return nil, fmt.Errorf("failed to query: %w", err)
 	}
+
+	// Emit query executed event
+	event := modular.NewCloudEvent(EventTypeQueryExecuted, "database-service", map[string]interface{}{
+		"query":       query,
+		"duration_ms": duration.Milliseconds(),
+		"connection":  "default",
+		"operation":   "query",
+	}, nil)
+
+	go func() {
+		if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit query success event: %v\n", emitErr)
+		}
+	}()
+
 	return rows, nil
 }
 
@@ -190,10 +263,29 @@ func (l *lazyDefaultService) BeginTx(ctx context.Context, opts *sql.TxOptions) (
 	if service == nil {
 		return nil, ErrNoDefaultService
 	}
+
 	tx, err := service.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
+
+	// Emit transaction started event
+	event := modular.NewCloudEvent(EventTypeTransactionStarted, "database-service", map[string]interface{}{
+		"connection": "default",
+		"isolation_level": func() string {
+			if opts != nil {
+				return opts.Isolation.String()
+			}
+			return "default"
+		}(),
+	}, nil)
+
+	go func() {
+		if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit transaction event: %v\n", emitErr)
+		}
+	}()
+
 	return tx, nil
 }
 
@@ -202,11 +294,92 @@ func (l *lazyDefaultService) Begin() (*sql.Tx, error) {
 	if service == nil {
 		return nil, ErrNoDefaultService
 	}
+
 	tx, err := service.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
+
+	// Emit transaction started event
+	event := modular.NewCloudEvent(EventTypeTransactionStarted, "database-service", map[string]interface{}{
+		"connection":      "default",
+		"isolation_level": "default",
+	}, nil)
+
+	go func() {
+		if emitErr := l.module.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
+			fmt.Printf("Failed to emit transaction started event: %v\n", emitErr)
+		}
+	}()
+
 	return tx, nil
+}
+
+// CommitTransaction commits a transaction and emits appropriate events
+func (l *lazyDefaultService) CommitTransaction(ctx context.Context, tx *sql.Tx) error {
+	service := l.module.GetDefaultService()
+	if service == nil {
+		return ErrNoDefaultService
+	}
+	if err := service.CommitTransaction(ctx, tx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// RollbackTransaction rolls back a transaction and emits appropriate events
+func (l *lazyDefaultService) RollbackTransaction(ctx context.Context, tx *sql.Tx) error {
+	service := l.module.GetDefaultService()
+	if service == nil {
+		return ErrNoDefaultService
+	}
+	if err := service.RollbackTransaction(ctx, tx); err != nil {
+		return fmt.Errorf("failed to rollback transaction: %w", err)
+	}
+	return nil
+}
+
+// Migration methods for lazyDefaultService
+
+func (l *lazyDefaultService) RunMigration(ctx context.Context, migration Migration) error {
+	service := l.module.GetDefaultService()
+	if service == nil {
+		return ErrNoDefaultService
+	}
+	if err := service.RunMigration(ctx, migration); err != nil {
+		return fmt.Errorf("failed to run migration: %w", err)
+	}
+	return nil
+}
+
+func (l *lazyDefaultService) GetAppliedMigrations(ctx context.Context) ([]string, error) {
+	service := l.module.GetDefaultService()
+	if service == nil {
+		return nil, ErrNoDefaultService
+	}
+	migrations, err := service.GetAppliedMigrations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get applied migrations: %w", err)
+	}
+	return migrations, nil
+}
+
+func (l *lazyDefaultService) CreateMigrationsTable(ctx context.Context) error {
+	service := l.module.GetDefaultService()
+	if service == nil {
+		return ErrNoDefaultService
+	}
+	if err := service.CreateMigrationsTable(ctx); err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+	return nil
+}
+
+func (l *lazyDefaultService) SetEventEmitter(emitter EventEmitter) {
+	service := l.module.GetDefaultService()
+	if service != nil {
+		service.SetEventEmitter(emitter)
+	}
 }
 
 // Module represents the database module and implements the modular.Module interface.
@@ -218,10 +391,20 @@ func (l *lazyDefaultService) Begin() (*sql.Tx, error) {
 //   - Default connection selection
 //   - Service abstraction for easier testing
 //   - Instance-aware configuration
+//   - Event observation and emission for database operations
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
+//   - modular.Startable: Startup logic
+//   - modular.Stoppable: Shutdown logic
+//   - modular.ObservableModule: Event observation and emission
 type Module struct {
 	config      *Config
 	connections map[string]*sql.DB
 	services    map[string]DatabaseService
+	subject     modular.Subject // For event observation
 }
 
 var (
@@ -312,6 +495,18 @@ func (m *Module) Init(app modular.Application) error {
 
 	m.config = cfg
 
+	// Emit config loaded event
+	event := modular.NewCloudEvent(EventTypeConfigLoaded, "database-module", map[string]interface{}{
+		"connections_count": len(cfg.Connections),
+		"default":           cfg.Default,
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
+			fmt.Printf("Failed to emit config loaded event: %v\n", emitErr)
+		}
+	}()
+
 	// Initialize connections
 	if err := m.initializeConnections(); err != nil {
 		return fmt.Errorf("failed to initialize database connections: %w", err)
@@ -340,8 +535,32 @@ func (m *Module) Stop(ctx context.Context) error {
 	// Close all database services
 	for name, service := range m.services {
 		if err := service.Close(); err != nil {
+			// Emit disconnection error event but continue cleanup
+			event := modular.NewCloudEvent(EventTypeConnectionError, "database-service", map[string]interface{}{
+				"connection_name": name,
+				"operation":       "close",
+				"error":           err.Error(),
+			}, nil)
+
+			go func() {
+				if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+					fmt.Printf("Failed to emit database close error event: %v\n", emitErr)
+				}
+			}()
+
 			return fmt.Errorf("failed to close database service '%s': %w", name, err)
 		}
+
+		// Emit disconnection event
+		event := modular.NewCloudEvent(EventTypeDisconnected, "database-service", map[string]interface{}{
+			"connection_name": name,
+		}, nil)
+
+		go func() {
+			if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+				fmt.Printf("Failed to emit database disconnected event: %v\n", emitErr)
+			}
+		}()
 	}
 
 	// Clear the maps
@@ -440,19 +659,26 @@ func (m *Module) GetConnections() []string {
 // Similar to GetDefaultConnection, but returns a DatabaseService
 // interface that provides additional functionality beyond the raw sql.DB.
 func (m *Module) GetDefaultService() DatabaseService {
+	fmt.Printf("GetDefaultService called - config: %+v, services: %+v\n", m.config, m.services)
 	if m.config == nil || m.config.Default == "" {
+		fmt.Printf("GetDefaultService: config is nil or default is empty\n")
 		return nil
 	}
 
 	if service, exists := m.services[m.config.Default]; exists {
+		fmt.Printf("GetDefaultService: found service for default '%s'\n", m.config.Default)
 		return service
 	}
+
+	fmt.Printf("GetDefaultService: default service '%s' not found, trying any available\n", m.config.Default)
 
 	// If default connection name doesn't exist, try to return any available service
-	for _, service := range m.services {
+	for name, service := range m.services {
+		fmt.Printf("GetDefaultService: returning service '%s' as fallback\n", name)
 		return service
 	}
 
+	fmt.Printf("GetDefaultService: no services available\n")
 	return nil
 }
 
@@ -487,8 +713,31 @@ func (m *Module) initializeConnections() error {
 			}
 
 			if err := dbService.Connect(); err != nil {
+				// Emit connection error event
+				event := modular.NewCloudEvent(EventTypeConnectionError, "database-service", map[string]interface{}{
+					"connection_name": name,
+					"driver":          connConfig.Driver,
+					"error":           err.Error(),
+				}, nil)
+
+				if emitErr := m.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
+					fmt.Printf("Failed to emit database connection failed event: %v\n", emitErr)
+				}
+
 				return fmt.Errorf("failed to connect to database '%s': %w", name, err)
 			}
+
+			// Emit connection established event
+			event := modular.NewCloudEvent(EventTypeConnected, "database-service", map[string]interface{}{
+				"connection_name": name,
+				"driver":          connConfig.Driver,
+			}, nil)
+
+			go func() {
+				if emitErr := m.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
+					fmt.Printf("Failed to emit database connected event: %v\n", emitErr)
+				}
+			}()
 
 			m.connections[name] = dbService.DB()
 			m.services[name] = dbService
@@ -496,4 +745,72 @@ func (m *Module) initializeConnections() error {
 	}
 
 	return nil
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the database module to register as an observer for events it's interested in.
+func (m *Module) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	// The database module currently does not need to observe other events,
+	// but this method stores the subject for event emission.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the database module to emit events to registered observers.
+func (m *Module) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+
+	// Use a goroutine to prevent blocking database operations with event emission
+	go func() {
+		if err := m.subject.NotifyObservers(ctx, event); err != nil {
+			// Log error but don't fail the operation
+			// This ensures event emission issues don't affect database functionality
+			// Use a logger if available to avoid noisy stdout during tests
+			fmt.Printf("Failed to notify observers for event %s: %v\n", event.Type(), err)
+		}
+	}()
+	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the database module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
+func (m *Module) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
+	event := modular.NewCloudEvent(eventType, "database-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Note: Further error logging handled by EmitEvent method itself
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this database module can emit.
+func (m *Module) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeConnected,
+		EventTypeDisconnected,
+		EventTypeConnectionError,
+		EventTypeQueryExecuted,
+		EventTypeQueryError,
+		EventTypeTransactionStarted,
+		EventTypeTransactionCommitted,
+		EventTypeTransactionRolledBack,
+		EventTypeMigrationStarted,
+		EventTypeMigrationCompleted,
+		EventTypeMigrationFailed,
+		EventTypeConfigLoaded,
+	}
 }

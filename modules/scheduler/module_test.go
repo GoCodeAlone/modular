@@ -2,20 +2,16 @@ package scheduler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// Define static error to avoid err113 linting issue
-var errIntentionalTestFailure = errors.New("intentional test failure")
 
 type mockApp struct {
 	configSections map[string]modular.ConfigProvider
@@ -127,7 +123,7 @@ func TestSchedulerModule(t *testing.T) {
 
 	// Test services provided
 	services := module.(*SchedulerModule).ProvidesServices()
-	assert.Len(t, services, 1)
+	assert.Equal(t, 1, len(services))
 	assert.Equal(t, ServiceName, services[0].Name)
 
 	// Test module lifecycle
@@ -145,14 +141,12 @@ func TestSchedulerOperations(t *testing.T) {
 
 	// Initialize with mock app
 	app := newMockApp()
-	err := module.RegisterConfig(app)
-	require.NoError(t, err)
-	err = module.Init(app)
-	require.NoError(t, err)
+	module.RegisterConfig(app)
+	module.Init(app)
 
 	// Start the module
 	ctx := context.Background()
-	err = module.Start(ctx)
+	err := module.Start(ctx)
 	require.NoError(t, err)
 
 	t.Run("ScheduleOneTimeJob", func(t *testing.T) {
@@ -327,7 +321,7 @@ func TestSchedulerOperations(t *testing.T) {
 			RunAt: time.Now().Add(100 * time.Millisecond),
 			JobFunc: func(ctx context.Context) error {
 				executed <- true
-				return errIntentionalTestFailure
+				return fmt.Errorf("intentional test failure")
 			},
 		}
 
@@ -375,7 +369,7 @@ func TestSchedulerConfiguration(t *testing.T) {
 		WorkerCount:       10,
 		QueueSize:         200,
 		StorageType:       "memory",
-		CheckInterval:     2,
+		CheckInterval:     2 * time.Second,
 		EnablePersistence: false,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
@@ -393,10 +387,8 @@ func TestSchedulerServiceProvider(t *testing.T) {
 	module := NewModule().(*SchedulerModule)
 	app := newMockApp()
 
-	err := module.RegisterConfig(app)
-	require.NoError(t, err)
-	err = module.Init(app)
-	require.NoError(t, err)
+	module.RegisterConfig(app)
+	module.Init(app)
 
 	// Test service provides
 	services := module.ProvidesServices()
@@ -425,7 +417,7 @@ func TestJobPersistence(t *testing.T) {
 			StorageType:       "memory",
 			EnablePersistence: true,
 			PersistenceFile:   tempFile,
-			ShutdownTimeout:   1, // Short timeout for test
+			ShutdownTimeout:   1 * time.Second, // Short timeout for test
 		}
 		app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
 

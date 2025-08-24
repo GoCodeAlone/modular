@@ -2,9 +2,10 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -43,7 +44,7 @@ func (m *Module) Init(app modular.Application) error {
 
 	cp, err := app.GetConfigSection(configSection)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get router config: %w", err)
 	}
 
 	m.app = app
@@ -62,7 +63,7 @@ func (m *Module) Start(context.Context) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to walk routes: %w", err)
 	}
 
 	return nil

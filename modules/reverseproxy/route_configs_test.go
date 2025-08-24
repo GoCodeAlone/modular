@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 func TestBasicRouteConfigsFeatureFlagRouting(t *testing.T) {

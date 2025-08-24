@@ -2,14 +2,14 @@ module instance-aware-db
 
 go 1.24.2
 
-replace github.com/GoCodeAlone/modular => ../..
+replace github.com/CrisisTextLine/modular => ../..
 
-replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database
+replace github.com/CrisisTextLine/modular/modules/database => ../../modules/database
 
 require (
-	github.com/GoCodeAlone/modular v1.4.0
-	github.com/GoCodeAlone/modular/modules/database v1.1.0
-	github.com/mattn/go-sqlite3 v1.14.28
+	github.com/CrisisTextLine/modular v1.6.0
+	github.com/CrisisTextLine/modular/modules/database v1.1.0
+	github.com/mattn/go-sqlite3 v1.14.30
 )
 
 require (

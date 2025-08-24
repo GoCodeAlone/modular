@@ -35,7 +35,7 @@ func (c *RedisCache) Connect(ctx context.Context) error {
 	}
 
 	opts.DB = c.config.RedisDB
-	opts.ConnMaxLifetime = time.Duration(c.config.ConnectionMaxAge) * time.Second
+	opts.ConnMaxLifetime = c.config.ConnectionMaxAge
 
 	c.client = redis.NewClient(opts)
 

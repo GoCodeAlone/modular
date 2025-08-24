@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -73,14 +73,14 @@ func (m *AuditModule) RegisterObservers(subject modular.Subject) error {
 	if err != nil {
 		return fmt.Errorf("failed to register audit module as observer: %w", err)
 	}
-	
+
 	m.logger.Info("Audit module registered as observer for ALL events")
 	return nil
 }
 
 // EmitEvent allows the module to emit events (not used in this example)
 func (m *AuditModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	return fmt.Errorf("audit module does not emit events")
+	return errAuditModuleDoesNotEmitEvents
 }
 
 // OnEvent implements Observer interface to audit all events
@@ -107,18 +107,18 @@ func (m *AuditModule) OnEvent(ctx context.Context, event cloudevents.Event) erro
 		Data:      data,
 		Metadata:  metadata,
 	}
-	
+
 	// Store in memory (in real app, would persist to database/file)
 	m.events = append(m.events, entry)
-	
+
 	// Log the audit entry
-	m.logger.Info("📋 AUDIT", 
+	m.logger.Info("📋 AUDIT",
 		"eventType", event.Type(),
 		"source", event.Source(),
 		"timestamp", event.Time().Format(time.RFC3339),
 		"totalEvents", len(m.events),
 	)
-	
+
 	// Special handling for certain event types
 	switch event.Type() {
 	case "user.created", "user.login":
@@ -126,7 +126,7 @@ func (m *AuditModule) OnEvent(ctx context.Context, event cloudevents.Event) erro
 	case modular.EventTypeApplicationFailed, modular.EventTypeModuleFailed:
 		fmt.Printf("⚠️  ERROR AUDIT: %s event - investigation required\n", event.Type())
 	}
-	
+
 	return nil
 }
 
@@ -154,13 +154,13 @@ func (m *AuditModule) Start(ctx context.Context) error {
 func (m *AuditModule) Stop(ctx context.Context) error {
 	summary := m.GetAuditSummary()
 	m.logger.Info("📊 FINAL AUDIT SUMMARY", "totalEvents", len(m.events))
-	
+
 	fmt.Println("\n📊 Audit Summary:")
 	fmt.Println("=================")
 	for eventType, count := range summary {
 		fmt.Printf("  %s: %d events\n", eventType, count)
 	}
 	fmt.Printf("  Total Events Audited: %d\n", len(m.events))
-	
+
 	return nil
 }

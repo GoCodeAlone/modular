@@ -1,8 +1,8 @@
 # Reverse Proxy Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/reverseproxy.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/reverseproxy)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/reverseproxy.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/reverseproxy)
 
-A module for the [Modular](https://github.com/GoCodeAlone/modular) framework that provides a flexible reverse proxy with advanced routing capabilities.
+A module for the [Modular](https://github.com/CrisisTextLine/modular) framework that provides a flexible reverse proxy with advanced routing capabilities.
 
 ## Overview
 
@@ -31,7 +31,7 @@ The Reverse Proxy module functions as a versatile API gateway that can route req
 ## Installation
 
 ```go
-go get github.com/GoCodeAlone/modular/modules/reverseproxy@v1.0.0
+go get github.com/CrisisTextLine/modular/modules/reverseproxy@v1.0.0
 ```
 
 ## Usage
@@ -40,9 +40,9 @@ go get github.com/GoCodeAlone/modular/modules/reverseproxy@v1.0.0
 package main
 
 import (
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/chimux"
-	"github.com/GoCodeAlone/modular/modules/reverseproxy"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/modules/chimux"
+	"github.com/CrisisTextLine/modular/modules/reverseproxy"
 	"log/slog"
 	"os"
 )

@@ -1,15 +1,15 @@
 # modular
 Modular Go
 
-[![GitHub License](https://img.shields.io/github/license/GoCodeAlone/modular)](https://github.com/GoCodeAlone/modular/blob/main/LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular)
-[![CodeQL](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql)
-[![Dependabot Updates](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates)
-[![CI](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml)
-[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
-[![Examples CI](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
-[![codecov](https://codecov.io/gh/GoCodeAlone/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/GoCodeAlone/modular)
+[![GitHub License](https://img.shields.io/github/license/CrisisTextLine/modular)](https://github.com/CrisisTextLine/modular/blob/main/LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular)
+[![CodeQL](https://github.com/CrisisTextLine/modular/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/github-code-scanning/codeql)
+[![Dependabot Updates](https://github.com/CrisisTextLine/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/dependabot/dependabot-updates)
+[![CI](https://github.com/CrisisTextLine/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/ci.yml)
+[![Modules CI](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml)
+[![Examples CI](https://github.com/CrisisTextLine/modular/actions/workflows/examples-ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/examples-ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/CrisisTextLine/modular)](https://goreportcard.com/report/github.com/CrisisTextLine/modular)
+[![codecov](https://codecov.io/gh/CrisisTextLine/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/CrisisTextLine/modular)
 
 ## Overview
 Modular is a package that provides a structured way to create modular applications in Go. It allows you to build applications as collections of modules that can be easily added, removed, or replaced. Key features include:
@@ -101,16 +101,6 @@ The `examples/` directory contains complete, working examples that demonstrate h
 | [**http-client**](./examples/http-client/) | HTTP client with proxy backend | HTTP client integration, request routing |
 | [**advanced-logging**](./examples/advanced-logging/) | Advanced HTTP client logging | Verbose logging, file output, request/response inspection |
 | [**observer-pattern**](./examples/observer-pattern/) | Event-driven architecture demo | Observer pattern, CloudEvents, event logging, real-time events |
-| [**feature-flag-proxy**](./examples/feature-flag-proxy/) | Feature flag controlled routing | Reverse proxy with tenant-aware feature flags |
-| [**health-aware-reverse-proxy**](./examples/health-aware-reverse-proxy/) | Health monitoring proxy | Reverse proxy with backend health checks |
-| [**instance-aware-db**](./examples/instance-aware-db/) | Multiple database connections | Instance-aware environment configuration |
-| [**multi-tenant-app**](./examples/multi-tenant-app/) | Multi-tenant application | Tenant-aware modules and configuration |
-| [**observer-demo**](./examples/observer-demo/) | Event system demonstration | Observer pattern with event logging |
-| [**testing-scenarios**](./examples/testing-scenarios/) | Testing and integration patterns | Various testing scenarios and configurations |
-| [**verbose-debug**](./examples/verbose-debug/) | Debugging and diagnostics | Verbose logging and debug output |
-| [**auth-demo**](./examples/auth-demo/) | Authentication system | JWT tokens, password hashing, protected routes |
-| [**cache-demo**](./examples/cache-demo/) | Caching system | In-memory and Redis caching with TTL |
-| [**scheduler-demo**](./examples/scheduler-demo/) | Job scheduling system | Cron jobs, one-time tasks, job management |
 
 ### Quick Start with Examples
 
@@ -131,17 +121,11 @@ Visit the [examples directory](./examples/) for detailed documentation, configur
 - **Explore [http-client](./examples/http-client/)** for HTTP client integration patterns
 - **Study [advanced-logging](./examples/advanced-logging/)** for debugging and monitoring techniques
 - **Learn [observer-pattern](./examples/observer-pattern/)** for event-driven architecture with CloudEvents
-- **Examine [multi-tenant-app](./examples/multi-tenant-app/)** for building SaaS applications
-- **Investigate [instance-aware-db](./examples/instance-aware-db/)** for multiple database configurations
-- **Review [feature-flag-proxy](./examples/feature-flag-proxy/)** for dynamic routing and tenant features
-- **Check [auth-demo](./examples/auth-demo/)** for JWT authentication and security patterns
-- **Explore [cache-demo](./examples/cache-demo/)** for caching strategies and performance optimization
-- **Study [scheduler-demo](./examples/scheduler-demo/)** for automated task scheduling and job management
 
 ## Installation
 
 ```go
-go get github.com/GoCodeAlone/modular
+go get github.com/CrisisTextLine/modular
 ```
 
 ## Usage
@@ -152,7 +136,7 @@ go get github.com/GoCodeAlone/modular
 package main
 
 import (
-    "github.com/GoCodeAlone/modular"
+    "github.com/CrisisTextLine/modular"
     "log/slog"
     "os"
 )
@@ -660,20 +644,20 @@ You can install the CLI tool using one of the following methods:
 #### Using go install (recommended)
 
 ```bash
-go install github.com/GoCodeAlone/modular/cmd/modcli@latest
+go install github.com/CrisisTextLine/modular/cmd/modcli@latest
 ```
 
 This will download, build, and install the latest version of the CLI tool directly to your GOPATH's bin directory, which should be in your PATH.
 
 #### Download pre-built binaries
 
-Download the latest release from the [GitHub Releases page](https://github.com/GoCodeAlone/modular/releases) and add it to your PATH.
+Download the latest release from the [GitHub Releases page](https://github.com/CrisisTextLine/modular/releases) and add it to your PATH.
 
 #### Build from source
 
 ```bash
 # Clone the repository
-git clone https://github.com/GoCodeAlone/modular.git
+git clone https://github.com/CrisisTextLine/modular.git
 cd modular/cmd/modcli
 
 # Build the CLI tool

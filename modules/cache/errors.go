@@ -17,4 +17,7 @@ var (
 
 	// ErrNotConnected is returned when an operation is attempted on a cache that is not connected
 	ErrNotConnected = errors.New("cache not connected")
+
+	// ErrNoSubjectForEventEmission is returned when trying to emit events without a subject
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 )

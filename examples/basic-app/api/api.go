@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -70,15 +70,21 @@ func (m *Module) registerRoutes() {
 // Route handlers
 func (m *Module) handleGetUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"users":[]}`))
+	if _, err := w.Write([]byte(`{"users":[]}`)); err != nil {
+		m.app.Logger().Error("Failed to write response", "error", err)
+	}
 }
 
 func (m *Module) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"id":"new-user-id"}`))
+	if _, err := w.Write([]byte(`{"id":"new-user-id"}`)); err != nil {
+		m.app.Logger().Error("Failed to write response", "error", err)
+	}
 }
 
 func (m *Module) handleGetUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"id":"user-id","name":"Example User"}`))
+	if _, err := w.Write([]byte(`{"id":"user-id","name":"Example User"}`)); err != nil {
+		m.app.Logger().Error("Failed to write response", "error", err)
+	}
 }

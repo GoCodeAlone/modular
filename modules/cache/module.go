@@ -68,7 +68,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // ModuleName is the unique identifier for the cache module.
@@ -87,8 +88,14 @@ const ServiceName = "cache.provider"
 //   - modular.Module: Basic module lifecycle
 //   - modular.Configurable: Configuration management
 //   - modular.ServiceAware: Service dependency management
+//
+// The module implements the following interfaces:
+//   - modular.Module: Basic module lifecycle
+//   - modular.Configurable: Configuration management
+//   - modular.ServiceAware: Service dependency management
 //   - modular.Startable: Startup logic
 //   - modular.Stoppable: Shutdown logic
+//   - modular.ObservableModule: Event observation and emission
 //
 // Cache operations are thread-safe and support context cancellation.
 type CacheModule struct {
@@ -96,6 +103,7 @@ type CacheModule struct {
 	config      *CacheConfig
 	logger      modular.Logger
 	cacheEngine CacheEngine
+	subject     modular.Subject
 }
 
 // NewModule creates a new instance of the cache module.
@@ -120,28 +128,26 @@ func (m *CacheModule) Name() string {
 
 // RegisterConfig registers the module's configuration structure.
 // This method is called during application initialization to register
-// the default configuration values for the cache module.
+// the configuration structure for the cache module. Defaults are provided
+// via struct tags in the CacheConfig structure.
 //
-// Default configuration:
+// Default configuration (from struct tags):
 //   - Engine: "memory"
-//   - DefaultTTL: 300 seconds (5 minutes)
-//   - CleanupInterval: 60 seconds (1 minute)
+//   - DefaultTTL: 300s (5 minutes)
+//   - CleanupInterval: 60s (1 minute)
 //   - MaxItems: 10000
+//   - ConnectionMaxAge: 3600s (1 hour)
 //   - Redis settings: empty/default values
 func (m *CacheModule) RegisterConfig(app modular.Application) error {
-	// Register the configuration with default values
-	defaultConfig := &CacheConfig{
-		Engine:           "memory",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
-		MaxItems:         10000,
-		RedisURL:         "",
-		RedisPassword:    "",
-		RedisDB:          0,
-		ConnectionMaxAge: 60,
+	// Check if cache config is already registered (e.g., by tests)
+	if _, err := app.GetConfigSection(m.Name()); err == nil {
+		// Config already registered, skip to avoid overriding
+		return nil
 	}
 
-	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(defaultConfig))
+	// Register empty config - defaults come from struct tags
+	m.config = &CacheConfig{}
+	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(m.config))
 	return nil
 }
 
@@ -161,7 +167,7 @@ func (m *CacheModule) RegisterConfig(app modular.Application) error {
 //   - fallback: defaults to memory cache for unknown engines
 func (m *CacheModule) Init(app modular.Application) error {
 	// Retrieve the registered config section for access
-	cfg, err := app.GetConfigSection(m.name)
+	cfg, err := app.GetConfigSection(m.Name())
 	if err != nil {
 		return fmt.Errorf("failed to get config section for cache module: %w", err)
 	}
@@ -172,13 +178,27 @@ func (m *CacheModule) Init(app modular.Application) error {
 	// Initialize the appropriate cache engine based on configuration
 	switch m.config.Engine {
 	case "memory":
-		m.cacheEngine = NewMemoryCache(m.config)
+		memCache := NewMemoryCache(m.config)
+		// Provide event emission callback to memory cache
+		memCache.SetEventEmitter(func(ctx context.Context, event cloudevents.Event) {
+			if err := m.EmitEvent(ctx, event); err != nil {
+				m.logger.Debug("Failed to emit cache event from memory engine", "error", err, "event_type", event.Type())
+			}
+		})
+		m.cacheEngine = memCache
 		m.logger.Info("Initialized memory cache engine", "maxItems", m.config.MaxItems)
 	case "redis":
 		m.cacheEngine = NewRedisCache(m.config)
 		m.logger.Info("Initialized Redis cache engine", "url", m.config.RedisURL)
 	default:
-		m.cacheEngine = NewMemoryCache(m.config)
+		memCache := NewMemoryCache(m.config)
+		// Provide event emission callback to memory cache for fallback case too
+		memCache.SetEventEmitter(func(ctx context.Context, event cloudevents.Event) {
+			if err := m.EmitEvent(ctx, event); err != nil {
+				m.logger.Debug("Failed to emit cache event from memory engine", "error", err, "event_type", event.Type())
+			}
+		})
+		m.cacheEngine = memCache
 		m.logger.Warn("Unknown cache engine specified, using memory cache", "specified", m.config.Engine)
 	}
 
@@ -196,8 +216,33 @@ func (m *CacheModule) Start(ctx context.Context) error {
 	m.logger.Info("Starting cache module")
 	err := m.cacheEngine.Connect(ctx)
 	if err != nil {
+		// Emit cache connection error event
+		event := modular.NewCloudEvent(EventTypeCacheError, "cache-service", map[string]interface{}{
+			"error":     err.Error(),
+			"engine":    m.config.Engine,
+			"operation": "connect",
+		}, nil)
+
+		go func() {
+			if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+				m.logger.Debug("Failed to emit cache error event", "error", emitErr)
+			}
+		}()
+
 		return fmt.Errorf("failed to connect cache engine: %w", err)
 	}
+
+	// Emit cache connected event
+	event := modular.NewCloudEvent(EventTypeCacheConnected, "cache-service", map[string]interface{}{
+		"engine": m.config.Engine,
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			m.logger.Debug("Failed to emit cache connected event", "error", emitErr)
+		}
+	}()
+
 	return nil
 }
 
@@ -214,6 +259,18 @@ func (m *CacheModule) Stop(ctx context.Context) error {
 	if err := m.cacheEngine.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close cache engine: %w", err)
 	}
+
+	// Emit cache disconnected event
+	event := modular.NewCloudEvent(EventTypeCacheDisconnected, "cache-service", map[string]interface{}{
+		"engine": m.config.Engine,
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			m.logger.Debug("Failed to emit cache disconnected event", "error", emitErr)
+		}
+	}()
+
 	return nil
 }
 
@@ -265,7 +322,28 @@ func (m *CacheModule) Constructor() modular.ModuleConstructor {
 //	    // process user data
 //	}
 func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
-	return m.cacheEngine.Get(ctx, key)
+	value, found := m.cacheEngine.Get(ctx, key)
+
+	// Emit cache hit/miss events
+	eventType := EventTypeCacheMiss
+	if found {
+		eventType = EventTypeCacheHit
+	}
+
+	event := modular.NewCloudEvent(eventType, "cache-service", map[string]interface{}{
+		"cache_key": key,
+		"found":     found,
+		"engine":    m.config.Engine,
+	}, nil)
+
+	// Emit event in background to avoid blocking cache operations
+	go func() {
+		if err := m.EmitEvent(ctx, event); err != nil {
+			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", eventType)
+		}
+	}()
+
+	return value, found
 }
 
 // Set stores an item in the cache with an optional TTL.
@@ -281,11 +359,27 @@ func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 //	err := cache.Set(ctx, "session:abc", sessionData, time.Hour)
 func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	if ttl == 0 {
-		ttl = time.Duration(m.config.DefaultTTL) * time.Second
+		ttl = m.config.DefaultTTL
 	}
+
 	if err := m.cacheEngine.Set(ctx, key, value, ttl); err != nil {
 		return fmt.Errorf("failed to set cache item: %w", err)
 	}
+
+	// Emit cache set event
+	event := modular.NewCloudEvent(EventTypeCacheSet, "cache-service", map[string]interface{}{
+		"cache_key":   key,
+		"ttl_seconds": ttl.Seconds(),
+		"engine":      m.config.Engine,
+	}, nil)
+
+	// Emit event in background to avoid blocking cache operations
+	go func() {
+		if err := m.EmitEvent(ctx, event); err != nil {
+			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheSet)
+		}
+	}()
+
 	return nil
 }
 
@@ -302,6 +396,20 @@ func (m *CacheModule) Delete(ctx context.Context, key string) error {
 	if err := m.cacheEngine.Delete(ctx, key); err != nil {
 		return fmt.Errorf("failed to delete cache item: %w", err)
 	}
+
+	// Emit cache delete event
+	event := modular.NewCloudEvent(EventTypeCacheDelete, "cache-service", map[string]interface{}{
+		"cache_key": key,
+		"engine":    m.config.Engine,
+	}, nil)
+
+	// Emit event in background to avoid blocking cache operations
+	go func() {
+		if err := m.EmitEvent(ctx, event); err != nil {
+			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheDelete)
+		}
+	}()
+
 	return nil
 }
 
@@ -319,6 +427,19 @@ func (m *CacheModule) Flush(ctx context.Context) error {
 	if err := m.cacheEngine.Flush(ctx); err != nil {
 		return fmt.Errorf("failed to flush cache: %w", err)
 	}
+
+	// Emit cache flush event
+	event := modular.NewCloudEvent(EventTypeCacheFlush, "cache-service", map[string]interface{}{
+		"engine": m.config.Engine,
+	}, nil)
+
+	// Emit event in background to avoid blocking cache operations
+	go func() {
+		if err := m.EmitEvent(ctx, event); err != nil {
+			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheFlush)
+		}
+	}()
+
 	return nil
 }
 
@@ -358,7 +479,7 @@ func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]i
 //	err := cache.SetMulti(ctx, items, time.Minute*30)
 func (m *CacheModule) SetMulti(ctx context.Context, items map[string]interface{}, ttl time.Duration) error {
 	if ttl == 0 {
-		ttl = time.Duration(m.config.DefaultTTL) * time.Second
+		ttl = m.config.DefaultTTL
 	}
 	if err := m.cacheEngine.SetMulti(ctx, items, ttl); err != nil {
 		return fmt.Errorf("failed to set multiple cache items: %w", err)
@@ -382,4 +503,43 @@ func (m *CacheModule) DeleteMulti(ctx context.Context, keys []string) error {
 		return fmt.Errorf("failed to delete multiple cache items: %w", err)
 	}
 	return nil
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the cache module to register as an observer for events it's interested in.
+func (m *CacheModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	// The cache module currently does not need to observe other events,
+	// but this method stores the subject for event emission.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the cache module to emit events to registered observers.
+func (m *CacheModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this cache module can emit.
+func (m *CacheModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeCacheGet,
+		EventTypeCacheSet,
+		EventTypeCacheDelete,
+		EventTypeCacheFlush,
+		EventTypeCacheHit,
+		EventTypeCacheMiss,
+		EventTypeCacheExpired,
+		EventTypeCacheEvicted,
+		EventTypeCacheConnected,
+		EventTypeCacheDisconnected,
+		EventTypeCacheError,
+	}
 }

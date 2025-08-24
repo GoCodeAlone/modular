@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func TestReverseProxyServiceDependencyResolution(t *testing.T) {
 
 	// Test 1: Interface-based service resolution
 	t.Run("InterfaceBasedServiceResolution", func(t *testing.T) {
-		app := modular.NewStdApplication(modular.NewStdConfigProvider(nil), &testLogger{t: t})
+		app := modular.NewStdApplication(modular.NewStdConfigProvider(nil), &testLoggerDep{t: t})
 
 		// Create mock HTTP client
 		mockClient := &http.Client{}
@@ -49,7 +49,7 @@ func TestReverseProxyServiceDependencyResolution(t *testing.T) {
 
 	// Test 2: No HTTP client service (default client creation)
 	t.Run("DefaultClientCreation", func(t *testing.T) {
-		app := modular.NewStdApplication(modular.NewStdConfigProvider(nil), &testLogger{t: t})
+		app := modular.NewStdApplication(modular.NewStdConfigProvider(nil), &testLoggerDep{t: t})
 
 		// Create a mock router service that satisfies the routerService interface
 		mockRouter := &testRouter{
@@ -112,23 +112,23 @@ func TestServiceDependencyConfiguration(t *testing.T) {
 	assert.NotNil(t, featureFlagDep.SatisfiesInterface, "featureFlagEvaluator dependency should specify interface")
 }
 
-// testLogger is a simple test logger implementation
-type testLogger struct {
+// testLoggerDep is a simple test logger implementation
+type testLoggerDep struct {
 	t *testing.T
 }
 
-func (l *testLogger) Debug(msg string, keyvals ...interface{}) {
+func (l *testLoggerDep) Debug(msg string, keyvals ...interface{}) {
 	l.t.Logf("DEBUG: %s %v", msg, keyvals)
 }
 
-func (l *testLogger) Info(msg string, keyvals ...interface{}) {
+func (l *testLoggerDep) Info(msg string, keyvals ...interface{}) {
 	l.t.Logf("INFO: %s %v", msg, keyvals)
 }
 
-func (l *testLogger) Warn(msg string, keyvals ...interface{}) {
+func (l *testLoggerDep) Warn(msg string, keyvals ...interface{}) {
 	l.t.Logf("WARN: %s %v", msg, keyvals)
 }
 
-func (l *testLogger) Error(msg string, keyvals ...interface{}) {
+func (l *testLoggerDep) Error(msg string, keyvals ...interface{}) {
 	l.t.Logf("ERROR: %s %v", msg, keyvals)
 }

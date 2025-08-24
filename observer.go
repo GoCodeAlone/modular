@@ -107,6 +107,11 @@ type ObservableModule interface {
 	// EmitEvent allows modules to emit their own CloudEvents.
 	// This should typically delegate to the application's NotifyObservers method.
 	EmitEvent(ctx context.Context, event cloudevents.Event) error
+
+	// GetRegisteredEventTypes returns a list of all event types this module
+	// can emit. This is used for validation in testing to ensure all events
+	// are properly tested and emitted during execution.
+	GetRegisteredEventTypes() []string
 }
 
 // FunctionalObserver provides a simple way to create observers using functions.
@@ -133,4 +138,75 @@ func (f *FunctionalObserver) OnEvent(ctx context.Context, event cloudevents.Even
 // ObserverID implements the Observer interface by returning the observer ID.
 func (f *FunctionalObserver) ObserverID() string {
 	return f.id
+}
+
+// EventValidationObserver is a special observer that tracks which events
+// have been emitted and can validate against a whitelist of expected events.
+// This is primarily used in testing to ensure all module events are emitted.
+type EventValidationObserver struct {
+	id             string
+	expectedEvents map[string]bool
+	emittedEvents  map[string]bool
+	allEvents      []cloudevents.Event
+}
+
+// NewEventValidationObserver creates a new observer that validates events
+// against an expected list. This is useful for testing event completeness.
+func NewEventValidationObserver(id string, expectedEvents []string) *EventValidationObserver {
+	expected := make(map[string]bool)
+	for _, event := range expectedEvents {
+		expected[event] = true
+	}
+
+	return &EventValidationObserver{
+		id:             id,
+		expectedEvents: expected,
+		emittedEvents:  make(map[string]bool),
+		allEvents:      make([]cloudevents.Event, 0),
+	}
+}
+
+// OnEvent implements the Observer interface and tracks emitted events.
+func (v *EventValidationObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
+	v.emittedEvents[event.Type()] = true
+	v.allEvents = append(v.allEvents, event)
+	return nil
+}
+
+// ObserverID implements the Observer interface.
+func (v *EventValidationObserver) ObserverID() string {
+	return v.id
+}
+
+// GetMissingEvents returns a list of expected events that were not emitted.
+func (v *EventValidationObserver) GetMissingEvents() []string {
+	var missing []string
+	for eventType := range v.expectedEvents {
+		if !v.emittedEvents[eventType] {
+			missing = append(missing, eventType)
+		}
+	}
+	return missing
+}
+
+// GetUnexpectedEvents returns a list of emitted events that were not expected.
+func (v *EventValidationObserver) GetUnexpectedEvents() []string {
+	var unexpected []string
+	for eventType := range v.emittedEvents {
+		if !v.expectedEvents[eventType] {
+			unexpected = append(unexpected, eventType)
+		}
+	}
+	return unexpected
+}
+
+// GetAllEvents returns all events that were captured by this observer.
+func (v *EventValidationObserver) GetAllEvents() []cloudevents.Event {
+	return v.allEvents
+}
+
+// Reset clears all captured events for reuse in new test scenarios.
+func (v *EventValidationObserver) Reset() {
+	v.emittedEvents = make(map[string]bool)
+	v.allEvents = make([]cloudevents.Event, 0)
 }

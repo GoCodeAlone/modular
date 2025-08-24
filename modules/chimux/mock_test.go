@@ -4,8 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // MockLogger implements the modular.Logger interface for testing
@@ -22,6 +24,7 @@ type MockApplication struct {
 	services       map[string]interface{}
 	logger         modular.Logger
 	tenantService  *MockTenantService
+	observers      []modular.Observer
 }
 
 // NewMockApplication creates a new mock application for testing
@@ -35,6 +38,7 @@ func NewMockApplication() *MockApplication {
 		services:       make(map[string]interface{}),
 		logger:         &MockLogger{},
 		tenantService:  tenantService,
+		observers:      []modular.Observer{},
 	}
 
 	// Register tenant service
@@ -165,6 +169,48 @@ func (m *MockApplication) WithTenant(tenantID modular.TenantID) (*modular.Tenant
 // GetTenantConfig retrieves configuration for a specific tenant and section
 func (m *MockApplication) GetTenantConfig(tenantID modular.TenantID, section string) (modular.ConfigProvider, error) {
 	return m.tenantService.GetTenantConfig(tenantID, section)
+}
+
+// Subject interface implementation for MockApplication
+// RegisterObserver registers an observer with the mock application
+func (m *MockApplication) RegisterObserver(observer modular.Observer, eventTypes ...string) error {
+	m.observers = append(m.observers, observer)
+	return nil
+}
+
+// UnregisterObserver removes an observer from the mock application
+func (m *MockApplication) UnregisterObserver(observer modular.Observer) error {
+	for i, obs := range m.observers {
+		if obs == observer {
+			m.observers = append(m.observers[:i], m.observers[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+// NotifyObservers notifies all registered observers of an event
+func (m *MockApplication) NotifyObservers(ctx context.Context, event cloudevents.Event) error {
+	for _, observer := range m.observers {
+		if err := observer.OnEvent(ctx, event); err != nil {
+			// In mock, just continue on error
+			continue
+		}
+	}
+	return nil
+}
+
+// GetObservers returns information about currently registered observers
+func (m *MockApplication) GetObservers() []modular.ObserverInfo {
+	info := make([]modular.ObserverInfo, 0, len(m.observers))
+	for _, observer := range m.observers {
+		info = append(info, modular.ObserverInfo{
+			ID:           observer.ObserverID(),
+			EventTypes:   []string{}, // Mock implementation - empty means all events
+			RegisteredAt: time.Now(), // Mock timestamp
+		})
+	}
+	return info
 }
 
 // MockAppConfig is a simple configuration struct for testing

@@ -2,10 +2,20 @@ package scheduler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
+)
+
+// Memory store errors
+var (
+	ErrJobAlreadyExists  = errors.New("job already exists")
+	ErrJobNotFound       = errors.New("job not found")
+	ErrNoExecutionsFound = errors.New("no executions found for job")
+	ErrExecutionNotFound = errors.New("execution not found")
 )
 
 // MemoryJobStore implements JobStore using in-memory storage
@@ -160,7 +170,7 @@ func (s *MemoryJobStore) UpdateJobExecution(execution JobExecution) error {
 		}
 	}
 
-	return fmt.Errorf("%w: start time %v, job ID %s", ErrExecutionNotFound, execution.StartTime, execution.JobID)
+	return fmt.Errorf("%w: start time %v for job ID %s", ErrExecutionNotFound, execution.StartTime, execution.JobID)
 }
 
 // GetJobExecutions retrieves execution history for a job
@@ -254,17 +264,10 @@ func (s *MemoryJobStore) SaveToFile(jobs []Job, filePath string) error {
 		Jobs: jobs,
 	}
 
-	// Create directory if it doesn't exist
-	dir := ""
-	lastSlash := -1
-	for i := 0; i < len(filePath); i++ {
-		if filePath[i] == '/' {
-			lastSlash = i
-		}
-	}
-	if lastSlash > 0 {
-		dir = filePath[:lastSlash]
-		if err := os.MkdirAll(dir, 0755); err != nil {
+	// Create parent directory if it doesn't exist (cross-platform)
+	dir := filepath.Dir(filePath)
+	if dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory for jobs file: %w", err)
 		}
 	}
@@ -284,7 +287,7 @@ func (s *MemoryJobStore) SaveToFile(jobs []Job, filePath string) error {
 		return fmt.Errorf("failed to marshal jobs to JSON: %w", err)
 	}
 
-	// Write to file with secure permissions
+	// Write to file
 	err = os.WriteFile(filePath, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write jobs to file: %w", err)

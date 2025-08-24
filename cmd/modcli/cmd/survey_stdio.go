@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -41,7 +42,11 @@ type MockFileReader struct {
 }
 
 func (m *MockFileReader) Read(p []byte) (n int, err error) {
-	return m.Reader.Read(p)
+	n, err = m.Reader.Read(p)
+	if err != nil {
+		return n, fmt.Errorf("mock reader error: %w", err)
+	}
+	return n, nil
 }
 
 func (m *MockFileReader) Fd() uintptr {
@@ -54,7 +59,11 @@ type MockFileWriter struct {
 }
 
 func (m *MockFileWriter) Write(p []byte) (n int, err error) {
-	return m.Writer.Write(p)
+	n, err = m.Writer.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("mock writer error: %w", err)
+	}
+	return n, nil
 }
 
 func (m *MockFileWriter) Fd() uintptr {

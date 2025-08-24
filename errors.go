@@ -82,6 +82,9 @@ var (
 	ErrMockTenantConfigsNotInitialized = errors.New("mock tenant configs not initialized")
 	ErrConfigSectionNotFoundForTenant  = errors.New("config section not found for tenant")
 
+	// Observer/Event emission errors
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
+
 	// Test-specific errors
 	ErrSetupFailed   = errors.New("setup error")
 	ErrFeedFailed    = errors.New("feed error")

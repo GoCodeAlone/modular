@@ -7,18 +7,16 @@ import (
 	"time"
 )
 
-// DefaultTimeoutSeconds is the default timeout value in seconds
-const DefaultTimeoutSeconds = 15
-
-// Static error definitions for better error handling
+// Static errors for configuration validation
 var (
-	ErrInvalidPortNumber          = errors.New("invalid port number")
-	ErrTLSAutoGenerationNoDomains = errors.New("TLS auto-generation is enabled but no domains specified")
-	ErrTLSNoCertificateFile       = errors.New("TLS is enabled but no certificate file specified")
-	ErrTLSNoKeyFile               = errors.New("TLS is enabled but no key file specified")
-	ErrRouterNotHTTPHandler       = errors.New("service does not implement http.Handler")
-	ErrServerStartTimeout         = errors.New("context cancelled while waiting for server to start")
+	ErrInvalidPort           = errors.New("invalid port number")
+	ErrTLSNoDomainsSpecified = errors.New("TLS auto-generation is enabled but no domains specified")
+	ErrTLSNoCertificateFile  = errors.New("TLS is enabled but no certificate file specified")
+	ErrTLSNoKeyFile          = errors.New("TLS is enabled but no key file specified")
 )
+
+// DefaultTimeout is the default timeout value
+const DefaultTimeout = 15 * time.Second
 
 // HTTPServerConfig defines the configuration for the HTTP server module.
 type HTTPServerConfig struct {
@@ -29,20 +27,18 @@ type HTTPServerConfig struct {
 	Port int `yaml:"port" json:"port" env:"PORT"`
 
 	// ReadTimeout is the maximum duration for reading the entire request,
-	// including the body, in seconds.
-	ReadTimeout int `yaml:"read_timeout" json:"read_timeout" env:"READ_TIMEOUT"`
+	// including the body.
+	ReadTimeout time.Duration `yaml:"read_timeout" json:"read_timeout" env:"READ_TIMEOUT"`
 
-	// WriteTimeout is the maximum duration before timing out writes of the response,
-	// in seconds.
-	WriteTimeout int `yaml:"write_timeout" json:"write_timeout" env:"WRITE_TIMEOUT"`
+	// WriteTimeout is the maximum duration before timing out writes of the response.
+	WriteTimeout time.Duration `yaml:"write_timeout" json:"write_timeout" env:"WRITE_TIMEOUT"`
 
-	// IdleTimeout is the maximum amount of time to wait for the next request,
-	// in seconds.
-	IdleTimeout int `yaml:"idle_timeout" json:"idle_timeout" env:"IDLE_TIMEOUT"`
+	// IdleTimeout is the maximum amount of time to wait for the next request.
+	IdleTimeout time.Duration `yaml:"idle_timeout" json:"idle_timeout" env:"IDLE_TIMEOUT"`
 
 	// ShutdownTimeout is the maximum amount of time to wait during graceful
-	// shutdown, in seconds.
-	ShutdownTimeout int `yaml:"shutdown_timeout" json:"shutdown_timeout" env:"SHUTDOWN_TIMEOUT"`
+	// shutdown.
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" json:"shutdown_timeout" env:"SHUTDOWN_TIMEOUT"`
 
 	// TLS configuration if HTTPS is enabled
 	TLS *TLSConfig `yaml:"tls" json:"tls"`
@@ -86,24 +82,24 @@ func (c *HTTPServerConfig) Validate() error {
 
 	// Check if port is within valid range
 	if c.Port < 0 || c.Port > 65535 {
-		return fmt.Errorf("%w: %d", ErrInvalidPortNumber, c.Port)
+		return fmt.Errorf("%w: %d", ErrInvalidPort, c.Port)
 	}
 
-	// Set default timeouts if not specified
-	if c.ReadTimeout <= 0 {
-		c.ReadTimeout = 15 // 15 seconds
+	// Set timeout defaults if zero values (programmatic defaults work reliably)
+	if c.ReadTimeout == 0 {
+		c.ReadTimeout = 15 * time.Second
 	}
 
-	if c.WriteTimeout <= 0 {
-		c.WriteTimeout = 15 // 15 seconds
+	if c.WriteTimeout == 0 {
+		c.WriteTimeout = 15 * time.Second
 	}
 
-	if c.IdleTimeout <= 0 {
-		c.IdleTimeout = 60 // 60 seconds
+	if c.IdleTimeout == 0 {
+		c.IdleTimeout = 60 * time.Second
 	}
 
-	if c.ShutdownTimeout <= 0 {
-		c.ShutdownTimeout = 30 // 30 seconds
+	if c.ShutdownTimeout == 0 {
+		c.ShutdownTimeout = 30 * time.Second
 	}
 
 	// Validate TLS configuration if enabled
@@ -118,7 +114,7 @@ func (c *HTTPServerConfig) Validate() error {
 		if c.TLS.AutoGenerate {
 			// Make sure we have at least one domain for auto-generated certs
 			if len(c.TLS.Domains) == 0 {
-				return ErrTLSAutoGenerationNoDomains
+				return ErrTLSNoDomainsSpecified
 			}
 			return nil
 		}
@@ -133,13 +129,4 @@ func (c *HTTPServerConfig) Validate() error {
 	}
 
 	return nil
-}
-
-// GetTimeout converts a timeout value from seconds to time.Duration.
-// If seconds is 0, it returns the default timeout.
-func (c *HTTPServerConfig) GetTimeout(seconds int) time.Duration {
-	if seconds <= 0 {
-		seconds = DefaultTimeoutSeconds
-	}
-	return time.Duration(seconds) * time.Second
 }

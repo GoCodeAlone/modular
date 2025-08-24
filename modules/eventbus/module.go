@@ -112,10 +112,13 @@ package eventbus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // ModuleName is the unique identifier for the eventbus module.
@@ -135,6 +138,7 @@ const ServiceName = "eventbus.provider"
 //   - modular.ServiceAware: Service dependency management
 //   - modular.Startable: Startup logic
 //   - modular.Stoppable: Shutdown logic
+//   - modular.ObservableModule: Event observation and emission
 //   - EventBus: Event publishing and subscription interface
 //
 // Event processing is thread-safe and supports concurrent publishers and subscribers.
@@ -142,9 +146,10 @@ type EventBusModule struct {
 	name      string
 	config    *EventBusConfig
 	logger    modular.Logger
-	eventbus  EventBus
+	router    *EngineRouter
 	mutex     sync.RWMutex
 	isStarted bool
+	subject   modular.Subject // For event observation
 }
 
 // NewModule creates a new instance of the event bus module.
@@ -186,7 +191,6 @@ func (m *EventBusModule) RegisterConfig(app modular.Application) error {
 		MaxEventQueueSize:      1000,
 		DefaultEventBufferSize: 10,
 		WorkerCount:            5,
-		EventTTL:               3600,
 		RetentionDays:          7,
 		ExternalBrokerURL:      "",
 		ExternalBrokerUser:     "",
@@ -199,17 +203,21 @@ func (m *EventBusModule) RegisterConfig(app modular.Application) error {
 
 // Init initializes the eventbus module with the application context.
 // This method is called after all modules have been registered and their
-// configurations loaded. It sets up the event bus engine based on configuration.
+// configurations loaded. It sets up the event bus engine(s) based on configuration.
 //
 // The initialization process:
 //  1. Retrieves the module's configuration
 //  2. Sets up logging
-//  3. Initializes the appropriate event bus engine
-//  4. Prepares the event bus for startup
+//  3. Validates configuration
+//  4. Initializes the engine router with configured engines
+//  5. Prepares the event bus for startup
 //
 // Supported engines:
 //   - "memory": In-process event bus using Go channels
-//   - fallback: defaults to memory engine for unknown engines
+//   - "redis": Distributed event bus using Redis pub/sub
+//   - "kafka": Enterprise event bus using Apache Kafka
+//   - "kinesis": AWS Kinesis streams
+//   - "custom": Custom engine implementations
 func (m *EventBusModule) Init(app modular.Application) error {
 	// Retrieve the registered config section for access
 	cfg, err := app.GetConfigSection(m.name)
@@ -220,27 +228,51 @@ func (m *EventBusModule) Init(app modular.Application) error {
 	m.config = cfg.GetConfig().(*EventBusConfig)
 	m.logger = app.Logger()
 
-	// Initialize the event bus based on configuration
-	switch m.config.Engine {
-	case "memory":
-		m.eventbus = NewMemoryEventBus(m.config)
-		m.logger.Info("Using memory event bus")
-	default:
-		m.eventbus = NewMemoryEventBus(m.config)
-		m.logger.Warn("Unknown event bus engine specified, using memory engine", "specified", m.config.Engine)
+	// Validate configuration
+	if err := m.config.ValidateConfig(); err != nil {
+		return fmt.Errorf("invalid eventbus configuration: %w", err)
 	}
+
+	// Initialize the engine router
+	m.router, err = NewEngineRouter(m.config)
+	if err != nil {
+		return fmt.Errorf("failed to create engine router: %w", err)
+	}
+
+	// Set module reference for memory engines to enable event emission
+	m.router.SetModuleReference(m)
+
+	if m.config.IsMultiEngine() {
+		m.logger.Info("Initialized multi-engine eventbus",
+			"engines", len(m.config.Engines),
+			"routing_rules", len(m.config.Routing))
+		for _, engine := range m.config.Engines {
+			m.logger.Debug("Configured engine", "name", engine.Name, "type", engine.Type)
+		}
+	} else {
+		m.logger.Info("Initialized single-engine eventbus", "engine", m.config.Engine)
+	}
+
+	// Emit config loaded event
+	m.emitEvent(modular.WithSynchronousNotification(context.Background()), EventTypeConfigLoaded, map[string]interface{}{
+		"engine":         m.config.Engine,
+		"max_queue_size": m.config.MaxEventQueueSize,
+		"worker_count":   m.config.WorkerCount,
+		"event_ttl":      m.config.EventTTL,
+		"retention_days": m.config.RetentionDays,
+	})
 
 	m.logger.Info("Event bus module initialized")
 	return nil
 }
 
 // Start performs startup logic for the module.
-// This method starts the event bus engine and begins processing events.
+// This method starts all configured event bus engines and begins processing events.
 // It's called after all modules have been initialized and are ready to start.
 //
 // The startup process:
 //  1. Checks if already started (idempotent)
-//  2. Starts the underlying event bus engine
+//  2. Starts all underlying event bus engines
 //  3. Initializes worker pools for async processing
 //  4. Prepares topic management and subscription tracking
 //
@@ -255,19 +287,47 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Start the event bus
-	err := m.eventbus.Start(ctx)
+	// Start the engine router (which starts all engines)
+	err := m.router.Start(ctx)
 	if err != nil {
-		return fmt.Errorf("starting event bus: %w", err)
+		return fmt.Errorf("starting engine router: %w", err)
 	}
 
 	m.isStarted = true
-	m.logger.Info("Event bus started")
+	if m.config.IsMultiEngine() {
+		m.logger.Info("Event bus started with multiple engines",
+			"engines", m.router.GetEngineNames())
+	} else {
+		m.logger.Info("Event bus started")
+	}
+
+	// Emit bus started event
+	event := modular.NewCloudEvent(EventTypeBusStarted, "eventbus-service", map[string]interface{}{
+		"engine": func() string {
+			if m.config != nil {
+				return m.config.Engine
+			}
+			return "unknown"
+		}(),
+		"workers": func() int {
+			if m.config != nil {
+				return m.config.WorkerCount
+			}
+			return 0
+		}(),
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit eventbus started event: %v\n", emitErr)
+		}
+	}()
+
 	return nil
 }
 
 // Stop performs shutdown logic for the module.
-// This method gracefully shuts down the event bus, ensuring all in-flight
+// This method gracefully shuts down all event bus engines, ensuring all in-flight
 // events are processed and all subscriptions are properly cleaned up.
 //
 // The shutdown process:
@@ -276,7 +336,7 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 //  3. Waits for in-flight events to complete
 //  4. Cancels all active subscriptions
 //  5. Shuts down worker pools
-//  6. Closes the underlying event bus engine
+//  6. Closes all underlying event bus engines
 //
 // This method is thread-safe and can be called multiple times safely.
 func (m *EventBusModule) Stop(ctx context.Context) error {
@@ -289,14 +349,31 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	// Stop the event bus
-	err := m.eventbus.Stop(ctx)
+	// Stop the engine router (which stops all engines)
+	err := m.router.Stop(ctx)
 	if err != nil {
-		return fmt.Errorf("stopping event bus: %w", err)
+		return fmt.Errorf("stopping engine router: %w", err)
 	}
 
 	m.isStarted = false
 	m.logger.Info("Event bus stopped")
+
+	// Emit bus stopped event
+	event := modular.NewCloudEvent(EventTypeBusStopped, "eventbus-service", map[string]interface{}{
+		"engine": func() string {
+			if m.config != nil {
+				return m.config.Engine
+			}
+			return "unknown"
+		}(),
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit eventbus stopped event: %v\n", emitErr)
+		}
+	}()
+
 	return nil
 }
 
@@ -343,6 +420,8 @@ func (m *EventBusModule) Constructor() modular.ModuleConstructor {
 //
 // The event will be delivered to all active subscribers of the topic.
 // Topic patterns and wildcards may be supported depending on the engine.
+// With multiple engines, the event is routed to the appropriate engine
+// based on the configured routing rules.
 //
 // Example:
 //
@@ -353,16 +432,47 @@ func (m *EventBusModule) Publish(ctx context.Context, topic string, payload inte
 		Topic:   topic,
 		Payload: payload,
 	}
-	err := m.eventbus.Publish(ctx, event)
+	startTime := time.Now()
+	err := m.router.Publish(ctx, event)
+	duration := time.Since(startTime)
 	if err != nil {
+		// Emit message failed event
+		emitEvent := modular.NewCloudEvent(EventTypeMessageFailed, "eventbus-service", map[string]interface{}{
+			"topic":       topic,
+			"error":       err.Error(),
+			"duration_ms": duration.Milliseconds(),
+		}, nil)
+
+		go func() {
+			if emitErr := m.EmitEvent(ctx, emitEvent); emitErr != nil {
+				fmt.Printf("Failed to emit message failed event: %v\n", emitErr)
+			}
+		}()
+
 		return fmt.Errorf("publishing event to topic %s: %w", topic, err)
 	}
+
+	// Emit message published event
+	emitEvent := modular.NewCloudEvent(EventTypeMessagePublished, "eventbus-service", map[string]interface{}{
+		"topic":       topic,
+		"duration_ms": duration.Milliseconds(),
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, emitEvent); emitErr != nil {
+			fmt.Printf("Failed to emit message published event: %v\n", emitErr)
+		}
+	}()
+
 	return nil
 }
 
 // Subscribe subscribes to a topic on the event bus with synchronous processing.
 // The provided handler will be called immediately when an event is published
 // to the specified topic. The handler blocks the event delivery until it completes.
+//
+// With multiple engines, the subscription is created on the engine that
+// handles the specified topic according to the routing configuration.
 //
 // Use synchronous subscriptions for:
 //   - Lightweight event processing
@@ -376,16 +486,33 @@ func (m *EventBusModule) Publish(ctx context.Context, topic string, payload inte
 //	    return updateLastLoginTime(user.ID)
 //	})
 func (m *EventBusModule) Subscribe(ctx context.Context, topic string, handler EventHandler) (Subscription, error) {
-	subscription, err := m.eventbus.Subscribe(ctx, topic, handler)
+	sub, err := m.router.Subscribe(ctx, topic, handler)
 	if err != nil {
 		return nil, fmt.Errorf("subscribing to topic %s: %w", topic, err)
 	}
-	return subscription, nil
+
+	// Emit subscription created event
+	event := modular.NewCloudEvent(EventTypeSubscriptionCreated, "eventbus-service", map[string]interface{}{
+		"topic":           topic,
+		"subscription_id": sub.ID(),
+		"async":           false,
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit subscription created event: %v\n", emitErr)
+		}
+	}()
+
+	return sub, nil
 }
 
 // SubscribeAsync subscribes to a topic with asynchronous event processing.
 // The provided handler will be queued for processing by worker goroutines,
 // allowing the event publisher to continue without waiting for processing.
+//
+// With multiple engines, the subscription is created on the engine that
+// handles the specified topic according to the routing configuration.
 //
 // Use asynchronous subscriptions for:
 //   - Heavy processing operations
@@ -400,11 +527,25 @@ func (m *EventBusModule) Subscribe(ctx context.Context, topic string, handler Ev
 //	    return generateThumbnails(imageData)
 //	})
 func (m *EventBusModule) SubscribeAsync(ctx context.Context, topic string, handler EventHandler) (Subscription, error) {
-	subscription, err := m.eventbus.SubscribeAsync(ctx, topic, handler)
+	sub, err := m.router.SubscribeAsync(ctx, topic, handler)
 	if err != nil {
 		return nil, fmt.Errorf("subscribing async to topic %s: %w", topic, err)
 	}
-	return subscription, nil
+
+	// Emit subscription created event
+	event := modular.NewCloudEvent(EventTypeSubscriptionCreated, "eventbus-service", map[string]interface{}{
+		"topic":           topic,
+		"subscription_id": sub.ID(),
+		"async":           true,
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit async subscription created event: %v\n", emitErr)
+		}
+	}()
+
+	return sub, nil
 }
 
 // Unsubscribe cancels a subscription and stops receiving events.
@@ -418,10 +559,27 @@ func (m *EventBusModule) SubscribeAsync(ctx context.Context, topic string, handl
 //
 //	err := eventBus.Unsubscribe(ctx, subscription)
 func (m *EventBusModule) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	err := m.eventbus.Unsubscribe(ctx, subscription)
+	// Store subscription info before unsubscribing
+	topic := subscription.Topic()
+	subscriptionID := subscription.ID()
+
+	err := m.router.Unsubscribe(ctx, subscription)
 	if err != nil {
 		return fmt.Errorf("unsubscribing: %w", err)
 	}
+
+	// Emit subscription removed event
+	event := modular.NewCloudEvent(EventTypeSubscriptionRemoved, "eventbus-service", map[string]interface{}{
+		"topic":           topic,
+		"subscription_id": subscriptionID,
+	}, nil)
+
+	go func() {
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			fmt.Printf("Failed to emit subscription removed event: %v\n", emitErr)
+		}
+	}()
+
 	return nil
 }
 
@@ -437,7 +595,7 @@ func (m *EventBusModule) Unsubscribe(ctx context.Context, subscription Subscript
 //	    fmt.Printf("Topic: %s, Subscribers: %d\n", topic, count)
 //	}
 func (m *EventBusModule) Topics() []string {
-	return m.eventbus.Topics()
+	return m.router.Topics()
 }
 
 // SubscriberCount returns the number of active subscribers for a topic.
@@ -451,5 +609,89 @@ func (m *EventBusModule) Topics() []string {
 //	    log.Warn("No subscribers for user creation events")
 //	}
 func (m *EventBusModule) SubscriberCount(topic string) int {
-	return m.eventbus.SubscriberCount(topic)
+	return m.router.SubscriberCount(topic)
+}
+
+// GetRouter returns the underlying engine router for advanced operations.
+// This method provides access to engine-specific functionality like
+// checking which engine a topic routes to.
+//
+// Example:
+//
+//	router := eventBus.GetRouter()
+//	engine := router.GetEngineForTopic("user.created")
+//	fmt.Printf("Topic routes to engine: %s", engine)
+func (m *EventBusModule) GetRouter() *EngineRouter {
+	return m.router
+}
+
+// Static errors for err113 compliance
+var (
+	_ = ErrNoSubjectForEventEmission // Reference the local error
+)
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the eventbus module to register as an observer for events it's interested in.
+func (m *EventBusModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	// The eventbus module currently does not need to observe other events,
+	// but this method stores the subject for event emission.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the eventbus module to emit events to registered observers.
+func (m *EventBusModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	// Use a goroutine to prevent blocking eventbus operations with event emission
+	go func() {
+		if err := m.subject.NotifyObservers(ctx, event); err != nil {
+			// Log error but don't fail the operation
+			// This ensures event emission issues don't affect eventbus functionality
+			if m.logger != nil {
+				m.logger.Debug("Failed to notify observers", "error", err, "event_type", event.Type())
+			}
+		}
+	}()
+	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the eventbus module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
+func (m *EventBusModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
+	event := modular.NewCloudEvent(eventType, "eventbus-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Further error logging handled by EmitEvent method itself
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this eventbus module can emit.
+func (m *EventBusModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeMessagePublished,
+		EventTypeMessageReceived,
+		EventTypeMessageFailed,
+		EventTypeTopicCreated,
+		EventTypeTopicDeleted,
+		EventTypeSubscriptionCreated,
+		EventTypeSubscriptionRemoved,
+		EventTypeBusStarted,
+		EventTypeBusStopped,
+		EventTypeConfigLoaded,
+	}
 }

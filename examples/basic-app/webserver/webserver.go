@@ -9,10 +9,16 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 const configSection = "webserver"
+
+// Static error variables for err113 compliance
+var (
+	errRouterServiceInvalidType         = errors.New("service 'router' is not of type http.Handler or is nil")
+	errRouterServiceProviderInvalidType = errors.New("service 'routerService' is not of type router.Router or is nil")
+)
 
 type Module struct {
 	router        http.Handler // Dependency
@@ -57,7 +63,7 @@ func (m *Module) Start(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 		m.app.Logger().Info("web server stopping")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		err := m.server.Shutdown(shutdownCtx)
 		if err != nil {
@@ -71,7 +77,9 @@ func (m *Module) Start(ctx context.Context) error {
 
 func (m *Module) Stop(ctx context.Context) error {
 	if m.server != nil {
-		return m.server.Shutdown(ctx)
+		if err := m.server.Shutdown(ctx); err != nil {
+			return fmt.Errorf("webserver shutdown failed: %w", err)
+		}
 	}
 	return nil
 }
@@ -110,17 +118,17 @@ func (m *Module) Constructor() modular.ModuleConstructor {
 		// Get router dependency
 		rtr, ok := services["router"].(http.Handler)
 		if !ok {
-			return nil, fmt.Errorf("service 'router' is not of type http.Handler or is nil. Detected type: %T", services["router"])
+			return nil, fmt.Errorf("%w. Detected type: %T", errRouterServiceInvalidType, services["router"])
 		}
 		rtrSvc, ok := services["routerService"].(router.Router)
 		if !ok {
-			return nil, fmt.Errorf("service 'routerService' is not of type router.Router or is nil. Detected type: %T", services["routerService"])
+			return nil, fmt.Errorf("%w. Detected type: %T", errRouterServiceProviderInvalidType, services["routerService"])
 		}
 
 		// Get config early
 		cp, err := app.GetConfigSection(configSection)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get webserver config: %w", err)
 		}
 		config := cp.GetConfig().(*WebConfig)
 
@@ -131,8 +139,9 @@ func (m *Module) Constructor() modular.ModuleConstructor {
 			routerService: rtrSvc,
 			config:        config,
 			server: &http.Server{
-				Addr:    ":" + config.Port,
-				Handler: rtr,
+				Addr:              ":" + config.Port,
+				Handler:           rtr,
+				ReadHeaderTimeout: 10 * time.Second,
 			},
 		}, nil
 	}
@@ -145,5 +154,7 @@ func (m *Module) registerRoutes() {
 
 func (m *Module) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}`))
+	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+		m.app.Logger().Error("Failed to write health response", "error", err)
+	}
 }

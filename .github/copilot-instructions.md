@@ -29,6 +29,7 @@ This is the Modular Go framework - a structured way to create modular applicatio
 - **Module Development**: Follow the established module interface patterns and provide comprehensive configuration options
 
 ### Required Before Each Commit
+- The current implementation should always be considered the *real* implementation. Don't create placeholder comments, notes for the future, implement the real functionality *now*.
 - Format Go code with `gofmt`
 - Run `golangci-lint run` and fix any linting issues
 - Ensure all tests pass (core, modules, examples, and CLI):
@@ -42,7 +43,7 @@ This is the Modular Go framework - a structured way to create modular applicatio
 ## Development Workflow
 
 ### Local Development Setup
-1. Clone the repository: `git clone https://github.com/GoCodeAlone/modular.git`
+1. Clone the repository: `git clone https://github.com/CrisisTextLine/modular.git`
 2. Install Go 1.23.0 or later (toolchain uses 1.24.2)
 3. Install golangci-lint: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 4. Run tests to verify setup: `go test ./... -v`
@@ -152,7 +153,7 @@ Working example applications:
 ### CLI Tool (`modcli`)
 - Generate new modules: `modcli generate module --name MyModule`
 - Generate configurations: `modcli generate config --name MyConfig`
-- Install with: `go install github.com/GoCodeAlone/modular/cmd/modcli@latest`
+- Install with: `go install github.com/CrisisTextLine/modular/cmd/modcli@latest`
 
 ### Debugging Tools
 - Debug module interfaces: `modular.DebugModuleInterfaces(app, "module-name")`

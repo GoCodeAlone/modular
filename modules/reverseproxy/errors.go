@@ -21,4 +21,7 @@ var (
 	ErrDryRunModeNotEnabled     = errors.New("dry-run mode is not enabled")
 	ErrApplicationNil           = errors.New("app cannot be nil")
 	ErrLoggerNil                = errors.New("logger cannot be nil")
+
+	// Event observation errors
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 )

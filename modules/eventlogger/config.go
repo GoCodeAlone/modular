@@ -25,7 +25,7 @@ type EventLoggerConfig struct {
 	BufferSize int `yaml:"bufferSize" default:"100" desc:"Buffer size for async event processing"`
 
 	// FlushInterval sets how often to flush buffered events
-	FlushInterval string `yaml:"flushInterval" default:"5s" desc:"Interval to flush buffered events"`
+	FlushInterval time.Duration `yaml:"flushInterval" default:"5s" desc:"Interval to flush buffered events"`
 
 	// IncludeMetadata determines if event metadata should be logged
 	IncludeMetadata bool `yaml:"includeMetadata" default:"true" desc:"Include event metadata in logs"`
@@ -112,7 +112,7 @@ func (c *EventLoggerConfig) Validate() error {
 	}
 
 	// Validate flush interval
-	if _, err := time.ParseDuration(c.FlushInterval); err != nil {
+	if c.FlushInterval <= 0 {
 		return ErrInvalidFlushInterval
 	}
 

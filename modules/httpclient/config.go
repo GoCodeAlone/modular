@@ -55,22 +55,22 @@ type Config struct {
 	MaxIdleConnsPerHost int `yaml:"max_idle_conns_per_host" json:"max_idle_conns_per_host" env:"MAX_IDLE_CONNS_PER_HOST"`
 
 	// IdleConnTimeout is the maximum amount of time an idle connection will remain idle
-	// before closing itself, in seconds. This helps prevent stale connections and
+	// before closing itself. This helps prevent stale connections and
 	// reduces server-side resource usage.
 	// Default: 90 seconds
-	IdleConnTimeout int `yaml:"idle_conn_timeout" json:"idle_conn_timeout" env:"IDLE_CONN_TIMEOUT"`
+	IdleConnTimeout time.Duration `yaml:"idle_conn_timeout" json:"idle_conn_timeout" env:"IDLE_CONN_TIMEOUT"`
 
-	// RequestTimeout is the maximum time for a request to complete, in seconds.
+	// RequestTimeout is the maximum time for a request to complete.
 	// This includes connection time, any redirects, and reading the response body.
 	// Use WithTimeout() method for per-request timeout overrides.
 	// Default: 30 seconds
-	RequestTimeout int `yaml:"request_timeout" json:"request_timeout" env:"REQUEST_TIMEOUT"`
+	RequestTimeout time.Duration `yaml:"request_timeout" json:"request_timeout" env:"REQUEST_TIMEOUT"`
 
-	// TLSTimeout is the maximum time waiting for TLS handshake, in seconds.
+	// TLSTimeout is the maximum time waiting for TLS handshake.
 	// This only affects HTTPS connections and should be set based on expected
 	// network latency and certificate chain complexity.
 	// Default: 10 seconds
-	TLSTimeout int `yaml:"tls_timeout" json:"tls_timeout" env:"TLS_TIMEOUT"`
+	TLSTimeout time.Duration `yaml:"tls_timeout" json:"tls_timeout" env:"TLS_TIMEOUT"`
 
 	// DisableCompression disables decompressing response bodies.
 	// When false (default), the client automatically handles gzip compression.
@@ -141,17 +141,17 @@ func (c *Config) Validate() error {
 		c.MaxIdleConnsPerHost = 10
 	}
 
-	// Set default timeout values
-	if c.IdleConnTimeout <= 0 {
-		c.IdleConnTimeout = 90 // 90 seconds
+	// Set timeout defaults if zero values (programmatic defaults work reliably)
+	if c.IdleConnTimeout == 0 {
+		c.IdleConnTimeout = 90 * time.Second
 	}
 
-	if c.RequestTimeout <= 0 {
-		c.RequestTimeout = 30 // 30 seconds
+	if c.RequestTimeout == 0 {
+		c.RequestTimeout = 30 * time.Second
 	}
 
-	if c.TLSTimeout <= 0 {
-		c.TLSTimeout = 10 // 10 seconds
+	if c.TLSTimeout == 0 {
+		c.TLSTimeout = 10 * time.Second
 	}
 
 	// Initialize verbose options if needed
@@ -170,9 +170,4 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// GetTimeout converts a timeout value from seconds to time.Duration.
-func (c *Config) GetTimeout(seconds int) time.Duration {
-	return time.Duration(seconds) * time.Second
 }

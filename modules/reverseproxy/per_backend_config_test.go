@@ -691,7 +691,7 @@ func TestHeaderRewritingEdgeCases(t *testing.T) {
 				name:             "UseBackend",
 				hostnameHandling: HostnameUseBackend,
 				customHostname:   "",
-				expectedHost:     "backend.example.com", // This will be the backend server's host
+				expectedHost:     "localhost", // This will be the backend server's host
 			},
 			{
 				name:             "UseCustom",

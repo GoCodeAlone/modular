@@ -3,11 +3,12 @@ package database
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // TestConnectionConfigEnvMapping tests environment variable mapping for database connections
@@ -27,8 +28,8 @@ func TestConnectionConfigEnvMapping(t *testing.T) {
 				"MAIN_DSN":                        "postgres://user:pass@localhost:5432/maindb?sslmode=disable",
 				"MAIN_MAX_OPEN_CONNECTIONS":       "25",
 				"MAIN_MAX_IDLE_CONNECTIONS":       "5",
-				"MAIN_CONNECTION_MAX_LIFETIME":    "3600",
-				"MAIN_CONNECTION_MAX_IDLE_TIME":   "300",
+				"MAIN_CONNECTION_MAX_LIFETIME":    "3600s",
+				"MAIN_CONNECTION_MAX_IDLE_TIME":   "300s",
 				"MAIN_AWS_IAM_AUTH_ENABLED":       "true",
 				"MAIN_AWS_IAM_AUTH_REGION":        "us-west-2",
 				"MAIN_AWS_IAM_AUTH_DB_USER":       "iam_user",
@@ -42,8 +43,8 @@ func TestConnectionConfigEnvMapping(t *testing.T) {
 				DSN:                   "postgres://user:pass@localhost:5432/maindb?sslmode=disable",
 				MaxOpenConnections:    25,
 				MaxIdleConnections:    5,
-				ConnectionMaxLifetime: 3600,
-				ConnectionMaxIdleTime: 300,
+				ConnectionMaxLifetime: 3600 * time.Second,
+				ConnectionMaxIdleTime: 300 * time.Second,
 				AWSIAMAuth: &AWSIAMAuthConfig{
 					Enabled:              true,
 					Region:               "us-west-2",

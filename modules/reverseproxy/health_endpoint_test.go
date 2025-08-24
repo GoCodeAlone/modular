@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // TestHealthEndpointNotProxied tests that health endpoints are not proxied to backends
@@ -24,7 +24,7 @@ func TestHealthEndpointNotProxied(t *testing.T) {
 			path: "/health",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				DefaultBackend: "test",
 			},
@@ -37,7 +37,7 @@ func TestHealthEndpointNotProxied(t *testing.T) {
 			path: "/metrics/reverseproxy",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				DefaultBackend:  "test",
 				MetricsEndpoint: "/metrics/reverseproxy",
@@ -51,7 +51,7 @@ func TestHealthEndpointNotProxied(t *testing.T) {
 			path: "/metrics/reverseproxy/health",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				DefaultBackend:  "test",
 				MetricsEndpoint: "/metrics/reverseproxy",
@@ -65,7 +65,7 @@ func TestHealthEndpointNotProxied(t *testing.T) {
 			path: "/debug/info",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				DefaultBackend: "test",
 			},
@@ -78,7 +78,7 @@ func TestHealthEndpointNotProxied(t *testing.T) {
 			path: "/api/test",
 			config: &ReverseProxyConfig{
 				BackendServices: map[string]string{
-					"test": "http://test:8080",
+					"test": "http://127.0.0.1:18080",
 				},
 				DefaultBackend: "test",
 			},
@@ -274,8 +274,8 @@ func TestTenantAwareHealthEndpointHandling(t *testing.T) {
 	// Create configuration with tenants
 	config := &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"primary":   "http://primary:8080",
-			"secondary": "http://secondary:8080",
+			"primary":   "http://127.0.0.1:19080",
+			"secondary": "http://127.0.0.1:19081",
 		},
 		DefaultBackend:  "primary",
 		TenantIDHeader:  "X-Tenant-ID",

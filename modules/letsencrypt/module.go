@@ -127,6 +127,7 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -145,6 +146,9 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/namecheap"
 	"github.com/go-acme/lego/v4/providers/dns/route53"
 	"github.com/go-acme/lego/v4/registration"
+
+	"github.com/CrisisTextLine/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // Constants for Let's Encrypt URLs
@@ -184,7 +188,8 @@ type LetsEncryptModule struct {
 	certMutex     sync.RWMutex
 	shutdownChan  chan struct{}
 	renewalTicker *time.Ticker
-	rootCAs       *x509.CertPool // Certificate authority root certificates
+	rootCAs       *x509.CertPool  // Certificate authority root certificates
+	subject       modular.Subject // Added for event observation
 }
 
 // User implements the ACME User interface for Let's Encrypt
@@ -240,27 +245,53 @@ func (m *LetsEncryptModule) Config() interface{} {
 
 // Start initializes the module and starts any background processes
 func (m *LetsEncryptModule) Start(ctx context.Context) error {
+	// Emit service started event
+	m.emitEvent(ctx, EventTypeServiceStarted, map[string]interface{}{
+		"domains_count": len(m.config.Domains),
+		"dns_provider":  m.config.DNSProvider,
+		"auto_renew":    m.config.AutoRenew,
+		"production":    m.config.UseProduction,
+	})
+
 	// Initialize the ACME user
 	user, err := m.initUser()
 	if err != nil {
+		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+			"error": err.Error(),
+			"stage": "user_initialization",
+		})
 		return fmt.Errorf("failed to initialize ACME user: %w", err)
 	}
 	m.user = user
 
 	// Initialize the ACME client
 	if err := m.initClient(); err != nil {
+		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+			"error": err.Error(),
+			"stage": "client_initialization",
+		})
 		return fmt.Errorf("failed to initialize ACME client: %w", err)
 	}
 
 	// Get or renew certificates for all domains
-	if err := m.refreshCertificates(); err != nil {
+	if err := m.refreshCertificates(ctx); err != nil {
+		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+			"error": err.Error(),
+			"stage": "certificate_refresh",
+		})
 		return fmt.Errorf("failed to obtain certificates: %w", err)
 	}
 
 	// Start the renewal timer if auto-renew is enabled
 	if m.config.AutoRenew {
-		m.startRenewalTimer()
+		m.startRenewalTimer(ctx)
 	}
+
+	// Emit module started event
+	m.emitEvent(ctx, EventTypeModuleStarted, map[string]interface{}{
+		"certificates_count": len(m.certificates),
+		"auto_renew_enabled": m.config.AutoRenew,
+	})
 
 	return nil
 }
@@ -272,6 +303,16 @@ func (m *LetsEncryptModule) Stop(ctx context.Context) error {
 		m.renewalTicker.Stop()
 		close(m.shutdownChan)
 	}
+
+	// Emit service stopped event
+	m.emitEvent(ctx, EventTypeServiceStopped, map[string]interface{}{
+		"certificates_count": len(m.certificates),
+	})
+
+	// Emit module stopped event
+	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{
+		"certificates_count": len(m.certificates),
+	})
 
 	return nil
 }
@@ -410,7 +451,13 @@ func (m *LetsEncryptModule) createUser() error {
 }
 
 // refreshCertificates obtains or renews certificates for all configured domains
-func (m *LetsEncryptModule) refreshCertificates() error {
+func (m *LetsEncryptModule) refreshCertificates(ctx context.Context) error {
+	// Emit certificate requested event
+	m.emitEvent(ctx, EventTypeCertificateRequested, map[string]interface{}{
+		"domains": m.config.Domains,
+		"count":   len(m.config.Domains),
+	})
+
 	// Request certificates for domains
 	request := certificate.ObtainRequest{
 		Domains: m.config.Domains,
@@ -419,6 +466,11 @@ func (m *LetsEncryptModule) refreshCertificates() error {
 
 	certificates, err := m.client.Certificate.Obtain(request)
 	if err != nil {
+		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+			"error":   err.Error(),
+			"domains": m.config.Domains,
+			"stage":   "certificate_obtain",
+		})
 		return fmt.Errorf("failed to obtain certificate: %w", err)
 	}
 
@@ -429,16 +481,26 @@ func (m *LetsEncryptModule) refreshCertificates() error {
 	for _, domain := range m.config.Domains {
 		cert, err := tls.X509KeyPair(certificates.Certificate, certificates.PrivateKey)
 		if err != nil {
+			m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+				"error":  err.Error(),
+				"domain": domain,
+				"stage":  "certificate_parse",
+			})
 			return fmt.Errorf("failed to parse certificate for %s: %w", domain, err)
 		}
 		m.certificates[domain] = &cert
+
+		// Emit certificate issued event for each domain
+		m.emitEvent(ctx, EventTypeCertificateIssued, map[string]interface{}{
+			"domain": domain,
+		})
 	}
 
 	return nil
 }
 
 // startRenewalTimer starts a background timer to check and renew certificates
-func (m *LetsEncryptModule) startRenewalTimer() {
+func (m *LetsEncryptModule) startRenewalTimer(ctx context.Context) {
 	// Check certificates daily
 	m.renewalTicker = time.NewTicker(24 * time.Hour)
 
@@ -447,7 +509,7 @@ func (m *LetsEncryptModule) startRenewalTimer() {
 			select {
 			case <-m.renewalTicker.C:
 				// Check if certificates need renewal
-				m.checkAndRenewCertificates()
+				m.checkAndRenewCertificates(ctx)
 			case <-m.shutdownChan:
 				return
 			}
@@ -456,7 +518,7 @@ func (m *LetsEncryptModule) startRenewalTimer() {
 }
 
 // checkAndRenewCertificates checks if certificates need renewal and renews them
-func (m *LetsEncryptModule) checkAndRenewCertificates() {
+func (m *LetsEncryptModule) checkAndRenewCertificates(ctx context.Context) {
 	// Loop through all certificates and check their expiry dates
 	for domain, cert := range m.certificates {
 		if cert == nil || len(cert.Certificate) == 0 {
@@ -479,7 +541,7 @@ func (m *LetsEncryptModule) checkAndRenewCertificates() {
 			fmt.Printf("Certificate for %s will expire in %d days, renewing\n", domain, int(daysUntilExpiry))
 
 			// Request renewal for this specific domain
-			if err := m.renewCertificateForDomain(domain); err != nil {
+			if err := m.renewCertificateForDomain(ctx, domain); err != nil {
 				fmt.Printf("Failed to renew certificate for %s: %v\n", domain, err)
 			} else {
 				fmt.Printf("Successfully renewed certificate for %s\n", domain)
@@ -489,7 +551,7 @@ func (m *LetsEncryptModule) checkAndRenewCertificates() {
 }
 
 // renewCertificateForDomain renews the certificate for a specific domain
-func (m *LetsEncryptModule) renewCertificateForDomain(domain string) error {
+func (m *LetsEncryptModule) renewCertificateForDomain(ctx context.Context, domain string) error {
 	// Request certificate for the domain
 	request := certificate.ObtainRequest{
 		Domains: []string{domain},
@@ -498,18 +560,33 @@ func (m *LetsEncryptModule) renewCertificateForDomain(domain string) error {
 
 	certificates, err := m.client.Certificate.Obtain(request)
 	if err != nil {
+		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+			"error":  err.Error(),
+			"domain": domain,
+			"stage":  "certificate_renewal",
+		})
 		return fmt.Errorf("failed to obtain certificate for domain %s: %w", domain, err)
 	}
 
 	// Parse and store the new certificate
 	cert, err := tls.X509KeyPair(certificates.Certificate, certificates.PrivateKey)
 	if err != nil {
+		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
+			"error":  err.Error(),
+			"domain": domain,
+			"stage":  "certificate_parse_renewal",
+		})
 		return fmt.Errorf("failed to parse renewed certificate for %s: %w", domain, err)
 	}
 
 	m.certMutex.Lock()
 	m.certificates[domain] = &cert
 	m.certMutex.Unlock()
+
+	// Emit certificate renewed event
+	m.emitEvent(ctx, EventTypeCertificateRenewed, map[string]interface{}{
+		"domain": domain,
+	})
 
 	return nil
 }
@@ -815,4 +892,73 @@ func (p *letsEncryptHTTPProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	return nil
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the letsencrypt module to register as an observer for events it's interested in.
+func (m *LetsEncryptModule) RegisterObservers(subject modular.Subject) error {
+	m.subject = subject
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the letsencrypt module to emit events that other modules or observers can receive.
+func (m *LetsEncryptModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// emitEvent is a helper method to create and emit CloudEvents for the letsencrypt module.
+// This centralizes the event creation logic and ensures consistent event formatting.
+// emitEvent is a helper method to create and emit CloudEvents for the letsencrypt module.
+// If no subject is available for event emission, it silently skips the event emission
+// to avoid noisy error messages in tests and non-observable applications.
+func (m *LetsEncryptModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	// Skip event emission if no subject is available (non-observable application)
+	if m.subject == nil {
+		return
+	}
+
+	event := modular.NewCloudEvent(eventType, "letsencrypt-service", data, nil)
+
+	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
+			return
+		}
+		// Note: No logger available in letsencrypt module, so we skip additional error logging
+		// to eliminate noisy test output. The error handling is centralized in EmitEvent.
+	}
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this letsencrypt module can emit.
+func (m *LetsEncryptModule) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeConfigLoaded,
+		EventTypeConfigValidated,
+		EventTypeCertificateRequested,
+		EventTypeCertificateIssued,
+		EventTypeCertificateRenewed,
+		EventTypeCertificateRevoked,
+		EventTypeCertificateExpiring,
+		EventTypeCertificateExpired,
+		EventTypeAcmeChallenge,
+		EventTypeAcmeAuthorization,
+		EventTypeAcmeOrder,
+		EventTypeServiceStarted,
+		EventTypeServiceStopped,
+		EventTypeStorageRead,
+		EventTypeStorageWrite,
+		EventTypeStorageError,
+		EventTypeModuleStarted,
+		EventTypeModuleStopped,
+		EventTypeError,
+		EventTypeWarning,
+	}
 }

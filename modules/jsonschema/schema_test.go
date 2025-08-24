@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/jsonschema"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/modules/jsonschema"
 )
 
 // Define static error

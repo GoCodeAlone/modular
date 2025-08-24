@@ -1,0 +1,10 @@
+# Development environment overrides
+environment: "development"
+
+# Development database configuration
+database:
+  password: "dev_password"   # Simple password for development
+
+# Development feature flags - keep debug enabled
+features:
+  caching: false    # Disable caching for easier development debugging

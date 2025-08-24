@@ -34,11 +34,21 @@ jobs:
           go test ./... -v
           go test -v -coverprofile=coverage.txt -covermode=atomic -json ./... >> report.json
 
+      - name: Run BDD tests explicitly
+        run: |
+          echo "Running core framework BDD tests..."
+          go test -v -run "TestApplicationLifecycle|TestConfigurationManagement" . || echo "Some core BDD tests may not be available"
+
+      - name: Verify BDD test coverage
+        run: |
+          chmod +x scripts/verify-bdd-tests.sh
+          ./scripts/verify-bdd-tests.sh
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
         
       - name: CTRF Test Output
         run: |
@@ -80,7 +90,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           directory: cmd/modcli/
           files: cli-coverage.txt
           flags: cli
@@ -97,6 +107,42 @@ jobs:
           cd cmd/modcli
           npx github-actions-ctrf cli-report.ctrf.json
         if: always()
+
+  # Dedicated BDD test job for comprehensive BDD test coverage
+  bdd-tests:
+    name: BDD Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run Core Framework BDD tests
+        run: |
+          echo "=== Running Core Framework BDD Tests ==="
+          go test -v -run "TestApplicationLifecycle|TestConfigurationManagement" . 
+
+      - name: Run Module BDD tests
+        run: |
+          echo "=== Running Module BDD Tests ==="
+          for module in modules/*/; do
+            if [ -f "$module/go.mod" ]; then
+              module_name=$(basename "$module")
+              echo "--- Testing BDD scenarios for $module_name ---"
+              cd "$module" && go test -v -run ".*BDD|.*Module" . && cd -
+            fi
+          done
 
   lint:
     runs-on: ubuntu-latest

@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -18,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -50,15 +51,9 @@ func (m *MockApplication) SetLogger(logger modular.Logger) {
 func (m *MockApplication) GetConfigSection(name string) (modular.ConfigProvider, error) {
 	args := m.Called(name)
 	if args.Get(0) == nil {
-		if args.Error(1) == nil {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("config section error: %w", args.Error(1))
+		return nil, args.Error(1)
 	}
-	if args.Error(1) == nil {
-		return args.Get(0).(modular.ConfigProvider), nil
-	}
-	return args.Get(0).(modular.ConfigProvider), fmt.Errorf("config provider error: %w", args.Error(1))
+	return args.Get(0).(modular.ConfigProvider), args.Error(1)
 }
 
 func (m *MockApplication) SvcRegistry() modular.ServiceRegistry {
@@ -77,50 +72,32 @@ func (m *MockApplication) ConfigSections() map[string]modular.ConfigProvider {
 
 func (m *MockApplication) RegisterService(name string, service any) error {
 	args := m.Called(name, service)
-	if args.Error(0) == nil {
-		return nil
-	}
-	return fmt.Errorf("register service error: %w", args.Error(0))
+	return args.Error(0)
 }
 
 func (m *MockApplication) GetService(name string, target any) error {
 	args := m.Called(name, target)
-	if args.Error(0) == nil {
-		return nil
-	}
-	return fmt.Errorf("get service error: %w", args.Error(0))
+	return args.Error(0)
 }
 
 func (m *MockApplication) Init() error {
 	args := m.Called()
-	if args.Error(0) == nil {
-		return nil
-	}
-	return fmt.Errorf("init error: %w", args.Error(0))
+	return args.Error(0)
 }
 
 func (m *MockApplication) Start() error {
 	args := m.Called()
-	if args.Error(0) == nil {
-		return nil
-	}
-	return fmt.Errorf("start error: %w", args.Error(0))
+	return args.Error(0)
 }
 
 func (m *MockApplication) Stop() error {
 	args := m.Called()
-	if args.Error(0) == nil {
-		return nil
-	}
-	return fmt.Errorf("stop error: %w", args.Error(0))
+	return args.Error(0)
 }
 
 func (m *MockApplication) Run() error {
 	args := m.Called()
-	if args.Error(0) == nil {
-		return nil
-	}
-	return fmt.Errorf("run error: %w", args.Error(0))
+	return args.Error(0)
 }
 
 func (m *MockApplication) IsVerboseConfig() bool {
@@ -195,13 +172,15 @@ func TestRegisterConfig(t *testing.T) {
 	module := NewHTTPServerModule()
 	mockApp := new(MockApplication)
 
+	// Mock the GetConfigSection call that checks if config exists
+	mockApp.On("GetConfigSection", "httpserver").Return(nil, errors.New("config not found"))
 	mockApp.On("RegisterConfigSection", "httpserver", mock.AnythingOfType("*modular.StdConfigProvider")).Return()
 
 	// Use type assertion to call RegisterConfig
 	configurable, ok := module.(modular.Configurable)
 	assert.True(t, ok, "Module should implement Configurable interface")
 	err := configurable.RegisterConfig(mockApp)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	mockApp.AssertExpectations(t)
 }
 
@@ -224,7 +203,7 @@ func TestInit(t *testing.T) {
 	mockApp.On("GetConfigSection", "httpserver").Return(mockConfigProvider, nil)
 
 	err := module.Init(mockApp)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, mockConfig, module.config)
 	assert.Equal(t, mockLogger, module.logger)
 	mockApp.AssertExpectations(t)
@@ -245,9 +224,11 @@ func TestConstructor(t *testing.T) {
 	}
 
 	result, err := constructor(mockApp, services)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, module, result)
-	assert.Equal(t, mockHandler, module.handler)
+	// The handler is now wrapped with request events, so we can't do direct equality
+	// Instead, verify that handler is set and is not nil
+	assert.NotNil(t, module.handler)
 }
 
 func TestConstructorErrors(t *testing.T) {
@@ -258,12 +239,12 @@ func TestConstructorErrors(t *testing.T) {
 
 	// Test with missing router service
 	result, err := constructor(mockApp, map[string]any{})
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Nil(t, result)
 
 	// Test with wrong type for router service
 	result, err = constructor(mockApp, map[string]any{"router": "not a handler"})
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Nil(t, result)
 }
 
@@ -282,10 +263,10 @@ func TestStartStop(t *testing.T) {
 	config := &HTTPServerConfig{
 		Host:            "127.0.0.1",
 		Port:            port,
-		ReadTimeout:     15,
-		WriteTimeout:    15,
-		IdleTimeout:     60,
-		ShutdownTimeout: 30,
+		ReadTimeout:     15 * time.Second,
+		WriteTimeout:    15 * time.Second,
+		IdleTimeout:     60 * time.Second,
+		ShutdownTimeout: 30 * time.Second,
 	}
 
 	module.app = mockApp
@@ -298,33 +279,38 @@ func TestStartStop(t *testing.T) {
 	mockLogger.On("Info", "HTTP server started successfully", "address", fmt.Sprintf("127.0.0.1:%d", port)).Return()
 	mockLogger.On("Info", "Stopping HTTP server", "timeout", mock.Anything).Return()
 	mockLogger.On("Info", "HTTP server stopped successfully").Return()
+	// Expect Debug calls for failed event emissions (when no observer is configured)
+	mockLogger.On("Debug", "Failed to emit server started event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	mockLogger.On("Debug", "Failed to emit server stopped event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	// Allow for request event debug calls as well
+	mockLogger.On("Debug", "Failed to emit request received event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
+	mockLogger.On("Debug", "Failed to emit request handled event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
 
 	// Start the server
 	ctx := context.Background()
 	err := module.Start(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.True(t, module.started)
 
 	// Make a test request to the server
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://127.0.0.1:%d", port), nil)
-	require.NoError(t, err)
-	resp, err := client.Do(req)
-	require.NoError(t, err)
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			t.Logf("Failed to close response body: %v", closeErr)
-		}
-	}()
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
+	if assert.NoError(t, err) && resp != nil {
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				t.Logf("Failed to close response body: %v", closeErr)
+			}
+		}()
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, "Hello, World!", string(body))
+		body, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "Hello, World!", string(body))
+	}
 
 	// Stop the server
 	err = module.Stop(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.False(t, module.started)
 
 	// Verify expectations
@@ -339,7 +325,7 @@ func TestStartWithNoHandler(t *testing.T) {
 	}
 
 	err := module.Start(context.Background())
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Equal(t, ErrNoHandler, err)
 }
 
@@ -347,7 +333,7 @@ func TestStopWithNoServer(t *testing.T) {
 	module := &HTTPServerModule{}
 
 	err := module.Stop(context.Background())
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Equal(t, ErrServerNotStarted, err)
 }
 
@@ -373,7 +359,10 @@ func TestProvidesServices(t *testing.T) {
 	module := &HTTPServerModule{}
 	services := module.ProvidesServices()
 
-	assert.Empty(t, services)
+	require.Len(t, services, 1)
+	assert.Equal(t, "httpserver", services[0].Name)
+	assert.Equal(t, "HTTP server module for handling HTTP requests and providing web services", services[0].Description)
+	assert.Equal(t, module, services[0].Instance)
 }
 
 func TestTLSSupport(t *testing.T) {
@@ -407,16 +396,21 @@ func TestTLSSupport(t *testing.T) {
 		ResponseBody:   "TLS OK",
 	}
 
-	// Use a random available port for testing
-	port := 8091
+	// Use an available port for testing
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip("Could not get available port:", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close() // Close immediately to release the port for the server
 
 	config := &HTTPServerConfig{
 		Host:            "127.0.0.1",
 		Port:            port,
-		ReadTimeout:     15,
-		WriteTimeout:    15,
-		IdleTimeout:     60,
-		ShutdownTimeout: 30,
+		ReadTimeout:     15 * time.Second,
+		WriteTimeout:    15 * time.Second,
+		IdleTimeout:     60 * time.Second,
+		ShutdownTimeout: 30 * time.Second,
 		TLS: &TLSConfig{
 			Enabled:  true,
 			CertFile: certFile,
@@ -435,6 +429,13 @@ func TestTLSSupport(t *testing.T) {
 	mockLogger.On("Info", "HTTP server started successfully", "address", fmt.Sprintf("127.0.0.1:%d", port)).Return()
 	mockLogger.On("Info", "Stopping HTTP server", "timeout", mock.Anything).Return()
 	mockLogger.On("Info", "HTTP server stopped successfully").Return()
+	// Expect Debug calls for failed event emissions (when no observer is configured)
+	mockLogger.On("Debug", "Failed to emit server started event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	mockLogger.On("Debug", "Failed to emit server stopped event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	mockLogger.On("Debug", "Failed to emit TLS configured event", "error", mock.AnythingOfType("*errors.errorString")).Return()
+	// Allow for request event debug calls as well
+	mockLogger.On("Debug", "Failed to emit request received event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
+	mockLogger.On("Debug", "Failed to emit request handled event", "error", mock.AnythingOfType("*errors.errorString")).Return().Maybe()
 
 	// Start the server
 	ctx := context.Background()
@@ -446,29 +447,28 @@ func TestTLSSupport(t *testing.T) {
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // #nosec G402 - Required for testing with self-signed certificates
+				InsecureSkipVerify: true,
 			},
 		},
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "GET", fmt.Sprintf("https://127.0.0.1:%d", port), nil)
-	require.NoError(t, err)
-	resp, err := client.Do(req)
-	require.NoError(t, err)
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			t.Logf("Failed to close response body: %v", closeErr)
-		}
-	}()
+	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d", port))
+	if assert.NoError(t, err) && resp != nil {
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				t.Logf("Failed to close response body: %v", closeErr)
+			}
+		}()
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, "TLS OK", string(body))
+		body, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "TLS OK", string(body))
+	}
 
 	// Stop the server
 	err = module.Stop(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify expectations
 	mockLogger.AssertExpectations(t)
@@ -476,19 +476,22 @@ func TestTLSSupport(t *testing.T) {
 
 func TestTimeoutConfig(t *testing.T) {
 	config := &HTTPServerConfig{
-		ReadTimeout:     15,
-		WriteTimeout:    20,
-		IdleTimeout:     60,
-		ShutdownTimeout: 30,
+		ReadTimeout:     15 * time.Second,
+		WriteTimeout:    20 * time.Second,
+		IdleTimeout:     60 * time.Second,
+		ShutdownTimeout: 30 * time.Second,
 	}
 
-	assert.Equal(t, 15*time.Second, config.GetTimeout(config.ReadTimeout))
-	assert.Equal(t, 20*time.Second, config.GetTimeout(config.WriteTimeout))
-	assert.Equal(t, 60*time.Second, config.GetTimeout(config.IdleTimeout))
-	assert.Equal(t, 30*time.Second, config.GetTimeout(config.ShutdownTimeout))
+	assert.Equal(t, 15*time.Second, config.ReadTimeout)
+	assert.Equal(t, 20*time.Second, config.WriteTimeout)
+	assert.Equal(t, 60*time.Second, config.IdleTimeout)
+	assert.Equal(t, 30*time.Second, config.ShutdownTimeout)
 
-	// Test with zero value (should use DefaultTimeoutSeconds, which is 15)
-	assert.Equal(t, time.Duration(DefaultTimeoutSeconds)*time.Second, config.GetTimeout(0))
+	// Test with zero value (should use defaults from struct tags or validation)
+	configZero := &HTTPServerConfig{}
+	err := configZero.Validate()
+	assert.NoError(t, err)
+	assert.Equal(t, 15*time.Second, configZero.ReadTimeout)
 }
 
 // Helper function to generate a self-signed certificate for TLS testing

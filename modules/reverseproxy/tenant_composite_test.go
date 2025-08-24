@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -21,8 +21,8 @@ func TestTenantCompositeRoutes(t *testing.T) {
 	// Set up global config
 	globalConfig := &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"backend1": "http://backend1.example.com",
-			"backend2": "http://backend2.example.com",
+			"backend1": "http://127.0.0.1:9003",
+			"backend2": "http://127.0.0.1:9004",
 		},
 		CompositeRoutes: map[string]CompositeRoute{
 			"/global/composite": {
@@ -46,8 +46,8 @@ func TestTenantCompositeRoutes(t *testing.T) {
 	tenant1ID := modular.TenantID("tenant1")
 	tenant1Config := &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"backend1": "http://tenant1-backend1.example.com",
-			"backend2": "http://tenant1-backend2.example.com",
+			"backend1": "http://127.0.0.1:9005",
+			"backend2": "http://127.0.0.1:9006",
 		},
 		CompositeRoutes: map[string]CompositeRoute{
 			"/tenant/composite": {

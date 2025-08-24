@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/eventlogger"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/CrisisTextLine/modular/modules/eventlogger"
 )
 
 func main() {
@@ -60,15 +60,19 @@ func main() {
 	app.RegisterModule(NewUserModule())
 	app.RegisterModule(NewNotificationModule())
 	app.RegisterModule(NewAuditModule())
-	
+
 	// Register CloudEvents demo module
 	fmt.Println("\n☁️  Registering CloudEvents demo module...")
 	app.RegisterModule(NewCloudEventsModule())
 
 	// Register demo services
 	fmt.Println("\n🔧 Registering demo services...")
-	app.RegisterService("userStore", &UserStore{users: make(map[string]*User)})
-	app.RegisterService("emailService", &EmailService{})
+	if err := app.RegisterService("userStore", &UserStore{users: make(map[string]*User)}); err != nil {
+		panic(err)
+	}
+	if err := app.RegisterService("emailService", &EmailService{}); err != nil {
+		panic(err)
+	}
 
 	// Initialize application - this will trigger many observable events
 	fmt.Println("\n🚀 Initializing application (watch for logged events)...")
@@ -86,14 +90,14 @@ func main() {
 
 	// Demonstrate manual event emission by modules
 	fmt.Println("\n👤 Triggering user-related events...")
-	
+
 	// Get the user module to trigger events - but it needs to be the same instance
 	// The module that was registered should have the subject reference
 	// Let's trigger events directly through the app instead
-	
+
 	// First, let's test that the module received the subject reference
 	fmt.Println("📋 Testing CloudEvent emission capabilities...")
-	
+
 	// Create a test CloudEvent directly through the application
 	testEvent := modular.NewCloudEvent(
 		"com.example.user.created",
@@ -106,35 +110,35 @@ func main() {
 			"test": "true",
 		},
 	)
-	
+
 	if err := app.NotifyObservers(context.Background(), testEvent); err != nil {
 		fmt.Printf("❌ Failed to emit test event: %v\n", err)
 	} else {
 		fmt.Println("✅ Test event emitted successfully!")
 	}
-	
+
 	// Demonstrate more CloudEvents
 	fmt.Println("\n☁️  Testing additional CloudEvents emission...")
 	testCloudEvent := modular.NewCloudEvent(
 		"com.example.user.login",
 		"authentication-service",
 		map[string]interface{}{
-			"userID": "cloud-user",
-			"email":  "cloud@example.com",
+			"userID":    "cloud-user",
+			"email":     "cloud@example.com",
 			"loginTime": time.Now(),
 		},
 		map[string]interface{}{
-			"sourceip": "192.168.1.1",
+			"sourceip":  "192.168.1.1",
 			"useragent": "test-browser",
 		},
 	)
-	
+
 	if err := app.NotifyObservers(context.Background(), testCloudEvent); err != nil {
 		fmt.Printf("❌ Failed to emit CloudEvent: %v\n", err)
 	} else {
 		fmt.Println("✅ CloudEvent emitted successfully!")
 	}
-	
+
 	// Wait a moment for async processing
 	time.Sleep(200 * time.Millisecond)
 
@@ -158,18 +162,18 @@ func main() {
 
 // AppConfig demonstrates configuration with observer pattern settings
 type AppConfig struct {
-	AppName        string                           `yaml:"appName" default:"Observer Pattern Demo" desc:"Application name"`
-	Environment    string                           `yaml:"environment" default:"demo" desc:"Environment (dev, test, prod, demo)"`
-	EventLogger    eventlogger.EventLoggerConfig   `yaml:"eventlogger" desc:"Event logger configuration"`
-	UserModule     UserModuleConfig                 `yaml:"userModule" desc:"User module configuration"`
-	CloudEventsDemo CloudEventsConfig               `yaml:"cloudevents-demo" desc:"CloudEvents demo configuration"`
+	AppName         string                        `yaml:"appName" default:"Observer Pattern Demo" desc:"Application name"`
+	Environment     string                        `yaml:"environment" default:"demo" desc:"Environment (dev, test, prod, demo)"`
+	EventLogger     eventlogger.EventLoggerConfig `yaml:"eventlogger" desc:"Event logger configuration"`
+	UserModule      UserModuleConfig              `yaml:"userModule" desc:"User module configuration"`
+	CloudEventsDemo CloudEventsConfig             `yaml:"cloudevents-demo" desc:"CloudEvents demo configuration"`
 }
 
 // Validate implements the ConfigValidator interface
 func (c *AppConfig) Validate() error {
 	validEnvs := map[string]bool{"dev": true, "test": true, "prod": true, "demo": true}
 	if !validEnvs[c.Environment] {
-		return fmt.Errorf("environment must be one of [dev, test, prod, demo]")
+		return errInvalidEnvironment
 	}
 	return nil
 }

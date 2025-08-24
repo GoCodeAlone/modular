@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/feeders"
 )
 
 func main() {

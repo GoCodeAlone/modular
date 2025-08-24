@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/database"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/CrisisTextLine/modular/modules/database"
 
 	// Import SQLite driver
 	_ "github.com/mattn/go-sqlite3"

@@ -1,4 +1,4 @@
-module github.com/GoCodeAlone/modular/cmd/modcli
+module github.com/CrisisTextLine/modular/cmd/modcli
 
 go 1.24.2
 

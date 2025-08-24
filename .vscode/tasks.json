@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "modular: lint & test all",
+			"type": "shell",
+			"command": "set -euo pipefail\nif command -v golangci-lint >/dev/null 2>&1; then golangci-lint version; fi\nexport GOTOOLCHAIN=auto\nexport CGO_ENABLED=0\n# Lint (best-effort)\nif command -v golangci-lint >/dev/null 2>&1; then golangci-lint run || true; fi\n# Core tests\ngo test ./... -v\n# Modules\nfor module in modules/*/; do\n  if [ -f \"$module/go.mod\" ]; then\n    echo \"Testing $module\";\n    (cd \"$module\" && go test ./... -v);\n  fi\ndone\n# Examples\nfor example in examples/*/; do\n  if [ -f \"$example/go.mod\" ]; then\n    echo \"Testing $example\";\n    (cd \"$example\" && go test ./... -v);\n  fi\ndone\n# CLI\n( cd cmd/modcli && go test ./... -v )\n",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}
