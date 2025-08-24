@@ -77,14 +77,14 @@ func (m *NotificationModule) RegisterObservers(subject modular.Subject) error {
 	if err != nil {
 		return fmt.Errorf("failed to register notification module as observer: %w", err)
 	}
-	
+
 	m.logger.Info("Notification module registered as observer for user events")
 	return nil
 }
 
 // EmitEvent allows the module to emit events (not used in this example)
 func (m *NotificationModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	return fmt.Errorf("notification module does not emit events")
+	return errNotificationModuleDoesNotEmitEvents
 }
 
 // OnEvent implements Observer interface to handle user events
@@ -110,20 +110,20 @@ func (m *NotificationModule) handleUserCreated(ctx context.Context, event cloude
 	if err := event.DataAs(&data); err != nil {
 		return fmt.Errorf("invalid event data for user.created: %w", err)
 	}
-	
+
 	userID, _ := data["userID"].(string)
 	email, _ := data["email"].(string)
-	
+
 	m.logger.Info("🔔 Notification: Handling user creation", "userID", userID)
-	
+
 	// Send welcome email
 	subject := "Welcome to Observer Pattern Demo!"
 	body := fmt.Sprintf("Hello %s! Welcome to our platform. Your account has been created successfully.", userID)
-	
+
 	if err := m.emailService.SendEmail(email, subject, body); err != nil {
 		return fmt.Errorf("failed to send welcome email: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -132,13 +132,13 @@ func (m *NotificationModule) handleUserLogin(ctx context.Context, event cloudeve
 	if err := event.DataAs(&data); err != nil {
 		return fmt.Errorf("invalid event data for user.login: %w", err)
 	}
-	
+
 	userID, _ := data["userID"].(string)
-	
+
 	m.logger.Info("🔔 Notification: Handling user login", "userID", userID)
-	
+
 	// Could send login notification email, update last seen, etc.
 	fmt.Printf("🔐 LOGIN NOTIFICATION: User %s has logged in\n", userID)
-	
+
 	return nil
 }

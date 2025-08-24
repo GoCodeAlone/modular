@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -33,7 +34,11 @@ func (a *mockApp) RegisterConfigSection(name string, provider modular.ConfigProv
 }
 
 func (a *mockApp) GetConfigSection(name string) (modular.ConfigProvider, error) {
-	return a.configSections[name], nil
+	provider, exists := a.configSections[name]
+	if !exists {
+		return nil, fmt.Errorf("config section '%s' not found", name)
+	}
+	return provider, nil
 }
 
 func (a *mockApp) ConfigSections() map[string]modular.ConfigProvider {
@@ -96,7 +101,13 @@ func (a *mockApp) SetVerboseConfig(verbose bool) {
 type mockConfigProvider struct{}
 
 func (m *mockConfigProvider) GetConfig() interface{} {
-	return nil
+	return &CacheConfig{
+		Engine:           "memory",
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second, // Non-zero to avoid ticker panic
+		MaxItems:         10000,
+		ConnectionMaxAge: 3600 * time.Second,
+	}
 }
 
 type mockLogger struct{}
@@ -121,7 +132,7 @@ func TestCacheModule(t *testing.T) {
 
 	// Test services provided
 	services := module.(*CacheModule).ProvidesServices()
-	assert.Len(t, services, 1)
+	assert.Equal(t, 1, len(services))
 	assert.Equal(t, ServiceName, services[0].Name)
 }
 
@@ -146,14 +157,14 @@ func TestMemoryCacheOperations(t *testing.T) {
 
 	// Test basic operations
 	err = module.Set(ctx, "test-key", "test-value", time.Minute)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	value, found := module.Get(ctx, "test-key")
 	assert.True(t, found)
 	assert.Equal(t, "test-value", value)
 
 	err = module.Delete(ctx, "test-key")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	_, found = module.Get(ctx, "test-key")
 	assert.False(t, found)
@@ -166,16 +177,16 @@ func TestMemoryCacheOperations(t *testing.T) {
 	}
 
 	err = module.SetMulti(ctx, items, time.Minute)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	results, err := module.GetMulti(ctx, []string{"key1", "key2", "key4"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "value1", results["key1"])
 	assert.Equal(t, "value2", results["key2"])
 	assert.NotContains(t, results, "key4")
 
 	err = module.Flush(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	_, found = module.Get(ctx, "key1")
 	assert.False(t, found)
@@ -197,8 +208,8 @@ func TestExpiration(t *testing.T) {
 	// Override config for faster expiration
 	config := &CacheConfig{
 		Engine:          "memory",
-		DefaultTTL:      1, // 1 second
-		CleanupInterval: 1, // 1 second
+		DefaultTTL:      1 * time.Second, // 1 second
+		CleanupInterval: 1 * time.Second, // 1 second
 		MaxItems:        100,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
@@ -211,7 +222,7 @@ func TestExpiration(t *testing.T) {
 
 	// Set with short TTL
 	err = module.Set(ctx, "expires-quickly", "value", time.Second)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify it exists
 	_, found := module.Get(ctx, "expires-quickly")
@@ -241,13 +252,13 @@ func TestRedisConfiguration(t *testing.T) {
 	// Override config for Redis
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(config))
 
@@ -264,13 +275,13 @@ func TestRedisConfiguration(t *testing.T) {
 func TestRedisOperationsWithMockBehavior(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -300,20 +311,20 @@ func TestRedisOperationsWithMockBehavior(t *testing.T) {
 
 	// Test close without connection
 	err = cache.Close(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 // TestRedisConfigurationEdgeCases tests edge cases in Redis configuration
 func TestRedisConfigurationEdgeCases(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "invalid-url",
 		RedisPassword:    "test-password",
 		RedisDB:          1,
-		ConnectionMaxAge: 120,
+		ConnectionMaxAge: 120 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -328,13 +339,13 @@ func TestRedisConfigurationEdgeCases(t *testing.T) {
 func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -342,29 +353,29 @@ func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 
 	// Test GetMulti with empty keys - should return empty map (no connection needed)
 	results, err := cache.GetMulti(ctx, []string{})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{}, results)
 
 	// Test SetMulti with empty items - should succeed (no connection needed)
 	err = cache.SetMulti(ctx, map[string]interface{}{}, time.Minute)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Test DeleteMulti with empty keys - should succeed (no connection needed)
 	err = cache.DeleteMulti(ctx, []string{})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 // TestRedisConnectWithPassword tests connection configuration with password
 func TestRedisConnectWithPassword(t *testing.T) {
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://localhost:6379",
 		RedisPassword:    "test-password",
 		RedisDB:          1,
-		ConnectionMaxAge: 120,
+		ConnectionMaxAge: 120 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -373,11 +384,11 @@ func TestRedisConnectWithPassword(t *testing.T) {
 	// Test connection with password and different DB - this will fail since no Redis server
 	// but will exercise the connection configuration code paths
 	err := cache.Connect(ctx)
-	require.Error(t, err) // Expected to fail without Redis server
+	assert.Error(t, err) // Expected to fail without Redis server
 
 	// Test Close when client is nil initially
 	err = cache.Close(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 // TestRedisJSONMarshaling tests JSON marshaling error scenarios
@@ -388,13 +399,13 @@ func TestRedisJSONMarshaling(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -427,13 +438,13 @@ func TestRedisFullOperations(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -445,7 +456,7 @@ func TestRedisFullOperations(t *testing.T) {
 
 	// Test Set and Get
 	err = cache.Set(ctx, "test-key", "test-value", time.Minute)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	value, found := cache.Get(ctx, "test-key")
 	assert.True(t, found)
@@ -453,7 +464,7 @@ func TestRedisFullOperations(t *testing.T) {
 
 	// Test Delete
 	err = cache.Delete(ctx, "test-key")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	_, found = cache.Get(ctx, "test-key")
 	assert.False(t, found)
@@ -466,18 +477,18 @@ func TestRedisFullOperations(t *testing.T) {
 	}
 
 	err = cache.SetMulti(ctx, items, time.Minute)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	results, err := cache.GetMulti(ctx, []string{"key1", "key2", "key3", "nonexistent"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "value1", results["key1"])
-	assert.InDelta(t, float64(42), results["key2"], 0.01) // JSON unmarshaling returns numbers as float64
+	assert.Equal(t, float64(42), results["key2"]) // JSON unmarshaling returns numbers as float64
 	assert.Equal(t, map[string]interface{}{"nested": "value"}, results["key3"])
 	assert.NotContains(t, results, "nonexistent")
 
 	// Test DeleteMulti
 	err = cache.DeleteMulti(ctx, []string{"key1", "key2"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify deletions
 	_, found = cache.Get(ctx, "key1")
@@ -490,14 +501,14 @@ func TestRedisFullOperations(t *testing.T) {
 
 	// Test Flush
 	err = cache.Flush(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	_, found = cache.Get(ctx, "key3")
 	assert.False(t, found)
 
 	// Test Close
 	err = cache.Close(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 // TestRedisGetJSONUnmarshalError tests JSON unmarshaling errors in Get
@@ -508,13 +519,13 @@ func TestRedisGetJSONUnmarshalError(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -526,7 +537,7 @@ func TestRedisGetJSONUnmarshalError(t *testing.T) {
 	defer cache.Close(ctx)
 
 	// Manually insert invalid JSON into Redis
-	_ = s.Set("invalid-json", "this is not valid JSON {")
+	s.Set("invalid-json", "this is not valid JSON {")
 
 	// Try to get the invalid JSON value
 	value, found := cache.Get(ctx, "invalid-json")
@@ -541,13 +552,13 @@ func TestRedisGetWithServerError(t *testing.T) {
 
 	config := &CacheConfig{
 		Engine:           "redis",
-		DefaultTTL:       300,
-		CleanupInterval:  60,
+		DefaultTTL:       300 * time.Second,
+		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
 		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "",
 		RedisDB:          0,
-		ConnectionMaxAge: 60,
+		ConnectionMaxAge: 60 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
@@ -567,7 +578,7 @@ func TestRedisGetWithServerError(t *testing.T) {
 
 	// Try GetMulti when server is down
 	results, err := cache.GetMulti(ctx, []string{"key1", "key2"})
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Nil(t, results)
 
 	// Close cache

@@ -1,5 +1,9 @@
 package chimux
 
+import (
+	"time"
+)
+
 // ChiMuxConfig holds the configuration for the chimux module.
 // This structure contains all the settings needed to configure CORS,
 // request handling, and routing behavior for the Chi router.
@@ -64,11 +68,11 @@ type ChiMuxConfig struct {
 	// Default: 300 (5 minutes)
 	MaxAge int `yaml:"max_age" default:"300" desc:"Maximum age for CORS preflight cache in seconds." env:"MAX_AGE"`
 
-	// Timeout specifies the default request timeout in milliseconds.
+	// Timeout specifies the default request timeout.
 	// This sets a default timeout for request processing, though individual
 	// handlers may override this with their own timeout logic.
-	// Default: 60000 (60 seconds)
-	Timeout int `yaml:"timeout" default:"60000" desc:"Default request timeout." env:"TIMEOUT"`
+	// Default: 60s (60 seconds)
+	Timeout time.Duration `yaml:"timeout" desc:"Default request timeout." env:"TIMEOUT"`
 
 	// BasePath specifies a base path prefix for all routes registered through this module.
 	// When set, all routes will be prefixed with this path. Useful for mounting

@@ -25,4 +25,7 @@ var (
 	ErrCertificateFileNotFound = errors.New("certificate file not found")
 	ErrKeyFileNotFound         = errors.New("key file not found")
 	ErrPEMDecodeFailure        = errors.New("failed to decode PEM block containing certificate")
+
+	// Event observation errors
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 )

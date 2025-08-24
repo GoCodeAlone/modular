@@ -101,16 +101,6 @@ The `examples/` directory contains complete, working examples that demonstrate h
 | [**http-client**](./examples/http-client/) | HTTP client with proxy backend | HTTP client integration, request routing |
 | [**advanced-logging**](./examples/advanced-logging/) | Advanced HTTP client logging | Verbose logging, file output, request/response inspection |
 | [**observer-pattern**](./examples/observer-pattern/) | Event-driven architecture demo | Observer pattern, CloudEvents, event logging, real-time events |
-| [**feature-flag-proxy**](./examples/feature-flag-proxy/) | Feature flag controlled routing | Reverse proxy with tenant-aware feature flags |
-| [**health-aware-reverse-proxy**](./examples/health-aware-reverse-proxy/) | Health monitoring proxy | Reverse proxy with backend health checks |
-| [**instance-aware-db**](./examples/instance-aware-db/) | Multiple database connections | Instance-aware environment configuration |
-| [**multi-tenant-app**](./examples/multi-tenant-app/) | Multi-tenant application | Tenant-aware modules and configuration |
-| [**observer-demo**](./examples/observer-demo/) | Event system demonstration | Observer pattern with event logging |
-| [**testing-scenarios**](./examples/testing-scenarios/) | Testing and integration patterns | Various testing scenarios and configurations |
-| [**verbose-debug**](./examples/verbose-debug/) | Debugging and diagnostics | Verbose logging and debug output |
-| [**auth-demo**](./examples/auth-demo/) | Authentication system | JWT tokens, password hashing, protected routes |
-| [**cache-demo**](./examples/cache-demo/) | Caching system | In-memory and Redis caching with TTL |
-| [**scheduler-demo**](./examples/scheduler-demo/) | Job scheduling system | Cron jobs, one-time tasks, job management |
 
 ### Quick Start with Examples
 
@@ -131,12 +121,6 @@ Visit the [examples directory](./examples/) for detailed documentation, configur
 - **Explore [http-client](./examples/http-client/)** for HTTP client integration patterns
 - **Study [advanced-logging](./examples/advanced-logging/)** for debugging and monitoring techniques
 - **Learn [observer-pattern](./examples/observer-pattern/)** for event-driven architecture with CloudEvents
-- **Examine [multi-tenant-app](./examples/multi-tenant-app/)** for building SaaS applications
-- **Investigate [instance-aware-db](./examples/instance-aware-db/)** for multiple database configurations
-- **Review [feature-flag-proxy](./examples/feature-flag-proxy/)** for dynamic routing and tenant features
-- **Check [auth-demo](./examples/auth-demo/)** for JWT authentication and security patterns
-- **Explore [cache-demo](./examples/cache-demo/)** for caching strategies and performance optimization
-- **Study [scheduler-demo](./examples/scheduler-demo/)** for automated task scheduling and job management
 
 ## Installation
 

@@ -84,3 +84,18 @@ func (c *Config) Validate() error {
 
 	return nil
 }
+
+// GetJWTExpiration returns the JWT expiration as time.Duration
+func (c *JWTConfig) GetJWTExpiration() time.Duration {
+	return c.Expiration
+}
+
+// GetJWTRefreshExpiration returns the JWT refresh expiration as time.Duration
+func (c *JWTConfig) GetJWTRefreshExpiration() time.Duration {
+	return c.RefreshExpiration
+}
+
+// GetSessionMaxAge returns the session max age as time.Duration
+func (c *SessionConfig) GetSessionMaxAge() time.Duration {
+	return c.MaxAge
+}

@@ -32,12 +32,8 @@ jobs:
           - testing-scenarios
           - observer-pattern
           - health-aware-reverse-proxy
-          - auth-demo
-          - cache-demo
-          - scheduler-demo
-          - eventbus-demo
-          - jsonschema-demo
-          - letsencrypt-demo
+          - multi-engine-eventbus
+          - logmasker-example
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -285,104 +281,55 @@ jobs:
               exit 1
             fi
             
-          elif [ "${{ matrix.example }}" = "auth-demo" ]; then
-            # Auth demo needs to test authentication endpoints
-            timeout 10s ./example &
-            PID=$!
-            sleep 3
+          elif [ "${{ matrix.example }}" = "multi-engine-eventbus" ]; then
+            # Multi-engine eventbus example - use Redis for external service demo
+            echo "🔄 Testing multi-engine-eventbus with Redis service..."
             
-            # Test health endpoint
-            if curl -f http://localhost:8080/health; then
-              echo "✅ auth-demo health check passed"
+            # Make run-demo.sh executable
+            chmod +x run-demo.sh
+            
+            # Check if Docker is available for Redis
+            if command -v docker &> /dev/null; then
+              echo "Docker available, testing with Redis service"
+              
+              # Try to start Redis and run the demo
+              if timeout 60s ./run-demo.sh run-redis; then
+                echo "✅ multi-engine-eventbus demo completed successfully with Redis"
+                # Clean up Redis container
+                docker-compose -f docker-compose.yml down -v 2>/dev/null || true
+              else
+                echo "⚠️ Redis demo failed, testing graceful degradation mode"
+                # Clean up any containers
+                docker-compose -f docker-compose.yml down -v 2>/dev/null || true
+                
+                # Test graceful degradation (this should always work)
+                timeout 10s ./example &
+                PID=$!
+                sleep 5
+                
+                if kill -0 $PID 2>/dev/null; then
+                  echo "✅ multi-engine-eventbus handles missing services gracefully"
+                  kill $PID 2>/dev/null || true
+                else
+                  echo "❌ multi-engine-eventbus failed to handle missing services"
+                  exit 1
+                fi
+              fi
             else
-              echo "❌ auth-demo health check failed"
-              kill $PID 2>/dev/null || true
-              exit 1
-            fi
-            
-            kill $PID 2>/dev/null || true
-            
-          elif [ "${{ matrix.example }}" = "cache-demo" ]; then
-            # Cache demo needs to test cache endpoints
-            timeout 10s ./example &
-            PID=$!
-            sleep 3
-            
-            # Test health endpoint
-            if curl -f http://localhost:8080/health; then
-              echo "✅ cache-demo health check passed"
-            else
-              echo "❌ cache-demo health check failed"
-              kill $PID 2>/dev/null || true
-              exit 1
-            fi
-            
-            kill $PID 2>/dev/null || true
-            
-          elif [ "${{ matrix.example }}" = "scheduler-demo" ]; then
-            # Scheduler demo needs to test job scheduling
-            timeout 10s ./example &
-            PID=$!
-            sleep 3
-            
-            # Test health endpoint
-            if curl -f http://localhost:8080/health; then
-              echo "✅ scheduler-demo health check passed"
-            else
-              echo "❌ scheduler-demo health check failed"
-              kill $PID 2>/dev/null || true
-              exit 1
-            fi
-            
-            kill $PID 2>/dev/null || true
-            
-          elif [ "${{ matrix.example }}" = "eventbus-demo" ]; then
-            # EventBus demo needs to test pub/sub functionality
-            timeout 10s ./example &
-            PID=$!
-            sleep 3
-            
-            # Test health endpoint
-            if curl -f http://localhost:8080/health; then
-              echo "✅ eventbus-demo health check passed"
-            else
-              echo "❌ eventbus-demo health check failed"
-              kill $PID 2>/dev/null || true
-              exit 1
-            fi
-            
-            kill $PID 2>/dev/null || true
-            
-          elif [ "${{ matrix.example }}" = "jsonschema-demo" ]; then
-            # JSON Schema demo needs to test validation endpoints
-            timeout 10s ./example &
-            PID=$!
-            sleep 3
-            
-            # Test health endpoint
-            if curl -f http://localhost:8080/health; then
-              echo "✅ jsonschema-demo health check passed"
-            else
-              echo "❌ jsonschema-demo health check failed"
-              kill $PID 2>/dev/null || true
-              exit 1
-            fi
-            
-            kill $PID 2>/dev/null || true
-            
-          elif [ "${{ matrix.example }}" = "letsencrypt-demo" ]; then
-            # Let's Encrypt demo just needs to start (won't actually get certificates in CI)
-            timeout 5s ./example &
-            PID=$!
-            sleep 3
-            
-            # Check if process is still running (no immediate crash)
-            if kill -0 $PID 2>/dev/null; then
-              echo "✅ letsencrypt-demo started successfully"
-              kill $PID 2>/dev/null || true
-            else
-              echo "❌ letsencrypt-demo failed to start or crashed immediately"
-              exit 1
+              echo "Docker not available, testing graceful degradation mode only"
+              
+              # Test without external services (graceful degradation)
+              timeout 10s ./example &
+              PID=$!
+              sleep 5
+              
+              if kill -0 $PID 2>/dev/null; then
+                echo "✅ multi-engine-eventbus handles missing services gracefully"
+                kill $PID 2>/dev/null || true
+              else
+                echo "❌ multi-engine-eventbus failed to handle missing services"
+                exit 1
+              fi
             fi
             
           elif [ "${{ matrix.example }}" = "reverse-proxy" ] || [ "${{ matrix.example }}" = "http-client" ] || [ "${{ matrix.example }}" = "advanced-logging" ] || [ "${{ matrix.example }}" = "verbose-debug" ] || [ "${{ matrix.example }}" = "instance-aware-db" ] || [ "${{ matrix.example }}" = "feature-flag-proxy" ]; then

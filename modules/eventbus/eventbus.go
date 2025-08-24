@@ -2,7 +2,16 @@ package eventbus
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+// EventBus errors
+var (
+	ErrEventBusNotStarted      = errors.New("event bus not started")
+	ErrEventBusShutdownTimeout = errors.New("event bus shutdown timed out")
+	ErrEventHandlerNil         = errors.New("event handler cannot be nil")
+	ErrInvalidSubscriptionType = errors.New("invalid subscription type")
 )
 
 // Event represents a message in the event bus.

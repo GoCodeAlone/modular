@@ -5,7 +5,7 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	github.com/GoCodeAlone/modular v1.4.0
+	github.com/GoCodeAlone/modular v1.6.0
 	github.com/GoCodeAlone/modular/modules/database v1.1.0
 	modernc.org/sqlite v1.38.0
 )

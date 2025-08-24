@@ -18,13 +18,13 @@ var (
 	ErrInvalidSyslogNetwork = errors.New("invalid syslog network type")
 
 	// Runtime errors
-	ErrLoggerNotStarted        = errors.New("event logger not started")
-	ErrOutputTargetFailed      = errors.New("output target failed")
-	ErrEventBufferFull         = errors.New("event buffer is full")
-	ErrLoggerDoesNotEmitEvents = errors.New("event logger module does not emit events")
-	ErrUnknownOutputTargetType = errors.New("unknown output target type")
-	ErrFileNotOpen             = errors.New("file not open")
-	ErrSyslogWriterNotInit     = errors.New("syslog writer not initialized")
+	ErrLoggerNotStarted          = errors.New("event logger not started")
+	ErrOutputTargetFailed        = errors.New("output target failed")
+	ErrEventBufferFull           = errors.New("event buffer is full")
+	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
+	ErrUnknownOutputTargetType   = errors.New("unknown output target type")
+	ErrFileNotOpen               = errors.New("file not open")
+	ErrSyslogWriterNotInit       = errors.New("syslog writer not initialized")
 )
 
 // OutputTargetError wraps errors from output target validation

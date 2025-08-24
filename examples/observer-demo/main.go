@@ -99,7 +99,7 @@ func (m *DemoModule) Init(app modular.Application) error {
 	// Register as an observer if the app supports it
 	if subject, ok := app.(modular.Subject); ok {
 		observer := modular.NewFunctionalObserver("demo-module-observer", m.handleEvent)
-		return subject.RegisterObserver(observer, "com.modular.application.after.start")
+		return fmt.Errorf("failed to register observer: %w", subject.RegisterObserver(observer, "com.modular.application.after.start"))
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func (m *DemoModule) Init(app modular.Application) error {
 func (m *DemoModule) handleEvent(ctx context.Context, event cloudevents.Event) error {
 	if event.Type() == "com.modular.application.after.start" {
 		fmt.Printf("🚀 DemoModule: Application started! Emitting custom event...\n")
-		
+
 		// Create a custom event
 		customEvent := modular.NewCloudEvent(
 			"com.demo.module.message",
@@ -118,7 +118,7 @@ func (m *DemoModule) handleEvent(ctx context.Context, event cloudevents.Event) e
 
 		// Emit the event if the app supports it
 		if subject, ok := ctx.Value("app").(modular.Subject); ok {
-			return subject.NotifyObservers(ctx, customEvent)
+			return fmt.Errorf("failed to notify observers: %w", subject.NotifyObservers(ctx, customEvent))
 		}
 	}
 	return nil

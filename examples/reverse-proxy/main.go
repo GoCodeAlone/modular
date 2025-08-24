@@ -94,7 +94,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"backend":"global-default","path":"%s","method":"%s"}`, r.URL.Path, r.Method)
 		})
 		fmt.Println("Starting global-default backend on :9001")
-		http.ListenAndServe(":9001", mux)
+		if err := http.ListenAndServe(":9001", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on :9001: %v\n", err)
+		}
 	}()
 
 	// Tenant1 backend (port 9002)
@@ -106,7 +108,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"backend":"tenant1-backend","path":"%s","method":"%s"}`, r.URL.Path, r.Method)
 		})
 		fmt.Println("Starting tenant1-backend on :9002")
-		http.ListenAndServe(":9002", mux)
+		if err := http.ListenAndServe(":9002", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on :9002: %v\n", err)
+		}
 	}()
 
 	// Tenant2 backend (port 9003)
@@ -118,7 +122,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"backend":"tenant2-backend","path":"%s","method":"%s"}`, r.URL.Path, r.Method)
 		})
 		fmt.Println("Starting tenant2-backend on :9003")
-		http.ListenAndServe(":9003", mux)
+		if err := http.ListenAndServe(":9003", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on :9003: %v\n", err)
+		}
 	}()
 
 	// Specific API backend (port 9004)
@@ -130,6 +136,8 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"backend":"specific-api","path":"%s","method":"%s"}`, r.URL.Path, r.Method)
 		})
 		fmt.Println("Starting specific-api backend on :9004")
-		http.ListenAndServe(":9004", mux)
+		if err := http.ListenAndServe(":9004", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on :9004: %v\n", err)
+		}
 	}()
 }

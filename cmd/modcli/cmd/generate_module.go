@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors" // Added
 	"fmt"
 	"log/slog" // Added
@@ -21,6 +22,14 @@ var SurveyStdio = DefaultSurveyIO
 
 // SetOptionsFn is used to override the survey prompts during testing
 var SetOptionsFn func(*ModuleOptions) bool
+
+// Static error variables for err113 compliance
+var (
+	errGoVersionParseFailed = errors.New("could not parse go version output")
+	errNotGitRepoOrNoOrigin = errors.New("not a git repository or no remote 'origin' found")
+	errParentGoModNotFound  = errors.New("parent go.mod file not found")
+	errGitDirectoryNotFound = errors.New(".git directory not found in any parent directory")
+)
 
 // ModuleOptions contains the configuration for generating a new module
 type ModuleOptions struct {
@@ -243,7 +252,7 @@ func promptForModuleInfo(options *ModuleOptions) error {
 			Help:    "This will be used as the unique identifier for your module.",
 		}
 		if err := survey.AskOne(namePrompt, &options.ModuleName, survey.WithValidator(survey.Required), SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get module name: %w", err)
 		}
 	}
 
@@ -350,7 +359,7 @@ func promptForModuleInfo(options *ModuleOptions) error {
 	}, &answers, SurveyStdio.WithStdio())
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to collect module options: %w", err)
 	}
 
 	// Copy the answers to our options struct
@@ -384,7 +393,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 	}
 
 	if err := survey.AskOne(formatQuestion, &configOptions.TagTypes, SurveyStdio.WithStdio()); err != nil {
-		return err
+		return fmt.Errorf("failed to get config tag types: %w", err)
 	}
 
 	// Ask if sample config files should be generated
@@ -394,7 +403,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 	}
 
 	if err := survey.AskOne(generateSampleQuestion, &configOptions.GenerateSample, SurveyStdio.WithStdio()); err != nil {
-		return err
+		return fmt.Errorf("failed to get sample config preference: %w", err)
 	}
 
 	// Collect configuration fields
@@ -410,7 +419,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 			Help:    "The name of the configuration field (e.g., ServerAddress)",
 		}
 		if err := survey.AskOne(nameQuestion, &field.Name, survey.WithValidator(survey.Required), SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get field name: %w", err)
 		}
 
 		// Ask for the field type
@@ -422,7 +431,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 
 		var fieldType string
 		if err := survey.AskOne(typeQuestion, &fieldType, SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get field type: %w", err)
 		}
 
 		// Set field type and special flags based on selection
@@ -449,7 +458,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 			Default: false,
 		}
 		if err := survey.AskOne(requiredQuestion, &field.IsRequired, SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get field required preference: %w", err)
 		}
 
 		// Ask for a default value
@@ -458,7 +467,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 			Help:    "The default value for this field, if any",
 		}
 		if err := survey.AskOne(defaultQuestion, &field.DefaultValue, SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get field default value: %w", err)
 		}
 
 		// Ask for a description
@@ -467,7 +476,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 			Help:    "A brief description of what this field is used for",
 		}
 		if err := survey.AskOne(descQuestion, &field.Description, SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get field description: %w", err)
 		}
 
 		// Add the field
@@ -479,7 +488,7 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 			Default: true,
 		}
 		if err := survey.AskOne(addMoreQuestion, &addFields, SurveyStdio.WithStdio()); err != nil {
-			return err
+			return fmt.Errorf("failed to get add another field preference: %w", err)
 		}
 	}
 
@@ -560,7 +569,8 @@ func GenerateModuleFiles(options *ModuleOptions) error {
 
 // runGoTidy runs go mod tidy on the generated module files
 func runGoTidy(dir string) error {
-	cmd := exec.Command("go", "mod", "tidy")
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -575,11 +585,12 @@ func runGoTidy(dir string) error {
 
 // runGoFmt runs gofmt on the generated module files
 func runGoFmt(dir string) error {
+	ctx := context.Background()
 	// Check if the nested module directory exists (where Go files are)
 	moduleDir := filepath.Join(dir, filepath.Base(dir))
 	if _, err := os.Stat(moduleDir); err == nil {
 		// Run gofmt on the module directory where Go files are located
-		cmd := exec.Command("go", "fmt")
+		cmd := exec.CommandContext(ctx, "go", "fmt")
 		cmd.Dir = moduleDir
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -587,7 +598,7 @@ func runGoFmt(dir string) error {
 		}
 	} else {
 		// If the nested directory doesn't exist, try the parent directory
-		cmd := exec.Command("go", "fmt")
+		cmd := exec.CommandContext(ctx, "go", "fmt")
 		cmd.Dir = dir
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -1480,13 +1491,17 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 
 	// --- Construct the new go.mod file ---
 	newModFile := &modfile.File{}
-	newModFile.AddModuleStmt(modulePath)
+	if err := newModFile.AddModuleStmt(modulePath); err != nil {
+		return fmt.Errorf("failed to add module statement: %w", err)
+	}
 	goVersion, errGoVer := getGoVersion()
 	if errGoVer != nil {
 		slog.Warn("Could not detect Go version, using default 1.23.5", "error", errGoVer)
 		goVersion = "1.23.5" // Fallback
 	}
-	newModFile.AddGoStmt(goVersion)
+	if err := newModFile.AddGoStmt(goVersion); err != nil {
+		return fmt.Errorf("failed to add go statement: %w", err)
+	}
 	// Add toolchain directive if needed/desired
 	// toolchainVersion, errToolchain := getGoToolchainVersion()
 	// if errToolchain == nil {
@@ -1494,9 +1509,13 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 	// }
 
 	// Add requirements (adjust versions as needed)
-	newModFile.AddRequire("github.com/GoCodeAlone/modular", "v1")
+	if err := newModFile.AddRequire("github.com/GoCodeAlone/modular", "v1.6.0"); err != nil {
+		return fmt.Errorf("failed to add modular requirement: %w", err)
+	}
 	if options.GenerateTests {
-		newModFile.AddRequire("github.com/stretchr/testify", "v1.10.0")
+		if err := newModFile.AddRequire("github.com/stretchr/testify", "v1.10.0"); err != nil {
+			return fmt.Errorf("failed to add testify requirement: %w", err)
+		}
 	}
 
 	// --- Add Replace Directives ---
@@ -1543,7 +1562,7 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 	}
 
 	// Write the file
-	errWrite := os.WriteFile(goModPath, goModContentBytes, 0644)
+	errWrite := os.WriteFile(goModPath, goModContentBytes, 0600)
 	if errWrite != nil {
 		return fmt.Errorf("failed to write go.mod file: %w", errWrite)
 	}
@@ -1561,13 +1580,13 @@ func generateGoldenGoMod(options *ModuleOptions, goModPath string) error {
 go 1.23.5
 
 require (
-	github.com/GoCodeAlone/modular v1
+	github.com/GoCodeAlone/modular v1.6.0
 	github.com/stretchr/testify v1.10.0
 )
 
 replace github.com/GoCodeAlone/modular => ../../../../../../
 `, modulePath)
-	err := os.WriteFile(goModPath, []byte(goModContent), 0644)
+	err := os.WriteFile(goModPath, []byte(goModContent), 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write golden go.mod file: %w", err)
 	}
@@ -1577,7 +1596,8 @@ replace github.com/GoCodeAlone/modular => ../../../../../../
 
 // getGoVersion attempts to get the current Go version
 func getGoVersion() (string, error) {
-	cmd := exec.Command("go", "version")
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "go", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("failed to get go version ('go version'): %s: %w", string(output), err)
@@ -1587,41 +1607,19 @@ func getGoVersion() (string, error) {
 	if len(parts) >= 3 && strings.HasPrefix(parts[2], "go") {
 		return strings.TrimPrefix(parts[2], "go"), nil
 	}
-	return "", errors.New("could not parse go version output")
-}
-
-// getCurrentModule returns the current module name from go list -m
-func getCurrentModule() (string, error) {
-	cmd := exec.Command("go", "list", "-m")
-	// Set Dir to potentially avoid running in the newly created dir if called before cd
-	// cmd.Dir = "." // Or specify a relevant directory if needed
-	output, err := cmd.CombinedOutput() // Use CombinedOutput for better error messages
-	if err != nil {
-		// Check if the error is "go list -m: not using modules"
-		if strings.Contains(string(output), "not using modules") {
-			return "", errors.New("not in a Go module")
-		}
-		return "", fmt.Errorf("failed to get current module ('go list -m'): %s: %w", string(output), err)
-	}
-
-	moduleName := strings.TrimSpace(string(output))
-	// Handle cases where go list -m might return multiple lines (e.g., with main module)
-	lines := strings.Split(moduleName, "\\n")
-	if len(lines) > 0 {
-		return lines[0], nil // Return the first line, which should be the main module path
-	}
-	return "", errors.New("could not determine module path from 'go list -m'")
+	return "", errGoVersionParseFailed
 }
 
 // getCurrentGitRepo returns the current git repository URL
 func getCurrentGitRepo() (string, error) {
-	cmd := exec.Command("git", "config", "--get", "remote.origin.url")
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "git", "config", "--get", "remote.origin.url")
 	output, err := cmd.CombinedOutput() // Use CombinedOutput
 	if err != nil {
 		// Check if the error indicates no remote named 'origin' or not a git repo
 		errMsg := string(output)
 		if strings.Contains(errMsg, "No such file or directory") || strings.Contains(errMsg, "not a git repository") {
-			return "", errors.New("not a git repository or no remote 'origin' found")
+			return "", errNotGitRepoOrNoOrigin
 		}
 		return "", fmt.Errorf("failed to get current git repo ('git config --get remote.origin.url'): %s: %w", errMsg, err)
 	}
@@ -1639,12 +1637,8 @@ func formatGitRepoToGoModule(repoURL string) string {
 	}
 
 	// Handle HTTPS format: https://github.com/user/repo.git
-	if strings.HasPrefix(repoURL, "https://") {
-		repoURL = strings.TrimPrefix(repoURL, "https://")
-	}
-	if strings.HasPrefix(repoURL, "http://") {
-		repoURL = strings.TrimPrefix(repoURL, "http://")
-	}
+	repoURL = strings.TrimPrefix(repoURL, "https://")
+	repoURL = strings.TrimPrefix(repoURL, "http://")
 
 	// Remove the ".git" suffix if present
 	repoURL = strings.TrimSuffix(repoURL, ".git")
@@ -1687,7 +1681,7 @@ func findParentGoMod() (string, error) {
 		dir = parentDir
 	}
 
-	return "", errors.New("parent go.mod file not found")
+	return "", errParentGoModNotFound
 }
 
 // findGitRoot searches upwards from the given directory for a .git directory.
@@ -1716,5 +1710,5 @@ func findGitRoot(startDir string) (string, error) {
 		}
 		dir = parentDir
 	}
-	return "", errors.New(".git directory not found in any parent directory")
+	return "", errGitDirectoryNotFound
 }

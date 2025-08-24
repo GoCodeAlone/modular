@@ -1,7 +1,7 @@
 reverseproxy:
   backend_services:
-    backend1: "http://backend1.example.com"
-    backend2: "http://backend2.example.com"
+    backend1: "http://127.0.0.1:9003"
+    backend2: "http://127.0.0.1:9004"
   default_backend: "backend1"
   # Health check configuration
   health_check:

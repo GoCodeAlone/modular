@@ -92,7 +92,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"default"}`)
 		})
 		fmt.Println("Starting default backend on :9001")
-		http.ListenAndServe(":9001", mux)
+		if err := http.ListenAndServe(":9001", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9001", err)
+		}
 	}()
 
 	// Alternative backend when feature flags are disabled (port 9002)
@@ -109,7 +111,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"alternative"}`)
 		})
 		fmt.Println("Starting alternative backend on :9002")
-		http.ListenAndServe(":9002", mux)
+		if err := http.ListenAndServe(":9002", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9002", err)
+		}
 	}()
 
 	// New feature backend (port 9003)
@@ -126,7 +130,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"new-feature"}`)
 		})
 		fmt.Println("Starting new-feature backend on :9003")
-		http.ListenAndServe(":9003", mux)
+		if err := http.ListenAndServe(":9003", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9003", err)
+		}
 	}()
 
 	// API backend for composite routes (port 9004)
@@ -143,7 +149,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"api"}`)
 		})
 		fmt.Println("Starting api backend on :9004")
-		http.ListenAndServe(":9004", mux)
+		if err := http.ListenAndServe(":9004", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9004", err)
+		}
 	}()
 
 	// Beta tenant backend (port 9005)
@@ -160,7 +168,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"beta-backend"}`)
 		})
 		fmt.Println("Starting beta-backend on :9005")
-		http.ListenAndServe(":9005", mux)
+		if err := http.ListenAndServe(":9005", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9005", err)
+		}
 	}()
 
 	// Premium API backend for beta tenant (port 9006)
@@ -177,7 +187,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"premium-api"}`)
 		})
 		fmt.Println("Starting premium-api backend on :9006")
-		http.ListenAndServe(":9006", mux)
+		if err := http.ListenAndServe(":9006", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9006", err)
+		}
 	}()
 
 	// Enterprise backend (port 9007)
@@ -194,7 +206,9 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"enterprise-backend"}`)
 		})
 		fmt.Println("Starting enterprise-backend on :9007")
-		http.ListenAndServe(":9007", mux)
+		if err := http.ListenAndServe(":9007", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9007", err)
+		}
 	}()
 
 	// Analytics API backend for enterprise tenant (port 9008)
@@ -211,6 +225,8 @@ func startMockBackends() {
 			fmt.Fprintf(w, `{"status":"healthy","backend":"analytics-api"}`)
 		})
 		fmt.Println("Starting analytics-api backend on :9008")
-		http.ListenAndServe(":9008", mux)
+		if err := http.ListenAndServe(":9008", mux); err != nil { //nolint:gosec
+			fmt.Printf("Backend server error on %s: %v\n", ":9008", err)
+		}
 	}()
 }

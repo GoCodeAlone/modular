@@ -29,6 +29,7 @@ This is the Modular Go framework - a structured way to create modular applicatio
 - **Module Development**: Follow the established module interface patterns and provide comprehensive configuration options
 
 ### Required Before Each Commit
+- The current implementation should always be considered the *real* implementation. Don't create placeholder comments, notes for the future, implement the real functionality *now*.
 - Format Go code with `gofmt`
 - Run `golangci-lint run` and fix any linting issues
 - Ensure all tests pass (core, modules, examples, and CLI):

@@ -192,8 +192,8 @@ func (d *DryRunResult) GetReturnedResponse() ResponseInfo {
 func (d *DryRunHandler) sendRequest(ctx context.Context, originalReq *http.Request, backend string, requestBody []byte) ResponseInfo {
 	response := ResponseInfo{}
 
-	// Create new request
-	url := backend + originalReq.URL.Path
+	// Create new request with proper URL joining
+	url := singleJoiningSlash(backend, originalReq.URL.Path)
 	if originalReq.URL.RawQuery != "" {
 		url += "?" + originalReq.URL.RawQuery
 	}

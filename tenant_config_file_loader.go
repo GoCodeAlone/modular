@@ -33,6 +33,169 @@ type TenantConfigParams struct {
 // with the provided TenantService for the given section.
 // The configNameRegex is a regex pattern for the config file names (e.g. "^tenant[0-9]+\\.json$").
 func LoadTenantConfigs(app Application, tenantService TenantService, params TenantConfigParams) error {
+	// Check if we should use base config structure for tenant loading
+	if IsBaseConfigEnabled() && isBaseConfigTenantStructure(params.ConfigDir) {
+		return loadTenantConfigsWithBaseSupport(app, tenantService, params)
+	}
+
+	// Use traditional tenant config loading
+	return loadTenantConfigsTraditional(app, tenantService, params)
+}
+
+// isBaseConfigTenantStructure checks if the config directory contains base config tenant structure
+func isBaseConfigTenantStructure(configDir string) bool {
+	// Check if configDir is actually the base config root with tenants subdirectory
+	if feeders.IsBaseConfigStructure(configDir) {
+		return true
+	}
+	// Also check if configDir might be a subdirectory like config/tenants
+	parent := filepath.Dir(configDir)
+	return feeders.IsBaseConfigStructure(parent)
+}
+
+// loadTenantConfigsWithBaseSupport loads tenant configs using base config structure
+func loadTenantConfigsWithBaseSupport(app Application, tenantService TenantService, params TenantConfigParams) error {
+	app.Logger().Debug("Loading tenant configs with base config support",
+		"configDir", BaseConfigSettings.ConfigDir,
+		"environment", BaseConfigSettings.Environment)
+
+	// Get the base tenants directory
+	baseTenantDir := filepath.Join(BaseConfigSettings.ConfigDir, "base", "tenants")
+	envTenantDir := filepath.Join(BaseConfigSettings.ConfigDir, "environments", BaseConfigSettings.Environment, "tenants")
+
+	// Find all tenant files from both base and environment directories
+	tenantFiles := make(map[string]bool) // Track unique tenant IDs
+
+	// Scan base tenant directory
+	if stat, err := os.Stat(baseTenantDir); err == nil && stat.IsDir() {
+		if baseFiles, err := os.ReadDir(baseTenantDir); err == nil {
+			for _, file := range baseFiles {
+				if !file.IsDir() && params.ConfigNameRegex.MatchString(file.Name()) {
+					ext := filepath.Ext(file.Name())
+					tenantID := file.Name()[:len(file.Name())-len(ext)]
+					tenantFiles[tenantID] = true
+				}
+			}
+		}
+	}
+
+	// Scan environment tenant directory
+	if stat, err := os.Stat(envTenantDir); err == nil && stat.IsDir() {
+		if envFiles, err := os.ReadDir(envTenantDir); err == nil {
+			for _, file := range envFiles {
+				if !file.IsDir() && params.ConfigNameRegex.MatchString(file.Name()) {
+					ext := filepath.Ext(file.Name())
+					tenantID := file.Name()[:len(file.Name())-len(ext)]
+					tenantFiles[tenantID] = true
+				}
+			}
+		}
+	}
+
+	if len(tenantFiles) == 0 {
+		app.Logger().Warn("No tenant files found in base config structure",
+			"baseTenantDir", baseTenantDir,
+			"envTenantDir", envTenantDir)
+		return nil
+	}
+
+	// Load each unique tenant using base config feeder
+	loadedTenants := 0
+	for tenantID := range tenantFiles {
+		if err := loadBaseConfigTenant(app, tenantService, tenantID); err != nil {
+			app.Logger().Warn("Failed to load tenant config, skipping", "tenantID", tenantID, "error", err)
+			continue
+		}
+		loadedTenants++
+	}
+
+	app.Logger().Info("Tenant configuration loading complete", "loadedTenants", loadedTenants)
+	return nil
+}
+
+// loadBaseConfigTenant loads a single tenant using base config structure
+func loadBaseConfigTenant(app Application, tenantService TenantService, tenantID string) error {
+	app.Logger().Debug("Loading base config tenant", "tenantID", tenantID)
+
+	// Create feeders list with separate feeders for base and environment tenant configs
+	var tenantFeeders []Feeder
+
+	// Create base tenant feeder if base tenant config exists
+	baseTenantPath := findTenantConfigFile(BaseConfigSettings.ConfigDir, "base", "tenants", tenantID)
+	if baseTenantPath != "" {
+		baseTenantFeeder := createTenantFeeder(baseTenantPath)
+		if baseTenantFeeder != nil {
+			tenantFeeders = append(tenantFeeders, baseTenantFeeder)
+		}
+	}
+
+	// Create environment tenant feeder if environment tenant config exists
+	envTenantPath := findTenantConfigFile(BaseConfigSettings.ConfigDir, "environments", BaseConfigSettings.Environment, "tenants", tenantID)
+	if envTenantPath != "" {
+		envTenantFeeder := createTenantFeeder(envTenantPath)
+		if envTenantFeeder != nil {
+			tenantFeeders = append(tenantFeeders, envTenantFeeder)
+		}
+	}
+
+	if len(tenantFeeders) == 0 {
+		app.Logger().Debug("No tenant config files found", "tenantID", tenantID)
+		return nil
+	}
+
+	// Load tenant configs using the individual feeders
+	tenantCfgs, err := loadTenantConfig(app, tenantFeeders, tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to load tenant config for %s: %w", tenantID, err)
+	}
+
+	// Register the tenant
+	if err := tenantService.RegisterTenant(TenantID(tenantID), tenantCfgs); err != nil {
+		return fmt.Errorf("failed to register tenant %s: %w", tenantID, err)
+	}
+
+	return nil
+}
+
+// findTenantConfigFile searches for a tenant config file with multiple supported extensions.
+// It searches for files with extensions .yaml, .yml, .json, .toml in that order, returning
+// the first file found. The pathComponents are used to construct the search directory path,
+// with the last component being the tenant name and earlier components forming the directory path.
+func findTenantConfigFile(baseDir string, pathComponents ...string) string {
+	extensions := []string{".yaml", ".yml", ".json", ".toml"}
+
+	// Build the directory path
+	dirPath := filepath.Join(append([]string{baseDir}, pathComponents[:len(pathComponents)-1]...)...)
+	tenantName := pathComponents[len(pathComponents)-1]
+
+	for _, ext := range extensions {
+		configPath := filepath.Join(dirPath, tenantName+ext)
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+	}
+
+	return ""
+}
+
+// createTenantFeeder creates an appropriate feeder for a tenant config file
+func createTenantFeeder(filePath string) Feeder {
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	switch ext {
+	case ".yaml", ".yml":
+		return feeders.NewYamlFeeder(filePath)
+	case ".json":
+		return feeders.NewJSONFeeder(filePath)
+	case ".toml":
+		return feeders.NewTomlFeeder(filePath)
+	default:
+		return nil
+	}
+}
+
+// loadTenantConfigsTraditional uses the original tenant config loading logic
+func loadTenantConfigsTraditional(app Application, tenantService TenantService, params TenantConfigParams) error {
 	if err := validateTenantConfigDirectory(app, params.ConfigDir); err != nil {
 		return err
 	}

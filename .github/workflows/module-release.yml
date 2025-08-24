@@ -14,11 +14,11 @@ on:
           - chimux
           - database
           - eventbus
-          - eventlogger
           - httpclient
           - httpserver
           - jsonschema
           - letsencrypt
+          - logmasker
           - reverseproxy
           - scheduler
       version:

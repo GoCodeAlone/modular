@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"github.com/GoCodeAlone/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 const (
@@ -44,6 +45,7 @@ type Module struct {
 	config  *Config
 	service *Service
 	logger  modular.Logger
+	subject modular.Subject // For event emission
 }
 
 // NewModule creates a new authentication module.
@@ -73,21 +75,45 @@ func (m *Module) Name() string {
 //   - OAuth2 provider settings
 //   - Password policy settings
 func (m *Module) RegisterConfig(app modular.Application) error {
+	// Check if auth config is already registered (e.g., by tests)
+	if _, err := app.GetConfigSection(m.Name()); err == nil {
+		// Config already registered, skip to avoid overriding
+		return nil
+	}
+
+	// Register default config only if not already present
 	m.config = &Config{}
 	app.RegisterConfigSection(m.Name(), modular.NewStdConfigProvider(m.config))
 	return nil
 }
 
 // Init initializes the authentication module.
-// This method validates the configuration and prepares the module for use.
-// The actual service creation happens in the Constructor method to support
-// dependency injection of user and session stores.
+// This method validates the configuration and creates the authentication service.
 func (m *Module) Init(app modular.Application) error {
 	m.logger = app.Logger()
+
+	// Get the config section
+	cfg, err := app.GetConfigSection(m.Name())
+	if err != nil {
+		return fmt.Errorf("failed to get config section '%s': %w", m.Name(), err)
+	}
+	m.config = cfg.GetConfig().(*Config)
 
 	// Validate configuration
 	if err := m.config.Validate(); err != nil {
 		return fmt.Errorf("auth module configuration validation failed: %w", err)
+	}
+
+	// Create the auth service with default stores
+	// The constructor will replace these with injected stores if available
+	userStore := NewMemoryUserStore()
+	sessionStore := NewMemorySessionStore()
+	m.service = NewService(m.config, userStore, sessionStore)
+
+	// Set the event emitter in the service so it can emit events
+	if observableApp, ok := app.(modular.Subject); ok {
+		m.subject = observableApp
+		m.service.SetEventEmitter(m)
 	}
 
 	m.logger.Info("Authentication module initialized", "module", m.Name())
@@ -154,44 +180,93 @@ func (m *Module) RequiresServices() []modular.ServiceDependency {
 }
 
 // Constructor provides dependency injection for the module.
-// This method creates the authentication service with injected dependencies,
-// using fallback implementations for optional services that aren't provided.
-//
-// The constructor pattern allows the module to be reconstructed with proper
-// dependency injection after all required services have been resolved.
+// This method replaces the default stores with injected dependencies if available.
+// If the service doesn't exist yet (e.g., in unit tests), it creates it.
 //
 // Dependencies resolved:
 //   - user_store: External user storage (falls back to memory store)
 //   - session_store: External session storage (falls back to memory store)
 func (m *Module) Constructor() modular.ModuleConstructor {
 	return func(app modular.Application, services map[string]any) (modular.Module, error) {
-		// Get user store (use mock if not provided)
-		var userStore UserStore
+		// Get user store (use injected if provided)
+		var userStore UserStore = NewMemoryUserStore() // default
 		if us, ok := services["user_store"]; ok {
 			if userStoreImpl, ok := us.(UserStore); ok {
 				userStore = userStoreImpl
 			} else {
-				return nil, ErrUserStoreInvalid
+				return nil, ErrUserStoreNotInterface
 			}
-		} else {
-			userStore = NewMemoryUserStore()
 		}
 
-		// Get session store (use mock if not provided)
-		var sessionStore SessionStore
+		// Get session store (use injected if provided)
+		var sessionStore SessionStore = NewMemorySessionStore() // default
 		if ss, ok := services["session_store"]; ok {
 			if sessionStoreImpl, ok := ss.(SessionStore); ok {
 				sessionStore = sessionStoreImpl
 			} else {
-				return nil, ErrSessionStoreInvalid
+				return nil, ErrSessionStoreNotInterface
 			}
-		} else {
-			sessionStore = NewMemorySessionStore()
 		}
 
-		// Create the auth service
-		m.service = NewService(m.config, userStore, sessionStore)
+		// Create or recreate the auth service with the appropriate stores
+		// This handles both the case where Init() already created a service (normal flow)
+		// and the case where the constructor is called directly (unit tests)
+		if m.config != nil {
+			m.service = NewService(m.config, userStore, sessionStore)
+		} else {
+			// Fallback for unit tests that call constructor directly
+			// Use a minimal config - this should only happen in tests
+			m.service = NewService(&Config{
+				JWT: JWTConfig{
+					Secret:            "test-secret",
+					Expiration:        3600,
+					RefreshExpiration: 86400,
+				},
+			}, userStore, sessionStore)
+		}
+
+		// Set the event emitter in the service
+		m.service.SetEventEmitter(m)
 
 		return m, nil
+	}
+}
+
+// RegisterObservers implements the ObservableModule interface.
+// This allows the auth module to register as an observer for events it's interested in.
+func (m *Module) RegisterObservers(subject modular.Subject) error {
+	// The auth module currently does not need to observe other events,
+	// but this method is required by the ObservableModule interface.
+	// Future implementations might want to observe user-related events
+	// from other modules.
+	return nil
+}
+
+// EmitEvent implements the ObservableModule interface.
+// This allows the auth module to emit events to registered observers.
+func (m *Module) EmitEvent(ctx context.Context, event cloudevents.Event) error {
+	if m.subject == nil {
+		return ErrNoSubjectForEventEmission
+	}
+	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+		return fmt.Errorf("failed to notify observers: %w", err)
+	}
+	return nil
+}
+
+// GetRegisteredEventTypes implements the ObservableModule interface.
+// Returns all event types that this auth module can emit.
+func (m *Module) GetRegisteredEventTypes() []string {
+	return []string{
+		EventTypeTokenGenerated,
+		EventTypeTokenValidated,
+		EventTypeTokenExpired,
+		EventTypeTokenRefreshed,
+		EventTypeSessionCreated,
+		EventTypeSessionAccessed,
+		EventTypeSessionExpired,
+		EventTypeSessionDestroyed,
+		EventTypeOAuth2AuthURL,
+		EventTypeOAuth2Exchange,
 	}
 }

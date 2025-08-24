@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/GoCodeAlone/modular"
@@ -43,7 +44,7 @@ func (m *Module) Init(app modular.Application) error {
 
 	cp, err := app.GetConfigSection(configSection)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get router config: %w", err)
 	}
 
 	m.app = app
@@ -62,7 +63,7 @@ func (m *Module) Start(context.Context) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to walk routes: %w", err)
 	}
 
 	return nil

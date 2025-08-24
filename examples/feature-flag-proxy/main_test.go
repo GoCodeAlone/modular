@@ -62,16 +62,16 @@ func TestFeatureFlagEvaluatorIntegration(t *testing.T) {
 func TestBackendResponse(t *testing.T) {
 	// Test parsing a mock backend response
 	response := `{"backend":"default","path":"/api/test","method":"GET","feature":"stable"}`
-	
+
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(response), &result); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
-	
+
 	if result["backend"] != "default" {
 		t.Errorf("Expected backend 'default', got %v", result["backend"])
 	}
-	
+
 	if result["feature"] != "stable" {
 		t.Errorf("Expected feature 'stable', got %v", result["feature"])
 	}
@@ -107,9 +107,9 @@ func BenchmarkFeatureFlagEvaluation(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create evaluator: %v", err)
 	}
-	
+
 	req := httptest.NewRequest("GET", "/bench", nil)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		evaluator.EvaluateFlagWithDefault(req.Context(), "bench-flag", "", req, false)
@@ -146,10 +146,10 @@ func TestFeatureFlagEvaluatorConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create evaluator: %v", err)
 	}
-	
+
 	// Run multiple goroutines accessing the evaluator
 	done := make(chan bool, 10)
-	
+
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			req := httptest.NewRequest("GET", "/concurrent", nil)
@@ -162,11 +162,11 @@ func TestFeatureFlagEvaluatorConcurrency(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines to complete with timeout
 	timeout := time.After(5 * time.Second)
 	completed := 0
-	
+
 	for completed < 10 {
 		select {
 		case <-done:
@@ -207,9 +207,9 @@ func TestTenantSpecificFeatureFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create evaluator: %v", err)
 	}
-	
+
 	req := httptest.NewRequest("GET", "/test", nil)
-	
+
 	tests := []struct {
 		name     string
 		tenantID string
@@ -220,7 +220,7 @@ func TestTenantSpecificFeatureFlags(t *testing.T) {
 		{"GlobalFeatureDisabled", "", "global-feature", false, "Global feature should be disabled"},
 		{"NonExistentFlag", "", "non-existent", false, "Non-existent flag should default to false"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			enabled := evaluator.EvaluateFlagWithDefault(req.Context(), tt.flagID, modular.TenantID(tt.tenantID), req, false)

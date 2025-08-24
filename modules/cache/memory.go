@@ -4,15 +4,20 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/GoCodeAlone/modular"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // MemoryCache implements CacheEngine using in-memory storage
 type MemoryCache struct {
-	config     *CacheConfig
-	items      map[string]cacheItem
-	mutex      sync.RWMutex
-	cleanupCtx context.Context
-	cancelFunc context.CancelFunc
+	config       *CacheConfig
+	items        map[string]cacheItem
+	mutex        sync.RWMutex
+	cleanupCtx   context.Context
+	cancelFunc   context.CancelFunc
+	eventEmitter func(ctx context.Context, event cloudevents.Event) // Callback for emitting events
+	lastCleanup  time.Time                                          // Tracks when cleanup was last run
 }
 
 type cacheItem struct {
@@ -28,8 +33,46 @@ func NewMemoryCache(config *CacheConfig) *MemoryCache {
 	}
 }
 
+// SetEventEmitter sets the event emission callback for the memory cache
+func (c *MemoryCache) SetEventEmitter(emitter func(ctx context.Context, event cloudevents.Event)) {
+	c.eventEmitter = emitter
+}
+
+// ensureCleanupRun ensures cleanup has run recently by triggering it if enough time has passed
+func (c *MemoryCache) ensureCleanupRun(ctx context.Context) {
+	now := time.Now()
+	c.mutex.Lock()
+	// Check if cleanup should be triggered based on interval
+	if c.lastCleanup.IsZero() || now.Sub(c.lastCleanup) >= c.config.CleanupInterval {
+		c.lastCleanup = now
+		c.mutex.Unlock()
+		// Run cleanup without mutex to avoid deadlock
+		c.cleanupExpiredItems(ctx)
+	} else {
+		c.mutex.Unlock()
+	}
+}
+
+// TriggerCleanupIfNeeded forces cleanup to run if sufficient time has passed since last cleanup
+// This method can be used by tests to ensure cleanup happens naturally without artificial delays
+func (c *MemoryCache) TriggerCleanupIfNeeded(ctx context.Context) {
+	c.ensureCleanupRun(ctx)
+}
+
+// CleanupNow forces an immediate cleanup cycle of expired items and emits corresponding events.
+// Intended primarily for tests to deterministically process expirations without waiting for timers.
+func (c *MemoryCache) CleanupNow(ctx context.Context) {
+	c.cleanupExpiredItems(ctx)
+}
+
 // Connect initializes the memory cache
 func (c *MemoryCache) Connect(ctx context.Context) error {
+	// Validate configuration before use
+	if c.config.CleanupInterval <= 0 {
+		// Set a sensible default if CleanupInterval is invalid
+		c.config.CleanupInterval = 60 * time.Second
+	}
+
 	// Start cleanup goroutine with derived context
 	c.cleanupCtx, c.cancelFunc = context.WithCancel(ctx)
 	go func() {
@@ -47,7 +90,10 @@ func (c *MemoryCache) Close(_ context.Context) error {
 }
 
 // Get retrieves an item from the cache
-func (c *MemoryCache) Get(_ context.Context, key string) (interface{}, bool) {
+func (c *MemoryCache) Get(ctx context.Context, key string) (interface{}, bool) {
+	// Ensure cleanup runs periodically to maintain cache hygiene
+	c.ensureCleanupRun(ctx)
+
 	c.mutex.RLock()
 	item, found := c.items[key]
 	c.mutex.RUnlock()
@@ -68,14 +114,27 @@ func (c *MemoryCache) Get(_ context.Context, key string) (interface{}, bool) {
 }
 
 // Set stores an item in the cache
-func (c *MemoryCache) Set(_ context.Context, key string, value interface{}, ttl time.Duration) error {
+func (c *MemoryCache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	// Ensure cleanup runs periodically to maintain cache hygiene
+	c.ensureCleanupRun(ctx)
+
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	// If cache is full, reject new items
+	// If cache is full, reject new items (eviction policy: reject)
 	if c.config.MaxItems > 0 && len(c.items) >= c.config.MaxItems {
 		_, exists := c.items[key]
 		if !exists {
+			// Cache is full and this is a new key, emit eviction event
+			if c.eventEmitter != nil {
+				event := modular.NewCloudEvent(EventTypeCacheEvicted, "cache-service", map[string]interface{}{
+					"reason":    "cache_full",
+					"max_items": c.config.MaxItems,
+					"new_key":   key,
+				}, nil)
+
+				c.eventEmitter(ctx, event)
+			}
 			return ErrCacheFull
 		}
 	}
@@ -144,13 +203,29 @@ func (c *MemoryCache) DeleteMulti(ctx context.Context, keys []string) error {
 
 // startCleanupTimer starts the cleanup timer for expired items
 func (c *MemoryCache) startCleanupTimer(ctx context.Context) {
-	ticker := time.NewTicker(time.Duration(c.config.CleanupInterval) * time.Second)
+	// Run cleanup immediately on start
+	c.cleanupExpiredItems(ctx)
+
+	ticker := time.NewTicker(c.config.CleanupInterval)
 	defer ticker.Stop()
+
+	// Add a secondary shorter ticker for more responsive cleanup during testing
+	// This ensures that expired items are cleaned up more promptly
+	shortTicker := time.NewTicker(c.config.CleanupInterval / 2)
+	defer shortTicker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			c.cleanupExpiredItems()
+			c.cleanupExpiredItems(ctx)
+		case <-shortTicker.C:
+			// Only run if we have items that might be expired
+			c.mutex.RLock()
+			hasItems := len(c.items) > 0
+			c.mutex.RUnlock()
+			if hasItems {
+				c.ensureCleanupRun(ctx)
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -158,14 +233,34 @@ func (c *MemoryCache) startCleanupTimer(ctx context.Context) {
 }
 
 // cleanupExpiredItems removes expired items from the cache
-func (c *MemoryCache) cleanupExpiredItems() {
+func (c *MemoryCache) cleanupExpiredItems(ctx context.Context) {
 	now := time.Now()
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
+
+	// Update last cleanup time
+	c.lastCleanup = now
+
+	expiredKeys := make([]string, 0)
 
 	for key, item := range c.items {
 		if !item.expiration.IsZero() && now.After(item.expiration) {
+			expiredKeys = append(expiredKeys, key)
 			delete(c.items, key)
+		}
+	}
+
+	c.mutex.Unlock()
+
+	// Emit expired events for each expired key (outside mutex to avoid deadlock)
+	if c.eventEmitter != nil && len(expiredKeys) > 0 {
+		for _, key := range expiredKeys {
+			event := modular.NewCloudEvent(EventTypeCacheExpired, "cache-service", map[string]interface{}{
+				"cache_key":  key,
+				"expired_at": now.Format(time.RFC3339),
+				"reason":     "ttl_expired",
+			}, nil)
+
+			c.eventEmitter(ctx, event)
 		}
 	}
 }

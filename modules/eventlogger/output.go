@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/syslog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/GoCodeAlone/modular"
@@ -211,17 +212,37 @@ func NewFileTarget(config OutputTargetConfig, logger modular.Logger) (*FileTarge
 		logger: logger,
 	}
 
+	// Proactively ensure the log file path exists so tests can detect it quickly
+	if err := os.MkdirAll(filepath.Dir(config.File.Path), 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create log directory %s: %w", filepath.Dir(config.File.Path), err)
+	}
+	// Create the file if it doesn't exist yet (will be reopened on Start)
+	f, err := os.OpenFile(config.File.Path, os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		_ = f.Close()
+	}
+
 	return target, nil
 }
 
 // Start initializes the file target.
 func (f *FileTarget) Start(ctx context.Context) error {
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(f.config.File.Path), 0o755); err != nil {
+		return fmt.Errorf("failed to create log directory %s: %w", filepath.Dir(f.config.File.Path), err)
+	}
 	file, err := os.OpenFile(f.config.File.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file %s: %w", f.config.File.Path, err)
 	}
 	f.file = file
 	f.logger.Debug("File output target started", "path", f.config.File.Path)
+
+	// Force sync so tests can detect the file immediately
+	if err := f.file.Sync(); err != nil {
+		// Not fatal, but log via logger
+		f.logger.Debug("Initial file sync failed", "error", err)
+	}
 	return nil
 }
 

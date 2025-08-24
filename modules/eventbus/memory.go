@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GoCodeAlone/modular"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +23,7 @@ type MemoryEventBus struct {
 	eventHistory   map[string][]Event
 	historyMutex   sync.RWMutex
 	retentionTimer *time.Timer
+	module         *EventBusModule // Reference to emit events
 }
 
 // memorySubscription represents a subscription in the memory event bus
@@ -71,6 +73,25 @@ func NewMemoryEventBus(config *EventBusConfig) *MemoryEventBus {
 		config:        config,
 		subscriptions: make(map[string]map[string]*memorySubscription),
 		eventHistory:  make(map[string][]Event),
+		module:        nil, // Will be set when attached to a module
+	}
+}
+
+// SetModule sets the parent module for event emission
+func (m *MemoryEventBus) SetModule(module *EventBusModule) {
+	m.module = module
+}
+
+// emitEvent emits an event through the module if available
+func (m *MemoryEventBus) emitEvent(ctx context.Context, eventType, source string, data map[string]interface{}) {
+	if m.module != nil {
+		event := modular.NewCloudEvent(eventType, source, data, nil)
+		go func() {
+			if err := m.module.EmitEvent(ctx, event); err != nil {
+				// Log but don't fail the operation
+				slog.Debug("Failed to emit event", "type", eventType, "error", err)
+			}
+		}()
 	}
 }
 
@@ -123,11 +144,28 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 	case <-done:
 		// All workers exited gracefully
 	case <-ctx.Done():
-		return ErrEventBusShutdownTimedOut
+		return ErrEventBusShutdownTimeout
 	}
 
 	m.isStarted = false
 	return nil
+}
+
+// matchesTopic checks if an event topic matches a subscription topic pattern
+// Supports wildcard patterns like "user.*" matching "user.created", "user.updated", etc.
+func matchesTopic(eventTopic, subscriptionTopic string) bool {
+	// Exact match
+	if eventTopic == subscriptionTopic {
+		return true
+	}
+
+	// Wildcard match - check if subscription topic ends with *
+	if len(subscriptionTopic) > 1 && subscriptionTopic[len(subscriptionTopic)-1] == '*' {
+		prefix := subscriptionTopic[:len(subscriptionTopic)-1]
+		return len(eventTopic) >= len(prefix) && eventTopic[:len(prefix)] == prefix
+	}
+
+	return false
 }
 
 // Publish sends an event to the specified topic
@@ -145,25 +183,27 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	// Store in event history
 	m.storeEventHistory(event)
 
-	// Get subscribers for the topic
+	// Get all matching subscribers (exact match + wildcard matches)
 	m.topicMutex.RLock()
-	subsMap, ok := m.subscriptions[event.Topic]
+	var allMatchingSubs []*memorySubscription
 
-	// If no subscribers, just return
-	if !ok || len(subsMap) == 0 {
-		m.topicMutex.RUnlock()
-		return nil
-	}
-
-	// Make a copy of the subscriptions to avoid holding the lock while publishing
-	subs := make([]*memorySubscription, 0, len(subsMap))
-	for _, sub := range subsMap {
-		subs = append(subs, sub)
+	// Check all subscription topics to find matches
+	for subscriptionTopic, subsMap := range m.subscriptions {
+		if matchesTopic(event.Topic, subscriptionTopic) {
+			for _, sub := range subsMap {
+				allMatchingSubs = append(allMatchingSubs, sub)
+			}
+		}
 	}
 	m.topicMutex.RUnlock()
 
-	// Publish to all subscribers
-	for _, sub := range subs {
+	// If no matching subscribers, just return
+	if len(allMatchingSubs) == 0 {
+		return nil
+	}
+
+	// Publish to all matching subscribers
+	for _, sub := range allMatchingSubs {
 		sub.mutex.RLock()
 		if sub.cancelled {
 			sub.mutex.RUnlock()
@@ -215,15 +255,31 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 
 	// Add to subscriptions map
 	m.topicMutex.Lock()
+	isNewTopic := false
 	if _, ok := m.subscriptions[topic]; !ok {
 		m.subscriptions[topic] = make(map[string]*memorySubscription)
+		isNewTopic = true
 	}
 	m.subscriptions[topic][sub.id] = sub
 	m.topicMutex.Unlock()
 
-	// Start event listener goroutine
+	// Emit topic created event if this is a new topic
+	if isNewTopic {
+		m.emitEvent(ctx, EventTypeTopicCreated, "memory-eventbus", map[string]interface{}{
+			"topic": topic,
+		})
+	}
+
+	// Start event listener goroutine and wait for it to be ready
+	started := make(chan struct{})
 	m.wg.Add(1)
-	go m.handleEvents(sub)
+	go func() {
+		close(started) // Signal that the goroutine has started
+		m.handleEvents(sub)
+	}()
+
+	// Wait for the goroutine to be ready before returning
+	<-started
 
 	return sub, nil
 }
@@ -249,11 +305,20 @@ func (m *MemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscript
 	m.topicMutex.Lock()
 	defer m.topicMutex.Unlock()
 
+	topicDeleted := false
 	if subs, ok := m.subscriptions[sub.topic]; ok {
 		delete(subs, sub.id)
 		if len(subs) == 0 {
 			delete(m.subscriptions, sub.topic)
+			topicDeleted = true
 		}
+	}
+
+	// Emit topic deleted event if this topic no longer has subscribers
+	if topicDeleted {
+		m.emitEvent(ctx, EventTypeTopicDeleted, "memory-eventbus", map[string]interface{}{
+			"topic": sub.topic,
+		})
 	}
 
 	return nil
@@ -306,6 +371,12 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 				now := time.Now()
 				event.ProcessingStarted = &now
 
+				// Emit message received event
+				m.emitEvent(m.ctx, EventTypeMessageReceived, "memory-eventbus", map[string]interface{}{
+					"topic":           event.Topic,
+					"subscription_id": sub.id,
+				})
+
 				// Process the event
 				err := sub.handler(m.ctx, event)
 
@@ -314,8 +385,14 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 				event.ProcessingCompleted = &completed
 
 				if err != nil {
+					// Emit message failed event for handler errors
+					m.emitEvent(m.ctx, EventTypeMessageFailed, "memory-eventbus", map[string]interface{}{
+						"topic":           event.Topic,
+						"subscription_id": sub.id,
+						"error":           err.Error(),
+					})
 					// Log error but continue processing
-					slog.ErrorContext(m.ctx, "Event handler failed", "error", err, "topic", event.Topic)
+					slog.Error("Event handler failed", "error", err, "topic", event.Topic)
 				}
 			}
 		}
@@ -329,6 +406,12 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 		now := time.Now()
 		event.ProcessingStarted = &now
 
+		// Emit message received event
+		m.emitEvent(m.ctx, EventTypeMessageReceived, "memory-eventbus", map[string]interface{}{
+			"topic":           event.Topic,
+			"subscription_id": sub.id,
+		})
+
 		// Process the event
 		err := sub.handler(m.ctx, event)
 
@@ -337,8 +420,14 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 		event.ProcessingCompleted = &completed
 
 		if err != nil {
+			// Emit message failed event for handler errors
+			m.emitEvent(m.ctx, EventTypeMessageFailed, "memory-eventbus", map[string]interface{}{
+				"topic":           event.Topic,
+				"subscription_id": sub.id,
+				"error":           err.Error(),
+			})
 			// Log error but continue processing
-			slog.ErrorContext(m.ctx, "Event handler failed", "error", err, "topic", event.Topic)
+			slog.Error("Event handler failed", "error", err, "topic", event.Topic)
 		}
 	}:
 		// Successfully queued

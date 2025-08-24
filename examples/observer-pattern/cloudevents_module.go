@@ -14,6 +14,7 @@ type CloudEventsModule struct {
 	name   string
 	app    modular.Application
 	logger modular.Logger
+	cancel context.CancelFunc
 }
 
 // CloudEventsConfig holds configuration for the CloudEvents demo module.
@@ -72,8 +73,12 @@ func (m *CloudEventsModule) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid demo interval: %w", err)
 	}
 
+	// Create a cancellable context for the demo
+	demoCtx, cancel := context.WithCancel(ctx)
+	m.cancel = cancel
+
 	// Start demonstration in background
-	go m.runDemo(ctx, config, interval)
+	go m.runDemo(demoCtx, config, interval)
 
 	m.logger.Info("CloudEvents demo started", "interval", interval)
 	return nil
@@ -81,6 +86,10 @@ func (m *CloudEventsModule) Start(ctx context.Context) error {
 
 // Stop stops the module.
 func (m *CloudEventsModule) Stop(ctx context.Context) error {
+	// Cancel the demo goroutine
+	if m.cancel != nil {
+		m.cancel()
+	}
 	m.logger.Info("CloudEvents demo stopped")
 	return nil
 }
@@ -157,15 +166,15 @@ func (m *CloudEventsModule) emitDemoCloudEvent(ctx context.Context, config *Clou
 // RegisterObservers implements ObservableModule to register for events.
 func (m *CloudEventsModule) RegisterObservers(subject modular.Subject) error {
 	// Register to receive all events for demonstration
-	return subject.RegisterObserver(m)
+	return fmt.Errorf("failed to register observer: %w", subject.RegisterObserver(m))
 }
 
 // EmitEvent implements ObservableModule for CloudEvents.
 func (m *CloudEventsModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
 	if observableApp, ok := m.app.(*modular.ObservableApplication); ok {
-		return observableApp.NotifyObservers(ctx, event)
+		return fmt.Errorf("failed to notify observers: %w", observableApp.NotifyObservers(ctx, event))
 	}
-	return fmt.Errorf("application does not support CloudEvents")
+	return errApplicationDoesNotSupportCloudEvents
 }
 
 // OnEvent implements Observer interface to receive CloudEvents.
