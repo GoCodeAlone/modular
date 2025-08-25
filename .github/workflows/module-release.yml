@@ -241,5 +241,3 @@ jobs:
           
           echo "Announced version ${{steps.version.outputs.module}}@${VERSION} to Go proxy"
 
-      - name: Display Release URL
-        run: echo "Released at ${{ steps.create_release.outputs.html_url }}"

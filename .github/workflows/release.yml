@@ -171,5 +171,3 @@ jobs:
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
           echo "Announced version ${VERSION} to Go proxy"
 
-      - name: Display Release URL
-        run: echo "Released at ${{ steps.create_release.outputs.html_url }}"
