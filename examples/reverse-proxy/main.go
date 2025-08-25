@@ -22,13 +22,7 @@ func main() {
 	// Start mock backend servers
 	startMockBackends()
 
-	// Configure feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
-	// Create a new application
+	// Create a new application and set feeders per instance (no global mutation)
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
 		slog.New(slog.NewTextHandler(
@@ -36,6 +30,12 @@ func main() {
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 		)),
 	)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
+	}
 
 	// Create tenant service
 	tenantService := modular.NewStandardTenantService(app.Logger())

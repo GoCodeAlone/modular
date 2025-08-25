@@ -36,58 +36,73 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          
-      - name: Determine release version
-        id: version
-        run: |
-          # Find the latest tag for the main library (excluding module tags)
-          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
-          echo "Latest tag: $LATEST_TAG"
-          
-          if [ -z "$LATEST_TAG" ]; then
-            # No existing tag, start with v0.0.0
-            CURRENT_VERSION="v0.0.0"
-            echo "No previous version found, starting with v0.0.0"
-          else
-            CURRENT_VERSION=$LATEST_TAG
-            echo "Current version: $CURRENT_VERSION"
-          fi
-          
-          # Remove the 'v' prefix for semver calculations
-          CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
-          
-          # Extract the parts
-          MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
-          MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
-          PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
-          
-          # Calculate next version based on release type
-          if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
-            NEXT_VERSION="v$((MAJOR + 1)).0.0"
-          elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
-            NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
-          else
-            NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-          fi
-          
-          # Use manual version if provided
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            MANUAL_VERSION="${{ github.event.inputs.version }}"
-            # Ensure the 'v' prefix
-            if [[ $MANUAL_VERSION != v* ]]; then
-              MANUAL_VERSION="v${MANUAL_VERSION}"
-            fi
-            NEXT_VERSION="${MANUAL_VERSION}"
-          fi
-          
-          echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
-          echo "Next version: ${NEXT_VERSION}"
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '^1.23.5'
+          go-version: '^1.25'
           check-latest: true
+
+      - name: Build modcli
+        run: |
+          cd cmd/modcli
+          go build -o modcli
+
+      - name: Determine release version (contract-aware)
+        id: version
+        run: |
+          set -euo pipefail
+          INPUT_RELEASE_TYPE='${{ github.event.inputs.releaseType }}'
+          INPUT_MANUAL_VERSION='${{ github.event.inputs.version }}'
+          echo "Requested releaseType: $INPUT_RELEASE_TYPE"
+          if [ -n "$INPUT_MANUAL_VERSION" ]; then
+            echo "Manual version provided: $INPUT_MANUAL_VERSION"
+          fi
+
+          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
+            if [ -z "$LATEST_TAG" ]; then
+              BASE_VERSION="v0.0.0"; PREV_CONTRACT_REF="";
+            else
+              BASE_VERSION="$LATEST_TAG"; PREV_CONTRACT_REF="$LATEST_TAG";
+            fi
+          echo "Latest base version: $BASE_VERSION"
+
+          mkdir -p artifacts/contracts/prev artifacts/contracts/current artifacts/diffs
+          if [ -n "$PREV_CONTRACT_REF" ]; then
+            TMPDIR=$(mktemp -d)
+            git archive $PREV_CONTRACT_REF | tar -x -C "$TMPDIR"
+            mkdir -p "$TMPDIR/cmd/modcli" && cp cmd/modcli/modcli "$TMPDIR/cmd/modcli/modcli" || true
+            (cd "$TMPDIR" && ./cmd/modcli/modcli contract extract . -o core.json) || echo "Failed to extract previous contract"
+            [ -f "$TMPDIR/core.json" ] && mv "$TMPDIR/core.json" artifacts/contracts/prev/core.json
+          fi
+
+          ./cmd/modcli/modcli contract extract . -o artifacts/contracts/current/core.json || echo "Failed to extract current contract"
+
+          CHANGE_CLASS="none"
+          DIFF_MD_PATH="artifacts/diffs/core.md"
+          if [ -f artifacts/contracts/prev/core.json ] && [ -f artifacts/contracts/current/core.json ]; then
+            if ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o artifacts/diffs/core.json --format=markdown > "$DIFF_MD_PATH" 2>/dev/null; then
+              if [ -s "$DIFF_MD_PATH" ]; then CHANGE_CLASS="minor"; fi
+            else
+              echo "Breaking changes detected"; CHANGE_CLASS="major"; [ -s "$DIFF_MD_PATH" ] || echo "(Breaking changes; diff unavailable)" > "$DIFF_MD_PATH";
+            fi
+          else
+            if [ -f artifacts/contracts/current/core.json ] && [ $(wc -c < artifacts/contracts/current/core.json) -gt 20 ]; then CHANGE_CLASS="minor"; fi
+          fi
+          echo "Contract change classification: $CHANGE_CLASS"
+
+          CUR=${BASE_VERSION#v}; MAJOR=${CUR%%.*}; REST=${CUR#*.}; MINOR=${REST%%.*}; PATCH=${CUR##*.}
+          if [ -n "$INPUT_MANUAL_VERSION" ]; then V="$INPUT_MANUAL_VERSION"; [[ $V == v* ]] || V="v$V"; NEXT_VERSION="$V"; REASON="manual override"; else
+            case "$CHANGE_CLASS" in
+              major) NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="contract breaking change" ;;
+              minor) if [ "$INPUT_RELEASE_TYPE" = "major" ]; then NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="user requested major"; else NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"; REASON="contract additive change"; fi ;;
+              none)  if [ "$INPUT_RELEASE_TYPE" = "major" ]; then NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="user requested major (no contract change)"; elif [ "$INPUT_RELEASE_TYPE" = "minor" ]; then NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"; REASON="user requested minor (no contract change)"; else NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"; REASON="patch (no contract change)"; fi ;;
+            esac
+          fi
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "change_class=$CHANGE_CLASS" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+          echo "Next version: $NEXT_VERSION ($REASON)"
 
       - name: Run tests
         run: |
@@ -97,38 +112,31 @@ jobs:
         id: changelog
         run: |
           TAG=${{ steps.version.outputs.next_version }}
-          
-          # Find the previous tag for the main library
-          PREV_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
-          
-          # Generate changelog by looking at commits, excluding the modules/ directory
+          CHANGE_CLASS=${{ steps.version.outputs.change_class }}
+          PREV_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n2 | head -n1 || echo "")
           if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found, including all history"
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- . ':!modules')
           else
-            echo "Generating changelog from $PREV_TAG to HEAD"
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD -- . ':!modules')
           fi
-          
-          # If no specific changes found
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- No specific changes to the main library since last release"
-          fi
-          
-          # Save changelog to a file
-          echo "# Release ${TAG}" > changelog.md
-          echo "" >> changelog.md
-          echo "## Changes" >> changelog.md
-          echo "" >> changelog.md
-          echo "$CHANGELOG" >> changelog.md
-          
-          # Escape special characters for GitHub Actions
-          CHANGELOG_ESCAPED=$(cat changelog.md | jq -Rs .)
+          [ -n "$CHANGELOG" ] || CHANGELOG="- No specific changes to the main library since last release"
+          {
+            echo "# Release ${TAG}"; echo; echo "## Changes"; echo; echo "$CHANGELOG"; echo; echo "## API Contract Changes"; echo;
+            if [ -f artifacts/diffs/core.md ] && [ -s artifacts/diffs/core.md ]; then
+              case "$CHANGE_CLASS" in
+                major) echo "⚠️ Breaking changes detected (major bump)."; echo ;;
+                minor) echo "✅ Additive, backward-compatible changes (minor bump)."; echo ;;
+                none) echo "ℹ️ No public API surface changes detected."; echo ;;
+              esac
+              cat artifacts/diffs/core.md
+            else
+              echo "No API contract differences compared to previous release."
+            fi
+          } > changelog.md
+          CHANGELOG_ESCAPED=$(jq -Rs . < changelog.md)
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
-          echo "Generated changelog for main library"
 
       - name: Create release
         id: create_release
@@ -145,10 +153,8 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
           MODULE_NAME="github.com/CrisisTextLine/modular"
-          
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
-          
           echo "Announced version ${VERSION} to Go proxy"
-      
+
       - name: Display Release URL
         run: echo "Released at ${{ steps.create_release.outputs.html_url }}"

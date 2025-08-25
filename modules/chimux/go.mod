@@ -1,6 +1,6 @@
 module github.com/CrisisTextLine/modular/modules/chimux
 
-go 1.24.2
+go 1.25
 
 require (
 	github.com/CrisisTextLine/modular v1.6.0

@@ -40,6 +40,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
@@ -91,7 +92,8 @@ type HTTPServerModule struct {
 	handler            http.Handler
 	started            bool
 	certificateService CertificateService
-	subject            modular.Subject // For event observation
+	subject            modular.Subject // For event observation (guarded by mu)
+	mu                 sync.RWMutex
 }
 
 // Make sure the HTTPServerModule implements the Module interface
@@ -467,6 +469,10 @@ func (m *HTTPServerModule) Stop(ctx context.Context) error {
 	m.started = false
 	m.logger.Info("HTTP server stopped successfully")
 
+	// Removed synthetic request event emission: tests no longer rely on placeholder
+	// events when no real traffic occurred. If needed in the future, reintroduce
+	// behind a test-only build tag or explicit configuration flag.
+
 	// Emit server stopped event synchronously
 	event := modular.NewCloudEvent(EventTypeServerStopped, "httpserver-service", map[string]interface{}{
 		"host": m.config.Host,
@@ -607,56 +613,48 @@ func (m *HTTPServerModule) createTempFile(pattern, content string) (string, erro
 // RegisterObservers implements the ObservableModule interface.
 // This allows the httpserver module to register as an observer for events it's interested in.
 func (m *HTTPServerModule) RegisterObservers(subject modular.Subject) error {
+	m.mu.Lock()
 	m.subject = subject
-
-	// The httpserver module currently does not need to observe other events,
-	// but this method stores the subject for event emission.
+	m.mu.Unlock()
 	return nil
 }
 
 // EmitEvent implements the ObservableModule interface.
 // This allows the httpserver module to emit events to registered observers.
 func (m *HTTPServerModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	// Prefer module's subject; if missing, fall back to the application if it implements Subject
-	var subject modular.Subject
-	if m.subject != nil {
-		subject = m.subject
-	} else if m.app != nil {
+	// Acquire subject snapshot under read lock
+	m.mu.RLock()
+	subject := m.subject
+	m.mu.RUnlock()
+	// Fallback to app subject only if module subject not set
+	if subject == nil && m.app != nil {
 		if s, ok := m.app.(modular.Subject); ok {
 			subject = s
 		}
 	}
-
 	if subject == nil {
 		return ErrNoSubjectForEventEmission
 	}
-
-	// For request events, emit synchronously to ensure immediate delivery in tests
+	// Synchronous for request lifecycle events
 	if event.Type() == EventTypeRequestReceived || event.Type() == EventTypeRequestHandled {
-		// Use a stable background context to avoid propagation issues with request-scoped cancellation
 		ctx = modular.WithSynchronousNotification(ctx)
 		if err := subject.NotifyObservers(ctx, event); err != nil {
 			return fmt.Errorf("failed to notify observers for event %s: %w", event.Type(), err)
 		}
 		return nil
 	}
-
-	// Use a goroutine to prevent blocking server operations with other event emission
-	go func() {
-		if err := subject.NotifyObservers(ctx, event); err != nil {
-			// Log error but don't fail the operation
-			// This ensures event emission issues don't affect server functionality
-			if m.logger != nil {
-				m.logger.Debug("Failed to notify observers", "error", err, "event_type", event.Type())
-			}
+	go func(s modular.Subject, e cloudevents.Event) {
+		if err := s.NotifyObservers(ctx, e); err != nil && m.logger != nil {
+			m.logger.Debug("Failed to notify observers", "error", err, "event_type", e.Type())
 		}
-	}()
+	}(subject, event)
 	return nil
 }
 
 // wrapHandlerWithRequestEvents wraps the HTTP handler to emit request events
 func (m *HTTPServerModule) wrapHandlerWithRequestEvents(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Request lifecycle events are emitted for each real request
 		// Emit request received event SYNCHRONOUSLY to ensure immediate emission
 		requestReceivedEvent := modular.NewCloudEvent(EventTypeRequestReceived, "httpserver-service", map[string]interface{}{
 			"method":      r.Method,
@@ -673,8 +671,6 @@ func (m *HTTPServerModule) wrapHandlerWithRequestEvents(handler http.Handler) ht
 				m.logger.Debug("Failed to emit request received event", "error", emitErr)
 			}
 		} else {
-			//nolint:forbidigo
-			fmt.Println("[httpserver] DEBUG: emitted request.received")
 		}
 
 		// Wrap response writer to capture status code
@@ -705,8 +701,6 @@ func (m *HTTPServerModule) wrapHandlerWithRequestEvents(handler http.Handler) ht
 				m.logger.Debug("Failed to emit request handled event", "error", emitErr)
 			}
 		} else {
-			//nolint:forbidigo
-			fmt.Println("[httpserver] DEBUG: emitted request.handled")
 		}
 	})
 }

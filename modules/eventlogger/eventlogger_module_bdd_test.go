@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,8 @@ type EventLoggerBDDTestContext struct {
 	testConsole   *testConsoleOutput
 	testFile      *testFileOutput
 	eventObserver *testEventObserver
+	// fastEmit enables burst emission without per-event sleep (used to deterministically trigger buffer full events)
+	fastEmit bool
 }
 
 // createConsoleConfig creates an EventLoggerConfig with console output
@@ -39,6 +42,10 @@ func (ctx *EventLoggerBDDTestContext) createConsoleConfig(bufferSize int) *Event
 		FlushInterval:     time.Duration(5 * time.Second),
 		IncludeMetadata:   true,
 		IncludeStackTrace: false,
+		// Enable synchronous startup emission so tests reliably observe
+		// config.loaded, output.registered, and started events without
+		// relying on timing of goroutines.
+		StartupSync:       true,
 		OutputTargets: []OutputTargetConfig{
 			{
 				Type:   "console",
@@ -143,16 +150,19 @@ func (ctx *EventLoggerBDDTestContext) createMultiTargetConfig(logFile string) *E
 func (ctx *EventLoggerBDDTestContext) createApplicationWithConfig(config *EventLoggerConfig) error {
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Provide an empty feeder slice directly to this application instance to avoid
+	// mutating the global modular.ConfigFeeders (which would hinder test parallelism).
+	// Individual tests can still register additional feeders if required via the
+	// application's configuration mechanisms.
 
 	// Create app with empty main config - USE OBSERVABLE for events
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	// Ensure this app instance starts with no implicit global feeders by using a
+	// narrow interface type assertion (avoids expanding the public Application interface).
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create test event observer
 	ctx.eventObserver = newTestEventObserver()
@@ -178,6 +188,7 @@ func (ctx *EventLoggerBDDTestContext) createApplicationWithConfig(config *EventL
 
 // Test event observer for capturing emitted events
 type testEventObserver struct {
+	mu     sync.Mutex
 	events []cloudevents.Event
 }
 
@@ -188,6 +199,8 @@ func newTestEventObserver() *testEventObserver {
 }
 
 func (t *testEventObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.events = append(t.events, event.Clone())
 	return nil
 }
@@ -197,12 +210,16 @@ func (t *testEventObserver) ObserverID() string {
 }
 
 func (t *testEventObserver) GetEvents() []cloudevents.Event {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	events := make([]cloudevents.Event, len(t.events))
 	copy(events, t.events)
 	return events
 }
 
 func (t *testEventObserver) ClearEvents() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.events = make([]cloudevents.Event, 0)
 }
 
@@ -348,8 +365,10 @@ func (ctx *EventLoggerBDDTestContext) iEmitATestEventWithTypeAndData(eventType, 
 		return err
 	}
 
-	// Wait a bit for async processing
-	time.Sleep(100 * time.Millisecond)
+	// Default pacing sleep to let async processing occur; skipped in fast burst scenarios
+	if !ctx.fastEmit {
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	return nil
 }
@@ -598,19 +617,50 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithBufferSizeConfigured
 }
 
 func (ctx *EventLoggerBDDTestContext) iEmitMoreEventsThanTheBufferCanHold() error {
-	// With a buffer size of 1, emit multiple events rapidly to trigger overflow
-	// Emit events in quick succession to overwhelm the buffer
-	for i := 0; i < 10; i++ {
-		err := ctx.iEmitATestEventWithTypeAndData(fmt.Sprintf("buffer.test.%d", i), "data")
-		// During buffer overflow, expect ErrEventBufferFull errors - this is normal behavior
-		if err != nil && !errors.Is(err, ErrEventBufferFull) {
-			return fmt.Errorf("unexpected error (not buffer full): %w", err)
-		}
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
 	}
+	// Enable fast emission mode to skip per-event sleeps elsewhere
+	ctx.fastEmit = true
+	for i := 0; i < 50; i++ { // burst size large enough to overflow small buffers
+		e := cloudevents.NewEvent()
+		e.SetID("overflow-" + fmt.Sprint(i))
+		e.SetType(fmt.Sprintf("buffer.test.%d", i))
+		e.SetSource("test-source")
+		e.SetTime(time.Now())
+		_ = ctx.service.OnEvent(context.Background(), e)
+	}
+	// Allow time for processing and operational events (buffer full / dropped) to be emitted synchronously
+	time.Sleep(150 * time.Millisecond)
+	return nil
+}
 
-	// Give more time for processing and buffer overflow events to be emitted
+// iRapidlyEmitMoreEventsThanTheBufferCanHold emits a large burst of events without per-event
+// sleeping to intentionally overflow the buffer and trigger buffer full / dropped events.
+func (ctx *EventLoggerBDDTestContext) iRapidlyEmitMoreEventsThanTheBufferCanHold() error {
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
+	}
+	// Emit a burst concurrently to maximize instantaneous pressure on the small buffer.
+	total := 500
+	var wg sync.WaitGroup
+	wg.Add(total)
+	for i := 0; i < total; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			event := cloudevents.NewEvent()
+			event.SetID("test-id")
+			event.SetType(fmt.Sprintf("buffer.test.%d", i))
+			event.SetSource("test-source")
+			event.SetData(cloudevents.ApplicationJSON, "data")
+			event.SetTime(time.Now())
+			_ = ctx.service.OnEvent(context.Background(), event)
+		}()
+	}
+	wg.Wait()
+	// Allow brief time for operational events emission
 	time.Sleep(200 * time.Millisecond)
-
 	return nil
 }
 
@@ -962,21 +1012,25 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithEventObservationEnab
 }
 
 func (ctx *EventLoggerBDDTestContext) aLoggerStartedEventShouldBeEmitted() error {
-	time.Sleep(100 * time.Millisecond) // Allow time for async event emission
-
-	events := ctx.eventObserver.GetEvents()
-	for _, event := range events {
-		if event.Type() == EventTypeLoggerStarted {
-			return nil
+	// Poll for the started event to tolerate scheduling jitter of the async startup emitter.
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		events := ctx.eventObserver.GetEvents()
+		for _, event := range events {
+			if event.Type() == EventTypeLoggerStarted {
+				return nil
+			}
 		}
+		time.Sleep(25 * time.Millisecond)
 	}
 
+	// One final capture for diagnostics
+	events := ctx.eventObserver.GetEvents()
 	eventTypes := make([]string, len(events))
 	for i, event := range events {
 		eventTypes[i] = event.Type()
 	}
-
-	return fmt.Errorf("event of type %s was not emitted. Captured events: %v", EventTypeLoggerStarted, eventTypes)
+	return fmt.Errorf("event of type %s was not emitted within timeout. Captured events: %v", EventTypeLoggerStarted, eventTypes)
 }
 
 func (ctx *EventLoggerBDDTestContext) theEventLoggerModuleStops() error {
@@ -1163,8 +1217,9 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithSmallBufferAndEventO
 		return err
 	}
 
-	// Create config with small buffer for buffer overflow testing
-	config := ctx.createConsoleConfig(1) // Very small buffer
+	// Create config with very small buffer for buffer overflow testing
+	config := ctx.createConsoleConfig(1) // Buffer size 1 to force rapid saturation
+	ctx.fastEmit = true                  // Enable burst emission to increase likelihood of overflow
 
 	// Create application with the config
 	err = ctx.createApplicationWithConfig(config)
@@ -1300,8 +1355,9 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithFaultyOutputTargetAn
 	if eventloggerService, ok := service.(*EventLoggerModule); ok {
 		ctx.service = eventloggerService
 		// Replace the console output with a faulty one to trigger output errors
+		// Use the test-only setter to avoid data races with concurrent processing.
 		faultyOutput := &faultyOutputTarget{}
-		ctx.service.outputs = []OutputTarget{faultyOutput}
+		ctx.service.setOutputsForTesting([]OutputTarget{faultyOutput})
 	} else {
 		return fmt.Errorf("service is not an EventLoggerModule")
 	}
@@ -1479,6 +1535,7 @@ func TestEventLoggerModuleBDD(t *testing.T) {
 
 			// Buffer overflow events
 			s.Given(`^I have an event logger with small buffer and event observation enabled$`, ctx.iHaveAnEventLoggerWithSmallBufferAndEventObservationEnabled)
+			s.When(`^I rapidly emit more events than the buffer can hold$`, ctx.iRapidlyEmitMoreEventsThanTheBufferCanHold)
 			s.Then(`^buffer full events should be emitted$`, ctx.bufferFullEventsShouldBeEmitted)
 			s.Then(`^event dropped events should be emitted$`, ctx.eventDroppedEventsShouldBeEmitted)
 			s.Then(`^the events should contain drop reasons$`, ctx.theEventsShouldContainDropReasons)
@@ -1492,6 +1549,7 @@ func TestEventLoggerModuleBDD(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features/eventlogger_module.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

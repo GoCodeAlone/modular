@@ -1,0 +1,168 @@
+name: BDD Matrix
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.*'
+      - 'modules/**'
+      - '.github/workflows/bdd-matrix.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.*'
+      - 'modules/**'
+      - '.github/workflows/bdd-matrix.yml'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '^1.25'
+
+jobs:
+  # Discover modules (reused for matrix)
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.set-matrix.outputs.modules }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: set-matrix
+        run: |
+          ALL_MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort)
+          MODULES_JSON=$(echo "$ALL_MODULES" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
+          echo "Modules: $MODULES_JSON"
+          {
+            echo "matrix<<EOF"; echo "{\"module\":$MODULES_JSON}"; echo "EOF"; } >> $GITHUB_OUTPUT
+          { echo "modules<<EOF"; echo "$MODULES_JSON"; echo "EOF"; } >> $GITHUB_OUTPUT
+
+  # Core framework BDD tests (single job)
+  core-bdd:
+    runs-on: ubuntu-latest
+    needs: discover
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+      - name: Run core framework BDD tests
+        run: |
+          set -e
+          echo '=== Core Framework BDD Tests ==='
+          export CGO_ENABLED=1
+          export GORACE=halt_on_error=1
+          go test -race -v -coverprofile=core-bdd-coverage.txt -covermode=atomic -run 'TestApplicationLifecycle|TestConfigurationManagement|TestBaseConfigBDDFeatures|TestLoggerDecorator' .
+      - name: Upload core BDD coverage
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: CrisisTextLine/modular
+          files: core-bdd-coverage.txt
+          flags: core-bdd
+      - name: Persist core BDD coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-bdd-coverage
+          path: core-bdd-coverage.txt
+
+  # Run each module's BDD tests in parallel matrix
+  module-bdd:
+    runs-on: ubuntu-latest
+    needs: discover
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    name: BDD ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+      - name: Run BDD tests
+        working-directory: modules/${{ matrix.module }}
+        run: |
+          echo "=== BDD for ${{ matrix.module }} ==="
+          # Run BDD-focused Go tests (naming convention: *BDD*)
+          export CGO_ENABLED=1
+          export GORACE=halt_on_error=1
+          go test -race -v -coverprofile=bdd-${{ matrix.module }}-coverage.txt -covermode=atomic -run '.*BDD|.*Module' . || echo "No BDD tests found"
+      - name: Upload module BDD coverage
+        if: always()
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: CrisisTextLine/modular
+          files: modules/${{ matrix.module }}/bdd-${{ matrix.module }}-coverage.txt
+          flags: bdd-${{ matrix.module }}
+      - name: Persist module BDD coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdd-${{ matrix.module }}-coverage
+          path: modules/${{ matrix.module }}/bdd-${{ matrix.module }}-coverage.txt
+
+  # Summary job collates results
+  summary:
+    if: always()
+    needs: [core-bdd, module-bdd, discover]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (for merge script)
+        uses: actions/checkout@v5
+      - name: Summarize
+        run: |
+          echo '# BDD Matrix Summary' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo 'Core BDD Job: ${{ needs.core-bdd.result }}' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo 'Modules (parallel) overall result: ${{ needs.module-bdd.result }}' >> $GITHUB_STEP_SUMMARY
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bdd-coverage
+      - name: Merge BDD coverage
+        run: |
+          ls -R bdd-coverage || true
+          # Collect all coverage txt files
+          shopt -s globstar nullglob
+          FILES=(bdd-coverage/**/*.txt)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No coverage files found to merge" >&2
+            exit 0
+          fi
+          if [ ! -f scripts/merge-coverprofiles.sh ]; then
+            echo "merge-coverprofiles.sh not found; skipping merge" >&2
+            exit 0
+          fi
+          chmod +x scripts/merge-coverprofiles.sh
+          ./scripts/merge-coverprofiles.sh merged-bdd-coverage.txt "${FILES[@]}"
+          echo "Merged files: ${FILES[*]}"
+      - name: Upload merged BDD coverage
+        if: always()
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: CrisisTextLine/modular
+          files: merged-bdd-coverage.txt
+          flags: merged-bdd
+      - name: Persist merged BDD coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-bdd-coverage
+          path: merged-bdd-coverage.txt

@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '^1.23.5'
+  GO_VERSION: '^1.25'
 
 jobs:
   validate-examples:
@@ -254,11 +254,12 @@ jobs:
             if [ $EXIT_CODE -eq 0 ] && grep -q "Observer Pattern Demo completed successfully" app.log; then
               echo "✅ observer-pattern demo completed successfully"
               
-              # Verify key events were logged
-              if grep -q "module.registered" app.log && grep -q "service.registered" app.log; then
+              # Verify key lifecycle signals were logged (updated patterns)
+              # We now log structured messages like "Registered service" and "Initialized module".
+              if grep -q "Registered service" app.log && grep -q "Initialized module" app.log; then
                 echo "✅ observer-pattern logged expected lifecycle events"
               else
-                echo "❌ observer-pattern missing expected lifecycle events"
+                echo "❌ observer-pattern missing expected lifecycle events (looking for 'Registered service' and 'Initialized module')"
                 echo "📋 Application logs:"
                 cat app.log
                 exit 1

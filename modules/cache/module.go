@@ -66,6 +66,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
@@ -103,7 +104,12 @@ type CacheModule struct {
 	config      *CacheConfig
 	logger      modular.Logger
 	cacheEngine CacheEngine
-	subject     modular.Subject
+	// subject is the observable subject used for event emission. It can be written
+	// concurrently with reads during startup because events are emitted from goroutines.
+	// Guard with RWMutex to avoid data races between RegisterObservers (write) and
+	// EmitEvent (read) when asynchronous emissions occur before observer registration completes.
+	subject   modular.Subject
+	subjectMu sync.RWMutex
 }
 
 // NewModule creates a new instance of the cache module.
@@ -324,6 +330,18 @@ func (m *CacheModule) Constructor() modular.ModuleConstructor {
 func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 	value, found := m.cacheEngine.Get(ctx, key)
 
+	// Emit cache get event (independent of hit/miss) for observability of read attempts
+	getEvent := modular.NewCloudEvent(EventTypeCacheGet, "cache-service", map[string]interface{}{
+		"cache_key": key,
+		"engine":    m.config.Engine,
+	}, nil)
+
+	go func() {
+		if err := m.EmitEvent(ctx, getEvent); err != nil {
+			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheGet)
+		}
+	}()
+
 	// Emit cache hit/miss events
 	eventType := EventTypeCacheMiss
 	if found {
@@ -462,6 +480,20 @@ func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]i
 	if err != nil {
 		return nil, fmt.Errorf("failed to get multiple cache items: %w", err)
 	}
+
+	// Emit a cache get event for each requested key (best-effort; non-blocking)
+	for _, key := range keys {
+		getEvent := modular.NewCloudEvent(EventTypeCacheGet, "cache-service", map[string]interface{}{
+			"cache_key": key,
+			"engine":    m.config.Engine,
+			"batch":     true,
+		}, nil)
+		go func(ev cloudevents.Event) {
+			if err := m.EmitEvent(ctx, ev); err != nil {
+				m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheGet)
+			}
+		}(getEvent)
+	}
 	return result, nil
 }
 
@@ -508,7 +540,9 @@ func (m *CacheModule) DeleteMulti(ctx context.Context, keys []string) error {
 // RegisterObservers implements the ObservableModule interface.
 // This allows the cache module to register as an observer for events it's interested in.
 func (m *CacheModule) RegisterObservers(subject modular.Subject) error {
+	m.subjectMu.Lock()
 	m.subject = subject
+	m.subjectMu.Unlock()
 	// The cache module currently does not need to observe other events,
 	// but this method stores the subject for event emission.
 	return nil
@@ -517,10 +551,13 @@ func (m *CacheModule) RegisterObservers(subject modular.Subject) error {
 // EmitEvent implements the ObservableModule interface.
 // This allows the cache module to emit events to registered observers.
 func (m *CacheModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	if m.subject == nil {
+	m.subjectMu.RLock()
+	subj := m.subject
+	m.subjectMu.RUnlock()
+	if subj == nil {
 		return ErrNoSubjectForEventEmission
 	}
-	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+	if err := subj.NotifyObservers(ctx, event); err != nil {
 		return fmt.Errorf("failed to notify observers: %w", err)
 	}
 	return nil

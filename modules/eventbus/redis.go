@@ -267,7 +267,7 @@ func (r *RedisEventBus) subscribe(ctx context.Context, topic string, handler Eve
 	r.subscriptions[topic][sub.id] = sub
 	r.topicMutex.Unlock()
 
-	// Start message listener goroutine
+	// Start message listener goroutine (explicit Add/go because handleMessages manages Done)
 	r.wg.Add(1)
 	go r.handleMessages(sub)
 

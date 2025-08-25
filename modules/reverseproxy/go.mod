@@ -1,6 +1,6 @@
 module github.com/CrisisTextLine/modular/modules/reverseproxy
 
-go 1.24.2
+go 1.25
 
 retract v1.0.0
 

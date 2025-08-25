@@ -419,14 +419,28 @@ func loadAppConfig(app *StdApplication) error {
 		}
 	}
 
-	// Prepare config feeders - include base config feeder if enabled
-	configFeeders := make([]Feeder, 0, len(ConfigFeeders)+1)
+	// Prepare config feeders - include base config feeder if enabled.
+	// Priority / order:
+	//   1. Base config feeder (if enabled)
+	//   2. Per-app feeders (if explicitly provided via SetConfigFeeders)
+	//   3. Global ConfigFeeders fallback (if no per-app feeders provided)
+	var effectiveFeeders []Feeder
+
+	// Start capacity estimation (base + either per-app or global)
+	baseCount := 0
+	if IsBaseConfigEnabled() && GetBaseConfigFeeder() != nil {
+		baseCount = 1
+	}
+	if app.configFeeders != nil {
+		effectiveFeeders = make([]Feeder, 0, baseCount+len(app.configFeeders))
+	} else {
+		effectiveFeeders = make([]Feeder, 0, baseCount+len(ConfigFeeders))
+	}
 
 	// Add base config feeder first if enabled (so it gets processed first)
 	if IsBaseConfigEnabled() {
-		baseFeeder := GetBaseConfigFeeder()
-		if baseFeeder != nil {
-			configFeeders = append(configFeeders, baseFeeder)
+		if baseFeeder := GetBaseConfigFeeder(); baseFeeder != nil {
+			effectiveFeeders = append(effectiveFeeders, baseFeeder)
 			if app.IsVerboseConfig() {
 				app.logger.Debug("Added base config feeder",
 					"configDir", BaseConfigSettings.ConfigDir,
@@ -435,18 +449,22 @@ func loadAppConfig(app *StdApplication) error {
 		}
 	}
 
-	// Add standard feeders
-	configFeeders = append(configFeeders, ConfigFeeders...)
+	// Append per-app feeders if provided; else fall back to global
+	if app.configFeeders != nil {
+		effectiveFeeders = append(effectiveFeeders, app.configFeeders...)
+	} else {
+		effectiveFeeders = append(effectiveFeeders, ConfigFeeders...)
+	}
 
-	// Skip if no ConfigFeeders are defined
-	if len(configFeeders) == 0 {
+	// Skip if no feeders are defined
+	if len(effectiveFeeders) == 0 {
 		app.logger.Info("No config feeders defined, skipping config loading")
 		return nil
 	}
 
 	if app.IsVerboseConfig() {
-		app.logger.Debug("Configuration feeders available", "count", len(configFeeders))
-		for i, feeder := range configFeeders {
+		app.logger.Debug("Configuration feeders available", "count", len(effectiveFeeders))
+		for i, feeder := range effectiveFeeders {
 			app.logger.Debug("Config feeder registered", "index", i, "type", fmt.Sprintf("%T", feeder))
 		}
 	}
@@ -456,7 +474,7 @@ func loadAppConfig(app *StdApplication) error {
 	if app.IsVerboseConfig() {
 		cfgBuilder.SetVerboseDebug(true, app.logger)
 	}
-	for _, feeder := range configFeeders {
+	for _, feeder := range effectiveFeeders {
 		cfgBuilder.AddFeeder(feeder)
 		if app.IsVerboseConfig() {
 			app.logger.Debug("Added config feeder to builder", "type", fmt.Sprintf("%T", feeder))

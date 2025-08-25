@@ -17,6 +17,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
@@ -80,6 +81,13 @@ type ReverseProxyModule struct {
 
 	// Event observation
 	subject modular.Subject
+
+	// Load balancing (simple round-robin) support
+	loadBalanceCounters map[string]int // key: backend group spec string (comma-separated)
+	loadBalanceMutex    sync.Mutex
+
+	// Tracks whether Init has completed; used to suppress backend.added events during initial load
+	initialized bool
 }
 
 // Compile-time assertions to ensure interface compliance
@@ -118,6 +126,7 @@ func NewModule() *ReverseProxyModule {
 		preProxyTransforms:   make(map[string]func(*http.Request)),
 		circuitBreakers:      make(map[string]*CircuitBreaker),
 		enableMetrics:        true,
+		loadBalanceCounters:  make(map[string]int),
 	}
 
 	return module
@@ -159,7 +168,9 @@ func (m *ReverseProxyModule) RegisterConfig(app modular.Application) error {
 	}
 
 	return nil
-} // Init initializes the module with the provided application.
+}
+
+// Init initializes the module with the provided application.
 // It retrieves the module's configuration and sets up the internal data structures
 // for each configured backend, including tenant-specific configurations.
 func (m *ReverseProxyModule) Init(app modular.Application) error {
@@ -356,12 +367,23 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 
 			// Create circuit breaker for this backend
 			cb := NewCircuitBreakerWithConfig(backendID, cbConfig, m.metrics)
+			cb.eventEmitter = func(eventType string, data map[string]interface{}) {
+				m.emitEvent(context.Background(), eventType, data)
+			}
 			m.circuitBreakers[backendID] = cb
 
 			app.Logger().Debug("Initialized circuit breaker", "backend", backendID,
 				"failure_threshold", cbConfig.FailureThreshold, "open_timeout", cbConfig.OpenTimeout)
 		}
 		app.Logger().Info("Circuit breakers initialized", "backends", len(m.circuitBreakers))
+	}
+
+	// After creating health checker (if enabled) set event emitter
+	if m.healthChecker != nil {
+		m.healthChecker.SetEventEmitter(func(eventType string, data map[string]interface{}) {
+			// Use background context; health check events are operational
+			m.emitEvent(context.Background(), eventType, data)
+		})
 	}
 
 	// Emit config loaded event
@@ -373,6 +395,9 @@ func (m *ReverseProxyModule) Init(app modular.Application) error {
 		"cache_enabled":            m.config.CacheEnabled,
 		"request_timeout":          m.config.RequestTimeout.String(),
 	})
+
+	// Mark initialization complete so subsequent dynamic backend additions emit events
+	m.initialized = true
 
 	return nil
 }
@@ -971,15 +996,27 @@ func (m *ReverseProxyModule) registerBasicRoutes() error {
 	// Register explicit routes from configuration with feature flag support
 	for routePath, backendID := range m.config.Routes {
 		// Check if this backend exists
-		defaultProxy, exists := m.backendProxies[backendID]
-		if !exists || defaultProxy == nil {
-			m.app.Logger().Warn("Backend not found for route", "route", routePath, "backend", backendID)
-			continue
+		// Support backend group spec: if backendID contains comma, we'll select dynamically per request.
+		isGroup := strings.Contains(backendID, ",")
+		if !isGroup { // original single-backend validation
+			defaultProxy, exists := m.backendProxies[backendID]
+			if !exists || defaultProxy == nil {
+				m.app.Logger().Warn("Backend not found for route", "route", routePath, "backend", backendID)
+				continue
+			}
 		}
 
 		// Create a handler that considers route configs for feature flag evaluation
 		handler := func(routePath, backendID string) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
+				// If this is a backend group, pick one now (round-robin) and substitute
+				resolvedBackendID := backendID
+				if strings.Contains(backendID, ",") {
+					selected, _, _ := m.selectBackendFromGroup(backendID)
+					if selected != "" {
+						resolvedBackendID = selected
+					}
+				}
 				// Check if this route has feature flag configuration
 				if m.config.RouteConfigs != nil {
 					if routeConfig, ok := m.config.RouteConfigs[routePath]; ok && routeConfig.FeatureFlagID != "" {
@@ -1039,7 +1076,7 @@ func (m *ReverseProxyModule) registerBasicRoutes() error {
 				}
 
 				// Use primary backend (feature flag enabled or no feature flag)
-				primaryHandler := m.createBackendProxyHandler(backendID)
+				primaryHandler := m.createBackendProxyHandler(resolvedBackendID)
 				primaryHandler(w, r)
 			}
 		}(routePath, backendID)
@@ -1354,7 +1391,126 @@ func (m *ReverseProxyModule) createBackendProxy(backendID, serviceURL string) er
 	// Store the proxy for this backend
 	m.backendProxies[backendID] = proxy
 
+	// Emit backend added event only for dynamic additions after initialization
+	if m.initialized {
+		m.emitEvent(context.Background(), EventTypeBackendAdded, map[string]interface{}{
+			"backend": backendID,
+			"url":     serviceURL,
+			"time":    time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+
 	return nil
+}
+
+// AddBackend dynamically adds a new backend to the module at runtime and emits an event.
+// It updates the configuration, creates the proxy, and (optionally) registers a default route
+// if one matching the backend name does not already exist.
+func (m *ReverseProxyModule) AddBackend(backendID, serviceURL string) error { //nolint:ireturn
+	if backendID == "" || serviceURL == "" {
+		return fmt.Errorf("backend id and service URL required")
+	}
+	if m.config.BackendServices == nil {
+		m.config.BackendServices = make(map[string]string)
+	}
+	if _, exists := m.config.BackendServices[backendID]; exists {
+		return fmt.Errorf("backend %s already exists", backendID)
+	}
+
+	// Persist in config and create proxy (this will emit backend.added event because initialized=true)
+	m.config.BackendServices[backendID] = serviceURL
+	if err := m.createBackendProxy(backendID, serviceURL); err != nil {
+		return err
+	}
+
+	// If router already running and no route references this backend, add a basic pattern route for tests
+	if m.router != nil {
+		pattern := fmt.Sprintf("/%s/*", backendID)
+		// Only add if not conflicting with existing routes
+		if err := m.AddBackendRoute(backendID, pattern); err != nil {
+			// Non-fatal: log only
+			if m.app != nil && m.app.Logger() != nil {
+				m.app.Logger().Warn("Failed to auto-register route for new backend", "backend", backendID, "error", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// RemoveBackend removes an existing backend at runtime and emits a backend.removed event.
+func (m *ReverseProxyModule) RemoveBackend(backendID string) error { //nolint:ireturn
+	if backendID == "" {
+		return fmt.Errorf("backend id required")
+	}
+	if m.config.BackendServices == nil {
+		return fmt.Errorf("no backends configured")
+	}
+	serviceURL, exists := m.config.BackendServices[backendID]
+	if !exists {
+		return fmt.Errorf("backend %s not found", backendID)
+	}
+
+	// Remove from maps
+	delete(m.config.BackendServices, backendID)
+	delete(m.backendProxies, backendID)
+	delete(m.backendRoutes, backendID)
+	delete(m.circuitBreakers, backendID)
+
+	// Emit removal event
+	if m.initialized {
+		m.emitEvent(context.Background(), EventTypeBackendRemoved, map[string]interface{}{
+			"backend": backendID,
+			"url":     serviceURL,
+			"time":    time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+
+	return nil
+}
+
+// selectBackendFromGroup performs a simple round-robin selection from a comma-separated backend group spec.
+// Returns selected backend id, selected index, and total backends.
+func (m *ReverseProxyModule) selectBackendFromGroup(group string) (string, int, int) {
+	parts := strings.Split(group, ",")
+	var backends []string
+	for _, p := range parts {
+		b := strings.TrimSpace(p)
+		if b != "" {
+			backends = append(backends, b)
+		}
+	}
+	if len(backends) == 0 {
+		return "", 0, 0
+	}
+	m.loadBalanceMutex.Lock()
+	idx := m.loadBalanceCounters[group] % len(backends)
+	m.loadBalanceCounters[group] = m.loadBalanceCounters[group] + 1
+	m.loadBalanceMutex.Unlock()
+
+	selected := backends[idx]
+
+	// Emit load balancing decision events if module initialized so tests can observe
+	if m.initialized {
+		// Generic decision event (once per selection)
+		m.emitEvent(context.Background(), EventTypeLoadBalanceDecision, map[string]interface{}{
+			"group":            group,
+			"selected_backend": selected,
+			"index":            idx,
+			"total":            len(backends),
+			"time":             time.Now().UTC().Format(time.RFC3339Nano),
+		})
+		// Round-robin specific event includes rotation information
+		m.emitEvent(context.Background(), EventTypeLoadBalanceRoundRobin, map[string]interface{}{
+			"group":   group,
+			"backend": selected,
+			"index":   idx,
+			"total":   len(backends),
+			"time":    time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}
+
+	return selected, idx, len(backends)
 }
 
 // Helper function to correctly join URL paths
@@ -1637,12 +1793,17 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 			} else {
 				// Create new circuit breaker with config and store for reuse
 				cb = NewCircuitBreakerWithConfig(finalBackend, cbConfig, m.metrics)
+				cb.eventEmitter = func(eventType string, data map[string]interface{}) { m.emitEvent(r.Context(), eventType, data) }
 				m.circuitBreakers[finalBackend] = cb
 			}
 		}
 
 		// If circuit breaker is available, wrap the proxy request with it
 		if cb != nil {
+			// Ensure eventEmitter is set (defensive in case of early creation without emitter)
+			if cb.eventEmitter == nil {
+				cb.eventEmitter = func(eventType string, data map[string]interface{}) { m.emitEvent(r.Context(), eventType, data) }
+			}
 			// Create a custom RoundTripper that applies circuit breaking
 			originalTransport := proxy.Transport
 			if originalTransport == nil {
@@ -1707,6 +1868,24 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 					m.app.Logger().Error("Failed to copy response body", "error", err)
 				}
 			}
+
+			// Emit success or failure event based on status code (previously missing in circuit breaker path)
+			if resp.StatusCode >= 400 {
+				m.emitEvent(r.Context(), EventTypeRequestFailed, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"status":  resp.StatusCode,
+					"error":   fmt.Sprintf("upstream returned status %d", resp.StatusCode),
+				})
+			} else {
+				m.emitEvent(r.Context(), EventTypeRequestProxied, map[string]interface{}{
+					"backend": backend,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+					"status":  resp.StatusCode,
+				})
+			}
 		} else {
 			// No circuit breaker, use the proxy directly but capture status
 			sw := &statusCapturingResponseWriter{ResponseWriter: w, status: http.StatusOK}
@@ -1756,6 +1935,9 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 		} else {
 			// Create new circuit breaker with config and store for reuse
 			cb = NewCircuitBreakerWithConfig(backend, cbConfig, m.metrics)
+			cb.eventEmitter = func(eventType string, data map[string]interface{}) {
+				m.emitEvent(context.Background(), eventType, data)
+			}
 			m.circuitBreakers[backend] = cb
 		}
 	}

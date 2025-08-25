@@ -679,6 +679,7 @@ func TestJSONSchemaModuleBDD(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 
@@ -691,17 +692,17 @@ func TestJSONSchemaModuleBDD(t *testing.T) {
 func (ctx *JSONSchemaBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTesting() error {
 	// Get all registered event types from the module
 	registeredEvents := ctx.module.GetRegisteredEventTypes()
-	
+
 	// Create event validation observer
 	validator := modular.NewEventValidationObserver("event-validator", registeredEvents)
 	_ = validator // Use validator to avoid unused variable error
-	
+
 	// Check which events were emitted during testing
 	emittedEvents := make(map[string]bool)
 	for _, event := range ctx.eventObserver.GetEvents() {
 		emittedEvents[event.Type()] = true
 	}
-	
+
 	// Check for missing events
 	var missingEvents []string
 	for _, eventType := range registeredEvents {
@@ -709,10 +710,10 @@ func (ctx *JSONSchemaBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTes
 			missingEvents = append(missingEvents, eventType)
 		}
 	}
-	
+
 	if len(missingEvents) > 0 {
 		return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
 	}
-	
+
 	return nil
 }

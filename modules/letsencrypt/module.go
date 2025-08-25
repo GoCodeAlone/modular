@@ -190,6 +190,7 @@ type LetsEncryptModule struct {
 	renewalTicker *time.Ticker
 	rootCAs       *x509.CertPool  // Certificate authority root certificates
 	subject       modular.Subject // Added for event observation
+	subjectMu     sync.RWMutex    // Protects subject publication & reads during emission
 }
 
 // User implements the ACME User interface for Let's Encrypt
@@ -897,17 +898,22 @@ func (p *letsEncryptHTTPProvider) CleanUp(domain, token, keyAuth string) error {
 // RegisterObservers implements the ObservableModule interface.
 // This allows the letsencrypt module to register as an observer for events it's interested in.
 func (m *LetsEncryptModule) RegisterObservers(subject modular.Subject) error {
+	m.subjectMu.Lock()
 	m.subject = subject
+	m.subjectMu.Unlock()
 	return nil
 }
 
 // EmitEvent implements the ObservableModule interface.
 // This allows the letsencrypt module to emit events that other modules or observers can receive.
 func (m *LetsEncryptModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	if m.subject == nil {
+	m.subjectMu.RLock()
+	subj := m.subject
+	m.subjectMu.RUnlock()
+	if subj == nil {
 		return ErrNoSubjectForEventEmission
 	}
-	if err := m.subject.NotifyObservers(ctx, event); err != nil {
+	if err := subj.NotifyObservers(ctx, event); err != nil {
 		return fmt.Errorf("failed to notify observers: %w", err)
 	}
 	return nil
@@ -919,20 +925,19 @@ func (m *LetsEncryptModule) EmitEvent(ctx context.Context, event cloudevents.Eve
 // If no subject is available for event emission, it silently skips the event emission
 // to avoid noisy error messages in tests and non-observable applications.
 func (m *LetsEncryptModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
-	// Skip event emission if no subject is available (non-observable application)
-	if m.subject == nil {
+	m.subjectMu.RLock()
+	subj := m.subject
+	m.subjectMu.RUnlock()
+	if subj == nil {
 		return
 	}
 
 	event := modular.NewCloudEvent(eventType, "letsencrypt-service", data, nil)
 
-	if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-		// If no subject is registered, quietly skip to allow non-observable apps to run cleanly
+	if emitErr := subj.NotifyObservers(ctx, event); emitErr != nil {
 		if errors.Is(emitErr, ErrNoSubjectForEventEmission) {
 			return
 		}
-		// Note: No logger available in letsencrypt module, so we skip additional error logging
-		// to eliminate noisy test output. The error handling is centralized in EmitEvent.
 	}
 }
 

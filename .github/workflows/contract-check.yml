@@ -16,7 +16,7 @@ permissions:
   actions: read
 
 env:
-  GO_VERSION: '^1.23.5'
+  GO_VERSION: '^1.25'
 
 jobs:
   contract-check:

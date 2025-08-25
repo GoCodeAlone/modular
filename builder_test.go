@@ -12,6 +12,7 @@ import (
 
 // Test the new builder API
 func TestNewApplication_BasicBuilder(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	app, err := NewApplication(
@@ -33,6 +34,7 @@ func TestNewApplication_BasicBuilder(t *testing.T) {
 }
 
 func TestNewApplication_WithModules(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	module1 := &MockModule{name: "module1"}
@@ -55,6 +57,7 @@ func TestNewApplication_WithModules(t *testing.T) {
 }
 
 func TestNewApplication_WithObserver(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	observer := func(ctx context.Context, event cloudevents.Event) error {
@@ -78,6 +81,7 @@ func TestNewApplication_WithObserver(t *testing.T) {
 }
 
 func TestNewApplication_WithTenantAware(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	tenantLoader := &MockTenantLoader{}
@@ -99,6 +103,7 @@ func TestNewApplication_WithTenantAware(t *testing.T) {
 }
 
 func TestNewApplication_WithConfigDecorators(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	app, err := NewApplication(
@@ -117,6 +122,7 @@ func TestNewApplication_WithConfigDecorators(t *testing.T) {
 }
 
 func TestNewApplication_MissingLogger(t *testing.T) {
+	t.Parallel()
 	_, err := NewApplication(
 		WithConfigProvider(NewStdConfigProvider(&struct{}{})),
 	)

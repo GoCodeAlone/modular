@@ -1,5 +1,8 @@
 name: Modules CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ main ]
@@ -17,7 +20,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '^1.23.5'
+  GO_VERSION: '^1.25'
 
 jobs:
   # This job identifies which modules have been modified
@@ -92,6 +95,8 @@ jobs:
       fail-fast: false
       matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
     continue-on-error: true
+    permissions:
+      contents: read
     
     name: Test ${{ matrix.module }}
     steps:
@@ -116,7 +121,9 @@ jobs:
         working-directory: modules/${{ matrix.module }}
         continue-on-error: true
         run: |
-          if go test -v ./... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic; then
+          export CGO_ENABLED=1
+          export GORACE=halt_on_error=1
+          if go test -race -v ./... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic; then
             echo "result=success" >> $GITHUB_OUTPUT
             echo "::notice title=Test Result for ${{ matrix.module }}::Tests passed"
           else
@@ -125,15 +132,10 @@ jobs:
             exit 1
           fi
 
-      - name: Run BDD tests explicitly for ${{ matrix.module }}
-        working-directory: modules/${{ matrix.module }}
-        continue-on-error: true
-        run: |
-          echo "Running BDD tests for ${{ matrix.module }} module..."
-          go test -v -run ".*BDD|.*Module" . || echo "No BDD tests found for ${{ matrix.module }}"
+  # BDD tests moved to dedicated module-bdd matrix job
 
       - name: Upload coverage for ${{ matrix.module }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: CrisisTextLine/modular
@@ -262,38 +264,3 @@ jobs:
             echo "✅ **All checks passed!** All modules successfully completed testing, verification, and linting." >> $GITHUB_STEP_SUMMARY
           fi
 
-  # Comprehensive BDD test execution across all modules
-  bdd-tests:
-    needs: detect-modules
-    runs-on: ubuntu-latest
-    name: BDD Tests Summary
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          check-latest: true
-          cache: true
-
-      - name: Run comprehensive BDD tests
-        run: |
-          echo "# BDD Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Module | BDD Tests Status |" >> $GITHUB_STEP_SUMMARY  
-          echo "|--------|------------------|" >> $GITHUB_STEP_SUMMARY
-          
-          modules=$(echo '${{ needs.detect-modules.outputs.modules }}' | jq -r '.[]')
-          
-          for module in $modules; do
-            cd "modules/$module"
-            echo "=== Running BDD tests for $module ==="
-            if go test -v -run ".*BDD|.*Module" . >/dev/null 2>&1; then
-              echo "| $module | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| $module | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-            fi
-            cd ../..
-          done

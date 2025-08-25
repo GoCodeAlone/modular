@@ -1,8 +1,8 @@
 module observer-demo
 
-go 1.24.2
+go 1.25
 
-toolchain go1.24.5
+toolchain go1.25.0
 
 replace github.com/CrisisTextLine/modular => ../..
 

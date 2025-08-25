@@ -9,10 +9,8 @@ import (
 	"github.com/CrisisTextLine/modular/feeders"
 )
 
-// TestInstanceAwareFeedingAfterYAML tests that instance-aware feeding works correctly
-// after YAML configuration has been loaded. This test recreates the issue where
-// instance-aware feeding was looking at the original empty config instead of the
-// config that was populated by YAML feeders.
+// TestInstanceAwareFeedingAfterYAML verifies instance-aware feeding after YAML load.
+// Env vars are hoisted (when non-conflicting) so subtests can run with t.Parallel safely.
 func TestInstanceAwareFeedingAfterYAML(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -41,7 +39,7 @@ database:
 				"DB_PRIMARY_DSN":      "./test_primary.db",
 				"DB_SECONDARY_DRIVER": "sqlite3",
 				"DB_SECONDARY_DSN":    "./test_secondary.db",
-				"DB_CACHE_DRIVER":     "sqlite3", // Explicitly set to prevent contamination
+				"DB_CACHE_DRIVER":     "sqlite3",
 				"DB_CACHE_DSN":        "./test_cache.db",
 			},
 			expected: map[string]string{
@@ -75,71 +73,75 @@ webapp:
 				"api.port":   "9080",
 				"api.host":   "0.0.0.0",
 				"admin.port": "9081",
-				"admin.host": "localhost", // Should keep YAML value
+				"admin.host": "localhost",
 			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary YAML file
-			tmpFile := createTempYAMLFile(t, tt.yamlContent)
-			defer os.Remove(tmpFile)
-
-			// Set environment variables
-			for key, value := range tt.envVars {
-				t.Setenv(key, value)
+	// Merge env vars and detect conflicting assignments.
+	merged := map[string]string{}
+	collision := false
+	for _, tc := range tests {
+		for k, v := range tc.envVars {
+			if existing, ok := merged[k]; ok && existing != v {
+				collision = true
+				break
 			}
+			merged[k] = v
+		}
+		if collision {
+			break
+		}
+	}
 
-			// Create test structures
-			var dbConfig *TestDatabaseConfig
-			var webConfig *TestWebappConfig
+	if !collision {
+		for k, v := range merged {
+			t.Setenv(k, v)
+		}
+	}
 
-			if tt.name == "database_connections_with_yaml_structure_and_env_overrides" {
-				dbConfig = &TestDatabaseConfig{
-					Default:     "primary",
-					Connections: make(map[string]*TestConnectionConfig),
+	for _, tc := range tests {
+		c := tc
+		t.Run(c.name, func(t *testing.T) {
+			if collision {
+				for k, v := range c.envVars {
+					t.Setenv(k, v)
 				}
 			} else {
-				webConfig = &TestWebappConfig{
-					Default:   "api",
-					Instances: make(map[string]*TestWebappInstance),
-				}
+				// Safe to parallelize: env vars pre-set and per-app feeders avoid global mutation.
+				t.Parallel()
 			}
 
-			// Setup feeders
-			originalFeeders := ConfigFeeders
-			ConfigFeeders = []Feeder{
-				feeders.NewYamlFeeder(tmpFile),
-				feeders.NewEnvFeeder(),
-			}
-			defer func() { ConfigFeeders = originalFeeders }()
+			tmpFile := createTempYAMLFile(t, c.yamlContent)
+			defer os.Remove(tmpFile)
 
-			// Create application
+			var dbConfig *TestDatabaseConfig
+			var webConfig *TestWebappConfig
+			if c.name == "database_connections_with_yaml_structure_and_env_overrides" {
+				dbConfig = &TestDatabaseConfig{Default: "primary", Connections: make(map[string]*TestConnectionConfig)}
+			} else {
+				webConfig = &TestWebappConfig{Default: "api", Instances: make(map[string]*TestWebappInstance)}
+			}
+
 			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 			app := NewStdApplication(NewStdConfigProvider(&TestAppConfig{}), logger)
+			// Use per-app feeders to avoid touching global state
+			app.(*StdApplication).SetConfigFeeders([]Feeder{feeders.NewYamlFeeder(tmpFile), feeders.NewEnvFeeder()})
 
-			// Register config section
 			if dbConfig != nil {
-				instancePrefixFunc := func(instanceKey string) string {
-					return "DB_" + instanceKey + "_"
-				}
+				instancePrefixFunc := func(instanceKey string) string { return "DB_" + instanceKey + "_" }
 				configProvider := NewInstanceAwareConfigProvider(dbConfig, instancePrefixFunc)
 				app.RegisterConfigSection("database", configProvider)
 			} else {
-				instancePrefixFunc := func(instanceKey string) string {
-					return "WEBAPP_" + instanceKey + "_"
-				}
+				instancePrefixFunc := func(instanceKey string) string { return "WEBAPP_" + instanceKey + "_" }
 				configProvider := NewInstanceAwareConfigProvider(webConfig, instancePrefixFunc)
 				app.RegisterConfigSection("webapp", configProvider)
 			}
 
-			// Initialize the application (this triggers config loading)
 			if err := app.Init(); err != nil {
 				t.Fatalf("Failed to initialize application: %v", err)
 			}
 
-			// Get the config section and validate the results
 			var provider ConfigProvider
 			var err error
 			if dbConfig != nil {
@@ -151,11 +153,10 @@ webapp:
 				t.Fatalf("Failed to get config section: %v", err)
 			}
 
-			// Validate that instance-aware feeding worked
 			if dbConfig != nil {
-				testDatabaseInstanceAwareFeedingResults(t, provider, tt.expected)
+				testDatabaseInstanceAwareFeedingResults(t, provider, c.expected)
 			} else {
-				testWebappInstanceAwareFeedingResults(t, provider, tt.expected)
+				testWebappInstanceAwareFeedingResults(t, provider, c.expected)
 			}
 		})
 	}
@@ -165,6 +166,7 @@ webapp:
 // instance-aware feeding was checking the original provider config instead of
 // the config that was populated by YAML feeders.
 func TestInstanceAwareFeedingRegressionBug(t *testing.T) {
+	// NOTE: Cannot use t.Parallel here because this test calls t.Setenv. Go 1.25 restriction.
 	// Create YAML content with database connections
 	yamlContent := `
 database:
@@ -200,17 +202,14 @@ database:
 		Connections: make(map[string]*TestConnectionConfig),
 	}
 
-	// Setup feeders
-	originalFeeders := ConfigFeeders
-	ConfigFeeders = []Feeder{
-		feeders.NewYamlFeeder(tmpFile),
-		feeders.NewEnvFeeder(),
-	}
-	defer func() { ConfigFeeders = originalFeeders }()
+	// Setup per-app feeders (avoid mutating global ConfigFeeders)
 
 	// Create application
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	app := NewStdApplication(NewStdConfigProvider(&TestAppConfig{}), logger)
+	if cfSetter, ok := app.(interface{ SetConfigFeeders([]Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]Feeder{feeders.NewYamlFeeder(tmpFile), feeders.NewEnvFeeder()})
+	}
 
 	// Register database config section with instance-aware provider
 	instancePrefixFunc := func(instanceKey string) string {
@@ -463,6 +462,10 @@ func findDotIndex(s string) int {
 // AFTER regular config feeding, not before. This ensures that the instances
 // are available when the instance-aware feeding process runs.
 func TestInstanceAwareFeedingOrderMatters(t *testing.T) {
+	// NOTE: Cannot mark this test as t.Parallel because it uses t.Setenv to
+	// define environment variable overrides. Go 1.25 forbids calling t.Setenv
+	// in a test that also calls t.Parallel on the same *testing.T instance.
+	// Keeping this serial avoids the panic: "test using t.Setenv or t.Chdir can not use t.Parallel".
 	// Create YAML content
 	yamlContent := `
 test:
@@ -488,17 +491,14 @@ test:
 		Items:   make(map[string]*TestInstanceItem),
 	}
 
-	// Setup feeders
-	originalFeeders := ConfigFeeders
-	ConfigFeeders = []Feeder{
-		feeders.NewYamlFeeder(tmpFile),
-		feeders.NewEnvFeeder(),
-	}
-	defer func() { ConfigFeeders = originalFeeders }()
+	// Setup per-app feeders instead of mutating global ConfigFeeders
 
 	// Create application
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	app := NewStdApplication(NewStdConfigProvider(&TestAppConfig{}), logger)
+	if cfSetter, ok := app.(interface{ SetConfigFeeders([]Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]Feeder{feeders.NewYamlFeeder(tmpFile), feeders.NewEnvFeeder()})
+	}
 
 	// Register config section
 	instancePrefixFunc := func(instanceKey string) string {
@@ -576,6 +576,7 @@ type TestInstanceItem struct {
 // TestInstanceAwareFeedingWithNoInstances tests that instance-aware feeding
 // gracefully handles the case where no instances are defined in the config.
 func TestInstanceAwareFeedingWithNoInstances(t *testing.T) {
+	t.Parallel()
 	// Create YAML content with no instances
 	yamlContent := `
 test:
@@ -593,17 +594,14 @@ test:
 		Items:   make(map[string]*TestInstanceItem),
 	}
 
-	// Setup feeders
-	originalFeeders := ConfigFeeders
-	ConfigFeeders = []Feeder{
-		feeders.NewYamlFeeder(tmpFile),
-		feeders.NewEnvFeeder(),
-	}
-	defer func() { ConfigFeeders = originalFeeders }()
+	// Setup per-app feeders (avoid mutating global ConfigFeeders)
 
 	// Create application
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	app := NewStdApplication(NewStdConfigProvider(&TestAppConfig{}), logger)
+	if cfSetter, ok := app.(interface{ SetConfigFeeders([]Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]Feeder{feeders.NewYamlFeeder(tmpFile), feeders.NewEnvFeeder()})
+	}
 
 	// Register config section
 	instancePrefixFunc := func(instanceKey string) string {

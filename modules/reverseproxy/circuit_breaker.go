@@ -51,6 +51,8 @@ type CircuitBreaker struct {
 	mutex            sync.RWMutex
 	metricsCollector *MetricsCollector
 	backendName      string
+	// Optional event emitter provided by the reverseproxy module to surface state transitions
+	eventEmitter func(eventType string, data map[string]interface{})
 }
 
 // Reset resets the circuit breaker to closed state.
@@ -100,6 +102,14 @@ func (cb *CircuitBreaker) IsOpen() bool {
 		if time.Since(cb.lastFailure) > cb.resetTimeout {
 			// Allow a single request to check if the service has recovered
 			cb.state = StateHalfOpen
+			if cb.eventEmitter != nil {
+				cb.eventEmitter(EventTypeCircuitBreakerHalfOpen, map[string]interface{}{
+					"backend":       cb.backendName,
+					"failure_count": cb.failureCount,
+					"state":         "half-open",
+					"time":          time.Now().UTC().Format(time.RFC3339Nano),
+				})
+			}
 			return false
 		}
 		return true
@@ -118,6 +128,14 @@ func (cb *CircuitBreaker) RecordSuccess() {
 		cb.state = StateClosed
 		if cb.metricsCollector != nil {
 			cb.metricsCollector.SetCircuitBreakerStatus(cb.backendName, false)
+		}
+		if cb.eventEmitter != nil {
+			cb.eventEmitter(EventTypeCircuitBreakerClosed, map[string]interface{}{
+				"backend":       cb.backendName,
+				"failure_count": cb.failureCount,
+				"state":         "closed",
+				"time":          time.Now().UTC().Format(time.RFC3339Nano),
+			})
 		}
 	}
 
@@ -141,6 +159,15 @@ func (cb *CircuitBreaker) RecordFailure() {
 		cb.state = StateOpen
 		if cb.metricsCollector != nil {
 			cb.metricsCollector.SetCircuitBreakerStatus(cb.backendName, true)
+		}
+		if cb.eventEmitter != nil {
+			cb.eventEmitter(EventTypeCircuitBreakerOpen, map[string]interface{}{
+				"backend":       cb.backendName,
+				"failure_count": cb.failureCount,
+				"threshold":     cb.failureThreshold,
+				"state":         "open",
+				"time":          time.Now().UTC().Format(time.RFC3339Nano),
+			})
 		}
 	}
 }

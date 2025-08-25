@@ -23,12 +23,7 @@ func main() {
 	// Start mock backend servers
 	startMockBackends()
 
-	// Configure feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
+	// Configure feeders per application (avoid global mutation)
 	// Create a new application
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
@@ -37,6 +32,13 @@ func main() {
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 		)),
 	)
+
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
+	}
 
 	// Feature flag evaluator service will be automatically provided by the reverseproxy module
 	// when feature flags are enabled in configuration. No manual registration needed.

@@ -240,6 +240,7 @@ type StdApplication struct {
 	tenantService  TenantService // Added tenant service reference
 	verboseConfig  bool          // Flag for verbose configuration debugging
 	initialized    bool          // Tracks whether Init has already been successfully executed
+	configFeeders  []Feeder      // Optional per-application feeders (override global ConfigFeeders if non-nil)
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -280,6 +281,7 @@ func NewStdApplication(cp ConfigProvider, logger Logger) Application {
 		svcRegistry:    make(ServiceRegistry),
 		moduleRegistry: make(ModuleRegistry),
 		logger:         logger,
+		configFeeders:  nil, // default to nil to signal use of package-level ConfigFeeders
 	}
 
 	// Register the logger as a service so modules can depend on it
@@ -320,6 +322,12 @@ func (app *StdApplication) GetConfigSection(section string) (ConfigProvider, err
 		return nil, fmt.Errorf("%w: %s", ErrConfigSectionNotFound, section)
 	}
 	return cp, nil
+}
+
+// SetConfigFeeders sets per-application configuration feeders overriding the package-level ConfigFeeders for this app's Init lifecycle.
+// Passing nil resets to use the global ConfigFeeders again.
+func (app *StdApplication) SetConfigFeeders(feeders []Feeder) {
+	app.configFeeders = feeders
 }
 
 // RegisterService adds a service with type checking
@@ -417,6 +425,7 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 		app.logger.Debug("Registering module", "name", name)
 	}
 
+	// Configuration loading (AppConfigLoader will consult app.configFeeders directly now)
 	if err := AppConfigLoader(app); err != nil {
 		errs = append(errs, fmt.Errorf("failed to load app config: %w", err))
 	}

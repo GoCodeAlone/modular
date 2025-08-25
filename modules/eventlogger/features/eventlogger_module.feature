@@ -89,7 +89,7 @@ Feature: Event Logger Module
 
   Scenario: Emit events during buffer overflow
     Given I have an event logger with small buffer and event observation enabled
-    When I emit more events than the buffer can hold
+    When I rapidly emit more events than the buffer can hold
     Then buffer full events should be emitted
     And event dropped events should be emitted
     And the events should contain drop reasons

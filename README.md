@@ -11,6 +11,25 @@ Modular Go
 [![Go Report Card](https://goreportcard.com/badge/github.com/CrisisTextLine/modular)](https://goreportcard.com/report/github.com/CrisisTextLine/modular)
 [![codecov](https://codecov.io/gh/CrisisTextLine/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/CrisisTextLine/modular)
 
+## Testing
+
+Run all tests:
+
+```bash
+go test ./... -v
+```
+
+### Parallel Module BDD Suites
+
+To speed up BDD feedback locally you can execute module BDD suites in parallel:
+
+```bash
+chmod +x scripts/run-module-bdd-parallel.sh
+scripts/run-module-bdd-parallel.sh 6   # 6 workers; omit number to auto-detect CPUs
+```
+
+The script prefers GNU `parallel` and falls back to `xargs -P`.
+
 ## Overview
 Modular is a package that provides a structured way to create modular applications in Go. It allows you to build applications as collections of modules that can be easily added, removed, or replaced. Key features include:
 
@@ -563,6 +582,7 @@ func (m *MultiTenantModule) OnTenantRemoved(tenantID modular.TenantID) {
 configLoader := modular.NewFileBasedTenantConfigLoader(modular.TenantConfigParams{
     ConfigNameRegex: regexp.MustCompile("^tenant-[\\w-]+\\.(json|yaml)$"),
     ConfigDir:       "./configs/tenants",
+    // Prefer per-app feeders (via app.SetConfigFeeders) over global when testing; examples use explicit slice for clarity
     ConfigFeeders:   []modular.Feeder{},
 })
 
@@ -637,6 +657,44 @@ type ConfigValidator interface {
 
 Modular comes with a command-line tool (`modcli`) to help you create new modules and configurations.
 
+## Test Isolation and Configuration Feeders
+
+Historically tests mutated the package-level `modular.ConfigFeeders` slice directly to control configuration sources. This created hidden coupling and prevented safe use of `t.Parallel()`. The framework now supports per-application feeders via:
+
+```
+app.(*modular.StdApplication).SetConfigFeeders([]modular.Feeder{feeders.NewYamlFeeder("config.yaml"), feeders.NewEnvFeeder()})
+```
+
+Guidelines:
+
+1. In tests, prefer `app.SetConfigFeeders(...)` immediately after creating the application (before `Init()`).
+2. Pass `nil` to revert an app back to using global feeders (rare in tests now).
+3. Avoid mutating `modular.ConfigFeeders` in tests; example applications may still set the global slice once at startup for simplicity.
+4. The legacy isolation helper no longer snapshots feeders; only environment variables are isolated.
+
+Benefit: tests become self-contained and can run in parallel without feeder race conditions.
+
+### Parallel Testing Guidelines
+
+Short rules for adding `t.Parallel()` safely:
+
+DO:
+- Pre-create apps and call `app.SetConfigFeeders(...)` instead of mutating global `ConfigFeeders`.
+- Set all required environment variables up-front in the parent test (one `t.Setenv` per variable) and then parallelize independent subtests that do NOT call `t.Setenv` themselves.
+- Keep tests idempotent: no shared global mutation, no time-dependent ordering.
+- Use isolated temp dirs (`t.TempDir()`) and unique filenames.
+
+DO NOT:
+- Call `t.Parallel()` on a test that itself calls `t.Setenv` or `t.Chdir` (Go 1.25 restriction: mixing causes a panic: "test using t.Setenv or t.Chdir can not use t.Parallel").
+- Rely on mutation of package-level singletons (e.g. modifying global slices) across parallel tests.
+- Write to the same file or network port from multiple parallel tests.
+
+Patterns:
+- Serial parent + parallel children: parent sets env vars; each child `t.Parallel()` if it doesn't modify env/working dir.
+- Fully serial tests: keep serial when per-case env mutation is unavoidable.
+
+If in doubt, leave the test serial and add a brief comment explaining why (`// NOTE: cannot parallelize because ...`).
+
 ### Installation
 
 You can install the CLI tool using one of the following methods:
@@ -696,6 +754,7 @@ Each command includes interactive prompts to guide you through the process of cr
 - **[Debugging and Troubleshooting](DOCUMENTATION.md#debugging-and-troubleshooting)** - Diagnostic tools and solutions for common issues
 - **[Available Modules](modules/README.md)** - Complete list of pre-built modules with documentation
 - **[Examples](examples/)** - Working example applications demonstrating various features
+ - **[Concurrency & Race Guidelines](CONCURRENCY_GUIDELINES.md)** - Official synchronization patterns, race detector usage, and safe module design
 
 ### Having Issues?
 

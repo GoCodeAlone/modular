@@ -118,6 +118,7 @@ func (l *mockLogger) Warn(msg string, args ...interface{})  {}
 func (l *mockLogger) Error(msg string, args ...interface{}) {}
 
 func TestCacheModule(t *testing.T) {
+	t.Parallel()
 	module := NewModule()
 	assert.Equal(t, "cache", module.Name())
 
@@ -137,6 +138,7 @@ func TestCacheModule(t *testing.T) {
 }
 
 func TestMemoryCacheOperations(t *testing.T) {
+	t.Parallel()
 	// Create the module
 	module := NewModule().(*CacheModule)
 
@@ -197,6 +199,7 @@ func TestMemoryCacheOperations(t *testing.T) {
 }
 
 func TestExpiration(t *testing.T) {
+	t.Parallel()
 	// Create the module
 	module := NewModule().(*CacheModule)
 
@@ -241,6 +244,7 @@ func TestExpiration(t *testing.T) {
 
 // TestRedisConfiguration tests Redis configuration handling without actual Redis connection
 func TestRedisConfiguration(t *testing.T) {
+	t.Parallel()
 	// Create the module
 	module := NewModule().(*CacheModule)
 
@@ -273,6 +277,7 @@ func TestRedisConfiguration(t *testing.T) {
 
 // TestRedisOperationsWithMockBehavior tests Redis cache operations that don't require a real connection
 func TestRedisOperationsWithMockBehavior(t *testing.T) {
+	t.Parallel()
 	config := &CacheConfig{
 		Engine:           "redis",
 		DefaultTTL:       300 * time.Second,
@@ -316,6 +321,7 @@ func TestRedisOperationsWithMockBehavior(t *testing.T) {
 
 // TestRedisConfigurationEdgeCases tests edge cases in Redis configuration
 func TestRedisConfigurationEdgeCases(t *testing.T) {
+	t.Parallel()
 	config := &CacheConfig{
 		Engine:           "redis",
 		DefaultTTL:       300 * time.Second,
@@ -337,6 +343,7 @@ func TestRedisConfigurationEdgeCases(t *testing.T) {
 
 // TestRedisMultiOperationsEmptyInputs tests multi operations with empty inputs
 func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
+	t.Parallel()
 	config := &CacheConfig{
 		Engine:           "redis",
 		DefaultTTL:       300 * time.Second,
@@ -367,32 +374,45 @@ func TestRedisMultiOperationsEmptyInputs(t *testing.T) {
 
 // TestRedisConnectWithPassword tests connection configuration with password
 func TestRedisConnectWithPassword(t *testing.T) {
+	t.Parallel()
+	// Use an in-memory Redis (miniredis) with password + DB selection to make the test deterministic.
+	s := miniredis.RunT(t)
+	// Require auth so our password path is exercised.
+	s.RequireAuth("test-password")
+
 	config := &CacheConfig{
 		Engine:           "redis",
 		DefaultTTL:       300 * time.Second,
 		CleanupInterval:  60 * time.Second,
 		MaxItems:         10000,
-		RedisURL:         "redis://localhost:6379",
+		RedisURL:         "redis://" + s.Addr(),
 		RedisPassword:    "test-password",
-		RedisDB:          1,
+		RedisDB:          1, // exercise non-default DB selection
 		ConnectionMaxAge: 120 * time.Second,
 	}
 
 	cache := NewRedisCache(config)
 	ctx := context.Background()
 
-	// Test connection with password and different DB - this will fail since no Redis server
-	// but will exercise the connection configuration code paths
+	// Should connect successfully now that a test server exists and requires auth.
 	err := cache.Connect(ctx)
-	assert.Error(t, err) // Expected to fail without Redis server
+	require.NoError(t, err, "expected successful Redis connection to miniredis with auth")
 
-	// Test Close when client is nil initially
+	// Basic sanity write to ensure selected DB works (miniredis supports SELECT)
+	err = cache.Set(ctx, "pw-key", "pw-value", time.Minute)
+	assert.NoError(t, err)
+	v, ok := cache.Get(ctx, "pw-key")
+	assert.True(t, ok)
+	assert.Equal(t, "pw-value", v)
+
+	// Close should succeed
 	err = cache.Close(ctx)
 	assert.NoError(t, err)
 }
 
 // TestRedisJSONMarshaling tests JSON marshaling error scenarios
 func TestRedisJSONMarshaling(t *testing.T) {
+	t.Parallel()
 	// Start a test Redis server
 	s := miniredis.RunT(t)
 	defer s.Close()
@@ -432,6 +452,7 @@ func TestRedisJSONMarshaling(t *testing.T) {
 
 // TestRedisFullOperations tests Redis operations with a test server
 func TestRedisFullOperations(t *testing.T) {
+	t.Parallel()
 	// Start a test Redis server
 	s := miniredis.RunT(t)
 	defer s.Close()
@@ -513,6 +534,7 @@ func TestRedisFullOperations(t *testing.T) {
 
 // TestRedisGetJSONUnmarshalError tests JSON unmarshaling errors in Get
 func TestRedisGetJSONUnmarshalError(t *testing.T) {
+	t.Parallel()
 	// Start a test Redis server
 	s := miniredis.RunT(t)
 	defer s.Close()
@@ -547,6 +569,7 @@ func TestRedisGetJSONUnmarshalError(t *testing.T) {
 
 // TestRedisGetWithServerError tests Get with server errors
 func TestRedisGetWithServerError(t *testing.T) {
+	t.Parallel()
 	// Start a test Redis server
 	s := miniredis.RunT(t)
 

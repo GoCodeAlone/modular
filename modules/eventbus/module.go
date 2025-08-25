@@ -149,7 +149,7 @@ type EventBusModule struct {
 	router    *EngineRouter
 	mutex     sync.RWMutex
 	isStarted bool
-	subject   modular.Subject // For event observation
+	subject   modular.Subject // For event observation (guarded by mutex)
 }
 
 // NewModule creates a new instance of the event bus module.
@@ -633,7 +633,9 @@ var (
 // RegisterObservers implements the ObservableModule interface.
 // This allows the eventbus module to register as an observer for events it's interested in.
 func (m *EventBusModule) RegisterObservers(subject modular.Subject) error {
+	m.mutex.Lock()
 	m.subject = subject
+	m.mutex.Unlock()
 	// The eventbus module currently does not need to observe other events,
 	// but this method stores the subject for event emission.
 	return nil
@@ -642,19 +644,20 @@ func (m *EventBusModule) RegisterObservers(subject modular.Subject) error {
 // EmitEvent implements the ObservableModule interface.
 // This allows the eventbus module to emit events to registered observers.
 func (m *EventBusModule) EmitEvent(ctx context.Context, event cloudevents.Event) error {
-	if m.subject == nil {
+	m.mutex.RLock()
+	subj := m.subject
+	m.mutex.RUnlock()
+	if subj == nil {
 		return ErrNoSubjectForEventEmission
 	}
 	// Use a goroutine to prevent blocking eventbus operations with event emission
-	go func() {
-		if err := m.subject.NotifyObservers(ctx, event); err != nil {
-			// Log error but don't fail the operation
-			// This ensures event emission issues don't affect eventbus functionality
+	go func(s modular.Subject, e cloudevents.Event) {
+		if err := s.NotifyObservers(ctx, e); err != nil {
 			if m.logger != nil {
-				m.logger.Debug("Failed to notify observers", "error", err, "event_type", event.Type())
+				m.logger.Debug("Failed to notify observers", "error", err, "event_type", e.Type())
 			}
 		}
-	}()
+	}(subj, event)
 	return nil
 }
 
@@ -664,7 +667,10 @@ func (m *EventBusModule) EmitEvent(ctx context.Context, event cloudevents.Event)
 // to avoid noisy error messages in tests and non-observable applications.
 func (m *EventBusModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
 	// Skip event emission if no subject is available (non-observable application)
-	if m.subject == nil {
+	m.mutex.RLock()
+	subj := m.subject
+	m.mutex.RUnlock()
+	if subj == nil {
 		return
 	}
 

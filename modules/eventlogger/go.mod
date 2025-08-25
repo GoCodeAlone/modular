@@ -1,8 +1,8 @@
 module github.com/CrisisTextLine/modular/modules/eventlogger
 
-go 1.24.2
+go 1.25
 
-toolchain go1.24.3
+toolchain go1.25.0
 
 require (
 	github.com/CrisisTextLine/modular v1.6.0

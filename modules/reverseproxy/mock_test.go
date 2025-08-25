@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5" // Import chi for router type assertion
@@ -270,6 +271,7 @@ func (m *MockTenantService) RegisterTenantAwareModule(module modular.TenantAware
 
 // MockLogger implements the Logger interface for testing
 type MockLogger struct {
+	mu            sync.RWMutex
 	DebugMessages []string
 	InfoMessages  []string
 	WarnMessages  []string
@@ -286,17 +288,58 @@ func NewMockLogger() *MockLogger {
 }
 
 func (m *MockLogger) Debug(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.DebugMessages = append(m.DebugMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
 }
 
 func (m *MockLogger) Info(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.InfoMessages = append(m.InfoMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
 }
 
 func (m *MockLogger) Warn(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.WarnMessages = append(m.WarnMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
 }
 
 func (m *MockLogger) Error(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.ErrorMessages = append(m.ErrorMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
+}
+
+// Snapshot methods (currently unused but safe for concurrent access in future assertions)
+func (m *MockLogger) GetDebugMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.DebugMessages))
+	copy(out, m.DebugMessages)
+	return out
+}
+
+func (m *MockLogger) GetInfoMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.InfoMessages))
+	copy(out, m.InfoMessages)
+	return out
+}
+
+func (m *MockLogger) GetWarnMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.WarnMessages))
+	copy(out, m.WarnMessages)
+	return out
+}
+
+func (m *MockLogger) GetErrorMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.ErrorMessages))
+	copy(out, m.ErrorMessages)
+	return out
 }
