@@ -188,6 +188,15 @@ jobs:
               none)  echo "ℹ️ No public API surface changes detected." >> changelog.md; echo "" >> changelog.md ;;
             esac
             cat artifacts/diffs/${MODULE}.md >> changelog.md
+            # Also embed the raw JSON diff for direct inspection
+            if [ -f artifacts/diffs/${MODULE}.json ] && [ -s artifacts/diffs/${MODULE}.json ]; then
+              echo "" >> changelog.md
+              echo "### Raw Contract JSON Diff" >> changelog.md
+              echo "" >> changelog.md
+              echo '```json' >> changelog.md
+              if command -v jq >/dev/null 2>&1; then jq . artifacts/diffs/${MODULE}.json >> changelog.md || cat artifacts/diffs/${MODULE}.json >> changelog.md; else cat artifacts/diffs/${MODULE}.json >> changelog.md; fi
+              echo '```' >> changelog.md
+            fi
           else
             echo "No API contract differences compared to previous release." >> changelog.md
           fi
@@ -217,6 +226,9 @@ jobs:
             echo "Deleting asset: $asset"
             gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
           done
+          # Capture URL for display step
+          RELEASE_URL=$(gh release view ${{ steps.version.outputs.tag }} --json url --jq .url)
+          echo "html_url=$RELEASE_URL" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
