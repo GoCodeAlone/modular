@@ -88,21 +88,28 @@ jobs:
               WITHOUT_CHANGES+=("$M")
             fi
           done
-          to_json() {
-            # Convert newline list to JSON array; empty -> []
+          build_json_array() {
+            local arr=("$@")
+            if [ ${#arr[@]} -eq 0 ] || { [ ${#arr[@]} -eq 1 ] && [ -z "${arr[0]}" ]; }; then
+              printf '[]'
+              return 0
+            fi
             if command -v jq >/dev/null 2>&1; then
-              if [ -t 0 ]; then cat; else cat; fi | grep -v '^$' | jq -R . | jq -s . -c
+              printf '%s\n' "${arr[@]}" | jq -R . | jq -s . -c
             else
-              # Fallback: simple bracketed comma list
-              LINES=$(grep -v '^$' || true)
-              if [ -z "$LINES" ]; then echo '[]'; return 0; fi
-              printf '["%s"' "${LINES%%$'\n'*}" | sed "s/\n/","/g" | sed 's/$/"]/'
+              local first=1
+              printf '['
+              for e in "${arr[@]}"; do
+                [ -z "$e" ] && continue
+                if [ $first -eq 0 ]; then printf ','; fi
+                printf '"%s"' "$e"
+                first=0
+              done
+              printf ']'
             fi
           }
-          WITH_JSON=$(printf '%s\n' "${WITH_CHANGES[@]}" | to_json || echo '[]')
-          [ -z "$WITH_JSON" ] && WITH_JSON='[]'
-          WITHOUT_JSON=$(printf '%s\n' "${WITHOUT_CHANGES[@]}" | to_json || echo '[]')
-          [ -z "$WITHOUT_JSON" ] && WITHOUT_JSON='[]'
+          WITH_JSON=$(build_json_array "${WITH_CHANGES[@]}")
+          WITHOUT_JSON=$(build_json_array "${WITHOUT_CHANGES[@]}")
           # Only write valid key=value lines to GITHUB_OUTPUT
           echo "modules_with_changes=${WITH_JSON}" >> "$GITHUB_OUTPUT"
           echo "modules_without_changes=${WITHOUT_JSON}" >> "$GITHUB_OUTPUT"
