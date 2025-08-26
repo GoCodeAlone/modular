@@ -204,6 +204,8 @@ jobs:
     needs: detect
     if: needs.detect.outputs.modules_without_changes != '[]'
     runs-on: ubuntu-latest
+    outputs:
+      module_release_urls: ${{ steps.collect.outputs.module_release_urls }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -218,6 +220,7 @@ jobs:
         run: |
           cd cmd/modcli && go build -o modcli
       - name: Ensure module releases (create if missing) with contract diffs
+        id: collect
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -228,8 +231,15 @@ jobs:
             [ -z "$M" ] && continue
             TAG=$(git tag -l "modules/${M}/v*" | sort -V | tail -n1 || true)
             [ -z "$TAG" ] && { echo "Module $M has no tags yet; skipping."; continue; }
+            VER=${TAG##*/}
+            MOD_PATH="github.com/CrisisTextLine/modular/modules/${M}"
             if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Release exists for $TAG"; continue
+              echo "Release exists for $TAG"
+              URL=$(gh release view "$TAG" --json url --jq .url || echo '')
+              [ -n "$URL" ] && echo "$M $URL" >> urls.txt
+              # Re-announce existing tag to Go proxy
+              GOPROXY=proxy.golang.org go list -m ${MOD_PATH}@${VER} || echo "Re-announce failed for ${M}@${VER}"
+              continue
             fi
             PREV=$(git tag -l "modules/${M}/v*" | sort -V | tail -n2 | head -n1 || echo '')
             extract_module () { REF=$1; OUT=$2; [ -z "$REF" ] && return 0; TMP=$(mktemp -d); git archive "$REF" | tar -x -C "$TMP"; mkdir -p "$TMP/cmd/modcli"; cp cmd/modcli/modcli "$TMP/cmd/modcli/" || true; (cd "$TMP/modules/${M}" && ./cmd/modcli/modcli contract extract . -o contract.json) || true; [ -f "$TMP/modules/${M}/contract.json" ] && mv "$TMP/modules/${M}/contract.json" "$OUT" || true; }
@@ -254,9 +264,18 @@ jobs:
               fi
             } > changelog.md
             gh release create "$TAG" --title "${M} ${TAG##*/}" --notes-file changelog.md --repo ${{ github.repository }} --latest=false
-            MOD_PATH="github.com/CrisisTextLine/modular/modules/${M}"; VER=${TAG##*/}
-            GOPROXY=proxy.golang.org go list -m ${MOD_PATH}@${VER}
+            # Announce newly created tag
+            GOPROXY=proxy.golang.org go list -m ${MOD_PATH}@${VER} || echo "Announce failed for ${M}@${VER}"
+            URL=$(gh release view "$TAG" --json url --jq .url || echo '')
+            [ -n "$URL" ] && echo "$M $URL" >> urls.txt
           done
+          # Build JSON object of module -> release URL for summary output
+          if [ -f urls.txt ]; then
+            OBJ=$(awk 'BEGIN{printf "{"} {printf "%s\"%s\":\"%s\"", (NR>1?",":""), $1,$2} END{printf "}"}' urls.txt)
+          else
+            OBJ='{}'
+          fi
+          echo "module_release_urls=${OBJ}" >> $GITHUB_OUTPUT
 
   summary:
     runs-on: ubuntu-latest
@@ -287,5 +306,9 @@ jobs:
           fi
           if [ "$MWOUT" != "[]" ]; then
             echo "Modules without changes (ensured if missing release): $(echo "$MWOUT" | jq -r '.[]' | tr '\n' ' ') (job result: ${{ needs.ensure-modules.result }})"
+            if [ '${{ needs.ensure-modules.outputs.module_release_urls }}' != '' ] && [ '${{ needs.ensure-modules.outputs.module_release_urls }}' != '{}' ]; then
+              echo "Ensured module release URLs:"
+              echo '${{ needs.ensure-modules.outputs.module_release_urls }}' | jq -r 'to_entries[] | "- \(.key): \(.value)"'
+            fi
           fi
           echo '========================================='
