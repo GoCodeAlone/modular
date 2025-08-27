@@ -167,9 +167,15 @@ jobs:
             if [ $FIRST -eq 1 ]; then
               cat "$f" >> "$OUT"; FIRST=0
             else
-              grep -v '^mode:' "$f" >> "$OUT"
+              { grep -v '^mode:' "$f" || true; } >> "$OUT"
             fi
           done
+          # Ensure a mode line exists at top
+          if ! grep -q '^mode:' "$OUT"; then
+            echo 'mode: atomic' | cat - "$OUT" > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+          fi
+          # Never fail this step due to merge nuances
+          true
           echo "Merged (fallback) into $OUT from ${#FILES[@]} files" >&2
       - name: Upload merged BDD coverage
         if: always()
