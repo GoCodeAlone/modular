@@ -137,21 +137,40 @@ jobs:
           path: bdd-coverage
       - name: Merge BDD coverage
         run: |
+          set -euo pipefail
           ls -R bdd-coverage || true
-          # Collect all coverage txt files
           shopt -s globstar nullglob
           FILES=(bdd-coverage/**/*.txt)
           if [ ${#FILES[@]} -eq 0 ]; then
             echo "No coverage files found to merge" >&2
+            # Nothing to do (don't fail)
             exit 0
           fi
-          if [ ! -f scripts/merge-coverprofiles.sh ]; then
-            echo "merge-coverprofiles.sh not found; skipping merge" >&2
-            exit 0
+          echo "Found ${#FILES[@]} coverage profiles"
+          # Prefer central script if present, else inline merge
+          if [ -f scripts/merge-coverprofiles.sh ]; then
+            chmod +x scripts/merge-coverprofiles.sh
+            if ! ./scripts/merge-coverprofiles.sh merged-bdd-coverage.txt "${FILES[@]}"; then
+              echo "[warn] merge-coverprofiles.sh failed, falling back to inline merge" >&2
+            else
+              echo "Merged via script"; exit 0
+            fi
+          else
+            echo "[info] merge-coverprofiles.sh not found, using inline merge" >&2
           fi
-          chmod +x scripts/merge-coverprofiles.sh
-          ./scripts/merge-coverprofiles.sh merged-bdd-coverage.txt "${FILES[@]}"
-          echo "Merged files: ${FILES[*]}"
+          # Inline merge fallback
+          OUT=merged-bdd-coverage.txt
+          FIRST=1
+          : > "$OUT"
+          for f in "${FILES[@]}"; do
+            [ -f "$f" ] || { echo "[warn] Missing profile $f" >&2; continue; }
+            if [ $FIRST -eq 1 ]; then
+              cat "$f" >> "$OUT"; FIRST=0
+            else
+              grep -v '^mode:' "$f" >> "$OUT"
+            fi
+          done
+          echo "Merged (fallback) into $OUT from ${#FILES[@]} files" >&2
       - name: Upload merged BDD coverage
         if: always()
         uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
