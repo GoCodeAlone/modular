@@ -18,8 +18,14 @@ for f in "$@"; do
     cat "$f" >> "$OUT"
     FIRST=0
   else
-    grep -v '^mode:' "$f" >> "$OUT"
+    # grep -v returns exit 1 if no lines matched (e.g. file only has mode line); tolerate that
+    { grep -v '^mode:' "$f" || true; } >> "$OUT"
   fi
 done
+
+# Ensure at least one mode line exists
+if ! grep -q '^mode:' "$OUT"; then
+  echo 'mode: atomic' | cat - "$OUT" > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+fi
 
 echo "Merged coverage written to $OUT" >&2
