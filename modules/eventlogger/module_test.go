@@ -64,7 +64,7 @@ func TestEventLoggerModule_ObserverInterface(t *testing.T) {
 
 	err := module.OnEvent(context.Background(), event)
 	if !errors.Is(err, ErrLoggerNotStarted) {
-		t.Errorf("Expected ErrLoggerNotStarted, got %v", err)
+		t.Errorf("Expected ErrLoggerNotStarted when not initialized, got %v", err)
 	}
 }
 

@@ -100,12 +100,12 @@ func TestEnhancedFieldTracking(t *testing.T) {
 	for _, tt := range tests {
 		// Set env for this test case
 		for key, value := range tt.envVars {
-            t.Setenv(key, value)
+			t.Setenv(key, value)
 		}
 		t.Run(tt.name, func(t *testing.T) {
-            // Subtest does not call t.Setenv, but the parent did so we also avoid t.Parallel here to
-            // keep semantics simple and consistent (can't parallelize parent anyway). If additional
-            // cases without env mutation are added we can split them into a separate parallel test.
+			// Subtest does not call t.Setenv, but the parent did so we also avoid t.Parallel here to
+			// keep semantics simple and consistent (can't parallelize parent anyway). If additional
+			// cases without env mutation are added we can split them into a separate parallel test.
 
 			// Create logger that captures debug output
 			mockLogger := new(MockLogger)

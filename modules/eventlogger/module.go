@@ -147,12 +147,19 @@ type EventLoggerModule struct {
 	subject      modular.Subject
 	// observerRegistered ensures we only register with the subject once
 	observerRegistered bool
+	// Event queueing for pre-start events - implements "queue until ready" approach
+	// to handle events that arrive before Start() is called. This eliminates noise
+	// from early lifecycle events while preserving all events for later processing.
+	eventQueue   []cloudevents.Event
+	queueMaxSize int
 }
 
 // setOutputsForTesting replaces the output targets. This is intended ONLY for
 // test scenarios that need to inject faulty outputs after initialization. It
 // acquires the module mutex to avoid data races with concurrent readers.
 // NOTE: Mutating outputs at runtime is not supported in production usage.
+//
+//nolint:unused // Used in tests only
 func (m *EventLoggerModule) setOutputsForTesting(outputs []OutputTarget) {
 	m.mutex.Lock()
 	m.outputs = outputs
@@ -238,6 +245,10 @@ func (m *EventLoggerModule) Init(app modular.Application) error {
 	m.eventChan = make(chan cloudevents.Event, m.config.BufferSize)
 	m.stopChan = make(chan struct{})
 
+	// Initialize event queue for pre-start events
+	m.eventQueue = make([]cloudevents.Event, 0)
+	m.queueMaxSize = 1000 // Reasonable limit to prevent memory issues
+
 	if m.logger != nil {
 		m.logger.Info("Event logger module initialized", "targets", len(m.outputs))
 	}
@@ -248,9 +259,9 @@ func (m *EventLoggerModule) Init(app modular.Application) error {
 // Start starts the event logger processing.
 func (m *EventLoggerModule) Start(ctx context.Context) error {
 	m.mutex.Lock()
-	defer m.mutex.Unlock()
 
 	if m.started {
+		m.mutex.Unlock()
 		return nil
 	}
 
@@ -259,6 +270,7 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 		if m.logger != nil {
 			m.logger.Warn("Event logger Start called before Init; skipping")
 		}
+		m.mutex.Unlock()
 		return nil
 	}
 
@@ -266,11 +278,13 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 		if m.logger != nil {
 			m.logger.Info("Event logger is disabled, skipping start")
 		}
+		m.mutex.Unlock()
 		return nil
 	}
 
 	for _, output := range m.outputs { // start outputs
 		if err := output.Start(ctx); err != nil {
+			m.mutex.Unlock()
 			return fmt.Errorf("failed to start output target: %w", err)
 		}
 	}
@@ -283,6 +297,11 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 		m.logger.Info("Event logger started")
 	}
 
+	// Process any queued events before normal operation
+	queuedEvents := make([]cloudevents.Event, len(m.eventQueue))
+	copy(queuedEvents, m.eventQueue)
+	m.eventQueue = nil // Clear the queue
+
 	// Capture data needed for emission outside the lock
 	startupSync := m.config.StartupSync
 	outputsLen := len(m.outputs)
@@ -290,8 +309,22 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 	outputConfigs := make([]OutputTargetConfig, len(m.config.OutputTargets))
 	copy(outputConfigs, m.config.OutputTargets)
 
-	// Defer emission outside lock
+	// Release the lock before processing queued events to avoid deadlocks
+	m.mutex.Unlock()
+
+	// Process queued events synchronously to maintain order
+	if len(queuedEvents) > 0 {
+		if m.logger != nil {
+			m.logger.Info("Processing queued events", "count", len(queuedEvents))
+		}
+		for _, event := range queuedEvents {
+			m.logEvent(ctx, event)
+		}
+	}
+
+	// Defer emission outside lock (no mutex needed since we released it)
 	go m.emitStartupOperationalEvents(ctx, startupSync, outputsLen, bufferLen, outputConfigs)
+
 	return nil
 }
 
@@ -537,18 +570,61 @@ func (m *EventLoggerModule) isOwnEvent(event cloudevents.Event) bool {
 
 // OnEvent implements the Observer interface to receive and log CloudEvents.
 func (m *EventLoggerModule) OnEvent(ctx context.Context, event cloudevents.Event) error {
-	m.mutex.RLock()
-	started := m.started
-	shuttingDown := m.shuttingDown
-	m.mutex.RUnlock()
+	// Check startup state and handle queueing with mutex protection
+	var started bool
+	var queueResult error
+	var needsProcessing bool
 
-	if !started {
-		// Silently drop known early lifecycle events instead of returning error to reduce noise
-		if isBenignEarlyLifecycleEvent(event.Type()) || shuttingDown {
-			return nil
+	func() {
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
+
+		started = m.started
+		shuttingDown := m.shuttingDown
+
+		if !started {
+			if shuttingDown {
+				// If we're shutting down, just drop the event silently
+				queueResult = nil
+				return
+			}
+
+			// If not initialized (eventQueue is nil), return error
+			if m.eventQueue == nil {
+				queueResult = ErrLoggerNotStarted
+				return
+			}
+
+			// Queue the event until we're started (unless we're at queue limit)
+			if len(m.eventQueue) < m.queueMaxSize {
+				m.eventQueue = append(m.eventQueue, event)
+				queueResult = nil
+				return
+			} else {
+				// Queue is full - drop oldest event and add new one
+				if len(m.eventQueue) > 0 {
+					// Shift slice to remove first element (oldest)
+					copy(m.eventQueue, m.eventQueue[1:])
+					m.eventQueue[len(m.eventQueue)-1] = event
+				}
+				if m.logger != nil {
+					m.logger.Debug("Event queue full, dropped oldest event",
+						"queue_size", m.queueMaxSize, "new_event", event.Type())
+				}
+				queueResult = nil
+				return
+			}
 		}
-		return ErrLoggerNotStarted
+
+		needsProcessing = true
+	}()
+
+	// If we handled it during queueing phase, return early
+	if !needsProcessing {
+		return queueResult
 	}
+
+	// We're started - process normally
 
 	// Attempt non-blocking enqueue first. If it fails, channel is full and we must drop oldest.
 	select {
@@ -838,19 +914,5 @@ func (m *EventLoggerModule) GetRegisteredEventTypes() []string {
 		EventTypeOutputError,
 		EventTypeConfigLoaded,
 		EventTypeOutputRegistered,
-	}
-}
-
-// isBenignEarlyLifecycleEvent returns true for framework lifecycle events that may occur
-// before the eventlogger starts and should not generate noise if dropped.
-func isBenignEarlyLifecycleEvent(eventType string) bool {
-	switch eventType {
-	case modular.EventTypeConfigLoaded,
-		modular.EventTypeConfigValidated,
-		modular.EventTypeModuleRegistered,
-		modular.EventTypeServiceRegistered:
-		return true
-	default:
-		return false
 	}
 }
