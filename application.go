@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"reflect"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -160,6 +161,20 @@ type Application interface {
 
 	// IsVerboseConfig returns whether verbose configuration debugging is enabled.
 	IsVerboseConfig() bool
+
+	// GetServicesByModule returns all services provided by a specific module.
+	// This method provides access to the enhanced service registry information
+	// that tracks module-to-service associations.
+	GetServicesByModule(moduleName string) []string
+
+	// GetServiceEntry retrieves detailed information about a registered service,
+	// including which module provided it and naming information.
+	GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool)
+
+	// GetServicesByInterface returns all services that implement the given interface.
+	// This enables interface-based service discovery for modules that need to
+	// aggregate services by capability rather than name.
+	GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry
 }
 
 // TenantApplication extends Application with multi-tenant functionality.
@@ -230,17 +245,18 @@ type TenantApplication interface {
 
 // StdApplication represents the core StdApplication container
 type StdApplication struct {
-	cfgProvider    ConfigProvider
-	cfgSections    map[string]ConfigProvider
-	svcRegistry    ServiceRegistry
-	moduleRegistry ModuleRegistry
-	logger         Logger
-	ctx            context.Context
-	cancel         context.CancelFunc
-	tenantService  TenantService // Added tenant service reference
-	verboseConfig  bool          // Flag for verbose configuration debugging
-	initialized    bool          // Tracks whether Init has already been successfully executed
-	configFeeders  []Feeder      // Optional per-application feeders (override global ConfigFeeders if non-nil)
+	cfgProvider         ConfigProvider
+	cfgSections         map[string]ConfigProvider
+	svcRegistry         ServiceRegistry          // Backwards compatible view
+	enhancedSvcRegistry *EnhancedServiceRegistry // Enhanced registry with module tracking
+	moduleRegistry      ModuleRegistry
+	logger              Logger
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	tenantService       TenantService // Added tenant service reference
+	verboseConfig       bool          // Flag for verbose configuration debugging
+	initialized         bool          // Tracks whether Init has already been successfully executed
+	configFeeders       []Feeder      // Optional per-application feeders (override global ConfigFeeders if non-nil)
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -275,17 +291,23 @@ type StdApplication struct {
 //	    log.Fatal(err)
 //	}
 func NewStdApplication(cp ConfigProvider, logger Logger) Application {
+	enhancedRegistry := NewEnhancedServiceRegistry()
+
 	app := &StdApplication{
-		cfgProvider:    cp,
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         logger,
-		configFeeders:  nil, // default to nil to signal use of package-level ConfigFeeders
+		cfgProvider:         cp,
+		cfgSections:         make(map[string]ConfigProvider),
+		enhancedSvcRegistry: enhancedRegistry,
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(), // Backwards compatible view
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              logger,
+		configFeeders:       nil, // default to nil to signal use of package-level ConfigFeeders
 	}
 
 	// Register the logger as a service so modules can depend on it
-	app.svcRegistry["logger"] = logger
+	if app.enhancedSvcRegistry != nil {
+		_, _ = app.enhancedSvcRegistry.RegisterService("logger", logger) // Ignore error for logger service
+		app.svcRegistry = app.enhancedSvcRegistry.AsServiceRegistry()    // Update backwards compatible view
+	}
 
 	return app
 }
@@ -332,14 +354,31 @@ func (app *StdApplication) SetConfigFeeders(feeders []Feeder) {
 
 // RegisterService adds a service with type checking
 func (app *StdApplication) RegisterService(name string, service any) error {
+	// Check for duplicates using the backwards compatible registry
 	if _, exists := app.svcRegistry[name]; exists {
 		// Preserve contract: duplicate registrations are an error
 		app.logger.Debug("Service already registered", "name", name)
 		return ErrServiceAlreadyRegistered
 	}
 
-	app.svcRegistry[name] = service
-	app.logger.Debug("Registered service", "name", name, "type", reflect.TypeOf(service))
+	// Register with enhanced registry if available (handles automatic conflict resolution)
+	var actualName string
+	if app.enhancedSvcRegistry != nil {
+		var err error
+		actualName, err = app.enhancedSvcRegistry.RegisterService(name, service)
+		if err != nil {
+			return err
+		}
+
+		// Update backwards compatible view
+		app.svcRegistry = app.enhancedSvcRegistry.AsServiceRegistry()
+	} else {
+		// Fallback to direct registration for compatibility
+		app.svcRegistry[name] = service
+		actualName = name
+	}
+
+	app.logger.Debug("Registered service", "name", name, "actualName", actualName, "type", reflect.TypeOf(service))
 	return nil
 }
 
@@ -438,29 +477,42 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 
 	// Initialize modules in order
 	for _, moduleName := range moduleOrder {
-		if _, ok := app.moduleRegistry[moduleName].(ServiceAware); ok {
+		module := app.moduleRegistry[moduleName]
+
+		if _, ok := module.(ServiceAware); ok {
 			// Inject required services
-			app.moduleRegistry[moduleName], err = app.injectServices(app.moduleRegistry[moduleName])
+			app.moduleRegistry[moduleName], err = app.injectServices(module)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err))
 				continue
 			}
+			module = app.moduleRegistry[moduleName] // Update reference after injection
 		}
 
-		if err = app.moduleRegistry[moduleName].Init(appToPass); err != nil {
+		// Set current module context for service registration tracking
+		if app.enhancedSvcRegistry != nil {
+			app.enhancedSvcRegistry.SetCurrentModule(module)
+		}
+
+		if err = module.Init(appToPass); err != nil {
 			errs = append(errs, fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err))
 			continue
 		}
 
-		if _, ok := app.moduleRegistry[moduleName].(ServiceAware); ok {
+		if _, ok := module.(ServiceAware); ok {
 			// Register services provided by modules
-			for _, svc := range app.moduleRegistry[moduleName].(ServiceAware).ProvidesServices() {
+			for _, svc := range module.(ServiceAware).ProvidesServices() {
 				if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
 					// Collect registration errors (e.g., duplicates) for reporting
 					errs = append(errs, fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err))
 					continue
 				}
 			}
+		}
+
+		// Clear current module context
+		if app.enhancedSvcRegistry != nil {
+			app.enhancedSvcRegistry.ClearCurrentModule()
 		}
 
 		app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
@@ -878,36 +930,85 @@ func (app *StdApplication) IsVerboseConfig() bool {
 	return app.verboseConfig
 }
 
+// DependencyEdge represents a dependency edge with its source type
+type DependencyEdge struct {
+	From string
+	To   string
+	Type EdgeType
+	// For interface-based dependencies, show which interface is involved
+	InterfaceType reflect.Type
+	ServiceName   string
+}
+
+// EdgeType represents the type of dependency edge
+type EdgeType int
+
+const (
+	EdgeTypeModule EdgeType = iota
+	EdgeTypeNamedService
+	EdgeTypeInterfaceService
+)
+
+func (e EdgeType) String() string {
+	switch e {
+	case EdgeTypeModule:
+		return "module"
+	case EdgeTypeNamedService:
+		return "named-service"
+	case EdgeTypeInterfaceService:
+		return "interface-service"
+	default:
+		return "unknown"
+	}
+}
+
 // resolveDependencies returns modules in initialization order
 func (app *StdApplication) resolveDependencies() ([]string, error) {
-	// Create dependency graph
+	// Create dependency graph and track dependency edges
 	graph := make(map[string][]string)
+	dependencyEdges := make([]DependencyEdge, 0)
+
 	for name, module := range app.moduleRegistry {
 		if _, ok := module.(DependencyAware); !ok {
 			app.logger.Debug("Module does not implement DependencyAware, skipping", "module", name)
 			graph[name] = nil
 			continue
 		}
-		graph[name] = module.(DependencyAware).Dependencies()
+		deps := module.(DependencyAware).Dependencies()
+		graph[name] = deps
+
+		// Track module-level dependency edges
+		for _, dep := range deps {
+			dependencyEdges = append(dependencyEdges, DependencyEdge{
+				From: name,
+				To:   dep,
+				Type: EdgeTypeModule,
+			})
+		}
 	}
 
 	// Analyze service dependencies to augment the graph with implicit dependencies
-	app.addImplicitDependencies(graph)
+	serviceEdges := app.addImplicitDependencies(graph)
+	dependencyEdges = append(dependencyEdges, serviceEdges...)
 
-	// Topological sort
+	// Enhanced topological sort with path tracking
 	var result []string
 	visited := make(map[string]bool)
 	temp := make(map[string]bool)
+	path := make([]string, 0)
 
 	var visit func(string) error
 	visit = func(node string) error {
 		if temp[node] {
-			return fmt.Errorf("%w: %s", ErrCircularDependency, node)
+			// Found cycle - construct detailed cycle information
+			cycle := app.constructCyclePath(path, node, dependencyEdges)
+			return fmt.Errorf("%w: %s", ErrCircularDependency, cycle)
 		}
 		if visited[node] {
 			return nil
 		}
 		temp[node] = true
+		path = append(path, node)
 
 		// Sort dependencies to ensure deterministic order
 		deps := make([]string, len(graph[node]))
@@ -926,6 +1027,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 
 		visited[node] = true
 		temp[node] = false
+		path = path[:len(path)-1] // Remove from path
 		result = append(result, node)
 		return nil
 	}
@@ -951,18 +1053,79 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	return result, nil
 }
 
+// constructCyclePath constructs a detailed cycle path showing the dependency chain
+func (app *StdApplication) constructCyclePath(path []string, cycleNode string, edges []DependencyEdge) string {
+	// Find the start of the cycle
+	cycleStart := -1
+	for i, node := range path {
+		if node == cycleNode {
+			cycleStart = i
+			break
+		}
+	}
+
+	if cycleStart == -1 {
+		// Fallback to simple cycle indication
+		return fmt.Sprintf("cycle detected involving %s", cycleNode)
+	}
+
+	// Build the cycle path with edge type information
+	cyclePath := path[cycleStart:]
+	cyclePath = append(cyclePath, cycleNode) // Complete the cycle
+
+	var pathDetails []string
+	for i := 0; i < len(cyclePath)-1; i++ {
+		from := cyclePath[i]
+		to := cyclePath[i+1]
+
+		// Find the edge that connects these nodes
+		edgeInfo := app.findDependencyEdge(from, to, edges)
+		pathDetails = append(pathDetails, fmt.Sprintf("%s →%s %s", from, edgeInfo, to))
+	}
+
+	return fmt.Sprintf("cycle: %s", strings.Join(pathDetails, " → "))
+}
+
+// findDependencyEdge finds the dependency edge between two modules and returns a description
+func (app *StdApplication) findDependencyEdge(from, to string, edges []DependencyEdge) string {
+	for _, edge := range edges {
+		if edge.From == from && edge.To == to {
+			switch edge.Type {
+			case EdgeTypeModule:
+				return "(module)"
+			case EdgeTypeNamedService:
+				return fmt.Sprintf("(service:%s)", edge.ServiceName)
+			case EdgeTypeInterfaceService:
+				interfaceName := "unknown"
+				if edge.InterfaceType != nil {
+					interfaceName = edge.InterfaceType.String() // Use String() for fully qualified name
+				}
+				return fmt.Sprintf("(interface:%s)", interfaceName)
+			}
+		}
+	}
+	return "(unknown)" // Fallback
+}
+
 // addImplicitDependencies analyzes service provider/consumer relationships to find implicit dependencies
 // where modules provide services that other modules require via interface matching.
-func (app *StdApplication) addImplicitDependencies(graph map[string][]string) {
+// Returns the edges that were added for cycle detection.
+func (app *StdApplication) addImplicitDependencies(graph map[string][]string) []DependencyEdge {
 	// Collect all required interfaces and service providers
 	requiredInterfaces, serviceProviders := app.collectServiceRequirements()
 
-	// Find interface implementations
-	interfaceImplementations := app.findInterfaceImplementations(requiredInterfaces)
+	// Find interface implementations with interface type information
+	interfaceMatches := app.findInterfaceMatches(requiredInterfaces)
 
-	// Add dependencies to the graph
-	app.addNameBasedDependencies(graph, serviceProviders)
-	app.addInterfaceBasedDependencies(graph, interfaceImplementations)
+	// Add dependencies to the graph and collect edges
+	var edges []DependencyEdge
+	namedEdges := app.addNameBasedDependencies(graph, serviceProviders)
+	interfaceEdges := app.addInterfaceBasedDependenciesWithTypeInfo(graph, interfaceMatches)
+
+	edges = append(edges, namedEdges...)
+	edges = append(edges, interfaceEdges...)
+
+	return edges
 }
 
 // collectServiceRequirements builds maps of required interfaces and service providers
@@ -994,6 +1157,14 @@ type interfaceRequirement struct {
 	interfaceType reflect.Type
 	moduleName    string
 	serviceName   string
+}
+
+// InterfaceMatch represents a consumer-provider match for an interface-based dependency
+type InterfaceMatch struct {
+	Consumer      string
+	Provider      string
+	InterfaceType reflect.Type
+	ServiceName   string
 }
 
 // collectRequiredInterfaces collects all interface-based service requirements for a module
@@ -1042,11 +1213,12 @@ func (app *StdApplication) collectServiceProviders(
 	}
 }
 
-// findInterfaceImplementations finds which modules provide services that implement required interfaces
-func (app *StdApplication) findInterfaceImplementations(
+// findInterfaceMatches finds which modules provide services that implement required interfaces
+// and returns structured matches with type information for better cycle detection
+func (app *StdApplication) findInterfaceMatches(
 	requiredInterfaces map[string][]interfaceRequirement,
-) map[string][]string {
-	interfaceImplementations := make(map[string][]string)
+) []InterfaceMatch {
+	var matches []InterfaceMatch
 
 	for moduleName, module := range app.moduleRegistry {
 		svcAwareModule, ok := module.(ServiceAware)
@@ -1054,89 +1226,62 @@ func (app *StdApplication) findInterfaceImplementations(
 			continue
 		}
 
-		app.checkModuleServiceImplementations(moduleName, svcAwareModule, requiredInterfaces, interfaceImplementations)
+		moduleMatches := app.findModuleInterfaceMatches(moduleName, svcAwareModule, requiredInterfaces)
+		matches = append(matches, moduleMatches...)
 	}
 
-	return interfaceImplementations
+	return matches
 }
 
-// checkModuleServiceImplementations checks if a module's services implement any required interfaces
-func (app *StdApplication) checkModuleServiceImplementations(
+// findModuleInterfaceMatches finds interface matches for a specific module
+func (app *StdApplication) findModuleInterfaceMatches(
 	moduleName string,
 	svcAwareModule ServiceAware,
 	requiredInterfaces map[string][]interfaceRequirement,
-	interfaceImplementations map[string][]string,
-) {
+) []InterfaceMatch {
+	var matches []InterfaceMatch
+
 	for _, svcProvider := range svcAwareModule.ProvidesServices() {
-		if svcProvider.Instance == nil {
-			continue
-		}
+		// Check if this service satisfies any required interfaces
+		for _, requirements := range requiredInterfaces {
+			for _, requirement := range requirements {
+				svcType := reflect.TypeOf(svcProvider.Instance)
+				if app.typeImplementsInterface(svcType, requirement.interfaceType) {
+					// Skip accidental self-dependencies where service names differ but interfaces match
+					if app.shouldSkipAccidentalSelfDependency(moduleName, requirement.moduleName, svcProvider.Name, requirement.serviceName) {
+						continue
+					}
 
-		svcType := reflect.TypeOf(svcProvider.Instance)
-		app.matchServiceToInterfaces(moduleName, svcProvider, svcType, requiredInterfaces, interfaceImplementations)
-	}
-}
+					// Create match for all other dependencies - including intentional self-dependencies
+					// Self-dependencies will be detected as cycles during topological sort
+					matches = append(matches, InterfaceMatch{
+						Consumer:      requirement.moduleName,
+						Provider:      moduleName,
+						InterfaceType: requirement.interfaceType,
+						ServiceName:   requirement.serviceName,
+					})
 
-// matchServiceToInterfaces checks if a service implements any required interfaces
-func (app *StdApplication) matchServiceToInterfaces(
-	providerModule string,
-	svcProvider ServiceProvider,
-	svcType reflect.Type,
-	requiredInterfaces map[string][]interfaceRequirement,
-	interfaceImplementations map[string][]string,
-) {
-	for reqServiceName, interfaceRecords := range requiredInterfaces {
-		for _, record := range interfaceRecords {
-			if app.serviceImplementsInterface(
-				providerModule, record, svcType, svcProvider, reqServiceName, interfaceImplementations,
-			) {
-				break // Found a match, no need to check other records for this service
+					app.logger.Debug("Interface match found",
+						"consumer", requirement.moduleName,
+						"provider", moduleName,
+						"service", requirement.serviceName,
+						"interface", requirement.interfaceType.Name())
+				}
 			}
 		}
 	}
+
+	return matches
 }
 
-// serviceImplementsInterface checks if a service implements a specific interface requirement
-func (app *StdApplication) serviceImplementsInterface(
-	providerModule string,
-	record interfaceRequirement,
-	svcType reflect.Type,
-	svcProvider ServiceProvider,
-	reqServiceName string,
-	interfaceImplementations map[string][]string,
-) bool {
-	// Skip if it's the same module
-	if record.moduleName == providerModule {
-		return false
-	}
-
-	// Check if the provided service implements the required interface
-	if !app.typeImplementsInterface(svcType, record.interfaceType) {
-		return false
-	}
-
-	// This module provides a service that another module requires
-	consumerModule := record.moduleName
-
-	// Add dependency from consumer to provider
-	if _, exists := interfaceImplementations[consumerModule]; !exists {
-		interfaceImplementations[consumerModule] = make([]string, 0)
-	}
-
-	// Only add if not already in the list
-	if !slices.Contains(interfaceImplementations[consumerModule], providerModule) {
-		interfaceImplementations[consumerModule] = append(
-			interfaceImplementations[consumerModule], providerModule)
-
-		app.logger.Debug("Found interface implementation match",
-			"provider", providerModule,
-			"provider_service", svcProvider.Name,
-			"consumer", consumerModule,
-			"required_service", reqServiceName,
-			"interface", record.interfaceType.String())
-	}
-
-	return true
+// shouldSkipAccidentalSelfDependency determines if a self-dependency should be skipped
+// to prevent accidental self-dependencies where different service names match the same interface.
+// Returns true if this is an accidental self-dependency that should be skipped.
+// Only allows intentional self-dependencies where both module and service names match.
+func (app *StdApplication) shouldSkipAccidentalSelfDependency(providerModule, consumerModule, providerServiceName, consumerServiceName string) bool {
+	// Allow self-dependencies only when the service names match (intentional self-dependency)
+	// Skip self-dependencies when only interfaces match but service names differ (accidental)
+	return providerModule == consumerModule && providerServiceName != consumerServiceName
 }
 
 // typeImplementsInterface checks if a type implements an interface
@@ -1146,15 +1291,20 @@ func (app *StdApplication) typeImplementsInterface(svcType, interfaceType reflec
 }
 
 // addNameBasedDependencies adds dependencies based on direct service name matching
-func (app *StdApplication) addNameBasedDependencies(graph map[string][]string, serviceProviders map[string]string) {
+func (app *StdApplication) addNameBasedDependencies(graph map[string][]string, serviceProviders map[string]string) []DependencyEdge {
+	var edges []DependencyEdge
+
 	for consumerName, module := range app.moduleRegistry {
 		svcAwareModule, ok := module.(ServiceAware)
 		if !ok {
 			continue
 		}
 
-		app.addModuleNameBasedDependencies(consumerName, svcAwareModule, graph, serviceProviders)
+		moduleEdges := app.addModuleNameBasedDependencies(consumerName, svcAwareModule, graph, serviceProviders)
+		edges = append(edges, moduleEdges...)
 	}
+
+	return edges
 }
 
 // addModuleNameBasedDependencies adds name-based dependencies for a specific module
@@ -1163,14 +1313,21 @@ func (app *StdApplication) addModuleNameBasedDependencies(
 	svcAwareModule ServiceAware,
 	graph map[string][]string,
 	serviceProviders map[string]string,
-) {
+) []DependencyEdge {
+	var edges []DependencyEdge
+
 	for _, svcDep := range svcAwareModule.RequiresServices() {
 		if !svcDep.Required || svcDep.MatchByInterface {
 			continue // Skip optional or interface-based dependencies
 		}
 
-		app.addNameBasedDependency(consumerName, svcDep, graph, serviceProviders)
+		edge := app.addNameBasedDependency(consumerName, svcDep, graph, serviceProviders)
+		if edge != nil {
+			edges = append(edges, *edge)
+		}
 	}
+
+	return edges
 }
 
 // addNameBasedDependency adds a single name-based dependency
@@ -1179,16 +1336,16 @@ func (app *StdApplication) addNameBasedDependency(
 	svcDep ServiceDependency,
 	graph map[string][]string,
 	serviceProviders map[string]string,
-) {
+) *DependencyEdge {
 	providerModule, exists := serviceProviders[svcDep.Name]
 	if !exists || providerModule == consumerName {
-		return
+		return nil
 	}
 
 	// Check if dependency already exists
 	for _, existingDep := range graph[consumerName] {
 		if existingDep == providerModule {
-			return // Already exists
+			return nil // Already exists
 		}
 	}
 
@@ -1202,40 +1359,57 @@ func (app *StdApplication) addNameBasedDependency(
 		"consumer", consumerName,
 		"provider", providerModule,
 		"service", svcDep.Name)
+
+	return &DependencyEdge{
+		From:        consumerName,
+		To:          providerModule,
+		Type:        EdgeTypeNamedService,
+		ServiceName: svcDep.Name,
+	}
 }
 
-// addInterfaceBasedDependencies adds dependencies based on interface implementations
-func (app *StdApplication) addInterfaceBasedDependencies(graph, interfaceImplementations map[string][]string) {
-	for consumer, providers := range interfaceImplementations {
-		for _, provider := range providers {
-			app.addInterfaceBasedDependency(consumer, provider, graph)
+// addInterfaceBasedDependenciesWithTypeInfo adds dependencies based on interface matches
+func (app *StdApplication) addInterfaceBasedDependenciesWithTypeInfo(graph map[string][]string, matches []InterfaceMatch) []DependencyEdge {
+	var edges []DependencyEdge
+
+	for _, match := range matches {
+		edge := app.addInterfaceBasedDependencyWithTypeInfo(match, graph)
+		if edge != nil {
+			edges = append(edges, *edge)
 		}
 	}
+
+	return edges
 }
 
-// addInterfaceBasedDependency adds a single interface-based dependency
-func (app *StdApplication) addInterfaceBasedDependency(consumer, provider string, graph map[string][]string) {
-	// Skip self-dependencies
-	if consumer == provider {
-		return
-	}
-
+// addInterfaceBasedDependencyWithTypeInfo adds a single interface-based dependency with type information
+func (app *StdApplication) addInterfaceBasedDependencyWithTypeInfo(match InterfaceMatch, graph map[string][]string) *DependencyEdge {
 	// Check if this dependency already exists
-	for _, existingDep := range graph[consumer] {
-		if existingDep == provider {
-			return
+	for _, existingDep := range graph[match.Consumer] {
+		if existingDep == match.Provider {
+			return nil
 		}
 	}
 
-	// Add the dependency
-	if graph[consumer] == nil {
-		graph[consumer] = make([]string, 0)
+	// Add the dependency (including self-dependencies for cycle detection)
+	if graph[match.Consumer] == nil {
+		graph[match.Consumer] = make([]string, 0)
 	}
-	graph[consumer] = append(graph[consumer], provider)
+	graph[match.Consumer] = append(graph[match.Consumer], match.Provider)
 
 	app.logger.Debug("Added interface-based dependency",
-		"consumer", consumer,
-		"provider", provider)
+		"consumer", match.Consumer,
+		"provider", match.Provider,
+		"interface", match.InterfaceType.Name(),
+		"service", match.ServiceName)
+
+	return &DependencyEdge{
+		From:          match.Consumer,
+		To:            match.Provider,
+		Type:          EdgeTypeInterfaceService,
+		InterfaceType: match.InterfaceType,
+		ServiceName:   match.ServiceName,
+	}
 }
 
 // GetTenantService returns the application's tenant service if available
@@ -1266,4 +1440,28 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 		return nil, fmt.Errorf("failed to get tenant config: %w", err)
 	}
 	return provider, nil
+}
+
+// GetServicesByModule returns all services provided by a specific module
+func (app *StdApplication) GetServicesByModule(moduleName string) []string {
+	if app.enhancedSvcRegistry != nil {
+		return app.enhancedSvcRegistry.GetServicesByModule(moduleName)
+	}
+	return nil
+}
+
+// GetServiceEntry retrieves detailed information about a registered service
+func (app *StdApplication) GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool) {
+	if app.enhancedSvcRegistry != nil {
+		return app.enhancedSvcRegistry.GetServiceEntry(serviceName)
+	}
+	return nil, false
+}
+
+// GetServicesByInterface returns all services that implement the given interface
+func (app *StdApplication) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	if app.enhancedSvcRegistry != nil {
+		return app.enhancedSvcRegistry.GetServicesByInterface(interfaceType)
+	}
+	return nil
 }

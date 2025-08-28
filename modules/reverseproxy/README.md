@@ -34,6 +34,12 @@ The Reverse Proxy module functions as a versatile API gateway that can route req
 go get github.com/CrisisTextLine/modular/modules/reverseproxy@v1.0.0
 ```
 
+## Documentation
+
+- **[Feature Flag Migration Guide](FEATURE_FLAG_MIGRATION_GUIDE.md)** - Migration guide for the new feature flag aggregator pattern
+- **[Path Rewriting Guide](PATH_REWRITING_GUIDE.md)** - Detailed guide for configuring path transformations
+- **[Per-Backend Configuration Guide](PER_BACKEND_CONFIGURATION_GUIDE.md)** - Advanced per-backend configuration options
+
 ## Usage
 
 ```go
@@ -199,19 +205,37 @@ reverseproxy:
 
 #### Feature Flag Evaluator Service
 
-To use feature flags, register a `FeatureFlagEvaluator` service with your application:
+The reverse proxy module uses an **aggregator pattern** for feature flag evaluation, allowing multiple evaluators to work together with priority-based ordering:
+
+**Built-in File Evaluator**: Automatically available using tenant-aware configuration (lowest priority, fallback).
+
+**External Evaluators**: Register additional evaluators by implementing the `FeatureFlagEvaluator` interface. The service name doesn't matter for discovery - the aggregator finds evaluators by interface matching:
 
 ```go
-// Create feature flag evaluator (file-based example)
-evaluator := reverseproxy.NewFileBasedFeatureFlagEvaluator()
-evaluator.SetFlag("api-v2-enabled", true)
-evaluator.SetTenantFlag("beta-tenant", "beta-features", true)
+// Register a remote feature flag service
+type RemoteEvaluator struct{}
+func (r *RemoteEvaluator) Weight() int { return 50 } // Higher priority than file evaluator
+func (r *RemoteEvaluator) EvaluateFlag(ctx context.Context, flagID string, tenantID modular.TenantID, req *http.Request) (bool, error) {
+    // Custom logic here
+    return true, nil
+}
+func (r *RemoteEvaluator) EvaluateFlagWithDefault(ctx context.Context, flagID string, tenantID modular.TenantID, req *http.Request, defaultValue bool) bool {
+    enabled, err := r.EvaluateFlag(ctx, flagID, tenantID, req)
+    if err != nil { return defaultValue }
+    return enabled
+}
 
-// Register as service
-app.RegisterService("featureFlagEvaluator", evaluator)
+// Register with any service name (name doesn't matter for discovery)
+app.RegisterService("remoteEvaluator", &RemoteEvaluator{})
+// or  
+app.RegisterService("my-custom-flags", &RemoteEvaluator{})
 ```
 
-The evaluator interface allows integration with external feature flag services like LaunchDarkly, Split.io, or custom implementations.
+The aggregator automatically discovers all services implementing `FeatureFlagEvaluator` interface regardless of their registered name. If multiple evaluators have the same name, unique names are automatically generated. Evaluators are called in priority order (lower weight = higher priority), with the built-in file evaluator (weight: 1000) serving as the final fallback.
+
+**Migration Note**: External evaluators are now discovered by interface matching rather than naming patterns. You can use any service name when registering. See the [Feature Flag Migration Guide](FEATURE_FLAG_MIGRATION_GUIDE.md) for detailed migration instructions.
+
+The evaluator interface supports integration with external feature flag services like LaunchDarkly, Split.io, or custom implementations.
 
 ### Dry Run Mode
 

@@ -105,12 +105,14 @@ func Test_Application_Init_ErrorCollection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup application
+			enhancedRegistry := NewEnhancedServiceRegistry()
 			app := &StdApplication{
-				cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-				cfgSections:    make(map[string]ConfigProvider),
-				svcRegistry:    make(ServiceRegistry),
-				moduleRegistry: make(ModuleRegistry),
-				logger:         &initTestLogger{t: t},
+				cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+				cfgSections:         make(map[string]ConfigProvider),
+				svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+				enhancedSvcRegistry: enhancedRegistry,
+				moduleRegistry:      make(ModuleRegistry),
+				logger:              &initTestLogger{t: t},
 			}
 
 			// Register modules
@@ -178,12 +180,14 @@ func Test_Application_Init_ErrorCollection(t *testing.T) {
 
 // Test_Application_Init_DependencyResolutionFailure tests error handling when dependency resolution fails
 func Test_Application_Init_DependencyResolutionFailure(t *testing.T) {
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         &initTestLogger{t: t},
+		cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              &initTestLogger{t: t},
 	}
 
 	// Add modules with circular dependency
@@ -204,12 +208,14 @@ func Test_Application_Init_DependencyResolutionFailure(t *testing.T) {
 
 // Test_Application_Init_TenantConfigurationFailure tests tenant configuration error handling
 func Test_Application_Init_TenantConfigurationFailure(t *testing.T) {
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         &initTestLogger{t: t},
+		cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              &initTestLogger{t: t},
 	}
 
 	// Register a failing tenant config loader service
@@ -231,12 +237,14 @@ func Test_Application_Init_TenantConfigurationFailure(t *testing.T) {
 
 // Test_Application_Init_ServiceInjectionAndInitOrder tests that service injection happens before module init
 func Test_Application_Init_ServiceInjectionAndInitOrder(t *testing.T) {
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         &initTestLogger{t: t},
+		cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              &initTestLogger{t: t},
 	}
 
 	// Create a service provider and consumer
@@ -279,12 +287,14 @@ func Test_Application_Init_ServiceInjectionAndInitOrder(t *testing.T) {
 
 // Test_Application_Init_PartialFailureStateConsistency tests app state after partial failures
 func Test_Application_Init_PartialFailureStateConsistency(t *testing.T) {
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         &initTestLogger{t: t},
+		cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              &initTestLogger{t: t},
 	}
 
 	// Add mix of successful and failing modules
@@ -328,12 +338,14 @@ func Test_Application_Init_PartialFailureStateConsistency(t *testing.T) {
 
 // Test_Application_Init_NoModules tests initialization with no modules
 func Test_Application_Init_NoModules(t *testing.T) {
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         &initTestLogger{t: t},
+		cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              &initTestLogger{t: t},
 	}
 
 	// Setup mock AppConfigLoader
@@ -348,12 +360,14 @@ func Test_Application_Init_NoModules(t *testing.T) {
 
 // Test_Application_Init_NonConfigurableModules tests modules that don't implement Configurable
 func Test_Application_Init_NonConfigurableModules(t *testing.T) {
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    NewStdConfigProvider(testCfg{Str: "test"}),
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         &initTestLogger{t: t},
+		cfgProvider:         NewStdConfigProvider(testCfg{Str: "test"}),
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              &initTestLogger{t: t},
 	}
 
 	// Add a module that doesn't implement Configurable

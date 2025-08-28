@@ -544,25 +544,9 @@ func (m *ReverseProxyModule) Start(ctx context.Context) error {
 		}
 	}
 
-	// Create and configure feature flag evaluator if none was provided via service
-	if m.featureFlagEvaluator == nil && m.config.FeatureFlags.Enabled {
-		// Convert the logger to *slog.Logger
-		var logger *slog.Logger
-		if slogLogger, ok := m.app.Logger().(*slog.Logger); ok {
-			logger = slogLogger
-		} else {
-			// Fallback to a default logger if conversion fails
-			logger = slog.Default()
-		}
-
-		//nolint:contextcheck // Constructor doesn't need context, it creates the evaluator for later use
-		evaluator, err := NewFileBasedFeatureFlagEvaluator(m.app, logger)
-		if err != nil {
-			return fmt.Errorf("failed to create feature flag evaluator: %w", err)
-		}
-		m.featureFlagEvaluator = evaluator
-
-		m.app.Logger().Info("Created built-in feature flag evaluator using tenant-aware configuration")
+	// Set up feature flag evaluation using aggregator pattern
+	if err := m.setupFeatureFlagEvaluation(); err != nil {
+		return fmt.Errorf("failed to set up feature flag evaluation: %w", err)
 	}
 
 	// Start health checker if enabled
@@ -2826,6 +2810,49 @@ func (m *ReverseProxyModule) GetHealthStatus() map[string]*HealthStatus {
 		return nil
 	}
 	return m.healthChecker.GetHealthStatus()
+}
+
+// setupFeatureFlagEvaluation sets up the feature flag evaluation system using the aggregator pattern.
+// It creates the internal file-based evaluator and registers it as "featureFlagEvaluator.file",
+// then creates an aggregator that discovers all evaluators and registers it as "featureFlagEvaluator".
+func (m *ReverseProxyModule) setupFeatureFlagEvaluation() error {
+	if !m.config.FeatureFlags.Enabled {
+		m.app.Logger().Debug("Feature flags disabled, skipping evaluation setup")
+		return nil
+	}
+
+	// Convert the logger to *slog.Logger
+	var logger *slog.Logger
+	if slogLogger, ok := m.app.Logger().(*slog.Logger); ok {
+		logger = slogLogger
+	} else {
+		// Fallback to a default logger if conversion fails
+		logger = slog.Default()
+	}
+
+	// Always create the internal file-based evaluator
+	fileEvaluator, err := NewFileBasedFeatureFlagEvaluator(m.app, logger)
+	if err != nil {
+		return fmt.Errorf("failed to create file-based feature flag evaluator: %w", err)
+	}
+
+	// Register the file evaluator as "featureFlagEvaluator.file"
+	if err := m.app.RegisterService("featureFlagEvaluator.file", fileEvaluator); err != nil {
+		return fmt.Errorf("failed to register file-based evaluator service: %w", err)
+	}
+
+	// Create and register the aggregator as "featureFlagEvaluator"
+	// Only do this if we haven't already received an external evaluator via constructor
+	if !m.featureFlagEvaluatorProvided {
+		aggregator := NewFeatureFlagAggregator(m.app, logger)
+		m.featureFlagEvaluator = aggregator
+
+		m.app.Logger().Info("Created feature flag aggregator with file-based fallback")
+	} else {
+		m.app.Logger().Info("Using external feature flag evaluator provided via service dependency")
+	}
+
+	return nil
 }
 
 // GetBackendHealthStatus returns the health status of a specific backend.
