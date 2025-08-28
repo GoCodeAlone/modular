@@ -45,12 +45,21 @@ type SingleServiceModule struct {
 
 func (m *SingleServiceModule) Name() string               { return m.name }
 func (m *SingleServiceModule) Init(app Application) error { return nil }
+
+// Explicitly implement ServiceAware interface
 func (m *SingleServiceModule) ProvidesServices() []ServiceProvider {
 	return []ServiceProvider{{
 		Name:     m.serviceName,
 		Instance: m.service,
 	}}
 }
+
+func (m *SingleServiceModule) RequiresServices() []ServiceDependency {
+	return nil // No dependencies for test modules
+}
+
+// Ensure the struct implements ServiceAware
+var _ ServiceAware = (*SingleServiceModule)(nil)
 
 // ConflictingServiceModule provides a service that might conflict with others
 type ConflictingServiceModule struct {
@@ -61,12 +70,21 @@ type ConflictingServiceModule struct {
 
 func (m *ConflictingServiceModule) Name() string               { return m.name }
 func (m *ConflictingServiceModule) Init(app Application) error { return nil }
+
+// Explicitly implement ServiceAware interface
 func (m *ConflictingServiceModule) ProvidesServices() []ServiceProvider {
 	return []ServiceProvider{{
 		Name:     m.serviceName,
 		Instance: m.service,
 	}}
 }
+
+func (m *ConflictingServiceModule) RequiresServices() []ServiceDependency {
+	return nil // No dependencies for test modules
+}
+
+// Ensure the struct implements ServiceAware
+var _ ServiceAware = (*ConflictingServiceModule)(nil)
 
 // MultiServiceModule provides multiple services
 type MultiServiceModule struct {
@@ -76,9 +94,18 @@ type MultiServiceModule struct {
 
 func (m *MultiServiceModule) Name() string               { return m.name }
 func (m *MultiServiceModule) Init(app Application) error { return nil }
+
+// Explicitly implement ServiceAware interface
 func (m *MultiServiceModule) ProvidesServices() []ServiceProvider {
 	return m.services
 }
+
+func (m *MultiServiceModule) RequiresServices() []ServiceDependency {
+	return nil // No dependencies for test modules
+}
+
+// Ensure the struct implements ServiceAware
+var _ ServiceAware = (*MultiServiceModule)(nil)
 
 // BDD Step implementations
 
@@ -541,8 +568,8 @@ func (ctx *EnhancedServiceRegistryBDDContext) theEnhancedRegistryShouldResolveAl
 		return fmt.Errorf("second service not accessible: %v", err2)
 	}
 
-	// Third service should get conflict resolution (likely a counter)
-	err3 := ctx.app.GetService("commonService.2", &service3)
+	// Third service should get conflict resolution with module name
+	err3 := ctx.app.GetService("commonService.ConflictingModule", &service3)
 	if err3 != nil {
 		return fmt.Errorf("third service not accessible with resolved name: %v", err3)
 	}

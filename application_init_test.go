@@ -64,7 +64,7 @@ func Test_Application_Init_ErrorCollection(t *testing.T) {
 			expectErrorContains: []string{"module 'module2' failed to initialize", "module 'module3' failed to initialize"},
 		},
 		{
-			name: "Service registration failures are collected",
+			name: "Service registration with enhanced conflict resolution",
 			modules: []Module{
 				&initTestSuccessfulModule{initTestModule: initTestModule{name: "module1"}},
 				&initTestConflictingServiceModule{
@@ -73,12 +73,12 @@ func Test_Application_Init_ErrorCollection(t *testing.T) {
 				},
 				&initTestConflictingServiceModule{
 					initTestModule: initTestModule{name: "module3"},
-					serviceName:    "duplicate-service", // Same service name causes conflict
+					serviceName:    "duplicate-service", // Same service name gets auto-resolved
 				},
 			},
-			expectErrorCount:    1, // Second registration will fail
-			expectPartialInit:   true,
-			expectErrorContains: []string{"failed to register service"},
+			expectErrorCount:    0, // Enhanced registry resolves conflicts automatically
+			expectPartialInit:   false,
+			expectErrorContains: nil,
 		},
 		{
 			name: "Service injection failures are collected",

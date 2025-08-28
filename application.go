@@ -354,15 +354,9 @@ func (app *StdApplication) SetConfigFeeders(feeders []Feeder) {
 
 // RegisterService adds a service with type checking
 func (app *StdApplication) RegisterService(name string, service any) error {
-	// Check for duplicates using the backwards compatible registry
-	if _, exists := app.svcRegistry[name]; exists {
-		// Preserve contract: duplicate registrations are an error
-		app.logger.Debug("Service already registered", "name", name)
-		return ErrServiceAlreadyRegistered
-	}
+	var actualName string
 
 	// Register with enhanced registry if available (handles automatic conflict resolution)
-	var actualName string
 	if app.enhancedSvcRegistry != nil {
 		var err error
 		actualName, err = app.enhancedSvcRegistry.RegisterService(name, service)
@@ -373,6 +367,13 @@ func (app *StdApplication) RegisterService(name string, service any) error {
 		// Update backwards compatible view
 		app.svcRegistry = app.enhancedSvcRegistry.AsServiceRegistry()
 	} else {
+		// Check for duplicates using the backwards compatible registry
+		if _, exists := app.svcRegistry[name]; exists {
+			// Preserve contract: duplicate registrations are an error
+			app.logger.Debug("Service already registered", "name", name)
+			return ErrServiceAlreadyRegistered
+		}
+
 		// Fallback to direct registration for compatibility
 		app.svcRegistry[name] = service
 		actualName = name
