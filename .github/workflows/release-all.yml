@@ -127,6 +127,8 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       releaseType: ${{ github.event.inputs.releaseType }}
+      # Prevent internal bump in release.yml (we orchestrate it explicitly here)
+      skipModuleBump: true
     secrets: inherit
 
   # Run optional core cleanup (e.g., formatting, generated artifacts) and open/merge PR
@@ -213,8 +215,11 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-modules:
-    needs: detect
-    if: needs.detect.outputs.modules_with_changes != '[]'
+    needs:
+      - detect
+      - post-release-bump
+    # Run if there are modules with changes AND (either core didn't change (no bump needed) OR bump completed successfully)
+    if: needs.detect.outputs.modules_with_changes != '[]' && (needs.detect.outputs.core_changed != 'true' || needs.post-release-bump.result == 'success')
     strategy:
       matrix:
         module: ${{ fromJson(needs.detect.outputs.modules_with_changes) }}
@@ -373,6 +378,8 @@ jobs:
       - release-modules
       - ensure-core
       - ensure-modules
+      - post-release-bump
+      - core-cleanup
     if: always()
     steps:
       - name: Release summary
@@ -384,6 +391,8 @@ jobs:
           echo '-----------------------------------------'
           if [ "${{ needs.detect.outputs.core_changed }}" = "true" ]; then
             echo "Core: attempted release -> ${{ needs.release-core.result }}"
+            echo "Core cleanup PR: created=${{ needs.core-cleanup.outputs.pr_created }} merged=${{ needs.core-cleanup.outputs.pr_merged }} (job result: ${{ needs.core-cleanup.result }})"
+            echo "Post-release bump job result: ${{ needs.post-release-bump.result }}"
           else
             echo "Core: no changes; ensure job result -> ${{ needs.ensure-core.result }}"
           fi

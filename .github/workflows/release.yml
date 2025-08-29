@@ -17,6 +17,11 @@ on:
           - minor
           - major
         default: 'patch'
+      skipModuleBump:
+        description: 'Skip running module bump (used when orchestrated by release-all)'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -27,6 +32,10 @@ on:
         description: 'Release type'
         required: true
         type: string
+      skipModuleBump:
+        description: 'Skip running module bump (used when orchestrated by release-all)'
+        required: false
+        type: boolean
     outputs:
       released_version:
         description: 'Version tag produced by the release job'
@@ -197,4 +206,13 @@ jobs:
           MODULE_NAME="github.com/CrisisTextLine/modular"
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
           echo "Announced version ${VERSION} to Go proxy"
+
+  bump-modules:
+    needs: release
+    if: needs.release.result == 'success' && inputs.skipModuleBump != true
+    uses: ./.github/workflows/auto-bump-modules.yml
+    with:
+      coreVersion: ${{ needs.release.outputs.released_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
