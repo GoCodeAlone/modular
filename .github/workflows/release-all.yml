@@ -12,8 +12,12 @@ on:
         default: patch
 
 permissions:
+  # Need contents write for tagging/releases, actions write for workflow dispatches,
+  # pull-requests & checks write are required by the called auto-bump-modules workflow
   contents: write
   actions: write
+  pull-requests: write
+  checks: write
 
 jobs:
 
