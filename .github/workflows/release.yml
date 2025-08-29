@@ -81,6 +81,7 @@ jobs:
               BASE_VERSION="$LATEST_TAG"; PREV_CONTRACT_REF="$LATEST_TAG";
             fi
           echo "Latest base version: $BASE_VERSION"
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
 
           mkdir -p artifacts/contracts/prev artifacts/contracts/current artifacts/diffs
           if [ -n "$PREV_CONTRACT_REF" ]; then
@@ -93,18 +94,59 @@ jobs:
 
           ./cmd/modcli/modcli contract extract . -o artifacts/contracts/current/core.json || echo "Failed to extract current contract"
 
-          CHANGE_CLASS="none"
-          DIFF_MD_PATH="artifacts/diffs/core.md"
+          CHANGE_CLASS="none"; REASON="no contract changes"; BREAKING=0; ADDITIONS=0; MODIFICATIONS=0
+          DIFF_MD_PATH="artifacts/diffs/core.md"; DIFF_JSON_PATH="artifacts/diffs/core.json"
           if [ -f artifacts/contracts/prev/core.json ] && [ -f artifacts/contracts/current/core.json ]; then
-            if ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o artifacts/diffs/core.json --format=markdown > "$DIFF_MD_PATH" 2>/dev/null; then
-              if [ -s "$DIFF_MD_PATH" ]; then CHANGE_CLASS="minor"; fi
+            echo "Generating contract diffs (markdown + json)..."
+            # Generate JSON diff first; capture exit for breaking changes detection
+            if ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o "$DIFF_JSON_PATH" --format=json >/dev/null 2>&1; then
+              # No breaking changes (exit 0). Generate markdown for additions/modifications detail.
+              ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o "$DIFF_MD_PATH" --format=markdown >/dev/null 2>&1 || true
+              if [ -s "$DIFF_JSON_PATH" ]; then
+                # Parse counts via jq if available, else fallback simple grep/length heuristics
+                if command -v jq >/dev/null 2>&1; then
+                  BREAKING=$(jq '.Summary.TotalBreakingChanges // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                  ADDITIONS=$(jq '.Summary.TotalAdditions // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                  MODIFICATIONS=$(jq '.Summary.TotalModifications // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                else
+                  # Fallback: count occurrences in JSON text
+                  BREAKING=$(grep -c '"BreakingChanges"\s*:\s*\[' "$DIFF_JSON_PATH" || true)
+                  ADDITIONS=$(grep -c '"AddedItems"\s*:\s*\[' "$DIFF_JSON_PATH" || true)
+                  MODIFICATIONS=$(grep -c '"ModifiedItems"\s*:\s*\[' "$DIFF_JSON_PATH" || true)
+                fi
+              fi
             else
-              echo "Breaking changes detected"; CHANGE_CLASS="major"; [ -s "$DIFF_MD_PATH" ] || echo "(Breaking changes; diff unavailable)" > "$DIFF_MD_PATH";
+              echo "Breaking changes detected (non-zero exit)"
+              # Even if breaking, attempt to capture markdown for human-readable diff
+              ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o "$DIFF_MD_PATH" --format=markdown >/dev/null 2>&1 || true
+              # JSON diff may still have been produced (exit non-zero because breaking). If present parse counts.
+              if [ -s "$DIFF_JSON_PATH" ]; then
+                if command -v jq >/dev/null 2>&1; then
+                  BREAKING=$(jq '.Summary.TotalBreakingChanges // 1' "$DIFF_JSON_PATH" 2>/dev/null || echo 1)
+                  ADDITIONS=$(jq '.Summary.TotalAdditions // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                  MODIFICATIONS=$(jq '.Summary.TotalModifications // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                else
+                  BREAKING=1
+                fi
+              else
+                BREAKING=1
+              fi
+            fi
+            if [ "$BREAKING" -gt 0 ]; then
+              CHANGE_CLASS="major"; REASON="breaking changes ($BREAKING)";
+            elif [ "$ADDITIONS" -gt 0 ]; then
+              CHANGE_CLASS="minor"; REASON="additive changes ($ADDITIONS additions, $MODIFICATIONS modifications)";
+            else
+              CHANGE_CLASS="none"; REASON="no API surface changes";
             fi
           else
-            if [ -f artifacts/contracts/current/core.json ] && [ $(wc -c < artifacts/contracts/current/core.json) -gt 20 ]; then CHANGE_CLASS="minor"; fi
+            echo "No previous contract found; treating as initial state"
+            CHANGE_CLASS="none"; REASON="initial baseline (no previous contract)";
           fi
-          echo "Contract change classification: $CHANGE_CLASS"
+          echo "Contract change classification: $CHANGE_CLASS ($REASON)"
+          echo "breaking_changes=$BREAKING" >> $GITHUB_OUTPUT
+            echo "additions=$ADDITIONS" >> $GITHUB_OUTPUT
+            echo "modifications=$MODIFICATIONS" >> $GITHUB_OUTPUT
 
           CUR=${BASE_VERSION#v}; MAJOR=${CUR%%.*}; REST=${CUR#*.}; MINOR=${REST%%.*}; PATCH=${CUR##*.}
           if [ -n "$INPUT_MANUAL_VERSION" ]; then V="$INPUT_MANUAL_VERSION"; [[ $V == v* ]] || V="v$V"; NEXT_VERSION="$V"; REASON="manual override"; else
@@ -127,12 +169,17 @@ jobs:
         run: |
           TAG=${{ steps.version.outputs.next_version }}
           CHANGE_CLASS=${{ steps.version.outputs.change_class }}
-          PREV_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n2 | head -n1 || echo "")
-          if [ -z "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- . ':!modules')
+          BASE_VERSION=${{ steps.version.outputs.base_version }}
+          PREV_TAG="$BASE_VERSION"
+          if [ "$PREV_TAG" = "v0.0.0" ]; then
+            echo "No previous tag (initial or first release) – using full history for changelog"
+            RAW_LOG=$(git log --no-merges --pretty=format:"%H;%s" -- . ':!modules')
           else
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD -- . ':!modules')
+            echo "Using previous tag $PREV_TAG for changelog range"
+            RAW_LOG=$(git log --no-merges --pretty=format:"%H;%s" ${PREV_TAG}..HEAD -- . ':!modules')
           fi
+          # Deduplicate commit subjects while preserving first occurrence order.
+          CHANGELOG=$(echo "$RAW_LOG" | awk -F';' 'BEGIN{OFS=""} { if(!seen[$2]++){ print "- " $2 " (" substr($1,1,7) ")" } }')
           [ -n "$CHANGELOG" ] || CHANGELOG="- No specific changes to the main library since last release"
           {
             echo "# Release ${TAG}"; echo; echo "## Changes"; echo; echo "$CHANGELOG"; echo; echo "## API Contract Changes"; echo;
