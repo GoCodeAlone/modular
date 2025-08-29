@@ -81,6 +81,23 @@ jobs:
             (cd "$dir" && go mod tidy)
           done
 
+      - name: Go mod tidy each example
+        run: |
+          set -euo pipefail
+          for dir in examples/*/; do
+            [ -f "$dir/go.mod" ] || continue
+            echo "Tidying $dir"
+            (cd "$dir" && go mod tidy)
+          done
+
+      - name: Go mod tidy root (defensive)
+        run: |
+          set -euo pipefail
+          if [ -f go.mod ]; then
+            echo "Tidying root module"
+            go mod tidy
+          fi
+
       - name: Update documentation version references
         run: |
           set -euo pipefail
