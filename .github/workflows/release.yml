@@ -158,9 +158,26 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_TAG=${{ steps.version.outputs.next_version }}
-          # Build core source archive excluding modules and examples
+          # Build core source archive excluding non-library artifacts:
+          # - modules/ and examples/ (distributed separately)
+          # - go.work / go.work.sum workspace files
+          # - scripts/ helper scripts
+          # - any testdata/ directories
+          # - CI / tooling config files (.golangci.yml, codecov config, workflows)
+          # - coverage profiles, bench outputs (*.out)
+          # - markdown docs except top-level README and LICENSE (keep README.md & LICENSE)
           ARCHIVE=modular-${RELEASE_TAG}.tar.gz
-          git ls-files | grep -Ev '^(modules/|examples/)' | tar -czf "$ARCHIVE" -T -
+          git ls-files \
+            | grep -Ev '^(modules/|examples/)' \
+            | grep -Ev '^go\.work(\.sum)?$' \
+            | grep -Ev '^(scripts/)' \
+            | grep -Ev '(^|/)testdata(/|$)' \
+            | grep -Ev '^\.github/' \
+            | grep -Ev '^\.golangci\.yml$' \
+            | grep -Ev '^codecov\.yml$' \
+            | grep -Ev '\.(out|coverage)$' \
+            | grep -Ev '^(CONTRIBUTING\.md|MIGRATION_GUIDE\.md|DOCUMENTATION\.md|CLOUDEVENTS\.md|OBSERVER_PATTERN\.md|API_CONTRACT_MANAGEMENT\.md|CONCURRENCY_GUIDELINES\.md|RECOMMENDED_MODULES\.md)$' \
+            | tar -czf "$ARCHIVE" -T -
           gh release create "$RELEASE_TAG" \
             --title "Modular $RELEASE_TAG" \
             --notes-file changelog.md \

@@ -129,15 +129,88 @@ jobs:
       releaseType: ${{ github.event.inputs.releaseType }}
     secrets: inherit
 
+  # Run optional core cleanup (e.g., formatting, generated artifacts) and open/merge PR
+  core-cleanup:
+    needs: release-core
+    if: needs.release-core.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      pr_created: ${{ steps.pr.outputs.created || 'false' }}
+      pr_merged: ${{ steps.merge.outputs.merged || 'false' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25'
+          check-latest: true
+      - name: Build modcli
+        run: |
+          cd cmd/modcli && go build -o modcli
+      - name: Post-release housekeeping
+        run: |
+          set -euo pipefail
+          # Placeholder for future auto-generated tasks (e.g. regenerate docs)
+          go fmt ./... >/dev/null 2>&1 || true
+      - name: Create cleanup PR if changes
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH=auto/post-release-core-cleanup-${{ needs.release-core.outputs.released_version }}
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@users.noreply.github.com'
+          git checkout -b "$BRANCH" || git checkout "$BRANCH"
+          if git diff --quiet; then
+            echo 'No cleanup changes.'
+            echo "created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git add .
+            git commit -m "chore: post-release core cleanup for ${{ needs.release-core.outputs.released_version }}" || true
+          git push origin "$BRANCH" || true
+          PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: post-release core cleanup ${BRANCH}" --body "Automated housekeeping after core release." --head "$BRANCH" --base main --draft=false)
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "created=true" >> $GITHUB_OUTPUT
+      - name: Auto-approve
+        if: steps.pr.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr review ${{ steps.pr.outputs.pr_url }} --approve || true
+      - name: Merge cleanup PR
+        id: merge
+        if: steps.pr.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh pr merge ${{ steps.pr.outputs.pr_url }} --squash --delete-branch --auto --admin; then
+            echo "merged=true" >> $GITHUB_OUTPUT
+          else
+            echo "merged=false" >> $GITHUB_OUTPUT
+          fi
+
   # After the actual core release tag is created, run a definitive bump to that released version.
   post-release-bump:
     needs:
       - release-core
-    if: needs.release-core.result == 'success'
+      - core-cleanup
+    if: needs.release-core.result == 'success' && (needs.core-cleanup.outputs.pr_created == 'false' || needs.core-cleanup.outputs.pr_merged == 'true')
     uses: ./.github/workflows/auto-bump-modules.yml
     with:
       coreVersion: ${{ needs.release-core.outputs.released_version }}
-    secrets: inherit
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-modules:
     needs: detect
