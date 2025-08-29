@@ -118,22 +118,7 @@ jobs:
           BRANCH=auto/bump-modules-${CORE}
           git config user.name 'github-actions'
           git config user.email 'github-actions@users.noreply.github.com'
-          # Always fetch to ensure we have remote branch state
-          git fetch origin "$BRANCH" || true
-          if git ls-remote --exit-code origin "$BRANCH" >/dev/null 2>&1; then
-            echo "Remote branch $BRANCH exists; updating local tracking branch"
-            if git show-ref --verify --quiet refs/heads/$BRANCH; then
-              git checkout "$BRANCH"
-              # Rebase onto origin to keep history linear; fallback to hard reset if rebase fails.
-              git fetch origin main:refs/remotes/origin/main || true
-              (git rebase origin/main || (echo "Rebase failed; performing hard reset to origin/$BRANCH" && git reset --hard origin/$BRANCH)) || true
-            else
-              git checkout -b "$BRANCH" origin/$BRANCH
-            fi
-          else
-            echo "Creating new branch $BRANCH"
-            git checkout -b "$BRANCH"
-          fi
+          # Stage and commit changes first on detached HEAD (checkout provided by actions/checkout)
           if git diff --quiet; then
             echo "No changes to commit"
             echo "created=false" >> $GITHUB_OUTPUT
@@ -141,11 +126,11 @@ jobs:
           fi
           git add .
           git commit -m "chore: bump module dependencies to ${CORE}" || true
-          echo "Pushing branch $BRANCH"
-          if ! git push origin "$BRANCH"; then
-            echo "Standard push failed (likely non-fast-forward). Attempting force-with-lease..."
-            git push --force-with-lease origin "$BRANCH" || git push --force origin "$BRANCH" || true
-          fi
+          # Create or reset branch name to current commit (safe overwrite of existing remote branch)
+          git branch -f "$BRANCH"
+          git checkout -B "$BRANCH"
+          echo "Pushing branch $BRANCH (force-with-lease)"
+          git push --force-with-lease origin "$BRANCH" || git push --force origin "$BRANCH" || true
           PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: bump module dependencies to ${CORE}" --body "Automated update of module go.mod files and docs to ${CORE}." --head "$BRANCH" --base main --draft=false)
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
           echo "created=true" >> $GITHUB_OUTPUT
