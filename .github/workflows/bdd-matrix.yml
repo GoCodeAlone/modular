@@ -100,7 +100,28 @@ jobs:
           # Run BDD-focused Go tests (naming convention: *BDD*)
           export CGO_ENABLED=1
           export GORACE=halt_on_error=1
-          go test -race -v -coverprofile=bdd-${{ matrix.module }}-coverage.txt -covermode=atomic -run '.*BDD|.*Module' . || echo "No BDD tests found"
+          set -euo pipefail
+          # Modules expected to contain BDD tests (update as coverage grows)
+          EXPECTED_BDD_MODULES=(reverseproxy httpserver scheduler cache auth database eventbus)
+          expected=false
+          for m in "${EXPECTED_BDD_MODULES[@]}"; do
+            if [ "$m" = "${{ matrix.module }}" ]; then expected=true; break; fi
+          done
+          if go test -race -v -coverprofile=bdd-${{ matrix.module }}-coverage.txt -covermode=atomic -run '.*BDD|.*Module' .; then
+            echo "BDD tests executed for ${{ matrix.module }}"
+          else
+            echo "::error title=BDD Tests Failed::go test command failed for ${{ matrix.module }}" >&2
+            exit 1
+          fi
+          if [ ! -s bdd-${{ matrix.module }}-coverage.txt ]; then
+            if [ "$expected" = true ]; then
+              echo "::error title=Missing Expected BDD Tests::Module ${{ matrix.module }} is in EXPECTED_BDD_MODULES but produced no BDD coverage" >&2
+              exit 1
+            else
+              echo "::notice title=No BDD Tests Detected::No matching BDD tests for non-BDD module ${{ matrix.module }}" >&2
+              echo 'mode: atomic' > bdd-${{ matrix.module }}-coverage.txt
+            fi
+          fi
       - name: Upload module BDD coverage
         if: always()
         uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned

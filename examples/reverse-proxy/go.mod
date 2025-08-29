@@ -5,7 +5,7 @@ go 1.25
 toolchain go1.25.0
 
 require (
-	github.com/CrisisTextLine/modular v1.6.0
+	github.com/CrisisTextLine/modular v1.9.0
 	github.com/CrisisTextLine/modular/modules/chimux v1.1.0
 	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1
 	github.com/CrisisTextLine/modular/modules/reverseproxy v1.1.0

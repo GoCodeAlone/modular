@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/CrisisTextLine/modular"
@@ -153,6 +154,22 @@ func (m *MockApplication) IsVerboseConfig() bool {
 // SetVerboseConfig sets the verbose config flag (mock implementation)
 func (m *MockApplication) SetVerboseConfig(verbose bool) {
 	// No-op in mock
+}
+
+// Context returns a background context for the mock application
+func (m *MockApplication) Context() context.Context { return context.Background() }
+
+// GetServicesByModule returns services for a module (mock returns empty slice)
+func (m *MockApplication) GetServicesByModule(moduleName string) []string { return []string{} }
+
+// GetServiceEntry returns a service registry entry (mock returns nil)
+func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+
+// GetServicesByInterface returns services implementing an interface (mock empty slice)
+func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
 }
 
 // TenantApplication interface methods

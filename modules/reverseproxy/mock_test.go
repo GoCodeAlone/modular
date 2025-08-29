@@ -159,14 +159,39 @@ func (m *MockApplication) GetServicesByModule(moduleName string) []string {
 
 // GetServiceEntry retrieves detailed information about a registered service (mock implementation)
 func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
-	// Mock implementation returns nil
-	return nil, false
+	service, exists := m.services[serviceName]
+	if !exists {
+		return nil, false
+	}
+	entry := &modular.ServiceRegistryEntry{
+		Service:      service,
+		ModuleName:   "",          // Not tracked in mock
+		ModuleType:   nil,         // Not tracked in mock
+		OriginalName: serviceName, // Same as actual in mock
+		ActualName:   serviceName,
+	}
+	return entry, true
 }
 
 // GetServicesByInterface returns all services that implement the given interface (mock implementation)
 func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
-	// Mock implementation returns empty list
-	return []*modular.ServiceRegistryEntry{}
+	var entries []*modular.ServiceRegistryEntry
+	for name, svc := range m.services {
+		if svc == nil {
+			continue
+		}
+		svcType := reflect.TypeOf(svc)
+		if svcType.Implements(interfaceType) {
+			entries = append(entries, &modular.ServiceRegistryEntry{
+				Service:      svc,
+				ModuleName:   "",
+				ModuleType:   nil,
+				OriginalName: name,
+				ActualName:   name,
+			})
+		}
+	}
+	return entries
 }
 
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider

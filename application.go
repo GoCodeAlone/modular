@@ -992,6 +992,30 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	serviceEdges := app.addImplicitDependencies(graph)
 	dependencyEdges = append(dependencyEdges, serviceEdges...)
 
+	// Filter out artificial self interface-service edges which do not represent real
+	// initialization ordering constraints but can appear when a module both provides
+	// and (optionally) consumes an interface-based service it implements.
+	pruned := dependencyEdges[:0]
+	for _, e := range dependencyEdges {
+		if e.Type == EdgeTypeInterfaceService && e.From == e.To {
+			app.logger.Debug("Pruning self interface dependency edge", "module", e.From, "interface", e.InterfaceType)
+			// Also remove from graph adjacency list if present
+			adj := graph[e.From]
+			if len(adj) > 0 {
+				filtered := adj[:0]
+				for _, dep := range adj {
+					if dep != e.To {
+						filtered = append(filtered, dep)
+					}
+				}
+				graph[e.From] = filtered
+			}
+			continue
+		}
+		pruned = append(pruned, e)
+	}
+	dependencyEdges = pruned
+
 	// Enhanced topological sort with path tracking
 	var result []string
 	visited := make(map[string]bool)
@@ -1158,6 +1182,7 @@ type interfaceRequirement struct {
 	interfaceType reflect.Type
 	moduleName    string
 	serviceName   string
+	required      bool
 }
 
 // InterfaceMatch represents a consumer-provider match for an interface-based dependency
@@ -1166,6 +1191,7 @@ type InterfaceMatch struct {
 	Provider      string
 	InterfaceType reflect.Type
 	ServiceName   string
+	Required      bool
 }
 
 // collectRequiredInterfaces collects all interface-based service requirements for a module
@@ -1184,6 +1210,7 @@ func (app *StdApplication) collectRequiredInterfaces(
 			interfaceType: svcDep.SatisfiesInterface,
 			moduleName:    moduleName,
 			serviceName:   svcDep.Name,
+			required:      svcDep.Required,
 		})
 		requiredInterfaces[svcDep.Name] = records
 
@@ -1253,13 +1280,12 @@ func (app *StdApplication) findModuleInterfaceMatches(
 						continue
 					}
 
-					// Create match for all other dependencies - including intentional self-dependencies
-					// Self-dependencies will be detected as cycles during topological sort
 					matches = append(matches, InterfaceMatch{
 						Consumer:      requirement.moduleName,
 						Provider:      moduleName,
 						InterfaceType: requirement.interfaceType,
 						ServiceName:   requirement.serviceName,
+						Required:      requirement.required,
 					})
 
 					app.logger.Debug("Interface match found",
@@ -1385,6 +1411,17 @@ func (app *StdApplication) addInterfaceBasedDependenciesWithTypeInfo(graph map[s
 
 // addInterfaceBasedDependencyWithTypeInfo adds a single interface-based dependency with type information
 func (app *StdApplication) addInterfaceBasedDependencyWithTypeInfo(match InterfaceMatch, graph map[string][]string) *DependencyEdge {
+	// Handle self-providing interface dependencies:
+	//  - If the dependency is optional (not required), skip adding a self edge to avoid false cycles
+	//  - If the dependency is required, adding the self edge will surface a cycle which communicates
+	//    that the requirement cannot be satisfied (the module would need the service before it is provided)
+	if match.Consumer == match.Provider {
+		if !match.Required {
+			app.logger.Debug("Skipping optional self interface dependency", "module", match.Consumer, "interface", match.InterfaceType.Name(), "service", match.ServiceName)
+			return nil
+		}
+		app.logger.Debug("Adding required self interface dependency to expose unsatisfiable self-requirement", "module", match.Consumer, "interface", match.InterfaceType.Name(), "service", match.ServiceName)
+	}
 	// Check if this dependency already exists
 	for _, existingDep := range graph[match.Consumer] {
 		if existingDep == match.Provider {

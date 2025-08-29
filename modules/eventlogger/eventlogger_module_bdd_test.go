@@ -42,6 +42,8 @@ func (ctx *EventLoggerBDDTestContext) createConsoleConfig(bufferSize int) *Event
 		FlushInterval:     time.Duration(5 * time.Second),
 		IncludeMetadata:   true,
 		IncludeStackTrace: false,
+		// Explicitly set since struct literal bypasses default tag
+		ShutdownEmitStopped: true,
 		// Enable synchronous startup emission so tests reliably observe
 		// config.loaded, output.registered, and started events without
 		// relying on timing of goroutines.

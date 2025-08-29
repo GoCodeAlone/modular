@@ -94,7 +94,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
-    continue-on-error: true
     permissions:
       contents: read
     
@@ -119,8 +118,8 @@ jobs:
       - name: Run tests for ${{ matrix.module }}
         id: test
         working-directory: modules/${{ matrix.module }}
-        continue-on-error: true
         run: |
+          set -euo pipefail
           export CGO_ENABLED=1
           export GORACE=halt_on_error=1
           if go test -race -v ./... -coverprofile=${{ matrix.module }}-coverage.txt -covermode=atomic; then
@@ -150,7 +149,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
-    continue-on-error: true
     
     name: Verify ${{ matrix.module }}
     steps:
@@ -172,9 +170,9 @@ jobs:
 
       - name: Verify ${{ matrix.module }}
         id: verify
-        continue-on-error: true
         working-directory: modules/${{ matrix.module }}
         run: |
+          set -euo pipefail
           if go list -e ./... && go vet ./...; then
             echo "result=success" >> $GITHUB_OUTPUT
             echo "::notice title=Verify Result for ${{ matrix.module }}::Verification passed"
@@ -191,7 +189,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.detect-modules.outputs.matrix)}}
-    continue-on-error: true
 
     name: Lint ${{ matrix.module }}
     steps:
@@ -204,7 +201,6 @@ jobs:
 
       - name: golangci-lint
         id: lint
-        continue-on-error: true
         uses: golangci/golangci-lint-action@v8
         with:
           version: latest
@@ -220,6 +216,7 @@ jobs:
           else
             echo "result=failure" >> $GITHUB_OUTPUT
             echo "::error title=Lint Result for ${{ matrix.module }}::Linting failed"
+            exit 1
           fi
 
   # This job summarizes the results

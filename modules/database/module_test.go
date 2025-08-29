@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/CrisisTextLine/modular"
@@ -63,6 +64,16 @@ func (a *MockApplication) Stop() error                              { return nil
 func (a *MockApplication) Run() error                               { return nil }
 func (a *MockApplication) IsVerboseConfig() bool                    { return false }
 func (a *MockApplication) SetVerboseConfig(bool)                    {}
+func (a *MockApplication) Context() context.Context                 { return context.Background() }
+func (a *MockApplication) GetServicesByModule(moduleName string) []string {
+	return []string{}
+}
+func (a *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (a *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
+}
 
 type MockConfigProvider struct {
 	config interface{}

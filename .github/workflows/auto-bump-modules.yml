@@ -1,0 +1,153 @@
+name: Auto Bump Module Dependencies
+
+on:
+  workflow_dispatch:
+    inputs:
+      coreVersion:
+        description: 'Core modular version (e.g. v1.9.0)'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      coreVersion:
+        required: true
+        type: string
+    secrets:
+      GH_TOKEN:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+  checks: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: auto
+      CGO_ENABLED: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Remove go.work files
+        run: |
+          git rm -f go.work || true
+          git rm -f go.work.sum || true
+          rm -f go.work go.work.sum || true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25'
+          check-latest: true
+
+      - name: Determine version
+        id: ver
+        run: |
+          V='${{ inputs.coreVersion || github.event.inputs.coreVersion }}'
+          [[ $V == v* ]] || V="v$V"
+          echo "Using core version $V"
+          echo "core_version=$V" >> $GITHUB_OUTPUT
+
+      - name: Update module go.mod files
+        run: |
+          set -euo pipefail
+          CORE=${{ steps.ver.outputs.core_version }}
+          UPDATED=0
+          for mod in modules/*/go.mod; do
+            [ -f "$mod" ] || continue
+            if grep -q 'github.com/CrisisTextLine/modular v' "$mod"; then
+              sed -i "" -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#" "$mod" || sed -i -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#" "$mod"
+              UPDATED=1
+            fi
+            # remove local replace lines to avoid accidental pinning
+            if grep -q '^replace github.com/CrisisTextLine/modular' "$mod"; then
+              sed -i "" '/^replace github.com.CrisisTextLine.modular/d' "$mod" || true
+            fi
+          done
+          if [ "$UPDATED" = 0 ]; then echo "No module files needed updating"; fi
+
+      - name: Go mod tidy each module
+        run: |
+          set -euo pipefail
+          for dir in modules/*/; do
+            [ -f "$dir/go.mod" ] || continue
+            echo "Tidying $dir"
+            (cd "$dir" && go mod tidy)
+          done
+
+      - name: Update documentation version references
+        run: |
+          set -euo pipefail
+          CORE=${{ steps.ver.outputs.core_version }}
+          OLD=$(git grep -h -o 'github.com/CrisisTextLine/modular v[0-9]\+\.[0-9]\+\.[0-9]\+' -- '*.md' | grep -v $CORE | head -n1 | awk '{print $1}' || true)
+          # Replace any explicit old version with current in markdown examples
+          if [ -n "$OLD" ]; then
+            find . -name '*.md' -print0 | xargs -0 sed -i "" -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#g" || find . -name '*.md' -print0 | xargs -0 sed -i -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#g"
+          fi
+
+      - name: Create PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CORE=${{ steps.ver.outputs.core_version }}
+          BRANCH=auto/bump-modules-${CORE}
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@users.noreply.github.com'
+          git checkout -b "$BRANCH" || git checkout "$BRANCH"
+          if git diff --quiet; then
+            echo "No changes to commit"
+            echo "created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git add .
+          git commit -m "chore: bump module dependencies to ${CORE}" || true
+          git push origin "$BRANCH" || true
+          PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: bump module dependencies to ${CORE}" --body "Automated update of module go.mod files and docs to ${CORE}." --head "$BRANCH" --base main --draft=false)
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "created=true" >> $GITHUB_OUTPUT
+
+      - name: Run full tests (core + modules + examples + CLI)
+        if: steps.pr.outputs.created == 'true'
+        run: |
+          set -euo pipefail
+          if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run; fi
+          go test ./... -count=1 -race -timeout=15m
+          for module in modules/*/; do
+            if [ -f "$module/go.mod" ]; then
+              echo "Testing $module"; (cd "$module" && go test ./... -count=1 -race -timeout=15m)
+            fi
+          done
+          for example in examples/*/; do
+            if [ -f "$example/go.mod" ]; then
+              echo "Testing $example"; (cd "$example" && go test ./... -count=1 -race -timeout=15m)
+            fi
+          done
+          (cd cmd/modcli && go test ./... -count=1 -race -timeout=15m)
+
+      - name: Approve PR
+        if: steps.pr.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR=${{ steps.pr.outputs.pr_url }}
+          [ -z "$PR" ] && { echo 'No PR URL'; exit 0; }
+          gh pr review "$PR" --approve || true
+
+      - name: Merge PR
+        if: steps.pr.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR=${{ steps.pr.outputs.pr_url }}
+          [ -z "$PR" ] && { echo 'No PR URL'; exit 0; }
+          gh pr merge "$PR" --squash --delete-branch --auto --admin || gh pr merge "$PR" --squash --delete-branch || true

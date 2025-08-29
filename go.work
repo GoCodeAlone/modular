@@ -1,0 +1,34 @@
+go 1.25
+
+use (
+	.
+	./cmd/modcli
+	./examples/advanced-logging
+	./examples/base-config-example
+	./examples/basic-app
+	./examples/feature-flag-proxy
+	./examples/health-aware-reverse-proxy
+	./examples/http-client
+	./examples/instance-aware-db
+	./examples/logmasker-example
+	./examples/multi-engine-eventbus
+	./examples/multi-tenant-app
+	./examples/observer-demo
+	./examples/observer-pattern
+	./examples/reverse-proxy
+	./examples/testing-scenarios
+	./examples/verbose-debug
+	./modules/auth
+	./modules/cache
+	./modules/chimux
+	./modules/database
+	./modules/eventbus
+	./modules/eventlogger
+	./modules/httpclient
+	./modules/httpserver
+	./modules/jsonschema
+	./modules/letsencrypt
+	./modules/logmasker
+	./modules/reverseproxy
+	./modules/scheduler
+)

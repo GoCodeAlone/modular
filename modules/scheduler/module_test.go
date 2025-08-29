@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -70,6 +71,15 @@ func (a *mockApp) RegisterService(name string, service any) error {
 }
 
 func (a *mockApp) GetService(name string, target any) error {
+	return nil
+}
+
+// New interface-introspection methods added to Application; provide minimal mock implementations
+func (a *mockApp) GetServicesByModule(moduleName string) []string { return nil }
+func (a *mockApp) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return nil
 }
 

@@ -16,6 +16,7 @@ permissions:
   actions: write
 
 jobs:
+
   detect:
     runs-on: ubuntu-latest
     outputs:
@@ -122,6 +123,16 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       releaseType: ${{ github.event.inputs.releaseType }}
+    secrets: inherit
+
+  # After the actual core release tag is created, run a definitive bump to that released version.
+  post-release-bump:
+    needs:
+      - release-core
+    if: needs.release-core.result == 'success'
+    uses: ./.github/workflows/auto-bump-modules.yml
+    with:
+      coreVersion: ${{ needs.release-core.outputs.released_version }}
     secrets: inherit
 
   release-modules:

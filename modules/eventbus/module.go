@@ -152,6 +152,15 @@ type EventBusModule struct {
 	subject   modular.Subject // For event observation (guarded by mutex)
 }
 
+// DeliveryStats represents basic delivery outcomes for an engine or aggregate.
+// These counters are monotonically increasing from module start. They are
+// intentionally simple (uint64) to keep overhead negligible; consumers wanting
+// rates should compute deltas externally.
+type DeliveryStats struct {
+	Delivered uint64 `json:"delivered" yaml:"delivered"`
+	Dropped   uint64 `json:"dropped" yaml:"dropped"`
+}
+
 // NewModule creates a new instance of the event bus module.
 // This is the primary constructor for the eventbus module and should be used
 // when registering the module with the application.
@@ -318,9 +327,11 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 	}, nil)
 
 	go func() {
-		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-			fmt.Printf("Failed to emit eventbus started event: %v\n", emitErr)
-		}
+		// Use helper to silence benign missing-subject cases
+		m.emitEvent(ctx, EventTypeBusStarted, map[string]interface{}{
+			"engine":  event.Extensions()["engine"],
+			"workers": event.Extensions()["workers"],
+		})
 	}()
 
 	return nil
@@ -369,9 +380,9 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 	}, nil)
 
 	go func() {
-		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-			fmt.Printf("Failed to emit eventbus stopped event: %v\n", emitErr)
-		}
+		m.emitEvent(ctx, EventTypeBusStopped, map[string]interface{}{
+			"engine": event.Extensions()["engine"],
+		})
 	}()
 
 	return nil
@@ -437,32 +448,20 @@ func (m *EventBusModule) Publish(ctx context.Context, topic string, payload inte
 	duration := time.Since(startTime)
 	if err != nil {
 		// Emit message failed event
-		emitEvent := modular.NewCloudEvent(EventTypeMessageFailed, "eventbus-service", map[string]interface{}{
+		go m.emitEvent(ctx, EventTypeMessageFailed, map[string]interface{}{
 			"topic":       topic,
 			"error":       err.Error(),
 			"duration_ms": duration.Milliseconds(),
-		}, nil)
-
-		go func() {
-			if emitErr := m.EmitEvent(ctx, emitEvent); emitErr != nil {
-				fmt.Printf("Failed to emit message failed event: %v\n", emitErr)
-			}
-		}()
+		})
 
 		return fmt.Errorf("publishing event to topic %s: %w", topic, err)
 	}
 
 	// Emit message published event
-	emitEvent := modular.NewCloudEvent(EventTypeMessagePublished, "eventbus-service", map[string]interface{}{
+	go m.emitEvent(ctx, EventTypeMessagePublished, map[string]interface{}{
 		"topic":       topic,
 		"duration_ms": duration.Milliseconds(),
-	}, nil)
-
-	go func() {
-		if emitErr := m.EmitEvent(ctx, emitEvent); emitErr != nil {
-			fmt.Printf("Failed to emit message published event: %v\n", emitErr)
-		}
-	}()
+	})
 
 	return nil
 }
@@ -492,17 +491,11 @@ func (m *EventBusModule) Subscribe(ctx context.Context, topic string, handler Ev
 	}
 
 	// Emit subscription created event
-	event := modular.NewCloudEvent(EventTypeSubscriptionCreated, "eventbus-service", map[string]interface{}{
+	go m.emitEvent(ctx, EventTypeSubscriptionCreated, map[string]interface{}{
 		"topic":           topic,
 		"subscription_id": sub.ID(),
 		"async":           false,
-	}, nil)
-
-	go func() {
-		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-			fmt.Printf("Failed to emit subscription created event: %v\n", emitErr)
-		}
-	}()
+	})
 
 	return sub, nil
 }
@@ -533,17 +526,11 @@ func (m *EventBusModule) SubscribeAsync(ctx context.Context, topic string, handl
 	}
 
 	// Emit subscription created event
-	event := modular.NewCloudEvent(EventTypeSubscriptionCreated, "eventbus-service", map[string]interface{}{
+	go m.emitEvent(ctx, EventTypeSubscriptionCreated, map[string]interface{}{
 		"topic":           topic,
 		"subscription_id": sub.ID(),
 		"async":           true,
-	}, nil)
-
-	go func() {
-		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-			fmt.Printf("Failed to emit async subscription created event: %v\n", emitErr)
-		}
-	}()
+	})
 
 	return sub, nil
 }
@@ -569,16 +556,10 @@ func (m *EventBusModule) Unsubscribe(ctx context.Context, subscription Subscript
 	}
 
 	// Emit subscription removed event
-	event := modular.NewCloudEvent(EventTypeSubscriptionRemoved, "eventbus-service", map[string]interface{}{
+	go m.emitEvent(ctx, EventTypeSubscriptionRemoved, map[string]interface{}{
 		"topic":           topic,
 		"subscription_id": subscriptionID,
-	}, nil)
-
-	go func() {
-		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-			fmt.Printf("Failed to emit subscription removed event: %v\n", emitErr)
-		}
-	}()
+	})
 
 	return nil
 }
@@ -623,6 +604,27 @@ func (m *EventBusModule) SubscriberCount(topic string) int {
 //	fmt.Printf("Topic routes to engine: %s", engine)
 func (m *EventBusModule) GetRouter() *EngineRouter {
 	return m.router
+}
+
+// Stats returns aggregated delivery statistics for all underlying engines that
+// support them (currently only the in-memory engine). This is intended for
+// lightweight monitoring/metrics and testing. Returns zeros if the module has
+// not been started yet or no engines expose stats.
+func (m *EventBusModule) Stats() (delivered uint64, dropped uint64) {
+	if m.router == nil {
+		return 0, 0
+	}
+	return m.router.CollectStats()
+}
+
+// PerEngineStats returns delivery statistics broken down per configured engine
+// (only engines that expose stats are included). Safe to call before Start;
+// returns an empty map if router not yet built.
+func (m *EventBusModule) PerEngineStats() map[string]DeliveryStats {
+	if m.router == nil {
+		return map[string]DeliveryStats{}
+	}
+	return m.router.CollectPerEngineStats()
 }
 
 // Static errors for err113 compliance

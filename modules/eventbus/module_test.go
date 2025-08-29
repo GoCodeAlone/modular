@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/CrisisTextLine/modular"
@@ -89,6 +90,22 @@ func (a *mockApp) IsVerboseConfig() bool {
 
 func (a *mockApp) SetVerboseConfig(verbose bool) {
 	// No-op in mock
+}
+
+// Context returns a background context
+func (a *mockApp) Context() context.Context { return context.Background() }
+
+// GetServicesByModule mock implementation returns empty slice
+func (a *mockApp) GetServicesByModule(moduleName string) []string { return []string{} }
+
+// GetServiceEntry mock implementation returns nil
+func (a *mockApp) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+
+// GetServicesByInterface mock implementation returns empty slice
+func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
 }
 
 type mockLogger struct{}
