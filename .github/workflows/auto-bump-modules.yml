@@ -118,6 +118,8 @@ jobs:
         if: steps.pr.outputs.created == 'true'
         run: |
           set -euo pipefail
+          echo "Enabling CGO for race builds"
+          export CGO_ENABLED=1
           if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run; fi
           go test ./... -count=1 -race -timeout=15m
           for module in modules/*/; do
