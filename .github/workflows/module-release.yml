@@ -149,7 +149,6 @@ jobs:
           echo "Next version: ${NEXT_VERSION}, tag will be: modules/${MODULE}/${NEXT_VERSION} ($REASON)"
 
       - name: Generate changelog
-        id: changelog
         run: |
           MODULE=${{ steps.version.outputs.module }}
           TAG=${{ steps.version.outputs.tag }}
@@ -187,26 +186,23 @@ jobs:
               minor) echo "✅ Additive, backward-compatible changes (minor bump)." >> changelog.md; echo "" >> changelog.md ;;
               none)  echo "ℹ️ No public API surface changes detected." >> changelog.md; echo "" >> changelog.md ;;
             esac
+            echo '```diff' >> changelog.md
             cat artifacts/diffs/${MODULE}.md >> changelog.md
-            # Also embed the raw JSON diff for direct inspection
+            echo '```' >> changelog.md
             if [ -f artifacts/diffs/${MODULE}.json ] && [ -s artifacts/diffs/${MODULE}.json ]; then
               echo "" >> changelog.md
-              echo "### Raw Contract JSON Diff" >> changelog.md
+              echo "<details><summary>Raw Contract JSON Diff</summary>" >> changelog.md
               echo "" >> changelog.md
               echo '```json' >> changelog.md
               if command -v jq >/dev/null 2>&1; then jq . artifacts/diffs/${MODULE}.json >> changelog.md || cat artifacts/diffs/${MODULE}.json >> changelog.md; else cat artifacts/diffs/${MODULE}.json >> changelog.md; fi
               echo '```' >> changelog.md
+              echo "" >> changelog.md
+              echo '</details>' >> changelog.md
             fi
           else
             echo "No API contract differences compared to previous release." >> changelog.md
           fi
-          
-          # Escape special characters for GitHub Actions
-          CHANGELOG_ESCAPED=$(cat changelog.md | jq -Rs .)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
+
           echo "Generated changelog for $MODULE"
 
       - name: Create release
@@ -217,6 +213,12 @@ jobs:
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
             --latest=false
+          # Attach module-only source archive
+          MOD=${{ steps.version.outputs.module }}
+          VERSION=${{ steps.version.outputs.next_version }}
+          ARCHIVE=${MOD}-${VERSION}.tar.gz
+          tar -czf "$ARCHIVE" modules/${MOD}
+          gh release upload ${{ steps.version.outputs.tag }} "$ARCHIVE" --repo ${{ github.repository }} --clobber
           
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}

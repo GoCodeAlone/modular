@@ -109,7 +109,6 @@ jobs:
           go test -v ./...
 
       - name: Generate changelog
-        id: changelog
         run: |
           TAG=${{ steps.version.outputs.next_version }}
           CHANGE_CLASS=${{ steps.version.outputs.change_class }}
@@ -128,34 +127,39 @@ jobs:
                 minor) echo "✅ Additive, backward-compatible changes (minor bump)."; echo ;;
                 none) echo "ℹ️ No public API surface changes detected."; echo ;;
               esac
+              echo '```diff'
               cat artifacts/diffs/core.md
+              echo '```'
               # Also embed the raw JSON diff for direct inspection
               if [ -f artifacts/diffs/core.json ] && [ -s artifacts/diffs/core.json ]; then
                 echo
-                echo "### Raw Contract JSON Diff"
+                echo "<details><summary>Raw Contract JSON Diff</summary>"
                 echo
                 echo '```json'
                 if command -v jq >/dev/null 2>&1; then jq . artifacts/diffs/core.json || cat artifacts/diffs/core.json; else cat artifacts/diffs/core.json; fi
                 echo '```'
+                echo
+                echo '</details>'
               fi
             else
               echo "No API contract differences compared to previous release."
             fi
           } > changelog.md
-          CHANGELOG_ESCAPED=$(jq -Rs . < changelog.md)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Changelog consumed directly by release step; no workflow outputs needed.
 
       - name: Create release
         id: create_release
         run: |
           set -euo pipefail
           RELEASE_TAG=${{ steps.version.outputs.next_version }}
+          # Build core source archive excluding modules and examples
+          ARCHIVE=modular-${RELEASE_TAG}.tar.gz
+          git ls-files | grep -Ev '^(modules/|examples/)' | tar -czf "$ARCHIVE" -T -
           gh release create "$RELEASE_TAG" \
             --title "Modular $RELEASE_TAG" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
+            "$ARCHIVE" \
             --latest
           # Capture HTML URL (gh release view returns web URL in .url field)
           RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)
