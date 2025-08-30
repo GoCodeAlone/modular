@@ -72,27 +72,41 @@ jobs:
           MODULE_DIRS=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; 2>/dev/null || true)
           WITH_CHANGES=()
           WITHOUT_CHANGES=()
+          echo "Discovered modules: $MODULE_DIRS"
           for M in $MODULE_DIRS; do
+            echo "-----------------------------"
+            echo "Evaluating module: $M"
             LATEST_TAG=$(git tag -l "modules/${M}/v*" | sort -V | tail -n1 || echo '')
+            echo "Latest tag for $M: ${LATEST_TAG:-<none>}"
             HAS=false
             if [ -z "$LATEST_TAG" ]; then
               FILE=$(find "modules/${M}" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -1 || true)
               [ -n "$FILE" ] && HAS=true || HAS=false
+              echo "No tag yet; existence implies changed? $HAS (file sample: ${FILE:-none})"
             else
-              CHANGED=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${M}" || true)
+              # Use trailing slash pathspec to avoid accidental path substring matches
+              CHANGED=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${M}/" || true)
+              if [ -n "$CHANGED" ]; then
+                echo "Raw changed files since ${LATEST_TAG}:"; printf '%s\n' "$CHANGED"
+              else
+                echo "No raw changed files detected for $M since ${LATEST_TAG}"
+              fi
               RELEVANT=""
               if [ -n "$CHANGED" ]; then
                 while IFS= read -r f; do
                   [[ $f == *_test.go ]] && continue
                   [[ $f == *.md ]] && continue
-                  # Count any non-test .go file changes, plus go.mod / go.sum inside the module directory.
-                  # Previous logic incorrectly used equality checks (go.mod/go.sum) which failed for paths like modules/<m>/go.mod
+                  # Accept any non-test .go plus go.mod/go.sum anywhere inside module.
                   if [[ $f == *.go ]] || [[ $f == */go.mod ]] || [[ $f == */go.sum ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]]; then
                     RELEVANT+="$f "
+                    echo "Relevant: $f"
+                  else
+                    echo "Ignored (non-relevant extension): $f"
                   fi
                 done <<< "$CHANGED"
               fi
               [ -n "$RELEVANT" ] && HAS=true || HAS=false
+              echo "Relevant file set: ${RELEVANT:-<none>} => changed? $HAS"
             fi
             if [ "$HAS" = true ]; then
               WITH_CHANGES+=("$M")
