@@ -235,12 +235,25 @@ jobs:
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release-modules:
+  # Case 1: Core did NOT change, release modules directly
+  release-modules-no-core-change:
+    needs: detect
+    if: needs.detect.outputs.modules_with_changes != '[]' && needs.detect.outputs.core_changed != 'true'
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect.outputs.modules_with_changes) }}
+    uses: ./.github/workflows/module-release.yml
+    with:
+      module: ${{ matrix.module }}
+      releaseType: ${{ github.event.inputs.releaseType }}
+    secrets: inherit
+
+  # Case 2: Core changed -> wait for successful post-release bump before module releases
+  release-modules-after-bump:
     needs:
       - detect
       - post-release-bump
-    # Run if there are modules with changes AND (either core didn't change (no bump needed) OR bump completed successfully)
-    if: needs.detect.outputs.modules_with_changes != '[]' && (needs.detect.outputs.core_changed != 'true' || needs.post-release-bump.result == 'success')
+    if: needs.detect.outputs.modules_with_changes != '[]' && needs.detect.outputs.core_changed == 'true' && needs.post-release-bump.result == 'success'
     strategy:
       matrix:
         module: ${{ fromJson(needs.detect.outputs.modules_with_changes) }}
@@ -396,7 +409,8 @@ jobs:
     needs:
       - detect
       - release-core
-      - release-modules
+      - release-modules-no-core-change
+      - release-modules-after-bump
       - ensure-core
       - ensure-modules
       - post-release-bump
@@ -420,7 +434,12 @@ jobs:
           MWCH='${{ needs.detect.outputs.modules_with_changes }}'
           MWOUT='${{ needs.detect.outputs.modules_without_changes }}'
           if [ "$MWCH" != "[]" ]; then
-            echo "Modules with changes: $(echo "$MWCH" | jq -r '.[]' | tr '\n' ' ') (job result: ${{ needs.release-modules.result }})"
+            RES1='${{ needs.release-modules-no-core-change.result }}'
+            RES2='${{ needs.release-modules-after-bump.result }}'
+            # Pick whichever job actually ran (not skipped)
+            FINAL_RES=$RES1
+            if [ "$RES1" = "skipped" ] && [ "$RES2" != "skipped" ]; then FINAL_RES=$RES2; fi
+            echo "Modules with changes: $(echo "$MWCH" | jq -r '.[]' | tr '\n' ' ') (job result: $FINAL_RES)"
           fi
           if [ "$MWOUT" != "[]" ]; then
             echo "Modules without changes (ensured if missing release): $(echo "$MWOUT" | jq -r '.[]' | tr '\n' ' ') (job result: ${{ needs.ensure-modules.result }})"
