@@ -3,7 +3,7 @@ module github.com/CrisisTextLine/modular/modules/letsencrypt
 go 1.25
 
 require (
-	github.com/CrisisTextLine/modular v1.9.0
+	github.com/CrisisTextLine/modular v1.11.1
 	github.com/CrisisTextLine/modular/modules/httpserver v0.1.1
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
