@@ -53,7 +53,10 @@ jobs:
                 [[ $f == *.md ]] && continue
                 [[ $f == .github/* ]] && continue
                 [[ $f == examples/* ]] && continue
-                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]]; then RELEVANT+="$f "; fi
+                # Accept .go plus root go.mod/go.sum (allow optional leading ./)
+                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]] || [[ $f == ./go.mod ]] || [[ $f == ./go.sum ]]; then
+                  RELEVANT+="$f "
+                fi
               done <<< "$CHANGED"
             fi
             if [ -n "$RELEVANT" ]; then HAS_CHANGES=true; fi
@@ -82,7 +85,11 @@ jobs:
                 while IFS= read -r f; do
                   [[ $f == *_test.go ]] && continue
                   [[ $f == *.md ]] && continue
-                  if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]]; then RELEVANT+="$f "; fi
+                  # Count any non-test .go file changes, plus go.mod / go.sum inside the module directory.
+                  # Previous logic incorrectly used equality checks (go.mod/go.sum) which failed for paths like modules/<m>/go.mod
+                  if [[ $f == *.go ]] || [[ $f == */go.mod ]] || [[ $f == */go.sum ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]]; then
+                    RELEVANT+="$f "
+                  fi
                 done <<< "$CHANGED"
               fi
               [ -n "$RELEVANT" ] && HAS=true || HAS=false
