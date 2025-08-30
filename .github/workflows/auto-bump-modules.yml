@@ -98,6 +98,14 @@ jobs:
             go mod tidy
           fi
 
+      - name: Go mod tidy modcli
+        run: |
+          set -euo pipefail
+          if [ -f cmd/modcli/go.mod ]; then
+            echo "Tidying cmd/modcli"
+            (cd cmd/modcli && go mod tidy)
+          fi
+
       - name: Update documentation version references
         run: |
           set -euo pipefail
