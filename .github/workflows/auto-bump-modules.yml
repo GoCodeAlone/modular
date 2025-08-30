@@ -61,16 +61,20 @@ jobs:
           UPDATED=0
           for mod in modules/*/go.mod; do
             [ -f "$mod" ] || continue
-            if grep -q 'github.com/CrisisTextLine/modular v' "$mod"; then
-              sed -i "" -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#" "$mod" || sed -i -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#" "$mod"
+            dir=$(dirname "$mod")
+            # If the require line exists with a version different from CORE, update via go mod edit (portable, avoids sed incompat)
+            if grep -q "github.com/CrisisTextLine/modular v" "$mod" && ! grep -q "github.com/CrisisTextLine/modular ${CORE}" "$mod"; then
+              (cd "$dir" && go mod edit -require=github.com/CrisisTextLine/modular@${CORE})
               UPDATED=1
             fi
-            # remove local replace lines to avoid accidental pinning
-            if grep -q '^replace github.com/CrisisTextLine/modular' "$mod"; then
-              sed -i "" '/^replace github.com.CrisisTextLine.modular/d' "$mod" || true
-            fi
+            # Drop any replace directive pointing to local modular path to avoid accidental pinning
+            (cd "$dir" && go mod edit -dropreplace=github.com/CrisisTextLine/modular 2>/dev/null || true)
           done
-          if [ "$UPDATED" = 0 ]; then echo "No module files needed updating"; fi
+          if [ "$UPDATED" = 0 ]; then
+            echo "No module files needed updating"
+          else
+            echo "Module go.mod files updated to ${CORE}"
+          fi
 
       - name: Go mod tidy each module
         run: |
@@ -133,12 +137,14 @@ jobs:
             exit 0
           fi
           git add .
-          git commit -m "chore: bump module dependencies to ${CORE}" || true
+          git commit -m "chore: bump module dependencies to ${CORE}" 
           # Create or reset branch name to current commit (safe overwrite of existing remote branch)
           git branch -f "$BRANCH"
           git checkout -B "$BRANCH"
           echo "Pushing branch $BRANCH (force-with-lease)"
-          git push --force-with-lease origin "$BRANCH" || git push --force origin "$BRANCH" || true
+          if ! git push --force-with-lease origin "$BRANCH"; then
+            git push --force origin "$BRANCH"
+          fi
           PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: bump module dependencies to ${CORE}" --body "Automated update of module go.mod files and docs to ${CORE}." --head "$BRANCH" --base main --draft=false)
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
           echo "created=true" >> $GITHUB_OUTPUT
@@ -163,15 +169,6 @@ jobs:
           done
           (cd cmd/modcli && go test ./... -count=1 -race -timeout=15m)
 
-      - name: Approve PR
-        if: steps.pr.outputs.created == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          PR=${{ steps.pr.outputs.pr_url }}
-          [ -z "$PR" ] && { echo 'No PR URL'; exit 0; }
-          gh pr review "$PR" --approve || true
 
       - name: Merge PR
         if: steps.pr.outputs.created == 'true'
@@ -181,4 +178,7 @@ jobs:
           set -euo pipefail
           PR=${{ steps.pr.outputs.pr_url }}
           [ -z "$PR" ] && { echo 'No PR URL'; exit 0; }
-          gh pr merge "$PR" --squash --delete-branch --auto --admin || gh pr merge "$PR" --squash --delete-branch || true
+          # Try to enable auto-merge first; if policies block it, attempt an admin squash merge; otherwise leave PR open
+            if ! gh pr merge "$PR" --squash --delete-branch --auto; then
+              gh pr merge "$PR" --squash --delete-branch --admin || echo "Merge deferred: branch policies prevent automatic merge"
+            fi
