@@ -46,24 +46,61 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       released_version: ${{ steps.version.outputs.next_version }}
+      core_changed: ${{ steps.detect.outputs.core_changed }}
+      skipped: ${{ steps.detect.outputs.skipped }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      - name: Detect core code changes since last tag
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          LATEST_TAG=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n1 || echo '')
+          echo "Latest core tag: ${LATEST_TAG:-<none>}"
+          CHANGED=false
+          if [ -z "$LATEST_TAG" ]; then
+            # No prior release; treat as changed if any go files or go.mod/go.sum exist (initial release scenario)
+            if git ls-files '*.go' 'go.mod' 'go.sum' | grep -v '^modules/' | head -n1 >/dev/null 2>&1; then CHANGED=true; fi
+          else
+            DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v '^modules/' || true)
+            RELEVANT=""
+            if [ -n "$DIFF" ]; then
+              while IFS= read -r f; do
+                [[ $f == *_test.go ]] && continue
+                [[ $f == *.md ]] && continue
+                [[ $f == .github/* ]] && continue
+                [[ $f == examples/* ]] && continue
+                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]] || [[ $f == ./go.mod ]] || [[ $f == ./go.sum ]]; then
+                  RELEVANT+="$f "
+                fi
+              done <<< "$DIFF"
+            fi
+            [ -n "$RELEVANT" ] && CHANGED=true || CHANGED=false
+            echo "Relevant changed files: ${RELEVANT:-<none>}"
+          fi
+          echo "core_changed=$CHANGED" >> $GITHUB_OUTPUT
+          if [ "$CHANGED" != true ]; then
+            echo "No core changes since last tag; skipping release steps."; echo 'skipped=true' >> $GITHUB_OUTPUT; else echo 'skipped=false' >> $GITHUB_OUTPUT; fi
+
       - name: Set up Go
+        if: steps.detect.outputs.core_changed == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25'
           check-latest: true
 
       - name: Build modcli
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           cd cmd/modcli
           go build -o modcli
 
       - name: Determine release version (contract-aware)
+        if: steps.detect.outputs.core_changed == 'true'
         id: version
         run: |
           set -euo pipefail
@@ -162,10 +199,12 @@ jobs:
           echo "Next version: $NEXT_VERSION ($REASON)"
 
       - name: Run tests
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           go test -v ./...
 
       - name: Generate changelog
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           TAG=${{ steps.version.outputs.next_version }}
           CHANGE_CLASS=${{ steps.version.outputs.change_class }}
@@ -210,6 +249,7 @@ jobs:
           # Changelog consumed directly by release step; no workflow outputs needed.
 
       - name: Create release
+        if: steps.detect.outputs.core_changed == 'true'
         id: create_release
         run: |
           set -euo pipefail
@@ -248,6 +288,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce to Go proxy
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
           MODULE_NAME="github.com/CrisisTextLine/modular"
@@ -256,7 +297,7 @@ jobs:
 
   bump-modules:
     needs: release
-    if: needs.release.result == 'success' && inputs.skipModuleBump != true
+    if: needs.release.result == 'success' && needs.release.outputs.core_changed == 'true' && inputs.skipModuleBump != true
     uses: ./.github/workflows/auto-bump-modules.yml
     with:
       coreVersion: ${{ needs.release.outputs.released_version }}

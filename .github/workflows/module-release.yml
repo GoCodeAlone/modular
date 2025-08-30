@@ -60,6 +60,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect module changes since last tag
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODULE="${{ inputs.module || github.event.inputs.module }}"
+          if [ -z "$MODULE" ]; then
+            echo "No module input provided (prepare phase); skipping detection output."; echo 'changed=false' >> $GITHUB_OUTPUT; exit 0; fi
+          LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo '')
+          echo "Latest tag for ${MODULE}: ${LATEST_TAG:-<none>}"
+          CHANGED=false
+          if [ -z "$LATEST_TAG" ]; then
+            # First release: treat as changed if any go or go.mod/go.sum files exist
+            FILE=$(find "modules/${MODULE}" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -n1 || true)
+            [ -n "$FILE" ] && CHANGED=true || CHANGED=false
+            echo "No previous tag; initial existence implies changed? $CHANGED (sample: ${FILE:-none})"
+          else
+            DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${MODULE}/" || true)
+            echo "Raw changed files: ${DIFF:-<none>}"
+            RELEVANT=""
+            if [ -n "$DIFF" ]; then
+              while IFS= read -r f; do
+                [[ $f == *_test.go ]] && continue
+                [[ $f == *.md ]] && continue
+                if [[ $f == *.go ]] || [[ $f == */go.mod ]] || [[ $f == */go.sum ]]; then
+                  RELEVANT+="$f "
+                fi
+              done <<< "$DIFF"
+            fi
+            [ -n "$RELEVANT" ] && CHANGED=true || CHANGED=false
+            echo "Relevant: ${RELEVANT:-<none>} => changed? $CHANGED"
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
       - name: Get available modules
         id: get-modules
         run: |
@@ -74,23 +108,47 @@ jobs:
   release-module:
     needs: prepare-release
     runs-on: ubuntu-latest
+    if: needs.prepare-release.outputs.modules && needs.prepare-release.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Skip if no changes
+        id: skipcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Replicate detection using prepare-release step output (can't directly access its step outputs except via job outputs; we didn't expose changed there to avoid altering callers). Re-run quick detection.
+          MODULE="${{ inputs.module || github.event.inputs.module }}"
+          LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo '')
+          CHANGED=false
+          if [ -z "$LATEST_TAG" ]; then
+            FILE=$(find "modules/${MODULE}" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -n1 || true)
+            [ -n "$FILE" ] && CHANGED=true || CHANGED=false
+          else
+            DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${MODULE}/" || true)
+            RELEVANT=$(echo "$DIFF" | grep -Ev '(_test.go$|\.md$)' | grep -E '(\.go$|/go.mod$|/go.sum$)' || true)
+            [ -n "$RELEVANT" ] && CHANGED=true || CHANGED=false
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          if [ "$CHANGED" != true ]; then
+            echo "No relevant changes for module ${MODULE}; creating no-op output markers and exiting."; exit 0; fi
       - name: Set up Go
+        if: steps.skipcheck.outputs.changed == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25'
           check-latest: true
 
       - name: Build modcli
+        if: steps.skipcheck.outputs.changed == 'true'
         run: |
           cd cmd/modcli
           go build -o modcli
 
       - name: Determine release version (contract-aware)
+        if: steps.skipcheck.outputs.changed == 'true'
         id: version
         run: |
           set -euo pipefail
@@ -149,6 +207,7 @@ jobs:
           echo "Next version: ${NEXT_VERSION}, tag will be: modules/${MODULE}/${NEXT_VERSION} ($REASON)"
 
       - name: Generate changelog
+        if: steps.skipcheck.outputs.changed == 'true'
         run: |
           MODULE=${{ steps.version.outputs.module }}
           TAG=${{ steps.version.outputs.tag }}
@@ -206,6 +265,7 @@ jobs:
           echo "Generated changelog for $MODULE"
 
       - name: Create release
+        if: steps.skipcheck.outputs.changed == 'true'
         id: create_release
         run: |
           gh release create ${{ steps.version.outputs.tag }} \
@@ -235,6 +295,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce to Go proxy
+        if: steps.skipcheck.outputs.changed == 'true'
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
           MODULE_NAME="github.com/CrisisTextLine/modular/modules/${{ steps.version.outputs.module }}"
