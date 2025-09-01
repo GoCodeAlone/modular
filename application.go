@@ -370,7 +370,9 @@ func (app *StdApplication) RegisterService(name string, service any) error {
 		// Check for duplicates using the backwards compatible registry
 		if _, exists := app.svcRegistry[name]; exists {
 			// Preserve contract: duplicate registrations are an error
-			app.logger.Debug("Service already registered", "name", name)
+			if app.logger != nil {
+				app.logger.Debug("Service already registered", "name", name)
+			}
 			return ErrServiceAlreadyRegistered
 		}
 
@@ -379,7 +381,16 @@ func (app *StdApplication) RegisterService(name string, service any) error {
 		actualName = name
 	}
 
-	app.logger.Debug("Registered service", "name", name, "actualName", actualName, "type", reflect.TypeOf(service))
+	serviceType := reflect.TypeOf(service)
+	var typeName string
+	if serviceType != nil {
+		typeName = serviceType.String()
+	} else {
+		typeName = "<nil>"
+	}
+	if app.logger != nil {
+		app.logger.Debug("Registered service", "name", name, "actualName", actualName, "type", typeName)
+	}
 	return nil
 }
 
@@ -446,7 +457,9 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	// duplicate service registrations and other side effects. This supports tests
 	// and scenarios that may call Init more than once.
 	if app.initialized {
-		app.logger.Debug("Application already initialized, skipping Init")
+		if app.logger != nil {
+			app.logger.Debug("Application already initialized, skipping Init")
+		}
 		return nil
 	}
 
@@ -454,7 +467,9 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	for name, module := range app.moduleRegistry {
 		configurableModule, ok := module.(Configurable)
 		if !ok {
-			app.logger.Debug("Module does not implement Configurable, skipping", "module", name)
+			if app.logger != nil {
+				app.logger.Debug("Module does not implement Configurable, skipping", "module", name)
+			}
 			continue
 		}
 		err := configurableModule.RegisterConfig(appToPass)
@@ -462,7 +477,9 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 			errs = append(errs, fmt.Errorf("module %s failed to register config: %w", name, err))
 			continue
 		}
-		app.logger.Debug("Registering module", "name", name)
+		if app.logger != nil {
+			app.logger.Debug("Registering module", "name", name)
+		}
 	}
 
 	// Configuration loading (AppConfigLoader will consult app.configFeeders directly now)
@@ -1313,8 +1330,19 @@ func (app *StdApplication) shouldSkipAccidentalSelfDependency(providerModule, co
 
 // typeImplementsInterface checks if a type implements an interface
 func (app *StdApplication) typeImplementsInterface(svcType, interfaceType reflect.Type) bool {
-	return svcType.Implements(interfaceType) ||
-		(svcType.Kind() == reflect.Ptr && svcType.Elem().Implements(interfaceType))
+	if svcType == nil || interfaceType == nil {
+		return false
+	}
+	if svcType.Implements(interfaceType) {
+		return true
+	}
+	if svcType.Kind() == reflect.Ptr {
+		et := svcType.Elem()
+		if et != nil && et.Implements(interfaceType) {
+			return true
+		}
+	}
+	return false
 }
 
 // addNameBasedDependencies adds dependencies based on direct service name matching

@@ -127,8 +127,11 @@ func (r *EnhancedServiceRegistry) GetServicesByInterface(interfaceType reflect.T
 	var results []*ServiceRegistryEntry
 
 	for _, entry := range r.services {
+		if entry.Service == nil {
+			continue // Skip nil services
+		}
 		serviceType := reflect.TypeOf(entry.Service)
-		if serviceType.Implements(interfaceType) {
+		if serviceType != nil && serviceType.Implements(interfaceType) {
 			results = append(results, entry)
 		}
 	}
