@@ -10,7 +10,7 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/redis/go-redis/v9 v9.10.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 )
 
 require (

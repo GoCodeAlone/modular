@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.5.11
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 	modernc.org/sqlite v1.37.1
 )
 

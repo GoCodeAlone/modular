@@ -13,7 +13,7 @@ require (
 	github.com/cucumber/godog v0.15.1
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.12.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 )
 
 require (
