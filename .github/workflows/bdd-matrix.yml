@@ -153,7 +153,7 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           echo 'Modules (parallel) overall result: ${{ needs.module-bdd.result }}' >> $GITHUB_STEP_SUMMARY
       - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: bdd-coverage
       - name: Merge BDD coverage

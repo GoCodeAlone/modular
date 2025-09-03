@@ -149,19 +149,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
       - name: Download unit coverage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: unit-coverage
           path: cov-artifacts
         continue-on-error: true
       - name: Download cli coverage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cli-coverage
           path: cov-artifacts
         continue-on-error: true
       - name: Download merged BDD coverage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: merged-bdd-coverage
           path: cov-artifacts
