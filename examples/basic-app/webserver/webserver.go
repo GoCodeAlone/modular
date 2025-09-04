@@ -1,13 +1,14 @@
 package webserver
 
 import (
-	"basic-app/router"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 	"time"
+
+	"github.com/GoCodeAlone/modular/examples/basic-app/router"
 
 	"github.com/GoCodeAlone/modular"
 )
