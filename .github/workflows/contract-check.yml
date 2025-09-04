@@ -89,16 +89,43 @@ jobs:
           breaking_changes=false
           has_changes=false
 
+          # Helper: evaluate diff json for additions/modifications to mark has_changes
+          eval_has_changes() {
+            local json_file="$1"
+            if [ -f "$json_file" ]; then
+              # Using jq to read summary counts; jq is available on ubuntu-latest
+              if command -v jq >/dev/null 2>&1; then
+                local adds mods breaks
+                adds=$(jq -r '.Summary.TotalAdditions // 0' "$json_file" 2>/dev/null || echo 0)
+                mods=$(jq -r '.Summary.TotalModifications // 0' "$json_file" 2>/dev/null || echo 0)
+                breaks=$(jq -r '.Summary.TotalBreakingChanges // 0' "$json_file" 2>/dev/null || echo 0)
+                if [ "${adds}" != "0" ] || [ "${mods}" != "0" ] || [ "${breaks}" != "0" ]; then
+                  has_changes=true
+                fi
+                # If any breaking changes found ensure breaking_changes flag propagates (defensive)
+                if [ "${breaks}" != "0" ]; then
+                  breaking_changes=true
+                fi
+              else
+                echo "jq not found; skipping fine-grained change detection for $json_file" >&2
+              fi
+            fi
+          }
+
           # Compare core framework
           if [ -f "artifacts/contracts/main/core.json" ] && [ -f "artifacts/contracts/pr/core.json" ]; then
             echo "Comparing core framework contract..."
-            if ./cmd/modcli/modcli contract compare artifacts/contracts/main/core.json artifacts/contracts/pr/core.json -o artifacts/diffs/core.json --format=markdown > artifacts/diffs/core.md 2>/dev/null; then
-              echo "Core framework: No breaking changes"
+            set +e
+            ./cmd/modcli/modcli contract compare artifacts/contracts/main/core.json artifacts/contracts/pr/core.json -o artifacts/diffs/core.json --format=markdown > artifacts/diffs/core.md 2>/dev/null
+            exit_code=$?
+            set -e
+            if [ $exit_code -eq 0 ]; then
+              echo "Core framework: No breaking changes exit code"
             else
-              echo "Core framework: Breaking changes detected!"
+              echo "Core framework: Breaking changes detected (exit code $exit_code)!"
               breaking_changes=true
-              has_changes=true
             fi
+            eval_has_changes artifacts/diffs/core.json
           fi
 
           # Compare all modules
@@ -106,13 +133,17 @@ jobs:
             module_name=$(basename "$module_dir")
             if [ -f "artifacts/contracts/main/${module_name}.json" ] && [ -f "artifacts/contracts/pr/${module_name}.json" ]; then
               echo "Comparing module: $module_name"
-              if ./cmd/modcli/modcli contract compare "artifacts/contracts/main/${module_name}.json" "artifacts/contracts/pr/${module_name}.json" -o "artifacts/diffs/${module_name}.json" --format=markdown > "artifacts/diffs/${module_name}.md" 2>/dev/null; then
-                echo "Module $module_name: No breaking changes"
+              set +e
+              ./cmd/modcli/modcli contract compare "artifacts/contracts/main/${module_name}.json" "artifacts/contracts/pr/${module_name}.json" -o "artifacts/diffs/${module_name}.json" --format=markdown > "artifacts/diffs/${module_name}.md" 2>/dev/null
+              exit_code=$?
+              set -e
+              if [ $exit_code -eq 0 ]; then
+                echo "Module $module_name: No breaking changes exit code"
               else
-                echo "Module $module_name: Breaking changes detected!"
+                echo "Module $module_name: Breaking changes detected (exit code $exit_code)!"
                 breaking_changes=true
-                has_changes=true
               fi
+              eval_has_changes "artifacts/diffs/${module_name}.json"
             fi
           done
 
