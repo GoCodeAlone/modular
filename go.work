@@ -30,3 +30,5 @@ use ./examples/observer-pattern
 use ./examples/reverse-proxy
 use ./examples/testing-scenarios
 use ./examples/verbose-debug
+
+go 1.25
