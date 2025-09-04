@@ -54,7 +54,8 @@ jobs:
           git worktree add --quiet main-worktree "$MAIN_SHA"
 
           echo "==> Building modcli in main worktree"
-          ( cd main-worktree/cmd/modcli && go build -o modcli )
+          # Build from the worktree root using explicit package path to avoid the previous relative path ambiguity
+          ( cd main-worktree && go build -o cmd/modcli/modcli ./cmd/modcli ) || { echo "Failed to build modcli in main worktree"; exit 1; }
 
           echo "==> Extracting contracts from origin/main snapshot"
           ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
@@ -244,7 +245,8 @@ jobs:
     name: API Contract Passed
     runs-on: ubuntu-latest
     needs: contract-check
-    if: always() && (needs.contract-check.result == 'success' || needs.contract-check.outputs.has_changes != 'true')
+    # Only report pass if the contract-check job itself succeeded. Previous condition could mask early failures.
+    if: ${{ needs.contract-check.result == 'success' }}
     steps:
       - name: Contract check passed
         run: |
