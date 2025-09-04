@@ -22,6 +22,9 @@ jobs:
   contract-check:
     name: API Contract Check
     runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.contract-diff.outputs.has_changes }}
+      breaking_changes: ${{ steps.contract-diff.outputs.breaking_changes }}
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v5
@@ -35,7 +38,7 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Build modcli
+      - name: Build modcli (PR workspace)
         run: |
           cd cmd/modcli
           go build -o modcli
@@ -50,6 +53,9 @@ jobs:
           echo "Main commit: $MAIN_SHA"
           git worktree add --quiet main-worktree "$MAIN_SHA"
 
+          echo "==> Building modcli in main worktree"
+          ( cd main-worktree/cmd/modcli && go build -o modcli )
+
           echo "==> Extracting contracts from origin/main snapshot"
           ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
           for module_dir in main-worktree/modules/*/; do
@@ -59,6 +65,9 @@ jobs:
               ( cd main-worktree && ./cmd/modcli/modcli contract extract "./modules/$name" -o "../artifacts/contracts/main/${name}.json" || echo "Failed to extract $name (main)" )
             fi
           done
+
+          echo "==> Rebuilding modcli in PR workspace"
+          ( cd cmd/modcli && go build -o modcli )
 
           echo "==> Extracting contracts from PR (current) workspace"
           ./cmd/modcli/modcli contract extract . -o artifacts/contracts/pr/core.json || echo "Failed core framework extraction (pr)"
@@ -77,10 +86,9 @@ jobs:
         id: contract-diff
         run: |
           mkdir -p artifacts/diffs
-          
           breaking_changes=false
           has_changes=false
-          
+
           # Compare core framework
           if [ -f "artifacts/contracts/main/core.json" ] && [ -f "artifacts/contracts/pr/core.json" ]; then
             echo "Comparing core framework contract..."
@@ -92,7 +100,7 @@ jobs:
               has_changes=true
             fi
           fi
-          
+
           # Compare all modules
           for module_dir in modules/*/; do
             module_name=$(basename "$module_dir")
@@ -107,7 +115,7 @@ jobs:
               fi
             fi
           done
-          
+
           echo "breaking_changes=$breaking_changes" >> $GITHUB_OUTPUT
           echo "has_changes=$has_changes" >> $GITHUB_OUTPUT
 
@@ -125,7 +133,6 @@ jobs:
         run: |
           echo "## 📋 API Contract Changes Summary" > contract-summary.md
           echo "" >> contract-summary.md
-          
           if [ "${{ steps.contract-diff.outputs.breaking_changes }}" == "true" ]; then
             echo "⚠️ **WARNING: This PR contains breaking API changes!**" >> contract-summary.md
             echo "" >> contract-summary.md
@@ -133,19 +140,14 @@ jobs:
             echo "✅ **No breaking changes detected - only additions and non-breaking modifications**" >> contract-summary.md
             echo "" >> contract-summary.md
           fi
-          
           echo "### Changed Components:" >> contract-summary.md
           echo "" >> contract-summary.md
-          
-          # Add core framework diff if it exists
           if [ -f "artifacts/diffs/core.md" ] && [ -s "artifacts/diffs/core.md" ]; then
             echo "#### Core Framework" >> contract-summary.md
             echo "" >> contract-summary.md
             cat artifacts/diffs/core.md >> contract-summary.md
             echo "" >> contract-summary.md
           fi
-          
-          # Add module diffs
           for diff_file in artifacts/diffs/*.md; do
             if [ -f "$diff_file" ] && [ -s "$diff_file" ]; then
               module_name=$(basename "$diff_file" .md)
@@ -157,9 +159,8 @@ jobs:
               fi
             fi
           done
-          
           echo "### Artifacts" >> contract-summary.md
-          echo "" >> contract-summary.md
+            echo "" >> contract-summary.md
           echo "📁 Full contract diffs and JSON artifacts are available in the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." >> contract-summary.md
 
       - name: Comment PR with contract changes
@@ -169,24 +170,18 @@ jobs:
           script: |
             const fs = require('fs');
             const path = 'contract-summary.md';
-            
             if (fs.existsSync(path)) {
               const summary = fs.readFileSync(path, 'utf8');
-              
-              // Find existing contract comment
               const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.pull_request.number,
               });
-              
-              const botComment = comments.find(comment => 
-                comment.user.type === 'Bot' && 
+              const botComment = comments.find(comment =>
+                comment.user.type === 'Bot' &&
                 comment.body.includes('📋 API Contract Changes Summary')
               );
-              
               if (botComment) {
-                // Update existing comment
                 await github.rest.issues.updateComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -194,7 +189,6 @@ jobs:
                   body: summary
                 });
               } else {
-                // Create new comment
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -215,7 +209,6 @@ jobs:
           echo "4. Communicating breaking changes to users"
           exit 1
 
-  # Success job that only runs if contract check passes or no changes
   contract-passed:
     name: API Contract Passed
     runs-on: ubuntu-latest
