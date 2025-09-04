@@ -1,4 +1,4 @@
-module cache-demo
+module github.com/GoCodeAlone/modular/examples/cache-demo
 
 go 1.25
 

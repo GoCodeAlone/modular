@@ -1,4 +1,4 @@
-module letsencrypt-demo
+module github.com/GoCodeAlone/modular/examples/letsencrypt-demo
 
 go 1.25
 

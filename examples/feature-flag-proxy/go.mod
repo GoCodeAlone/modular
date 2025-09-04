@@ -1,4 +1,4 @@
-module feature-flag-proxy
+module github.com/GoCodeAlone/modular/examples/feature-flag-proxy
 
 go 1.25
 

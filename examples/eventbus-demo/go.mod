@@ -1,4 +1,4 @@
-module eventbus-demo
+module github.com/GoCodeAlone/modular/examples/eventbus-demo
 
 go 1.25
 

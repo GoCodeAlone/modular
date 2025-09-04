@@ -1,4 +1,4 @@
-module basic-app
+module github.com/GoCodeAlone/modular/examples/basic-app
 
 go 1.25
 

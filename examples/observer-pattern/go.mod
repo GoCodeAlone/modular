@@ -1,4 +1,4 @@
-module observer-pattern
+module github.com/GoCodeAlone/modular/examples/observer-pattern
 
 go 1.25
 

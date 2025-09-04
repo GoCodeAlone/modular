@@ -1,4 +1,4 @@
-module http-client
+module github.com/GoCodeAlone/modular/examples/http-client
 
 go 1.25
 

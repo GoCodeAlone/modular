@@ -1,4 +1,4 @@
-module health-aware-reverse-proxy
+module github.com/GoCodeAlone/modular/examples/health-aware-reverse-proxy
 
 go 1.25
 

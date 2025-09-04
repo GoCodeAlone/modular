@@ -1,4 +1,4 @@
-module logmasker-example
+module github.com/GoCodeAlone/modular/examples/logmasker-example
 
 go 1.25
 

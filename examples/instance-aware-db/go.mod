@@ -1,4 +1,4 @@
-module instance-aware-db
+module github.com/GoCodeAlone/modular/examples/instance-aware-db
 
 go 1.25
 

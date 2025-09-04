@@ -1,4 +1,4 @@
-module auth-demo
+module github.com/GoCodeAlone/modular/examples/auth-demo
 
 go 1.25
 

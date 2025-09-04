@@ -1,4 +1,4 @@
-module testing-scenarios
+module github.com/GoCodeAlone/modular/examples/testing-scenarios
 
 go 1.25
 

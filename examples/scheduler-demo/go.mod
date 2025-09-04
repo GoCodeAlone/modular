@@ -1,4 +1,4 @@
-module scheduler-demo
+module github.com/GoCodeAlone/modular/examples/scheduler-demo
 
 go 1.25
 

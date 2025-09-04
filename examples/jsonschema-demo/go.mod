@@ -1,4 +1,4 @@
-module jsonschema-demo
+module github.com/GoCodeAlone/modular/examples/jsonschema-demo
 
 go 1.25
 

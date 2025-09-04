@@ -1,4 +1,4 @@
-module multi-engine-eventbus
+module github.com/GoCodeAlone/modular/examples/multi-engine-eventbus
 
 go 1.25
 

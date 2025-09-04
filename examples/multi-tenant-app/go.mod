@@ -1,4 +1,4 @@
-module multi-tenant-app
+module github.com/GoCodeAlone/modular/examples/multi-tenant-app
 
 go 1.25
 

@@ -1,4 +1,4 @@
-module advanced-logging
+module github.com/GoCodeAlone/modular/examples/advanced-logging
 
 go 1.25
 

@@ -1,4 +1,4 @@
-module observer-demo
+module github.com/GoCodeAlone/modular/examples/observer-demo
 
 go 1.25
 

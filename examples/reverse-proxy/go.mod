@@ -1,4 +1,4 @@
-module reverse-proxy
+module github.com/GoCodeAlone/modular/examples/reverse-proxy
 
 go 1.25
 
