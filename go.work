@@ -1,35 +1,73 @@
 use ./
+
 use ./cmd/modcli
+
 use ./modules/auth
+
 use ./modules/cache
+
 use ./modules/chimux
+
 use ./modules/database
+
 use ./modules/eventbus
+
 use ./modules/eventlogger
+
 use ./modules/httpclient
+
 use ./modules/httpserver
+
 use ./modules/jsonschema
+
 use ./modules/letsencrypt
+
 use ./modules/logmasker
+
 use ./modules/reverseproxy
+
 use ./modules/scheduler
+
 use ./examples/advanced-logging
+
 use ./examples/auth-demo
+
 use ./examples/base-config-example
+
 use ./examples/basic-app
+
 use ./examples/cache-demo
+
 use ./examples/eventbus-demo
+
 use ./examples/feature-flag-proxy
+
 use ./examples/health-aware-reverse-proxy
+
 use ./examples/http-client
+
 use ./examples/instance-aware-db
+
+use ./examples/jsonschema-demo
+
+use ./examples/letsencrypt-demo
+
 use ./examples/logmasker-example
+
 use ./examples/multi-engine-eventbus
+
 use ./examples/multi-tenant-app
+
 use ./examples/observer-demo
+
 use ./examples/observer-pattern
+
 use ./examples/reverse-proxy
+
+use ./examples/scheduler-demo
+
 use ./examples/testing-scenarios
+
 use ./examples/verbose-debug
 
 go 1.25

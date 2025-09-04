@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/syslog"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // SyslogTarget outputs events to syslog (supported on Unix-like systems).

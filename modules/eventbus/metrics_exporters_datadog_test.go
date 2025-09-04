@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestDatadogStatsdExporterBasic spins up an in-process UDP listener to capture

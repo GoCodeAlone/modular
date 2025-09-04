@@ -183,7 +183,7 @@ Register the collector with your Prometheus registry (global or custom):
 
 ```go
 import (
-  "github.com/CrisisTextLine/modular/modules/eventbus"
+  "github.com/GoCodeAlone/modular/modules/eventbus"
   prom "github.com/prometheus/client_golang/prometheus"
   promhttp "github.com/prometheus/client_golang/prometheus/promhttp"
   "net/http"
@@ -215,7 +215,7 @@ Start the exporter in a background goroutine. It periodically snapshots stats an
 ```go
 import (
   "time"
-  "github.com/CrisisTextLine/modular/modules/eventbus"
+  "github.com/GoCodeAlone/modular/modules/eventbus"
 )
 
 exporter, err := eventbus.NewDatadogStatsdExporter(eventBus, eventbus.DatadogExporterConfig{
