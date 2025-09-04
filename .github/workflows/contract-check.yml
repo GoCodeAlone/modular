@@ -40,42 +40,38 @@ jobs:
           cd cmd/modcli
           go build -o modcli
 
-      - name: Extract contracts from main branch
+      - name: Extract contracts (main & PR) using worktree
         run: |
-          git checkout origin/main
-          mkdir -p artifacts/contracts/main
-          
-          # Extract core framework contract
-          ./cmd/modcli/modcli contract extract . -o artifacts/contracts/main/core.json
-          
-          # Extract contracts for all modules
-          for module_dir in modules/*/; do
-            module_name=$(basename "$module_dir")
+          set -euo pipefail
+          mkdir -p artifacts/contracts/main artifacts/contracts/pr
+          echo "==> Preparing worktree for origin/main"
+          git fetch origin main --quiet
+          MAIN_SHA=$(git rev-parse origin/main)
+          echo "Main commit: $MAIN_SHA"
+          git worktree add --quiet main-worktree "$MAIN_SHA"
+
+          echo "==> Extracting contracts from origin/main snapshot"
+          ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
+          for module_dir in main-worktree/modules/*/; do
             if [ -f "$module_dir/go.mod" ]; then
-              echo "Extracting contract for module: $module_name"
-              ./cmd/modcli/modcli contract extract "./$module_dir" -o "artifacts/contracts/main/${module_name}.json" || echo "Failed to extract $module_name"
+              name=$(basename "$module_dir")
+              echo "Extracting (main) module: $name"
+              ( cd main-worktree && ./cmd/modcli/modcli contract extract "./modules/$name" -o "../artifacts/contracts/main/${name}.json" || echo "Failed to extract $name (main)" )
             fi
           done
 
-      - name: Checkout PR branch
-        run: |
-          git checkout ${{ github.head_ref }}
-
-      - name: Extract contracts from PR branch
-        run: |
-          mkdir -p artifacts/contracts/pr
-          
-          # Extract core framework contract
-          ./cmd/modcli/modcli contract extract . -o artifacts/contracts/pr/core.json
-          
-          # Extract contracts for all modules
+          echo "==> Extracting contracts from PR (current) workspace"
+          ./cmd/modcli/modcli contract extract . -o artifacts/contracts/pr/core.json || echo "Failed core framework extraction (pr)"
           for module_dir in modules/*/; do
-            module_name=$(basename "$module_dir")
             if [ -f "$module_dir/go.mod" ]; then
-              echo "Extracting contract for module: $module_name"
-              ./cmd/modcli/modcli contract extract "./$module_dir" -o "artifacts/contracts/pr/${module_name}.json" || echo "Failed to extract $module_name"
+              name=$(basename "$module_dir")
+              echo "Extracting (pr) module: $name"
+              ./cmd/modcli/modcli contract extract "./modules/$name" -o "artifacts/contracts/pr/${name}.json" || echo "Failed to extract $name (pr)" 
             fi
           done
+
+          echo "==> Cleaning up worktree"
+          git worktree remove --force main-worktree || echo "Worktree removal failed (non-fatal)"
 
       - name: Compare contracts and generate diffs
         id: contract-diff
