@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"reflect"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
@@ -106,6 +107,19 @@ func (d *BaseApplicationDecorator) SetVerboseConfig(enabled bool) {
 
 func (d *BaseApplicationDecorator) IsVerboseConfig() bool {
 	return d.inner.IsVerboseConfig()
+}
+
+// Enhanced service registry methods
+func (d *BaseApplicationDecorator) GetServicesByModule(moduleName string) []string {
+	return d.inner.GetServicesByModule(moduleName)
+}
+
+func (d *BaseApplicationDecorator) GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool) {
+	return d.inner.GetServiceEntry(serviceName)
+}
+
+func (d *BaseApplicationDecorator) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	return d.inner.GetServicesByInterface(interfaceType)
 }
 
 // TenantAware methods - if inner supports TenantApplication interface

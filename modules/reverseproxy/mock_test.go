@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"sync"
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/go-chi/chi/v5" // Import chi for router type assertion
@@ -77,7 +79,7 @@ func (m *MockApplication) GetService(name string, target interface{}) error {
 		return modular.ErrServiceNotFound
 	}
 
-	// Handle chi.Router specifically for our tests
+	// Handle different service types specifically for our tests
 	switch ptr := target.(type) {
 	case *chi.Router:
 		if router, ok := service.(chi.Router); ok {
@@ -87,6 +89,11 @@ func (m *MockApplication) GetService(name string, target interface{}) error {
 	case *modular.TenantService:
 		if tenantService, ok := service.(modular.TenantService); ok {
 			*ptr = tenantService
+			return nil
+		}
+	case *FeatureFlagEvaluator:
+		if evaluator, ok := service.(FeatureFlagEvaluator); ok {
+			*ptr = evaluator
 			return nil
 		}
 	case *interface{}:
@@ -142,6 +149,49 @@ func (m *MockApplication) SetVerboseConfig(verbose bool) {
 // Context returns a context for the mock application
 func (m *MockApplication) Context() context.Context {
 	return context.Background()
+}
+
+// GetServicesByModule returns all services provided by a specific module (mock implementation)
+func (m *MockApplication) GetServicesByModule(moduleName string) []string {
+	// Mock implementation returns empty list
+	return []string{}
+}
+
+// GetServiceEntry retrieves detailed information about a registered service (mock implementation)
+func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	service, exists := m.services[serviceName]
+	if !exists {
+		return nil, false
+	}
+	entry := &modular.ServiceRegistryEntry{
+		Service:      service,
+		ModuleName:   "",          // Not tracked in mock
+		ModuleType:   nil,         // Not tracked in mock
+		OriginalName: serviceName, // Same as actual in mock
+		ActualName:   serviceName,
+	}
+	return entry, true
+}
+
+// GetServicesByInterface returns all services that implement the given interface (mock implementation)
+func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	var entries []*modular.ServiceRegistryEntry
+	for name, svc := range m.services {
+		if svc == nil {
+			continue
+		}
+		svcType := reflect.TypeOf(svc)
+		if svcType.Implements(interfaceType) {
+			entries = append(entries, &modular.ServiceRegistryEntry{
+				Service:      svc,
+				ModuleName:   "",
+				ModuleType:   nil,
+				OriginalName: name,
+				ActualName:   name,
+			})
+		}
+	}
+	return entries
 }
 
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider
@@ -270,6 +320,7 @@ func (m *MockTenantService) RegisterTenantAwareModule(module modular.TenantAware
 
 // MockLogger implements the Logger interface for testing
 type MockLogger struct {
+	mu            sync.RWMutex
 	DebugMessages []string
 	InfoMessages  []string
 	WarnMessages  []string
@@ -286,17 +337,58 @@ func NewMockLogger() *MockLogger {
 }
 
 func (m *MockLogger) Debug(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.DebugMessages = append(m.DebugMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
 }
 
 func (m *MockLogger) Info(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.InfoMessages = append(m.InfoMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
 }
 
 func (m *MockLogger) Warn(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.WarnMessages = append(m.WarnMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
 }
 
 func (m *MockLogger) Error(msg string, args ...interface{}) {
+	m.mu.Lock()
 	m.ErrorMessages = append(m.ErrorMessages, fmt.Sprintf(msg, args...))
+	m.mu.Unlock()
+}
+
+// Snapshot methods (currently unused but safe for concurrent access in future assertions)
+func (m *MockLogger) GetDebugMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.DebugMessages))
+	copy(out, m.DebugMessages)
+	return out
+}
+
+func (m *MockLogger) GetInfoMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.InfoMessages))
+	copy(out, m.InfoMessages)
+	return out
+}
+
+func (m *MockLogger) GetWarnMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.WarnMessages))
+	copy(out, m.WarnMessages)
+	return out
+}
+
+func (m *MockLogger) GetErrorMessages() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.ErrorMessages))
+	copy(out, m.ErrorMessages)
+	return out
 }

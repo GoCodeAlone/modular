@@ -33,11 +33,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
 	// Create logger
 	logger := slog.New(slog.NewTextHandler(
 		os.Stdout,
@@ -58,6 +53,14 @@ func main() {
 	if err != nil {
 		logger.Error("Failed to create application", "error", err)
 		os.Exit(1)
+	}
+
+	// Inject feeders per application (avoid global mutation)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
 	}
 
 	// Run application with lifecycle management

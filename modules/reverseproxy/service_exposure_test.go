@@ -127,14 +127,14 @@ func TestFeatureFlagEvaluatorServiceExposure(t *testing.T) {
 					t.Errorf("Expected service to implement FeatureFlagEvaluator, got %T", flagService.Instance)
 				}
 
-				// Test that it's the FileBasedFeatureFlagEvaluator specifically
-				evaluator, ok := flagService.Instance.(*FileBasedFeatureFlagEvaluator)
+				// Test that it's now the FeatureFlagAggregator (new design)
+				evaluator, ok := flagService.Instance.(*FeatureFlagAggregator)
 				if !ok {
-					t.Errorf("Expected service to be *FileBasedFeatureFlagEvaluator, got %T", flagService.Instance)
+					t.Errorf("Expected service to be *FeatureFlagAggregator, got %T", flagService.Instance)
 					return
 				}
 
-				// Test configuration was applied correctly
+				// Test configuration was applied correctly through the aggregator
 				req, _ := http.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 
 				// Test flags

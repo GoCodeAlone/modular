@@ -22,6 +22,10 @@ var (
 	ErrApplicationNil           = errors.New("app cannot be nil")
 	ErrLoggerNil                = errors.New("logger cannot be nil")
 
+	// Feature flag evaluation sentinel errors
+	ErrNoDecision      = errors.New("no-decision")      // Evaluator abstains from making a decision
+	ErrEvaluatorFatal  = errors.New("evaluator-fatal")  // Fatal error that should abort evaluation chain
+
 	// Event observation errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 )

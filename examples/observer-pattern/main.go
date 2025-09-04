@@ -33,12 +33,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Configure feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
 	// Create observable application with observer pattern support
 	app := modular.NewObservableApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
@@ -47,6 +41,11 @@ func main() {
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 		)),
 	)
+	// ObservableApplication embeds *StdApplication, so access directly
+	app.StdApplication.SetConfigFeeders([]modular.Feeder{
+		feeders.NewYamlFeeder("config.yaml"),
+		feeders.NewEnvFeeder(),
+	})
 
 	fmt.Println("🔍 Observer Pattern Demo - Starting Application")
 	fmt.Println("==================================================")

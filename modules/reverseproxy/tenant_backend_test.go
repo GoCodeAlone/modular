@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
+	"reflect"
 	"testing"
 
 	"github.com/GoCodeAlone/modular"
@@ -492,6 +493,24 @@ func (m *mockTenantApplication) IsVerboseConfig() bool {
 
 func (m *mockTenantApplication) SetVerboseConfig(verbose bool) {
 	// No-op in mock
+}
+
+// GetServicesByModule returns all services provided by a specific module (mock implementation)
+func (m *mockTenantApplication) GetServicesByModule(moduleName string) []string {
+	args := m.Called(moduleName)
+	return args.Get(0).([]string)
+}
+
+// GetServiceEntry retrieves detailed information about a registered service (mock implementation)
+func (m *mockTenantApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	args := m.Called(serviceName)
+	return args.Get(0).(*modular.ServiceRegistryEntry), args.Bool(1)
+}
+
+// GetServicesByInterface returns all services that implement the given interface (mock implementation)
+func (m *mockTenantApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	args := m.Called(interfaceType)
+	return args.Get(0).([]*modular.ServiceRegistryEntry)
 }
 
 type mockLogger struct{}

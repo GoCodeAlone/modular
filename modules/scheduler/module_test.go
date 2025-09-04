@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"testing/synctest"
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
@@ -68,6 +71,15 @@ func (a *mockApp) RegisterService(name string, service any) error {
 }
 
 func (a *mockApp) GetService(name string, target any) error {
+	return nil
+}
+
+// New interface-introspection methods added to Application; provide minimal mock implementations
+func (a *mockApp) GetServicesByModule(moduleName string) []string { return nil }
+func (a *mockApp) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return nil
 }
 
@@ -304,12 +316,22 @@ func TestSchedulerOperations(t *testing.T) {
 			t.Fatal("Job did not execute within timeout")
 		}
 
-		// Get job history
-		history, err := module.GetJobHistory(jobID)
-		require.NoError(t, err)
-		assert.Len(t, history, 1, "Should have one execution record")
-		assert.Equal(t, jobID, history[0].JobID)
-		assert.Equal(t, "completed", history[0].Status)
+		// Poll for job completion and history persistence
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			to, _ := module.GetJob(jobID)
+			if to.Status == JobStatusCompleted {
+				history, err := module.GetJobHistory(jobID)
+				require.NoError(t, err)
+				if len(history) == 1 && history[0].Status == string(JobStatusCompleted) {
+					assert.Equal(t, jobID, history[0].JobID)
+					return
+				}
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		to, _ := module.GetJob(jobID)
+		t.Fatalf("Job history not stable; final status=%v", to.Status)
 	})
 
 	t.Run("JobFailure", func(t *testing.T) {
@@ -358,6 +380,45 @@ func TestSchedulerOperations(t *testing.T) {
 	// Stop the module
 	err = module.Stop(ctx)
 	require.NoError(t, err)
+}
+
+// TestSchedulerImmediateJobSynctest demonstrates deterministic timing using synctest.
+// It schedules a job 1s in the future and advances virtual time instantly.
+func TestSchedulerImmediateJobSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Use standard module setup
+		module := NewModule().(*SchedulerModule)
+		app := newMockApp()
+		module.RegisterConfig(app)
+		module.Init(app)
+		ctx := context.Background()
+		executed := make(chan struct{}, 1)
+		// Schedule job BEFORE starting so Start's initial due-job dispatch sees it.
+		job := Job{
+			Name:  "synctest-job",
+			RunAt: time.Now(), // due immediately
+			JobFunc: func(ctx context.Context) error {
+				executed <- struct{}{}
+				return nil
+			},
+		}
+		if _, err := module.ScheduleJob(job); err != nil {
+			t.Fatalf("schedule: %v", err)
+		}
+		if err := module.Start(ctx); err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		// Wait until goroutines settle.
+		synctest.Wait()
+		select {
+		case <-executed:
+		default:
+			t.Fatalf("job did not execute in virtual time")
+		}
+		if err := module.Stop(ctx); err != nil {
+			t.Fatalf("stop: %v", err)
+		}
+	})
 }
 
 func TestSchedulerConfiguration(t *testing.T) {

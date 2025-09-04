@@ -1,11 +1,9 @@
 module cache-demo
 
-go 1.24.2
-
-toolchain go1.24.5
+go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/cache v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000
@@ -22,7 +20,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/redis/go-redis/v9 v9.10.0 // indirect
+	github.com/redis/go-redis/v9 v9.12.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

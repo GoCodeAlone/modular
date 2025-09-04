@@ -1,249 +1,451 @@
-# Release workflow that automatically detects and releases all components with changes
-# This workflow will:
-# 1. Check for changes in the main Modular library (excluding modules/ and non-code files)
-# 2. If changes exist, trigger the existing release.yml workflow
-# 3. Check each module for changes since its last release (excluding tests and docs)
-# 4. Trigger module-release.yml workflow for any modules that have changes
-# 
-# Use this workflow when you want to release everything that has changed.
-# Use individual workflows (release.yml, module-release.yml) for specific releases.
-#
-
-name: Release All Components with Changes
-run-name: Release All Components with Changes
-permissions:
-  contents: write
-  actions: write
+name: Release All Components
+run-name: Orchestrated release (type=${{ github.event.inputs.releaseType }})
 
 on:
   workflow_dispatch:
     inputs:
       releaseType:
-        description: 'Release type for all components'
+        description: 'Release type for all changed components (patch|minor|major)'
         required: true
         type: choice
-        options:
-          - patch
-          - minor
-          - major
-        default: 'patch'
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  # Need contents write for tagging/releases, actions write for workflow dispatches,
+  # pull-requests & checks write are required by the called auto-bump-modules workflow
+  contents: write
+  actions: write
+  pull-requests: write
+  checks: write
 
 jobs:
-  detect-changes:
+
+  detect:
     runs-on: ubuntu-latest
     outputs:
-      main_has_changes: ${{ steps.check_main.outputs.has_changes }}
-      modules_with_changes: ${{ steps.check_modules.outputs.modules_with_changes }}
+      core_changed: ${{ steps.core.outputs.core_changed }}
+      modules_with_changes: ${{ steps.modules.outputs.modules_with_changes }}
+      modules_without_changes: ${{ steps.modules.outputs.modules_without_changes }}
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Check for main library changes
-        id: check_main
+      - name: Detect core changes
+        id: core
+        shell: bash
         run: |
-          # Find the latest tag for the main library (excluding module tags)
-          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
-          echo "Latest main library tag: $LATEST_TAG"
-          
-          # Define patterns for files that should trigger a release
-          # Include: .go files (except tests), go.mod, go.sum
-          # Exclude: *_test.go, *.md, .github/*, examples/, cmd/ (if they don't contain logic)
-          INCLUDE_PATTERNS="*.go go.mod go.sum"
-          EXCLUDE_PATTERNS="*_test.go *.md .github/* examples/* docs/*"
-          
+          set -euo pipefail
+          LATEST_TAG=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n1 || echo '')
+          echo "Latest core tag: $LATEST_TAG"
+          HAS_CHANGES=false
           if [ -z "$LATEST_TAG" ]; then
-            echo "No previous main library release found, checking if any relevant files exist"
-            # Check if there are any .go files or go.mod in the root (excluding modules/)
-            RELEVANT_FILES=$(find . -maxdepth 1 -name "*.go" -o -name "go.mod" -o -name "go.sum" | grep -v test | head -1)
-            if [ -n "$RELEVANT_FILES" ]; then
-              HAS_CHANGES=true
-            else
-              HAS_CHANGES=false
-            fi
+            FILE=$(find . -maxdepth 1 -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -1 || true)
+            if [ -n "$FILE" ]; then HAS_CHANGES=true; fi
           else
-            echo "Checking for relevant changes since $LATEST_TAG in main library"
-            
-            # Get all changed files since the last tag, excluding modules/ directory
-            CHANGED_FILES=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v "^modules/" || true)
-            echo "Files changed since $LATEST_TAG (excluding modules/):"
-            echo "$CHANGED_FILES"
-            
-            # Filter for files that should trigger a release
-            RELEVANT_CHANGES=""
-            if [ -n "$CHANGED_FILES" ]; then
-              for file in $CHANGED_FILES; do
-                # Skip test files
-                if [[ $file == *_test.go ]]; then
-                  continue
+            CHANGED=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v '^modules/' || true)
+            RELEVANT=""
+            if [ -n "$CHANGED" ]; then
+              while IFS= read -r f; do
+                [[ $f == *_test.go ]] && continue
+                [[ $f == *.md ]] && continue
+                [[ $f == .github/* ]] && continue
+                [[ $f == examples/* ]] && continue
+                # Accept .go plus root go.mod/go.sum (allow optional leading ./)
+                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]] || [[ $f == ./go.mod ]] || [[ $f == ./go.sum ]]; then
+                  RELEVANT+="$f "
                 fi
-                # Skip documentation files
-                if [[ $file == *.md ]]; then
-                  continue
-                fi
-                # Skip github workflows
-                if [[ $file == .github/* ]]; then
-                  continue
-                fi
-                # Skip example files (unless they contain important logic)
-                if [[ $file == examples/* ]]; then
-                  continue
-                fi
-                # Include .go files, go.mod, go.sum
-                if [[ $file == *.go ]] || [[ $file == go.mod ]] || [[ $file == go.sum ]]; then
-                  RELEVANT_CHANGES="$RELEVANT_CHANGES $file"
-                fi
-              done
+              done <<< "$CHANGED"
             fi
-            
-            if [ -n "$RELEVANT_CHANGES" ]; then
-              echo "Found relevant changes in main library:"
-              echo "$RELEVANT_CHANGES"
-              HAS_CHANGES=true
-            else
-              echo "No relevant changes found in main library (only tests, docs, or workflows changed)"
-              HAS_CHANGES=false
-            fi
+            if [ -n "$RELEVANT" ]; then HAS_CHANGES=true; fi
           fi
-          
-          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
-          echo "Main library has changes: $HAS_CHANGES"
+          echo "core_changed=$HAS_CHANGES" >> $GITHUB_OUTPUT
+          echo "Core changed? $HAS_CHANGES"
 
-      - name: Check for module changes
-        id: check_modules
+      - name: Detect module changes
+        id: modules
+        shell: bash
         run: |
-          # Get list of all modules
-          MODULES=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | grep -v "README" || true)
-          echo "Found modules: $MODULES"
-          
-          MODULES_WITH_CHANGES=""
-          
-          for MODULE in $MODULES; do
-            echo "================================================"
-            echo "Checking module: $MODULE"
-            
-            # Find the latest tag for this module
-            LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
-            echo "Latest tag for $MODULE: $LATEST_TAG"
-            
+          set -euo pipefail
+          MODULE_DIRS=$(find modules -maxdepth 1 -mindepth 1 -type d -exec basename {} \; 2>/dev/null || true)
+          WITH_CHANGES=()
+          WITHOUT_CHANGES=()
+          echo "Discovered modules: $MODULE_DIRS"
+          for M in $MODULE_DIRS; do
+            echo "-----------------------------"
+            echo "Evaluating module: $M"
+            LATEST_TAG=$(git tag -l "modules/${M}/v*" | sort -V | tail -n1 || echo '')
+            echo "Latest tag for $M: ${LATEST_TAG:-<none>}"
+            HAS=false
             if [ -z "$LATEST_TAG" ]; then
-              echo "No previous release found for $MODULE, checking if module has relevant files"
-              # Check if module has any .go files or go.mod
-              RELEVANT_FILES=$(find "modules/${MODULE}" -name "*.go" -o -name "go.mod" -o -name "go.sum" | grep -v test | head -1)
-              if [ -n "$RELEVANT_FILES" ]; then
-                HAS_CHANGES=true
-              else
-                HAS_CHANGES=false
-              fi
+              FILE=$(find "modules/${M}" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -1 || true)
+              [ -n "$FILE" ] && HAS=true || HAS=false
+              echo "No tag yet; existence implies changed? $HAS (file sample: ${FILE:-none})"
             else
-              echo "Checking for relevant changes since $LATEST_TAG in modules/$MODULE"
-              
-              # Get all changed files in this module since the last tag
-              CHANGED_FILES=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${MODULE}" || true)
-              echo "Files changed in $MODULE since $LATEST_TAG:"
-              echo "$CHANGED_FILES"
-              
-              # Filter for files that should trigger a release
-              RELEVANT_CHANGES=""
-              if [ -n "$CHANGED_FILES" ]; then
-                for file in $CHANGED_FILES; do
-                  # Skip test files
-                  if [[ $file == *_test.go ]]; then
-                    continue
-                  fi
-                  # Skip documentation files
-                  if [[ $file == *.md ]]; then
-                    continue
-                  fi
-                  # Include .go files, go.mod, go.sum
-                  if [[ $file == *.go ]] || [[ $file == go.mod ]] || [[ $file == go.sum ]]; then
-                    RELEVANT_CHANGES="$RELEVANT_CHANGES $file"
-                  fi
-                done
-              fi
-              
-              if [ -n "$RELEVANT_CHANGES" ]; then
-                echo "Found relevant changes in $MODULE:"
-                echo "$RELEVANT_CHANGES"
-                HAS_CHANGES=true
+              # Use trailing slash pathspec to avoid accidental path substring matches
+              CHANGED=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${M}/" || true)
+              if [ -n "$CHANGED" ]; then
+                echo "Raw changed files since ${LATEST_TAG}:"; printf '%s\n' "$CHANGED"
               else
-                echo "No relevant changes found in $MODULE (only tests or docs changed)"
-                HAS_CHANGES=false
+                echo "No raw changed files detected for $M since ${LATEST_TAG}"
               fi
+              RELEVANT=""
+              if [ -n "$CHANGED" ]; then
+                while IFS= read -r f; do
+                  [[ $f == *_test.go ]] && continue
+                  [[ $f == *.md ]] && continue
+                  # Accept any non-test .go plus go.mod/go.sum anywhere inside module.
+                  if [[ $f == *.go ]] || [[ $f == */go.mod ]] || [[ $f == */go.sum ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]]; then
+                    RELEVANT+="$f "
+                    echo "Relevant: $f"
+                  else
+                    echo "Ignored (non-relevant extension): $f"
+                  fi
+                done <<< "$CHANGED"
+              fi
+              [ -n "$RELEVANT" ] && HAS=true || HAS=false
+              echo "Relevant file set: ${RELEVANT:-<none>} => changed? $HAS"
             fi
-            
-            if [ "$HAS_CHANGES" = "true" ]; then
-              echo "$MODULE has changes and needs a release"
-              MODULES_WITH_CHANGES="$MODULES_WITH_CHANGES $MODULE"
+            if [ "$HAS" = true ]; then
+              WITH_CHANGES+=("$M")
             else
-              echo "$MODULE has no relevant changes"
+              WITHOUT_CHANGES+=("$M")
             fi
           done
-          
-          # Clean up the modules list and output as JSON array for matrix
-          if [ -n "$MODULES_WITH_CHANGES" ]; then
-            # Convert space-separated list to JSON array (compact format for GitHub Actions)
-            MODULES_JSON=$(echo "$MODULES_WITH_CHANGES" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s . -c)
-            echo "modules_with_changes=$MODULES_JSON" >> $GITHUB_OUTPUT
-            echo "Modules with changes: $MODULES_WITH_CHANGES"
-          else
-            echo "modules_with_changes=[]" >> $GITHUB_OUTPUT
-            echo "No modules have relevant changes"
-          fi
+          build_json_array() {
+            local arr=("$@")
+            if [ ${#arr[@]} -eq 0 ] || { [ ${#arr[@]} -eq 1 ] && [ -z "${arr[0]}" ]; }; then
+              printf '[]'
+              return 0
+            fi
+            if command -v jq >/dev/null 2>&1; then
+              printf '%s\n' "${arr[@]}" | jq -R . | jq -s . -c
+            else
+              local first=1
+              printf '['
+              for e in "${arr[@]}"; do
+                [ -z "$e" ] && continue
+                if [ $first -eq 0 ]; then printf ','; fi
+                printf '"%s"' "$e"
+                first=0
+              done
+              printf ']'
+            fi
+          }
+          WITH_JSON=$(build_json_array "${WITH_CHANGES[@]}")
+          WITHOUT_JSON=$(build_json_array "${WITHOUT_CHANGES[@]}")
+          # Only write valid key=value lines to GITHUB_OUTPUT
+          echo "modules_with_changes=${WITH_JSON}" >> "$GITHUB_OUTPUT"
+          echo "modules_without_changes=${WITHOUT_JSON}" >> "$GITHUB_OUTPUT"
+          echo "Modules with changes: ${WITH_JSON}"
+          echo "Modules without changes: ${WITHOUT_JSON}"
 
-  release-main:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.main_has_changes == 'true'
+  release-core:
+    needs: detect
+    if: needs.detect.outputs.core_changed == 'true'
     uses: ./.github/workflows/release.yml
     with:
       releaseType: ${{ github.event.inputs.releaseType }}
+      # Prevent internal bump in release.yml (we orchestrate it explicitly here)
+      skipModuleBump: true
     secrets: inherit
 
-  release-modules:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.modules_with_changes != '[]'
+  # Run optional core cleanup (e.g., formatting, generated artifacts) and open/merge PR
+  core-cleanup:
+    needs: release-core
+    if: needs.release-core.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      pr_created: ${{ steps.pr.outputs.created || 'false' }}
+      pr_merged: ${{ steps.merge.outputs.merged || 'false' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25'
+          check-latest: true
+      - name: Build modcli
+        run: |
+          cd cmd/modcli && go build -o modcli
+      - name: Post-release housekeeping
+        run: |
+          set -euo pipefail
+          # Placeholder for future auto-generated tasks (e.g. regenerate docs)
+          go fmt ./... >/dev/null 2>&1 || true
+      - name: Create cleanup PR if changes
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH=auto/post-release-core-cleanup-${{ needs.release-core.outputs.released_version }}
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@users.noreply.github.com'
+          git checkout -b "$BRANCH" || git checkout "$BRANCH"
+          if git diff --quiet; then
+            echo 'No cleanup changes.'
+            echo "created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git add .
+            git commit -m "chore: post-release core cleanup for ${{ needs.release-core.outputs.released_version }}" || true
+          git push origin "$BRANCH" || true
+          PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: post-release core cleanup ${BRANCH}" --body "Automated housekeeping after core release." --head "$BRANCH" --base main --draft=false)
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "created=true" >> $GITHUB_OUTPUT
+      - name: Auto-approve
+        if: steps.pr.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr review ${{ steps.pr.outputs.pr_url }} --approve || true
+      - name: Merge cleanup PR
+        id: merge
+        if: steps.pr.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh pr merge ${{ steps.pr.outputs.pr_url }} --squash --delete-branch --auto --admin; then
+            echo "merged=true" >> $GITHUB_OUTPUT
+          else
+            echo "merged=false" >> $GITHUB_OUTPUT
+          fi
+
+  # After the actual core release tag is created, run a definitive bump to that released version.
+  post-release-bump:
+    needs:
+      - release-core
+      - core-cleanup
+    if: needs.release-core.result == 'success' && (needs.core-cleanup.outputs.pr_created == 'false' || needs.core-cleanup.outputs.pr_merged == 'true')
+    uses: ./.github/workflows/auto-bump-modules.yml
+    with:
+      coreVersion: ${{ needs.release-core.outputs.released_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Case 1: Core did NOT change, release modules directly
+  release-modules-no-core-change:
+    needs: detect
+    if: needs.detect.outputs.modules_with_changes != '[]' && needs.detect.outputs.core_changed != 'true'
     strategy:
       matrix:
-        module: ${{ fromJson(needs.detect-changes.outputs.modules_with_changes) }}
+        module: ${{ fromJson(needs.detect.outputs.modules_with_changes) }}
     uses: ./.github/workflows/module-release.yml
     with:
       module: ${{ matrix.module }}
       releaseType: ${{ github.event.inputs.releaseType }}
     secrets: inherit
 
+  # Case 2: Core changed -> wait for successful post-release bump before module releases
+  release-modules-after-bump:
+    needs:
+      - detect
+      - post-release-bump
+    if: needs.detect.outputs.modules_with_changes != '[]' && needs.detect.outputs.core_changed == 'true' && needs.post-release-bump.result == 'success'
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.detect.outputs.modules_with_changes) }}
+    uses: ./.github/workflows/module-release.yml
+    with:
+      module: ${{ matrix.module }}
+      releaseType: ${{ github.event.inputs.releaseType }}
+    secrets: inherit
+
+  ensure-core:
+    needs: detect
+    if: needs.detect.outputs.core_changed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25'
+          check-latest: true
+      - name: Build modcli
+        run: |
+          cd cmd/modcli && go build -o modcli
+      - name: Recreate missing release (if needed) with contract diff
+        id: ensure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURR=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n1 || true)
+          [ -z "$CURR" ] && { echo 'No core tag exists yet; nothing to ensure.'; exit 0; }
+          if gh release view "$CURR" >/dev/null 2>&1; then
+            echo "Release already exists for $CURR (no recreation needed)."
+            echo "release_url=$(gh release view "$CURR" --json url --jq .url)" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          PREV=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n2 | head -n1 || echo '')
+          mkdir -p artifacts/diffs
+          extract () { REF=$1; OUT=$2; [ -z "$REF" ] && return 0; TMP=$(mktemp -d); git archive "$REF" | tar -x -C "$TMP"; mkdir -p "$TMP/cmd/modcli"; cp cmd/modcli/modcli "$TMP/cmd/modcli/" || true; (cd "$TMP" && ./cmd/modcli/modcli contract extract . -o contract.json) || true; [ -f "$TMP/contract.json" ] && mv "$TMP/contract.json" "$OUT" || true; }
+          extract "$PREV" prev.json
+          extract "$CURR" curr.json
+          CHANGE_NOTE="No API contract differences compared to previous release."
+          if [ -f prev.json ] && [ -f curr.json ]; then
+            if ./cmd/modcli/modcli contract compare prev.json curr.json -o artifacts/diffs/core.json --format=markdown > artifacts/diffs/core.md 2>/dev/null; then
+              if [ -s artifacts/diffs/core.md ]; then CHANGE_NOTE="See diff below."; fi
+            else
+              echo '(Breaking changes or compare failure; diff may be incomplete)' > artifacts/diffs/core.md
+              CHANGE_NOTE='Potential breaking changes detected.'
+            fi
+          fi
+          {
+            echo "# Release $CURR"; echo; echo "Ensured release object (no new code changes)."; echo; echo "## API Contract Changes"; echo; echo "$CHANGE_NOTE"; echo;
+            if [ -f artifacts/diffs/core.md ] && [ -s artifacts/diffs/core.md ]; then
+              cat artifacts/diffs/core.md; echo
+              if [ -f artifacts/diffs/core.json ] && [ -s artifacts/diffs/core.json ]; then
+                echo '### Raw Contract JSON Diff'; echo '```json'; (jq . artifacts/diffs/core.json 2>/dev/null || cat artifacts/diffs/core.json); echo '```'
+              fi
+            fi
+          } > changelog.md
+          gh release create "$CURR" --title "Modular $CURR" --notes-file changelog.md --repo ${{ github.repository }} --latest
+          URL=$(gh release view "$CURR" --json url --jq .url)
+          echo "release_url=$URL" >> $GITHUB_OUTPUT
+      - name: Re-announce to Go proxy
+        if: steps.ensure.outputs.release_url
+        run: |
+          CURR=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n1 || true)
+          [ -z "$CURR" ] && exit 0
+          GOPROXY=proxy.golang.org go list -m github.com/GoCodeAlone/modular@${CURR}
+
+  ensure-modules:
+    needs: detect
+    if: needs.detect.outputs.modules_without_changes != '[]'
+    runs-on: ubuntu-latest
+    outputs:
+      module_release_urls: ${{ steps.collect.outputs.module_release_urls }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25'
+          check-latest: true
+      - name: Build modcli
+        run: |
+          cd cmd/modcli && go build -o modcli
+      - name: Ensure module releases (create if missing) with contract diffs
+        id: collect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODULES='${{ needs.detect.outputs.modules_without_changes }}'
+          echo "$MODULES" | jq -r '.[]' | while read M; do
+            [ -z "$M" ] && continue
+            TAG=$(git tag -l "modules/${M}/v*" | sort -V | tail -n1 || true)
+            [ -z "$TAG" ] && { echo "Module $M has no tags yet; skipping."; continue; }
+            VER=${TAG##*/}
+            MOD_PATH="github.com/GoCodeAlone/modular/modules/${M}"
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release exists for $TAG"
+              URL=$(gh release view "$TAG" --json url --jq .url || echo '')
+              [ -n "$URL" ] && echo "$M $URL" >> urls.txt
+              # Re-announce existing tag to Go proxy
+              GOPROXY=proxy.golang.org go list -m ${MOD_PATH}@${VER} || echo "Re-announce failed for ${M}@${VER}"
+              continue
+            fi
+            PREV=$(git tag -l "modules/${M}/v*" | sort -V | tail -n2 | head -n1 || echo '')
+            extract_module () { REF=$1; OUT=$2; [ -z "$REF" ] && return 0; TMP=$(mktemp -d); git archive "$REF" | tar -x -C "$TMP"; mkdir -p "$TMP/cmd/modcli"; cp cmd/modcli/modcli "$TMP/cmd/modcli/" || true; (cd "$TMP/modules/${M}" && ./cmd/modcli/modcli contract extract . -o contract.json) || true; [ -f "$TMP/modules/${M}/contract.json" ] && mv "$TMP/modules/${M}/contract.json" "$OUT" || true; }
+            extract_module "$PREV" prev.json
+            extract_module "$TAG" curr.json
+            CHANGE_NOTE="No API contract differences compared to previous release."
+            if [ -f prev.json ] && [ -f curr.json ]; then
+              if ./cmd/modcli/modcli contract compare prev.json curr.json -o diff.json --format=markdown > diff.md 2>/dev/null; then
+                [ -s diff.md ] && CHANGE_NOTE="See diff below."
+              else
+                echo '(Breaking changes or compare failure; diff may be incomplete)' > diff.md
+                CHANGE_NOTE='Potential breaking changes detected.'
+              fi
+            fi
+            {
+              echo "# ${M} ${TAG##*/}"; echo; echo "Ensured release object (no new code changes)."; echo; echo "## API Contract Changes"; echo; echo "$CHANGE_NOTE"; echo;
+              if [ -f diff.md ] && [ -s diff.md ]; then
+                cat diff.md; echo
+                if [ -f diff.json ] && [ -s diff.json ]; then
+                  echo '### Raw Contract JSON Diff'; echo '```json'; (jq . diff.json 2>/dev/null || cat diff.json); echo '```'
+                fi
+              fi
+            } > changelog.md
+            gh release create "$TAG" --title "${M} ${TAG##*/}" --notes-file changelog.md --repo ${{ github.repository }} --latest=false
+            # Announce newly created tag
+            GOPROXY=proxy.golang.org go list -m ${MOD_PATH}@${VER} || echo "Announce failed for ${M}@${VER}"
+            URL=$(gh release view "$TAG" --json url --jq .url || echo '')
+            [ -n "$URL" ] && echo "$M $URL" >> urls.txt
+          done
+          # Build JSON object of module -> release URL for summary output
+          if [ -f urls.txt ]; then
+            OBJ=$(awk 'BEGIN{printf "{"} {printf "%s\"%s\":\"%s\"", (NR>1?",":""), $1,$2} END{printf "}"}' urls.txt)
+          else
+            OBJ='{}'
+          fi
+          echo "module_release_urls=${OBJ}" >> $GITHUB_OUTPUT
+
   summary:
     runs-on: ubuntu-latest
-    needs: [detect-changes, release-main, release-modules]
+    needs:
+      - detect
+      - release-core
+      - release-modules-no-core-change
+      - release-modules-after-bump
+      - ensure-core
+      - ensure-modules
+      - post-release-bump
+      - core-cleanup
     if: always()
     steps:
-      - name: Display Release Summary
+      - name: Release summary
+        shell: bash
         run: |
-          echo "================================================"
-          echo "🎉 RELEASE SUMMARY"
-          echo "=================="
-          
-          if [ "${{ needs.detect-changes.outputs.main_has_changes }}" = "true" ]; then
-            if [ "${{ needs.release-main.result }}" = "success" ]; then
-              echo "✅ Main library: Released successfully"
-            else
-              echo "❌ Main library: Release failed"
-            fi
+          set -euo pipefail
+          echo '========================================='
+          echo 'Release Summary'
+          echo '-----------------------------------------'
+          if [ "${{ needs.detect.outputs.core_changed }}" = "true" ]; then
+            echo "Core: attempted release -> ${{ needs.release-core.result }}"
+            echo "Core cleanup PR: created=${{ needs.core-cleanup.outputs.pr_created }} merged=${{ needs.core-cleanup.outputs.pr_merged }} (job result: ${{ needs.core-cleanup.result }})"
+            echo "Post-release bump job result: ${{ needs.post-release-bump.result }}"
           else
-            echo "⏭️  Main library: No relevant changes, no release needed"
+            echo "Core: no changes; ensure job result -> ${{ needs.ensure-core.result }}"
           fi
-          
-          MODULES_WITH_CHANGES='${{ needs.detect-changes.outputs.modules_with_changes }}'
-          if [ "$MODULES_WITH_CHANGES" != "[]" ]; then
-            echo "📦 Modules:"
-            if [ "${{ needs.release-modules.result }}" = "success" ]; then
-              echo "✅ Module releases: Completed successfully"
-            else
-              echo "❌ Module releases: Some releases failed"
+          MWCH='${{ needs.detect.outputs.modules_with_changes }}'
+          MWOUT='${{ needs.detect.outputs.modules_without_changes }}'
+          if [ "$MWCH" != "[]" ]; then
+            RES1='${{ needs.release-modules-no-core-change.result }}'
+            RES2='${{ needs.release-modules-after-bump.result }}'
+            # Pick whichever job actually ran (not skipped)
+            FINAL_RES=$RES1
+            if [ "$RES1" = "skipped" ] && [ "$RES2" != "skipped" ]; then FINAL_RES=$RES2; fi
+            echo "Modules with changes: $(echo "$MWCH" | jq -r '.[]' | tr '\n' ' ') (job result: $FINAL_RES)"
+          fi
+          if [ "$MWOUT" != "[]" ]; then
+            echo "Modules without changes (ensured if missing release): $(echo "$MWOUT" | jq -r '.[]' | tr '\n' ' ') (job result: ${{ needs.ensure-modules.result }})"
+            if [ '${{ needs.ensure-modules.outputs.module_release_urls }}' != '' ] && [ '${{ needs.ensure-modules.outputs.module_release_urls }}' != '{}' ]; then
+              echo "Ensured module release URLs:"
+              echo '${{ needs.ensure-modules.outputs.module_release_urls }}' | jq -r 'to_entries[] | "- \(.key): \(.value)"'
             fi
-            echo "   Modules processed: $(echo '${{ needs.detect-changes.outputs.modules_with_changes }}' | jq -r '.[]' | tr '\n' ' ')"
-          else
-            echo "⏭️  Modules: No relevant changes, no releases needed"
           fi
-          
-          echo "================================================"
+          echo '========================================='

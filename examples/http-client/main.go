@@ -18,13 +18,7 @@ type AppConfig struct {
 }
 
 func main() {
-	// Configure feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
-	// Create a new application
+	// Create a new application and set feeders per instance
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
 		slog.New(slog.NewTextHandler(
@@ -32,6 +26,12 @@ func main() {
 			&slog.HandlerOptions{},
 		)),
 	)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
+	}
 
 	// Register the modules in the correct order
 	// First the httpclient module, so it's available for the reverseproxy module

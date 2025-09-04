@@ -44,18 +44,18 @@ func main() {
 		}
 	}()
 
-	// Configure feeders with YAML configuration file + environment variables
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"), // Load YAML config first
-		feeders.NewEnvFeeder(),               // Then apply environment variables
-	}
-
 	// Create application
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
 		logger,
 	)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"), // Load YAML config first
+			feeders.NewEnvFeeder(),               // Then apply environment variables
+		})
+	}
 
 	// Enable verbose configuration debugging
 	if stdApp, ok := app.(*modular.StdApplication); ok {

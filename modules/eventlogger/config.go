@@ -32,6 +32,18 @@ type EventLoggerConfig struct {
 
 	// IncludeStackTrace determines if stack traces should be logged for error events
 	IncludeStackTrace bool `yaml:"includeStackTrace" default:"false" desc:"Include stack traces for error events"`
+
+	// StartupSync forces startup operational events (config loaded, outputs registered, logger started)
+	// to be emitted synchronously during Start() instead of via async goroutine+sleep.
+	StartupSync bool `yaml:"startupSync" default:"false" desc:"Emit startup operational events synchronously (no artificial sleep)"`
+
+	// ShutdownEmitStopped controls whether a logger.stopped operational event is emitted.
+	// When false, the module will not emit com.modular.eventlogger.stopped to avoid races with shutdown.
+	ShutdownEmitStopped bool `yaml:"shutdownEmitStopped" default:"true" desc:"Emit logger stopped operational event on Stop"`
+
+	// ShutdownDrainTimeout specifies how long Stop() should wait for in-flight events to drain.
+	// A zero or negative duration means unlimited wait (current behavior using WaitGroup).
+	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Maximum time to wait for draining event queue on Stop"`
 }
 
 // OutputTargetConfig configures a specific output target for event logs.

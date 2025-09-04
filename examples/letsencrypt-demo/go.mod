@@ -1,11 +1,9 @@
 module letsencrypt-demo
 
-go 1.24.2
-
-toolchain go1.24.5
+go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2

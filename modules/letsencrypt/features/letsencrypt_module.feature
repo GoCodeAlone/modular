@@ -118,7 +118,7 @@ Feature: LetsEncrypt Module
 
   Scenario: Emit events for certificate expiry monitoring
     Given I have a LetsEncrypt module with event observation enabled
-    And I have certificates approaching expiry
+    Given I have certificates approaching expiry
     When certificate expiry monitoring runs
     Then certificate expiring events should be emitted
     And the events should contain expiry details
@@ -145,3 +145,53 @@ Feature: LetsEncrypt Module
     When a warning condition occurs  
     Then a warning event should be emitted
     And the event should contain warning details
+
+  Scenario: Rate limit warning event
+    Given I have a LetsEncrypt module with event observation enabled
+    When certificate issuance hits rate limits
+    Then a warning event should be emitted
+    And the event should contain warning details
+
+  Scenario: Per-domain renewal tracking
+    Given I have a LetsEncrypt module with event observation enabled
+    And I have existing certificates that need renewal
+    When certificates are renewed
+    Then certificate renewed events should be emitted
+    And there should be a renewal event for each domain
+
+  Scenario: Mixed challenge reconfiguration
+    Given I have LetsEncrypt configured for HTTP-01 challenge
+    When the module is initialized with HTTP challenge type
+    And I reconfigure to DNS-01 challenge with Cloudflare
+    Then the DNS challenge handler should be configured
+    And the module should be ready for DNS validation
+
+  Scenario: Certificate request failure path
+    Given I have a LetsEncrypt module with event observation enabled
+    When a certificate request fails
+    Then an error event should be emitted
+    And the event should contain error details
+
+  Scenario: Event emission coverage
+    Given I have a LetsEncrypt module with event observation enabled
+    When a certificate is requested for domains
+    And the certificate is successfully issued
+    And certificates are renewed
+    And ACME challenges are processed
+    And ACME authorization is completed
+    And ACME orders are processed
+    And certificates are stored to disk
+    And certificates are read from storage
+    And storage errors occur
+    And the module configuration is loaded
+    And the configuration is validated
+    And I have certificates approaching expiry
+    And certificate expiry monitoring runs
+    And certificates have expired
+    And a certificate is revoked
+  And the LetsEncrypt module starts
+  And the LetsEncrypt module stops
+    And the module starts up
+    And an error condition occurs
+    And a warning condition occurs
+    Then all registered LetsEncrypt events should have been emitted during testing

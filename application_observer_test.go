@@ -13,6 +13,7 @@ import (
 var errObserver = errors.New("observer error")
 
 func TestObservableApplication_RegisterObserver(t *testing.T) {
+	t.Parallel()
 	app := NewObservableApplication(NewStdConfigProvider(&struct{}{}), &TestObserverLogger{})
 
 	// Create a test observer
@@ -58,6 +59,7 @@ func TestObservableApplication_RegisterObserver(t *testing.T) {
 }
 
 func TestObservableApplication_UnregisterObserver(t *testing.T) {
+	t.Parallel()
 	app := NewObservableApplication(NewStdConfigProvider(&struct{}{}), &TestObserverLogger{})
 
 	observer := NewFunctionalObserver("test-observer", func(ctx context.Context, event cloudevents.Event) error {
@@ -93,6 +95,7 @@ func TestObservableApplication_UnregisterObserver(t *testing.T) {
 }
 
 func TestObservableApplication_NotifyObservers(t *testing.T) {
+	t.Parallel()
 	app := NewObservableApplication(NewStdConfigProvider(&struct{}{}), &TestObserverLogger{})
 
 	// Create observers with different event type filters
@@ -172,6 +175,7 @@ func TestObservableApplication_NotifyObservers(t *testing.T) {
 }
 
 func TestObservableApplication_ModuleRegistrationEvents(t *testing.T) {
+	t.Parallel()
 	app := NewObservableApplication(NewStdConfigProvider(&struct{}{}), &TestObserverLogger{})
 
 	// Register observer for module events
@@ -215,6 +219,7 @@ func TestObservableApplication_ModuleRegistrationEvents(t *testing.T) {
 }
 
 func TestObservableApplication_ServiceRegistrationEvents(t *testing.T) {
+	t.Parallel()
 	app := NewObservableApplication(NewStdConfigProvider(&struct{}{}), &TestObserverLogger{})
 
 	// Register observer for service events
@@ -262,6 +267,7 @@ func TestObservableApplication_ServiceRegistrationEvents(t *testing.T) {
 
 // Test observer error handling
 func TestObservableApplication_ObserverErrorHandling(t *testing.T) {
+	t.Parallel()
 	logger := &TestObserverLogger{}
 	app := NewObservableApplication(NewStdConfigProvider(&struct{}{}), logger)
 

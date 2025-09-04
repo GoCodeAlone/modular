@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ type HTTPClientBDDTestContext struct {
 
 // testEventObserver captures CloudEvents during testing
 type testEventObserver struct {
+	mu     sync.RWMutex
 	events []cloudevents.Event
 }
 
@@ -40,7 +42,10 @@ func newTestEventObserver() *testEventObserver {
 }
 
 func (t *testEventObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
-	t.events = append(t.events, event.Clone())
+	clone := event.Clone()
+	t.mu.Lock()
+	t.events = append(t.events, clone)
+	t.mu.Unlock()
 	return nil
 }
 
@@ -49,6 +54,8 @@ func (t *testEventObserver) ObserverID() string {
 }
 
 func (t *testEventObserver) GetEvents() []cloudevents.Event {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	events := make([]cloudevents.Event, len(t.events))
 	copy(events, t.events)
 	return events
@@ -958,7 +965,7 @@ func (ctx *HTTPClientBDDTestContext) theEventShouldContainTheNewTimeoutValue() e
 			// Check for timeout value
 			if timeoutValue, exists := data["new_timeout"]; exists {
 				expectedTimeout := int(ctx.customTimeout.Seconds())
-				
+
 				// Handle type conversion - CloudEvents may convert integers to float64
 				var actualTimeout int
 				switch v := timeoutValue.(type) {
@@ -969,7 +976,7 @@ func (ctx *HTTPClientBDDTestContext) theEventShouldContainTheNewTimeoutValue() e
 				default:
 					return fmt.Errorf("timeout changed event new_timeout has unexpected type: %T", timeoutValue)
 				}
-				
+
 				if actualTimeout == expectedTimeout {
 					return nil
 				}
@@ -1077,7 +1084,7 @@ func TestHTTPClientModuleBDD(t *testing.T) {
 			ctx.When(`^I remove a request modifier$`, testCtx.iRemoveARequestModifier)
 			ctx.Then(`^a modifier removed event should be emitted$`, testCtx.aModifierRemovedEventShouldBeEmitted)
 
-			// Timeout change events  
+			// Timeout change events
 			ctx.When(`^I change the client timeout$`, testCtx.iChangeTheClientTimeout)
 			ctx.Then(`^a timeout changed event should be emitted$`, testCtx.aTimeoutChangedEventShouldBeEmitted)
 			ctx.Then(`^the event should contain the new timeout value$`, testCtx.theEventShouldContainTheNewTimeoutValue)
@@ -1086,6 +1093,7 @@ func TestHTTPClientModuleBDD(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 
@@ -1098,17 +1106,17 @@ func TestHTTPClientModuleBDD(t *testing.T) {
 func (ctx *HTTPClientBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTesting() error {
 	// Get all registered event types from the module
 	registeredEvents := ctx.module.GetRegisteredEventTypes()
-	
+
 	// Create event validation observer
 	validator := modular.NewEventValidationObserver("event-validator", registeredEvents)
 	_ = validator // Use validator to avoid unused variable error
-	
+
 	// Check which events were emitted during testing
 	emittedEvents := make(map[string]bool)
 	for _, event := range ctx.eventObserver.GetEvents() {
 		emittedEvents[event.Type()] = true
 	}
-	
+
 	// Check for missing events
 	var missingEvents []string
 	for _, eventType := range registeredEvents {
@@ -1116,10 +1124,10 @@ func (ctx *HTTPClientBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTes
 			missingEvents = append(missingEvents, eventType)
 		}
 	}
-	
+
 	if len(missingEvents) > 0 {
 		return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
 	}
-	
+
 	return nil
 }

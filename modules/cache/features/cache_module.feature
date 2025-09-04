@@ -113,3 +113,19 @@ Feature: Cache Module
     When I fill the cache beyond its maximum capacity
     Then a cache evicted event should be emitted
     And the evicted event should contain eviction details
+
+  Scenario: All registered cache events (core set) are emitted
+    Given I have a cache service with event observation enabled
+    When I set a cache item with key "vvk" and value "vvv"
+    And I get the cache item with key "vvk"
+    And I get a non-existent key "vv_missing"
+    And I delete the cache item with key "vvk"
+    And I flush all cache items
+    Then a cache set event should be emitted
+    And a cache hit event should be emitted
+    And a cache miss event should be emitted
+    And a cache delete event should be emitted
+    And a cache flush event should be emitted
+    When the cache module stops
+    Then a cache disconnected event should be emitted
+    And all registered events should be emitted during testing

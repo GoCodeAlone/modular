@@ -262,6 +262,37 @@ func (r *EngineRouter) GetEngineForTopic(topic string) string {
 	return r.getEngineForTopic(topic)
 }
 
+// CollectStats aggregates delivery statistics from engines that expose them.
+// At present only the in-memory engine exposes Stats(). Engines that don't
+// implement Stats() are simply skipped. This keeps the method safe to call in
+// multi-engine configurations mixing different backend types.
+func (r *EngineRouter) CollectStats() (delivered uint64, dropped uint64) {
+	for _, engine := range r.engines {
+		if mem, ok := engine.(*MemoryEventBus); ok {
+			d, dr := mem.Stats()
+			delivered += d
+			dropped += dr
+		}
+	}
+	return
+}
+
+// CollectPerEngineStats returns per-engine delivery statistics for engines that
+// expose them (currently only the in-memory engine). Engines that do not
+// implement statistics are omitted from the returned map. This is useful for
+// fine‑grained monitoring and test verification without exposing internal
+// engine details elsewhere.
+func (r *EngineRouter) CollectPerEngineStats() map[string]DeliveryStats {
+	stats := make(map[string]DeliveryStats)
+	for name, engine := range r.engines {
+		if mem, ok := engine.(*MemoryEventBus); ok {
+			d, dr := mem.Stats()
+			stats[name] = DeliveryStats{Delivered: d, Dropped: dr}
+		}
+	}
+	return stats
+}
+
 // init registers the built-in engine types.
 func init() {
 	// Register memory engine

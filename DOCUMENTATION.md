@@ -2,71 +2,114 @@
 
 ## Table of Contents
 
-- [Introduction](#introduction)
-- [Application Builder API](#application-builder-api)
-  - [Builder Pattern](#builder-pattern)
-  - [Functional Options](#functional-options)
-  - [Decorator Pattern](#decorator-pattern)
-- [Core Concepts](#core-concepts)
-  - [Application](#application)
-  - [Modules](#modules)
-    - [Core Module Interface](#core-module-interface)
-    - [Optional Module Interfaces](#optional-module-interfaces)
-  - [Service Registry](#service-registry)
-  - [Configuration Management](#configuration-management)
-- [Observer Pattern Integration](#observer-pattern-integration)
-  - [CloudEvents Support](#cloudevents-support)
-  - [Functional Observers](#functional-observers)
-  - [Observable Decorators](#observable-decorators)
-- [Module Lifecycle](#module-lifecycle)
-  - [Registration](#registration)
-  - [Configuration](#configuration)
-  - [Initialization](#initialization)
-  - [Startup](#startup)
-  - [Shutdown](#shutdown)
-- [Service Dependencies](#service-dependencies)
-  - [Basic Service Dependencies](#basic-service-dependencies)
-  - [Interface-Based Service Matching](#interface-based-service-matching)
-  - [Multiple Interface Implementations](#multiple-interface-implementations)
-  - [Dependency Resolution with Interface Matching](#dependency-resolution-with-interface-matching)
-  - [Best Practices](#best-practices-for-service-dependencies)
-- [Service Injection Techniques](#service-injection-techniques)
-  - [Constructor Injection](#constructor-injection)
-  - [Init-Time Injection](#init-time-injection)
-- [Configuration System](#configuration-system)
-  - [Config Providers](#config-providers)
-  - [Configuration Validation](#configuration-validation)
-  - [Default Values](#default-values)
-  - [Required Fields](#required-fields)
-  - [Custom Validation Logic](#custom-validation-logic)
-  - [Configuration Feeders](#configuration-feeders)
-  - [Instance-Aware Configuration](#instance-aware-configuration)
-- [Multi-tenancy Support](#multi-tenancy-support)
-  - [Tenant Context](#tenant-context)
-  - [Tenant Service](#tenant-service)
-  - [Tenant-Aware Modules](#tenant-aware-modules)
-  - [Tenant-Aware Configuration](#tenant-aware-configuration)
-  - [Tenant Configuration Loading](#tenant-configuration-loading)
-- [Error Handling](#error-handling)
-- [Debugging and Troubleshooting](#debugging-and-troubleshooting)
-  - [Module Interface Debugging](#module-interface-debugging)
-  - [Common Issues](#common-issues)
-  - [Diagnostic Tools](#diagnostic-tools)
-  - [Common Error Types](#common-error-types)
-  - [Error Wrapping](#error-wrapping)
-- [Testing Modules](#testing-modules)
-  - [Mock Application](#mock-application)
-  - [Testing Services](#testing-services)
+- [Modular Framework Detailed Documentation](#modular-framework-detailed-documentation)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Application Builder API](#application-builder-api)
+    - [Concurrency & Race Guidelines](#concurrency--race-guidelines)
+    - [Builder Pattern](#builder-pattern)
+      - [Basic Usage](#basic-usage)
+    - [Functional Options](#functional-options)
+      - [Core Options](#core-options)
+      - [Configuration Options](#configuration-options)
+      - [Enhanced Functionality Options](#enhanced-functionality-options)
+    - [Decorator Pattern](#decorator-pattern)
+      - [TenantAwareDecorator](#tenantawaredecorator)
+      - [ObservableDecorator](#observabledecorator)
+      - [Benefits of Decorator Pattern](#benefits-of-decorator-pattern)
+  - [Core Concepts](#core-concepts)
+    - [Application](#application)
+    - [Modules](#modules)
+      - [Core Module Interface](#core-module-interface)
+      - [Optional Module Interfaces](#optional-module-interfaces)
+    - [Service Registry](#service-registry)
+    - [Configuration Management](#configuration-management)
+  - [Module Lifecycle](#module-lifecycle)
+    - [Registration](#registration)
+    - [Configuration](#configuration)
+    - [Initialization](#initialization)
+    - [Startup](#startup)
+    - [Shutdown](#shutdown)
+  - [Service Dependencies](#service-dependencies)
+    - [Basic Service Dependencies](#basic-service-dependencies)
+    - [Interface-Based Service Matching](#interface-based-service-matching)
+      - [Example: Router Service](#example-router-service)
+      - [Multiple Interface Implementations](#multiple-interface-implementations)
+      - [Example: Multiple Logger Implementations](#example-multiple-logger-implementations)
+    - [Dependency Resolution with Interface Matching](#dependency-resolution-with-interface-matching)
+    - [Best Practices for Service Dependencies](#best-practices-for-service-dependencies)
+  - [Service Injection Techniques](#service-injection-techniques)
+    - [Constructor Injection](#constructor-injection)
+    - [Init-Time Injection](#init-time-injection)
+  - [Configuration System](#configuration-system)
+    - [Config Providers](#config-providers)
+    - [Configuration Validation](#configuration-validation)
+    - [Default Values](#default-values)
+    - [Required Fields](#required-fields)
+    - [Custom Validation Logic](#custom-validation-logic)
+    - [Configuration Feeders](#configuration-feeders)
+    - [Module-Aware Environment Variable Resolution](#module-aware-environment-variable-resolution)
+      - [Example](#example)
+      - [Benefits](#benefits)
+      - [Multiple Modules Example](#multiple-modules-example)
+      - [Module Name Resolution](#module-name-resolution)
+    - [Instance-Aware Configuration](#instance-aware-configuration)
+      - [Overview](#overview)
+      - [InstanceAwareEnvFeeder](#instanceawareenvfeeder)
+      - [InstanceAwareConfigProvider](#instanceawareconfigprovider)
+      - [Module Integration](#module-integration)
+      - [Environment Variable Patterns](#environment-variable-patterns)
+      - [Configuration Struct Requirements](#configuration-struct-requirements)
+      - [Complete Example](#complete-example)
+      - [Manual Instance Configuration](#manual-instance-configuration)
+      - [Best Practices](#best-practices)
+  - [Multi-tenancy Support](#multi-tenancy-support)
+    - [Tenant Context](#tenant-context)
+    - [Tenant Service](#tenant-service)
+    - [Tenant-Aware Modules](#tenant-aware-modules)
+    - [Tenant-Aware Configuration](#tenant-aware-configuration)
+    - [Tenant Configuration Loading](#tenant-configuration-loading)
+  - [Error Handling](#error-handling)
+    - [Common Error Types](#common-error-types)
+    - [Error Wrapping](#error-wrapping)
+  - [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+    - [Module Interface Debugging](#module-interface-debugging)
+      - [DebugModuleInterfaces](#debugmoduleinterfaces)
+      - [DebugAllModuleInterfaces](#debugallmoduleinterfaces)
+      - [CompareModuleInstances](#comparemoduleinstances)
+    - [Common Issues](#common-issues)
+      - [1. "Module does not implement Startable, skipping"](#1-module-does-not-implement-startable-skipping)
+      - [2. Service Injection Failures](#2-service-injection-failures)
+      - [3. Module Replacement Issues](#3-module-replacement-issues)
+    - [Diagnostic Tools](#diagnostic-tools)
+      - [CheckModuleStartableImplementation](#checkmodulestartableimplementation)
+      - [Example Debugging Workflow](#example-debugging-workflow)
+      - [Best Practices for Debugging](#best-practices-for-debugging)
+  - [Testing Modules](#testing-modules)
+    - [Mock Application](#mock-application)
+      - [Creating a Mock Application](#creating-a-mock-application)
+      - [Registering Modules](#registering-modules)
+      - [Setting Services](#setting-services)
+      - [Expectations](#expectations)
+    - [Testing Services](#testing-services)
+      - [Mocking Dependencies](#mocking-dependencies)
+      - [Asserting Method Calls](#asserting-method-calls)
+      - [Verifying State Changes](#verifying-state-changes)
+    - [Test Parallelization Strategy](#test-parallelization-strategy)
 
 ## Introduction
 
 The Modular framework provides a structured approach to building modular Go applications. This document offers in-depth explanations of the framework's features and capabilities, providing developers with the knowledge they need to build robust, maintainable applications.
 
 ## Application Builder API
+## Concurrency & Race Guidelines
+
+For official guidance on synchronization patterns, avoiding data races, safe observer usage, defensive config copying, and request body handling for parallel fan-out, see the dedicated document: [Concurrency & Race Guidelines](CONCURRENCY_GUIDELINES.md). All new modules must adhere to these standards and pass `go test -race`.
+
 
 ### Builder Pattern
 
-The Modular framework v2.0 introduces a powerful builder pattern for constructing applications. This provides a clean, composable way to configure applications with various decorators and options.
+The Modular framework v1.7 introduces a powerful builder pattern for constructing applications. This provides a clean, composable way to configure applications with various decorators and options.
 
 #### Basic Usage
 
@@ -461,7 +504,7 @@ app.RegisterService("custom.router", &MyCustomRouter{})
 
 Either way, the `APIModule` will receive a service that implements the `Router` interface, regardless of the actual implementation type or registered name.
 
-### Multiple Interface Implementations
+#### Multiple Interface Implementations
 
 If multiple services in the application implement the same interface, the framework will use the first matching service it finds. This behavior is deterministic but may not always select the service you expect.
 
@@ -1050,18 +1093,6 @@ for name, serviceConfig := range config.Services {
    }
    ```
 
-#### Benefits
-
-Instance-aware configuration provides several key benefits:
-
-- **🔄 Backward Compatibility**: All existing functionality is preserved
-- **🏗️ Extensible Design**: Easy to add to any module configuration
-- **🔧 Multiple Patterns**: Supports both single and multi-instance configurations
-- **📦 Module Support**: Enhanced support across database, cache, and HTTP server modules
-- **✅ No Conflicts**: Different instances don't interfere with each other
-- **🎯 Consistent Naming**: Predictable environment variable patterns
-- **⚙️ Automatic Configuration**: Modules handle instance-aware configuration automatically
-
 ## Multi-tenancy Support
 
 ### Tenant Context
@@ -1392,3 +1423,156 @@ func debugModuleIssues(app *modular.StdApplication) {
 6. **Check memory addresses:** If memory addresses differ before and after Init(), your module was replaced by a constructor.
 
 By using these debugging tools and following these practices, you can quickly identify and resolve module interface and lifecycle issues in your Modular applications.
+
+## Testing Modules
+
+### Mock Application
+
+The mock application is a lightweight, in-memory implementation of the `Application` interface. It is useful for testing modules in isolation without starting the entire application.
+
+#### Creating a Mock Application
+
+```go
+// Create a mock application with a logger and config provider
+mockApp := modular.NewMockApplication(
+    modular.WithLogger(logger),
+    modular.WithConfigProvider(configProvider),
+)
+```
+
+The mock application can be used to register modules, set services, and configure expectations.
+
+#### Registering Modules
+
+```go
+// Register a module with the mock application
+mockApp.RegisterModule(NewDatabaseModule())
+```
+
+#### Setting Services
+
+```go
+// Set a service value
+mockApp.SetService("database", &sql.DB{})
+```
+
+#### Expectations
+
+You can set expectations on the mock application to assert that certain methods are called:
+
+```go
+// Expect the Init method to be called
+mockApp.ExpectInit()
+
+// Expect the Start method to be called with a context
+mockApp.ExpectStart(context.Background())
+```
+
+### Testing Services
+
+Service testing focuses on verifying the behavior of individual services in isolation. This typically involves:
+
+- Mocking dependencies
+- Asserting method calls
+- Verifying state changes
+
+#### Mocking Dependencies
+
+Use the mock application to provide mock implementations of dependencies:
+
+```go
+// Mock a database connection
+dbMock := &sql.DB{}
+
+// Set the mock service
+mockApp.SetService("database", dbMock)
+```
+
+#### Asserting Method Calls
+
+You can use testify's mock assertions to verify that methods are called with the expected arguments:
+
+```go
+// Assert that the Query method was called with the correct SQL
+mockDB.AssertCalled(t, "Query", "SELECT * FROM users WHERE id = ?", 1)
+```
+
+#### Verifying State Changes
+
+Check that the state is modified as expected:
+
+```go
+// Assert the user was added to the database
+var user User
+mockDB.Find(&user, 1)
+assert.Equal(t, "John Doe", user.Name)
+```
+
+### Test Parallelization Strategy
+
+A pragmatic, rule-based approach is used to parallelize tests safely while maintaining determinism and clarity.
+
+Goals:
+- Reduce wall-clock CI time by leveraging `t.Parallel()` where side effects are eliminated.
+- Prevent data races or flakiness from shared mutable global state.
+- Encourage per-application configuration feeder usage over global mutation.
+
+Key Rules (Go 1.25+):
+1. A test (or subtest) that invokes `t.Setenv` or `t.Chdir` must not call `t.Parallel()` on the same `*testing.T` (runtime will panic: `test using t.Setenv or t.Chdir can not use t.Parallel`).
+2. Prefer `app.SetConfigFeeders(...)` (per-app feeders) instead of mutating the package-level `modular.ConfigFeeders` slice.
+3. Hoist shared environment setup to the parent test. Child subtests that do not mutate env / working directory can safely call `t.Parallel()`.
+4. Avoid shared writable globals (maps, slices, singletons). If unavoidable, keep the test serial and document the reason with a short comment.
+5. Use `t.TempDir()` for any filesystem interaction; never reuse paths across tests.
+6. Allocate dynamic ports (port 0) or isolate networked resources; otherwise keep such tests serial.
+
+Recommended Patterns:
+
+Serial parent + parallel children:
+```go
+func TestWidgetModes(t *testing.T) {
+    t.Setenv("WIDGET_FEATURE", "on") // parent is serial
+    modes := []string{"fast","safe","debug"}
+    for _, m := range modes {
+        m := m
+        t.Run(m, func(t *testing.T) {
+            t.Parallel() // safe: no env mutation here
+            // assertions using m
+        })
+    }
+}
+```
+
+Fully serial when each case mutates env:
+```go
+func TestModeMatrix(t *testing.T) {
+    cases := []struct{Name, Value string}{{"Fast","fast"},{"Safe","safe"}}
+    for _, c := range cases {
+        t.Run(c.Name, func(t *testing.T) { // not parallel
+            t.Setenv("MODE", c.Value)
+            // assertions
+        })
+    }
+}
+```
+
+Documentation Comments:
+Add a brief note when a test stays serial:
+```go
+// NOTE: cannot parallelize: uses t.Setenv per subtest
+```
+
+Field & Instance Tracking:
+Tests such as `TestInstanceAwareFieldTracking` remain serial by design because their correctness depends on sequential environment mutation establishing instance key prefixes.
+
+Rationale:
+Clarity outweighs minor gains from forcing partial parallelism when setup complexity rises.
+
+Metrics & Auditing:
+- Count parallelized tests: `grep -R "t.Parallel()" -n . | wc -l`
+- Identify env-mutating tests: `grep -R "t.Setenv(" -n .`
+
+Future Opportunities:
+- Snapshot helper(s) for any future global mutable state
+- Containerized or ephemeral service fixtures for broader parallel integration testing
+
+When unsure, keep the test serial and explain why.

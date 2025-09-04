@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/GoCodeAlone/modular"
@@ -117,6 +118,22 @@ func (m *MockApplication) IsVerboseConfig() bool {
 // SetVerboseConfig sets the verbose config flag (mock implementation)
 func (m *MockApplication) SetVerboseConfig(verbose bool) {
 	// No-op in mock
+}
+
+// Context returns a background context for the mock application
+func (m *MockApplication) Context() context.Context { return context.Background() }
+
+// GetServicesByModule returns all services provided by a specific module (mock implementation)
+func (m *MockApplication) GetServicesByModule(moduleName string) []string { return []string{} }
+
+// GetServiceEntry retrieves detailed information about a registered service (mock implementation)
+func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+
+// GetServicesByInterface returns all services that implement the given interface (mock implementation)
+func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
 }
 
 // MockLogger implements a minimal logger for testing

@@ -54,10 +54,6 @@ func (t *testEventObserver) OnEvent(ctx context.Context, event cloudevents.Event
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.events = append(t.events, event.Clone())
-	// Temporary diagnostic to trace event capture during request handling
-	if len(event.Type()) >= len("com.modular.httpserver.request.") && event.Type()[:len("com.modular.httpserver.request.")] == "com.modular.httpserver.request." {
-		fmt.Printf("[test-observer] captured: %s total: %d ptr:%p\n", event.Type(), len(t.events), t)
-	}
 	// set flags for request events to make Then steps robust
 	switch event.Type() {
 	case EventTypeRequestReceived:
@@ -75,13 +71,7 @@ func (t *testEventObserver) ObserverID() string {
 func (t *testEventObserver) GetEvents() []cloudevents.Event {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// Temporary diagnostics to understand observed length at read time
-	if len(t.events) > 0 {
-		last := t.events[len(t.events)-1]
-		fmt.Printf("[test-observer] GetEvents len: %d last: %s ptr:%p\n", len(t.events), last.Type(), t)
-	} else {
-		fmt.Printf("[test-observer] GetEvents len: 0 ptr:%p\n", t)
-	}
+	// Diagnostics removed; return a copy of events
 	events := make([]cloudevents.Event, len(t.events))
 	copy(events, t.events)
 	return events
@@ -346,12 +336,7 @@ func (ctx *HTTPServerBDDTestContext) setupApplicationWithConfig() error {
 
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Use per-app empty feeders for isolation instead of mutating global modular.ConfigFeeders
 
 	// Create a copy of the config to avoid the original being modified
 	// during the configuration loading process
@@ -383,6 +368,9 @@ func (ctx *HTTPServerBDDTestContext) setupApplicationWithConfig() error {
 	// Create app with empty main config
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewStdApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create a simple router service that the HTTP server requires
 	router := http.NewServeMux()
@@ -971,11 +959,15 @@ func TestHTTPServerModuleBDD(t *testing.T) {
 			ctx.Then(`^a request received event should be emitted$`, testCtx.aRequestReceivedEventShouldBeEmitted)
 			ctx.Then(`^a request handled event should be emitted$`, testCtx.aRequestHandledEventShouldBeEmitted)
 			ctx.Then(`^the events should contain request details$`, testCtx.theEventsShouldContainRequestDetails)
+
+			// Event validation (mega-scenario)
+			ctx.Then(`^all registered events should be emitted during testing$`, testCtx.allRegisteredEventsShouldBeEmittedDuringTesting)
 		},
 		Options: &godog.Options{
 			Format:   "pretty",
 			Paths:    []string{"features"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 
@@ -990,12 +982,7 @@ func (ctx *HTTPServerBDDTestContext) iHaveAnHTTPServerWithEventObservationEnable
 
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Apply per-app empty feeders instead of mutating global modular.ConfigFeeders
 
 	// Create httpserver configuration for testing - pick a unique free port to avoid conflicts across scenarios
 	freePort, err := findFreePort()
@@ -1017,6 +1004,9 @@ func (ctx *HTTPServerBDDTestContext) iHaveAnHTTPServerWithEventObservationEnable
 	// Create app with empty main config - USE OBSERVABLE for events
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create test event observer
 	ctx.eventObserver = newTestEventObserver()
@@ -1089,12 +1079,7 @@ func (ctx *HTTPServerBDDTestContext) iHaveAnHTTPServerWithTLSAndEventObservation
 
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Apply per-app empty feeders instead of mutating global modular.ConfigFeeders
 
 	// Create httpserver configuration with TLS for testing - use a unique free port
 	freePort, err := findFreePort()
@@ -1123,6 +1108,9 @@ func (ctx *HTTPServerBDDTestContext) iHaveAnHTTPServerWithTLSAndEventObservation
 	// Create app with empty main config - USE OBSERVABLE for events
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create test event observer
 	ctx.eventObserver = newTestEventObserver()
@@ -1343,13 +1331,21 @@ func (ctx *HTTPServerBDDTestContext) theHTTPServerProcessesARequest() error {
 	// could hide these or introduce timing flakiness. The subsequent assertions will
 	// scan the buffer for the expected request events regardless of prior emissions.
 
-	// Make a simple request using the actual server address if available
+	// Determine scheme based on TLS configuration
+	scheme := "http"
 	client := &http.Client{Timeout: 5 * time.Second}
+	if ctx.serverConfig != nil && ctx.serverConfig.TLS != nil && ctx.serverConfig.TLS.Enabled {
+		// Use HTTPS with insecure skip verify since we're using auto-generated/self-signed certs in tests
+		scheme = "https"
+		client = &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	}
+
+	// Build URL using actual bound address if available
 	url := ""
 	if ctx.service != nil && ctx.service.server != nil && ctx.service.server.Addr != "" {
-		url = fmt.Sprintf("http://%s/", ctx.service.server.Addr)
+		url = fmt.Sprintf("%s://%s/", scheme, ctx.service.server.Addr)
 	} else {
-		url = fmt.Sprintf("http://%s:%d/", ctx.serverConfig.Host, ctx.serverConfig.Port)
+		url = fmt.Sprintf("%s://%s:%d/", scheme, ctx.serverConfig.Host, ctx.serverConfig.Port)
 	}
 
 	resp, err := client.Get(url)
@@ -1447,17 +1443,17 @@ func (ctx *HTTPServerBDDTestContext) theEventsShouldContainRequestDetails() erro
 func (ctx *HTTPServerBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTesting() error {
 	// Get all registered event types from the module
 	registeredEvents := ctx.module.GetRegisteredEventTypes()
-	
+
 	// Create event validation observer
 	validator := modular.NewEventValidationObserver("event-validator", registeredEvents)
 	_ = validator // Use validator to avoid unused variable error
-	
+
 	// Check which events were emitted during testing
 	emittedEvents := make(map[string]bool)
 	for _, event := range ctx.eventObserver.GetEvents() {
 		emittedEvents[event.Type()] = true
 	}
-	
+
 	// Check for missing events
 	var missingEvents []string
 	for _, eventType := range registeredEvents {
@@ -1465,10 +1461,10 @@ func (ctx *HTTPServerBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTes
 			missingEvents = append(missingEvents, eventType)
 		}
 	}
-	
+
 	if len(missingEvents) > 0 {
 		return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
 	}
-	
+
 	return nil
 }

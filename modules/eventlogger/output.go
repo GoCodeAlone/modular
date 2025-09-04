@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/syslog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -342,132 +341,7 @@ func (f *FileTarget) formatStructured(entry *LogEntry) (string, error) {
 	return builder.String(), nil
 }
 
-// SyslogTarget outputs events to syslog.
-type SyslogTarget struct {
-	config OutputTargetConfig
-	logger modular.Logger
-	writer *syslog.Writer
-}
-
-// NewSyslogTarget creates a new syslog output target.
-func NewSyslogTarget(config OutputTargetConfig, logger modular.Logger) (*SyslogTarget, error) {
-	if config.Syslog == nil {
-		return nil, ErrMissingSyslogConfig
-	}
-
-	target := &SyslogTarget{
-		config: config,
-		logger: logger,
-	}
-
-	return target, nil
-}
-
-// Start initializes the syslog target.
-func (s *SyslogTarget) Start(ctx context.Context) error {
-	priority := syslog.LOG_INFO | syslog.LOG_USER // Default priority
-
-	// Parse facility
-	if s.config.Syslog.Facility != "" {
-		switch s.config.Syslog.Facility {
-		case "kern":
-			priority = syslog.LOG_INFO | syslog.LOG_KERN
-		case "user":
-			priority = syslog.LOG_INFO | syslog.LOG_USER
-		case "mail":
-			priority = syslog.LOG_INFO | syslog.LOG_MAIL
-		case "daemon":
-			priority = syslog.LOG_INFO | syslog.LOG_DAEMON
-		case "auth":
-			priority = syslog.LOG_INFO | syslog.LOG_AUTH
-		case "local0":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL0
-		case "local1":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL1
-		case "local2":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL2
-		case "local3":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL3
-		case "local4":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL4
-		case "local5":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL5
-		case "local6":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL6
-		case "local7":
-			priority = syslog.LOG_INFO | syslog.LOG_LOCAL7
-		}
-	}
-
-	var err error
-	if s.config.Syslog.Network == "unix" {
-		s.writer, err = syslog.New(priority, s.config.Syslog.Tag)
-	} else {
-		s.writer, err = syslog.Dial(s.config.Syslog.Network, s.config.Syslog.Address, priority, s.config.Syslog.Tag)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to connect to syslog: %w", err)
-	}
-
-	s.logger.Debug("Syslog output target started", "network", s.config.Syslog.Network, "address", s.config.Syslog.Address)
-	return nil
-}
-
-// Stop shuts down the syslog target.
-func (s *SyslogTarget) Stop(ctx context.Context) error {
-	if s.writer != nil {
-		s.writer.Close()
-		s.writer = nil
-	}
-	s.logger.Debug("Syslog output target stopped")
-	return nil
-}
-
-// WriteEvent writes a log entry to syslog.
-func (s *SyslogTarget) WriteEvent(entry *LogEntry) error {
-	if s.writer == nil {
-		return ErrSyslogWriterNotInit
-	}
-
-	// Check log level
-	if !shouldLogLevel(entry.Level, s.config.Level) {
-		return nil
-	}
-
-	// Format message
-	message := fmt.Sprintf("[%s] %s: %v", entry.Type, entry.Source, entry.Data)
-
-	// Write to syslog based on level
-	switch entry.Level {
-	case "DEBUG":
-		if err := s.writer.Debug(message); err != nil {
-			return fmt.Errorf("failed to write debug message to syslog: %w", err)
-		}
-	case "INFO":
-		if err := s.writer.Info(message); err != nil {
-			return fmt.Errorf("failed to write info message to syslog: %w", err)
-		}
-	case "WARN":
-		if err := s.writer.Warning(message); err != nil {
-			return fmt.Errorf("failed to write warning message to syslog: %w", err)
-		}
-	case "ERROR":
-		if err := s.writer.Err(message); err != nil {
-			return fmt.Errorf("failed to write error message to syslog: %w", err)
-		}
-	default:
-		if err := s.writer.Info(message); err != nil {
-			return fmt.Errorf("failed to write default message to syslog: %w", err)
-		}
-	}
-	return nil
-}
-
-// Flush flushes syslog output (no-op for syslog).
-func (s *SyslogTarget) Flush() error {
-	return nil
-}
+// Syslog target implementation moved to platform-specific files (syslog_output_unix.go & syslog_output_stub.go)
 
 // shouldLogLevel checks if a log level should be included based on minimum level.
 func shouldLogLevel(eventLevel, minLevel string) bool {

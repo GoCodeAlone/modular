@@ -93,3 +93,15 @@ Feature: HTTP Server Module
     Then a request received event should be emitted
     And a request handled event should be emitted
     And the events should contain request details
+
+  Scenario: All registered httpserver events are emitted
+    Given I have an httpserver with TLS and event observation enabled
+    When the httpserver processes a request
+    And the server shutdown is initiated
+    Then a server started event should be emitted
+    And a config loaded event should be emitted
+    And a TLS enabled event should be emitted
+    And a TLS configured event should be emitted
+    And a request received event should be emitted
+    And a request handled event should be emitted
+    And all registered events should be emitted during testing

@@ -4,6 +4,8 @@
 
 This implementation adds comprehensive Observer pattern support to the Modular framework, enabling event-driven communication between components while maintaining backward compatibility.
 
+For thread-safety, snapshotting, and race-free observer notification rules, consult the [Concurrency & Race Guidelines](CONCURRENCY_GUIDELINES.md). Observer implementations must not mutate shared slices without a mutex and should avoid holding locks while invoking callbacks.
+
 ## Core Components
 
 ### 1. Observer Pattern Interfaces (`observer.go`)

@@ -293,10 +293,7 @@ func (k *KinesisEventBus) subscribe(ctx context.Context, topic string, handler E
 // startShardReaders starts reading from all shards
 func (k *KinesisEventBus) startShardReaders() {
 	// Get stream description to find shards
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
-
+	k.wg.Go(func() {
 		for {
 			select {
 			case <-k.ctx.Done():
@@ -321,7 +318,7 @@ func (k *KinesisEventBus) startShardReaders() {
 				time.Sleep(30 * time.Second)
 			}
 		}
-	}()
+	})
 }
 
 // readShard reads records from a specific shard

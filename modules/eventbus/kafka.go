@@ -385,21 +385,17 @@ func (k *KafkaEventBus) startConsumerGroup() {
 		return
 	}
 
-	// Start consuming
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
+	// Start consuming (Go 1.25 WaitGroup.Go)
+	k.wg.Go(func() {
 		for {
 			if err := k.consumerGroup.Consume(k.ctx, topics, handler); err != nil {
 				slog.Error("Kafka consumer group error", "error", err)
 			}
-
-			// Check if context was cancelled
 			if k.ctx.Err() != nil {
 				return
 			}
 		}
-	}()
+	})
 }
 
 // Unsubscribe removes a subscription
