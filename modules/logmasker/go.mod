@@ -2,7 +2,7 @@ module github.com/GoCodeAlone/modular/modules/logmasker
 
 go 1.25
 
-require github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
+require github.com/GoCodeAlone/modular v1.4.2
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
@@ -16,5 +16,3 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/GoCodeAlone/modular => ../../
