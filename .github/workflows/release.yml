@@ -1,6 +1,13 @@
 name: Release
 run-name: Release ${{ github.event.inputs.version || github.event.inputs.releaseType }}
 
+# Explicit minimal permissions per security guidance
+permissions:
+  contents: write        # needed to create tags/releases and read repo contents
+  pull-requests: read    # read PR metadata if version derived from PR context
+  actions: read          # allow reading action metadata (optional informational)
+  checks: read           # allow reading check runs (used indirectly by gh in some contexts)
+
 on:
   workflow_dispatch:
     inputs:
@@ -44,6 +51,12 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Harden job: restrict token further if steps don't need broader scopes
+    permissions:
+      contents: write   # create tag & release
+      pull-requests: read
+      actions: read
+      checks: read
     outputs:
       released_version: ${{ steps.version.outputs.next_version }}
       core_changed: ${{ steps.detect.outputs.core_changed }}
@@ -299,6 +312,10 @@ jobs:
     needs: release
     if: needs.release.result == 'success' && needs.release.outputs.core_changed == 'true' && inputs.skipModuleBump != true
     uses: ./.github/workflows/auto-bump-modules.yml
+    permissions:
+      contents: write   # required for pushing bump branch / PR
+      pull-requests: write
+      actions: read
     with:
       coreVersion: ${{ needs.release.outputs.released_version }}
     secrets:
