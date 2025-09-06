@@ -60,15 +60,23 @@ jobs:
           # Building from inside the package directory avoids that path misinterpretation.
           ( cd main-worktree/cmd/modcli && go build -o modcli . ) || { echo "Failed to build modcli in main worktree"; exit 1; }
 
-          echo "==> Extracting contracts from origin/main snapshot"
-          ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
-          for module_dir in main-worktree/modules/*/; do
-            if [ -f "$module_dir/go.mod" ]; then
-              name=$(basename "$module_dir")
-              echo "Extracting (main) module: $name"
-              ( cd main-worktree && ./cmd/modcli/modcli contract extract "./modules/$name" -o "../artifacts/contracts/main/${name}.json" || echo "Failed to extract $name (main)" )
-            fi
-          done
+          echo "==> Checking for contract subcommand in main"
+          if ( cd main-worktree/cmd/modcli && ./modcli --help 2>&1 | grep -q "contract" ); then
+            echo "Contract subcommand FOUND in main; performing baseline extraction"
+            echo "baseline_has_contract=true" >> $GITHUB_ENV
+            echo "==> Extracting contracts from origin/main snapshot"
+            ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
+            for module_dir in main-worktree/modules/*/; do
+              if [ -f "$module_dir/go.mod" ]; then
+                name=$(basename "$module_dir")
+                echo "Extracting (main) module: $name"
+                ( cd main-worktree && ./cmd/modcli/modcli contract extract "./modules/$name" -o "../artifacts/contracts/main/${name}.json" || echo "Failed to extract $name (main)" )
+              fi
+            done
+          else
+            echo "Contract subcommand NOT present on main; skipping baseline extraction (will treat as no-op diff)"
+            echo "baseline_has_contract=false" >> $GITHUB_ENV
+          fi
 
           echo "==> Rebuilding modcli in PR workspace"
           ( cd cmd/modcli && go build -o modcli )
@@ -92,6 +100,14 @@ jobs:
           mkdir -p artifacts/diffs
           breaking_changes=false
           has_changes=false
+
+          if [ "${baseline_has_contract:-false}" = "false" ]; then
+            echo "Baseline lacks contract extraction capability; marking check as passed (no baseline to diff)."
+            echo 'has_changes=false' >> $GITHUB_OUTPUT
+            echo 'breaking_changes=false' >> $GITHUB_OUTPUT
+            echo '{"notice":"baseline main branch lacks contract command; diff skipped"}' > artifacts/diffs/summary.json
+            exit 0
+          fi
 
           # Helper: evaluate diff json for additions/modifications to mark has_changes
           eval_has_changes() {
@@ -161,6 +177,12 @@ jobs:
           name: api-contracts-${{ github.run_number }}
           path: artifacts/
           retention-days: 30
+
+        - name: Summary (baseline missing notice)
+          if: env.baseline_has_contract == 'false'
+          run: |
+            echo "## API Contract Check" >> $GITHUB_STEP_SUMMARY
+            echo "Baseline (origin/main) lacks contract subcommand; diff skipped. This is expected until main includes the CLI feature." >> $GITHUB_STEP_SUMMARY
 
       - name: Generate contract summary
         id: summary
