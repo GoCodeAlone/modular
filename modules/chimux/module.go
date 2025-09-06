@@ -113,6 +113,11 @@ var (
 	// with a non-tenant application. The chimux module requires tenant support
 	// for proper multi-tenant routing and configuration.
 	ErrRequiresTenantApplication = errors.New("chimux module requires a TenantApplication")
+	// Sentinel errors for runtime operations (avoid dynamic error construction per err113)
+	ErrMiddlewareNotFound       = errors.New("middleware not found")
+	ErrMiddlewareAlreadyRemoved = errors.New("middleware already removed")
+	ErrRouteNotFound            = errors.New("route not found")
+	ErrRouteAlreadyDisabled     = errors.New("route already disabled")
 )
 
 // ChiMuxModule provides HTTP routing functionality using the Chi router library.
@@ -685,10 +690,10 @@ func (m *ChiMuxModule) RemoveMiddleware(name string) error {
 	defer m.middlewareMu.Unlock()
 	cm, ok := m.middlewares[name]
 	if !ok {
-		return fmt.Errorf("middleware %s not found", name)
+		return fmt.Errorf("%w: %s", ErrMiddlewareNotFound, name)
 	}
 	if !cm.enabled.Load() {
-		return fmt.Errorf("middleware %s already removed", name)
+		return fmt.Errorf("%w: %s", ErrMiddlewareAlreadyRemoved, name)
 	}
 	cm.enabled.Store(false)
 	// Count remaining enabled
@@ -810,7 +815,7 @@ func (m *ChiMuxModule) DisableRoute(method, pattern string) error {
 		}
 	}
 	if !found {
-		return fmt.Errorf("route %s %s not found", method, pattern)
+		return fmt.Errorf("%w: %s %s", ErrRouteNotFound, method, pattern)
 	}
 
 	m.disabledMu.Lock()
@@ -819,7 +824,7 @@ func (m *ChiMuxModule) DisableRoute(method, pattern string) error {
 		m.disabledRoutes[method] = make(map[string]bool)
 	}
 	if m.disabledRoutes[method][pattern] {
-		return fmt.Errorf("route %s %s already disabled", method, pattern)
+		return fmt.Errorf("%w: %s %s", ErrRouteAlreadyDisabled, method, pattern)
 	}
 	m.disabledRoutes[method][pattern] = true
 

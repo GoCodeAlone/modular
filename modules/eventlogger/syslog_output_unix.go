@@ -92,15 +92,30 @@ func (s *SyslogTarget) WriteEvent(entry *LogEntry) error {
 	msg := fmt.Sprintf("[%s] %s: %v", entry.Type, entry.Source, entry.Data)
 	switch entry.Level {
 	case "DEBUG":
-		return s.writer.Debug(msg)
+		if err := s.writer.Debug(msg); err != nil {
+			return fmt.Errorf("syslog write debug: %w", err)
+		}
+		return nil
 	case "INFO":
-		return s.writer.Info(msg)
+		if err := s.writer.Info(msg); err != nil {
+			return fmt.Errorf("syslog write info: %w", err)
+		}
+		return nil
 	case "WARN":
-		return s.writer.Warning(msg)
+		if err := s.writer.Warning(msg); err != nil {
+			return fmt.Errorf("syslog write warning: %w", err)
+		}
+		return nil
 	case "ERROR":
-		return s.writer.Err(msg)
+		if err := s.writer.Err(msg); err != nil {
+			return fmt.Errorf("syslog write error: %w", err)
+		}
+		return nil
 	default:
-		return s.writer.Info(msg)
+		if err := s.writer.Info(msg); err != nil {
+			return fmt.Errorf("syslog write info: %w", err)
+		}
+		return nil
 	}
 }
 

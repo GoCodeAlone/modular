@@ -136,7 +136,7 @@ func (ctx *FeatureFlagAggregatorBDDTestContext) theEvaluatorsAreRegisteredWithNa
 
 func (ctx *FeatureFlagAggregatorBDDTestContext) theFeatureFlagAggregatorDiscoversEvaluators() error {
 	// Setup feature flag evaluation (creates file evaluator + aggregator)
-	if err := ctx.module.setupFeatureFlagEvaluation(); err != nil {
+	if err := ctx.module.setupFeatureFlagEvaluation(context.Background()); err != nil {
 		return fmt.Errorf("failed to setup feature flag evaluation: %w", err)
 	}
 	// Ensure we have the aggregator
