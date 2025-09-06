@@ -285,7 +285,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithTenantSpecificFeatu
 			"path":    r.URL.Path,
 		})
 	}))
-	defer func() { ctx.testServers = append(ctx.testServers, backend1) }()
+	ctx.testServers = append(ctx.testServers, backend1)
 
 	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tenantID := r.Header.Get("X-Tenant-ID")
@@ -296,11 +296,11 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithTenantSpecificFeatu
 			"path":    r.URL.Path,
 		})
 	}))
-	defer func() { ctx.testServers = append(ctx.testServers, backend2) }()
+	ctx.testServers = append(ctx.testServers, backend2)
 
 	// Configure reverse proxy with tenant-specific feature flags
 	ctx.config = &ReverseProxyConfig{
-		DefaultBackend: backend1.URL,
+		DefaultBackend: "tenant1-backend", // Use backend key, not URL
 		BackendServices: map[string]string{
 			"tenant1-backend": backend1.URL,
 			"tenant2-backend": backend2.URL,
@@ -318,7 +318,8 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithTenantSpecificFeatu
 		},
 	}
 
-	return ctx.app.Init()
+	// Use standard setup so application + module + service are created (avoids nil panic)
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) requestsAreMadeWithDifferentTenantContexts() error {
@@ -2287,7 +2288,8 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyConfiguredForConnection
 		},
 	}
 
-	return nil
+	// Initialize application so requests actually attempt to reach the closed backend
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) backendConnectionsFail() error {
@@ -2419,7 +2421,7 @@ func (ctx *ReverseProxyBDDTestContext) connectionFailuresShouldBeHandledGraceful
 
 	// If no response and no error, but we made it here without crashing,
 	// that still indicates graceful handling (no panic)
-	if responseCount == 0 && lastErr == nil {
+	if responseCount == 0 { // lastErr is known to be nil here
 		// This suggests the module might be configured to silently drop failed requests,
 		// which is also a form of graceful handling
 		return nil

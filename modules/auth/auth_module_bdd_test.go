@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,194 +11,131 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cucumber/godog"
 	"github.com/golang-jwt/jwt/v5"
+	oauth2 "golang.org/x/oauth2"
 )
 
-// Auth BDD Test Context
-type AuthBDDTestContext struct {
-	app               modular.Application
-	module            *Module
-	service           *Service
-	token             string
-	refreshToken      string
-	newToken          string
-	claims            *Claims
-	password          string
-	hashedPassword    string
-	verifyResult      bool
-	strengthError     error
-	session           *Session
-	sessionID         string
-	originalExpiresAt time.Time
-	user              *User
-	userID            string
-	authResult        *User
-	authError         error
-	oauthURL          string
-	oauthResult       *OAuth2Result
-	lastError         error
-	originalFeeders   []modular.Feeder
-	// OAuth2 mock server for testing
-	mockOAuth2Server  *MockOAuth2Server
-	// Event observation fields
-	observableApp  *modular.ObservableApplication
-	capturedEvents []cloudevents.Event
-	testObserver   *testObserver
-}
+// testLogger is a no-op logger implementing modular.Logger for BDD tests
+type testLogger struct{}
 
-// testObserver captures events for testing
+func (l *testLogger) Info(msg string, args ...any)  {}
+func (l *testLogger) Error(msg string, args ...any) {}
+func (l *testLogger) Warn(msg string, args ...any)  {}
+func (l *testLogger) Debug(msg string, args ...any) {}
+
+// testObserver captures emitted CloudEvents for assertions
 type testObserver struct {
 	id     string
+	mu     sync.RWMutex
 	events []cloudevents.Event
 }
 
+func (o *testObserver) ObserverID() string { return o.id }
 func (o *testObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
+	o.mu.Lock()
 	o.events = append(o.events, event)
+	o.mu.Unlock()
 	return nil
 }
 
-func (o *testObserver) ObserverID() string {
-	return o.id
+// snapshot returns a copy of captured events for safe concurrent iteration
+func (o *testObserver) snapshot() []cloudevents.Event {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	out := make([]cloudevents.Event, len(o.events))
+	copy(out, o.events)
+	return out
 }
 
-// testLogger is a simple logger for testing
-type testLogger struct{}
-
-func (l *testLogger) Debug(msg string, args ...interface{}) {}
-func (l *testLogger) Info(msg string, args ...interface{})  {}
-func (l *testLogger) Warn(msg string, args ...interface{})  {}
-func (l *testLogger) Error(msg string, args ...interface{}) {}
-
-// Test data structures
-type testUser struct {
-	ID       string
-	Username string
-	Email    string
-	Password string
+// AuthBDDTestContext holds shared state across steps
+type AuthBDDTestContext struct {
+	app              modular.Application
+	observableApp    modular.Application
+	module           *Module
+	service          *Service
+	user             *User
+	userID           string
+	password         string
+	hashedPassword   string
+	token            string
+	refreshToken     string
+	newToken         string
+	lastError        error
+	strengthError    error
+	claims           *Claims
+	session          *Session
+	sessionID        string
+	oauthURL         string
+	oauthResult      *OAuth2Result
+	mockOAuth2Server *MockOAuth2Server
+	testObserver     *testObserver
+	authError        error
+	authResult       *User
+	verifyResult     bool
+	originalFeeders  []modular.Feeder
 }
 
+// resetContext resets per-scenario state (except shared config feeders restoration done in After hooks elsewhere)
 func (ctx *AuthBDDTestContext) resetContext() {
-	// Restore original feeders if they were saved
-	if ctx.originalFeeders != nil {
-		modular.ConfigFeeders = ctx.originalFeeders
-		ctx.originalFeeders = nil
-	}
-
-	// Clean up mock OAuth2 server
-	if ctx.mockOAuth2Server != nil {
-		ctx.mockOAuth2Server.Close()
-		ctx.mockOAuth2Server = nil
-	}
-
-	ctx.app = nil
-	ctx.module = nil
-	ctx.service = nil
-	ctx.token = ""
-	ctx.claims = nil
+	ctx.user = nil
 	ctx.password = ""
 	ctx.hashedPassword = ""
-	ctx.verifyResult = false
-	ctx.strengthError = nil
-	ctx.session = nil
-	ctx.sessionID = ""
-	ctx.originalExpiresAt = time.Time{}
-	ctx.user = nil
-	ctx.userID = ""
-	ctx.authResult = nil
-	ctx.authError = nil
-	ctx.oauthURL = ""
-	ctx.oauthResult = nil
-	ctx.lastError = nil
+	ctx.token = ""
 	ctx.refreshToken = ""
 	ctx.newToken = ""
-	// Reset event observation fields
-	ctx.observableApp = nil
-	ctx.capturedEvents = nil
-	ctx.testObserver = nil
+	ctx.lastError = nil
+	ctx.strengthError = nil
+	ctx.claims = nil
+	ctx.session = nil
+	ctx.sessionID = ""
+	ctx.oauthURL = ""
+	ctx.oauthResult = nil
+	ctx.userID = ""
+	ctx.authError = nil
+	ctx.authResult = nil
+	ctx.verifyResult = false
 }
 
+// iHaveAModularApplicationWithAuthModuleConfigured bootstraps a standard (non-observable) auth module instance
 func (ctx *AuthBDDTestContext) iHaveAModularApplicationWithAuthModuleConfigured() error {
 	ctx.resetContext()
+	logger := &testLogger{}
 
-	// Save original feeders and disable env feeder for BDD tests
-	// This ensures BDD tests have full control over configuration
-	ctx.originalFeeders = modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{} // No feeders for controlled testing
-
-	// Create mock OAuth2 server for realistic testing
-	ctx.mockOAuth2Server = NewMockOAuth2Server()
-	
-	// Set up realistic user info for OAuth2 testing
-	ctx.mockOAuth2Server.SetUserInfo(map[string]interface{}{
-		"id":      "oauth-user-123",
-		"email":   "oauth.user@example.com",
-		"name":    "OAuth Test User",
-		"picture": "https://example.com/avatar.jpg",
-	})
-
-	// Create application
-	logger := &MockLogger{}
-
-	// Create proper auth configuration using the mock OAuth2 server
 	authConfig := &Config{
 		JWT: JWTConfig{
-			Secret:            "test-secret-key-for-bdd-tests",
-			Expiration:        1 * time.Hour,  // 1 hour
-			RefreshExpiration: 24 * time.Hour, // 24 hours
-			Issuer:            "bdd-test",
-			Algorithm:         "HS256",
-		},
-		Session: SessionConfig{
-			Store:      "memory",
-			CookieName: "test_session",
-			MaxAge:     1 * time.Hour, // 1 hour
-			Secure:     false,
-			HTTPOnly:   true,
-			SameSite:   "strict",
-			Path:       "/",
+			Secret:            "test-secret-key",
+			Expiration:        1 * time.Hour,
+			RefreshExpiration: 24 * time.Hour,
+			Issuer:            "test-issuer",
 		},
 		Password: PasswordConfig{
 			MinLength:      8,
-			BcryptCost:     4, // Low cost for testing
 			RequireUpper:   true,
 			RequireLower:   true,
 			RequireDigit:   true,
 			RequireSpecial: true,
+			BcryptCost:     4, // low cost for tests
 		},
-		OAuth2: OAuth2Config{
-			Providers: map[string]OAuth2Provider{
-				"google": ctx.mockOAuth2Server.OAuth2Config("http://localhost:8080/auth/callback"),
-			},
+		Session: SessionConfig{
+			MaxAge:   1 * time.Hour,
+			Secure:   false,
+			HTTPOnly: true,
 		},
 	}
 
-	// Create provider with the auth config
 	authConfigProvider := modular.NewStdConfigProvider(authConfig)
-
-	// Create app with empty main config
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewStdApplication(mainConfigProvider, logger)
-
-	// Create and configure auth module
 	ctx.module = NewModule().(*Module)
-
-	// Register the auth config section first
 	ctx.app.RegisterConfigSection("auth", authConfigProvider)
-
-	// Register module
 	ctx.app.RegisterModule(ctx.module)
-
-	// Initialize
 	if err := ctx.app.Init(); err != nil {
-		return fmt.Errorf("failed to initialize app: %v", err)
+		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-
-	// Get the auth service
-	var authService Service
-	if err := ctx.app.GetService("auth", &authService); err != nil {
-		return fmt.Errorf("failed to get auth service: %v", err)
+	var svc Service
+	if err := ctx.app.GetService("auth", &svc); err != nil {
+		return fmt.Errorf("failed to get auth service: %w", err)
 	}
-	ctx.service = &authService
-
+	ctx.service = &svc
 	return nil
 }
 
@@ -610,7 +548,66 @@ func (ctx *AuthBDDTestContext) subsequentRetrievalShouldFail() error {
 }
 
 func (ctx *AuthBDDTestContext) iHaveOAuth2Configuration() error {
-	// OAuth2 config is handled by module configuration
+	// Ensure base auth app is initialized
+	if ctx.service == nil || ctx.module == nil {
+		if err := ctx.iHaveAModularApplicationWithAuthModuleConfigured(); err != nil {
+			return fmt.Errorf("failed to initialize auth application: %w", err)
+		}
+	}
+
+	// If already configured with provider, nothing to do
+	if ctx.module != nil && ctx.module.config != nil {
+		if ctx.module.config.OAuth2.Providers != nil {
+			if _, exists := ctx.module.config.OAuth2.Providers["google"]; exists {
+				return nil
+			}
+		}
+	}
+
+	// Spin up mock OAuth2 server if not present
+	if ctx.mockOAuth2Server == nil {
+		ctx.mockOAuth2Server = NewMockOAuth2Server()
+		// Provide realistic user info for authorization flow
+		ctx.mockOAuth2Server.SetUserInfo(map[string]interface{}{
+			"id":    "oauth-user-flow-123",
+			"email": "oauth.flow@example.com",
+			"name":  "OAuth Flow User",
+		})
+	}
+
+	provider := ctx.mockOAuth2Server.OAuth2Config("http://127.0.0.1:8080/callback")
+
+	// Update module/service config providers map
+	if ctx.module != nil && ctx.module.config != nil {
+		if ctx.module.config.OAuth2.Providers == nil {
+			ctx.module.config.OAuth2.Providers = map[string]OAuth2Provider{}
+		}
+		ctx.module.config.OAuth2.Providers["google"] = provider
+	}
+	if ctx.service != nil && ctx.service.config != nil {
+		if ctx.service.config.OAuth2.Providers == nil {
+			ctx.service.config.OAuth2.Providers = map[string]OAuth2Provider{}
+		}
+		ctx.service.config.OAuth2.Providers["google"] = provider
+	}
+
+	// Ensure service has oauth2Configs entry (mirrors NewService logic)
+	if ctx.service != nil {
+		if ctx.service.oauth2Configs == nil {
+			ctx.service.oauth2Configs = make(map[string]*oauth2.Config)
+		}
+		ctx.service.oauth2Configs["google"] = &oauth2.Config{
+			ClientID:     provider.ClientID,
+			ClientSecret: provider.ClientSecret,
+			RedirectURL:  provider.RedirectURL,
+			Scopes:       provider.Scopes,
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  provider.AuthURL,
+				TokenURL: provider.TokenURL,
+			},
+		}
+	}
+
 	return nil
 }
 
@@ -932,13 +929,11 @@ func TestAuthModule(t *testing.T) {
 func (ctx *AuthBDDTestContext) iHaveAnAuthModuleWithEventObservationEnabled() error {
 	ctx.resetContext()
 
-	// Save original feeders and disable env feeder for BDD tests
-	ctx.originalFeeders = modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{} // No feeders for controlled testing
+	// Apply per-app empty feeders instead of mutating global modular.ConfigFeeders (no global snapshot needed now)
 
 	// Create mock OAuth2 server for realistic testing
 	ctx.mockOAuth2Server = NewMockOAuth2Server()
-	
+
 	// Set up realistic user info for OAuth2 testing
 	ctx.mockOAuth2Server.SetUserInfo(map[string]interface{}{
 		"id":      "oauth-user-123",
@@ -982,6 +977,9 @@ func (ctx *AuthBDDTestContext) iHaveAnAuthModuleWithEventObservationEnabled() er
 	logger := &testLogger{}
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.observableApp = modular.NewObservableApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.observableApp.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Debug: check the type
 	_, implements := interface{}(ctx.observableApp).(modular.Subject)
@@ -993,9 +991,12 @@ func (ctx *AuthBDDTestContext) iHaveAnAuthModuleWithEventObservationEnabled() er
 		events: make([]cloudevents.Event, 0),
 	}
 
-	// Register the test observer to capture all events
-	err := ctx.observableApp.RegisterObserver(ctx.testObserver)
-	if err != nil {
+	// Register the test observer to capture all events (need Subject interface)
+	subjectApp, ok := ctx.observableApp.(modular.Subject)
+	if !ok {
+		return fmt.Errorf("observable app does not implement modular.Subject")
+	}
+	if err := subjectApp.RegisterObserver(ctx.testObserver); err != nil {
 		return fmt.Errorf("failed to register test observer: %w", err)
 	}
 
@@ -1015,7 +1016,7 @@ func (ctx *AuthBDDTestContext) iHaveAnAuthModuleWithEventObservationEnabled() er
 
 	// Manually set up the event emitter since dependency injection might not preserve the observable wrapper
 	// This ensures the module has the correct subject reference for event emission
-	ctx.module.subject = ctx.observableApp
+	ctx.module.subject = subjectApp
 	ctx.module.service.SetEventEmitter(ctx.module)
 
 	// Use the service from the module directly instead of getting it from the service registry
@@ -1147,31 +1148,30 @@ func (ctx *AuthBDDTestContext) anOAuth2ExchangeEventShouldBeEmitted() error {
 // Helper methods for event validation
 
 func (ctx *AuthBDDTestContext) checkEventEmitted(eventType string) error {
-	// Give a little time for event processing, but since we made it synchronous, this should be quick
-	time.Sleep(10 * time.Millisecond)
-
-	for _, event := range ctx.testObserver.events {
+	// Small wait to allow emission in asynchronous paths (kept minimal)
+	time.Sleep(5 * time.Millisecond)
+	for _, event := range ctx.testObserver.snapshot() {
 		if event.Type() == eventType {
 			return nil
 		}
 	}
-
-	return fmt.Errorf("event of type %s was not emitted. Captured events: %v",
-		eventType, ctx.getEmittedEventTypes())
+	return fmt.Errorf("event of type %s was not emitted. Captured events: %v", eventType, ctx.getEmittedEventTypes())
 }
 
 func (ctx *AuthBDDTestContext) findLatestEvent(eventType string) *cloudevents.Event {
-	for i := len(ctx.testObserver.events) - 1; i >= 0; i-- {
-		if ctx.testObserver.events[i].Type() == eventType {
-			return &ctx.testObserver.events[i]
+	events := ctx.testObserver.snapshot()
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type() == eventType {
+			return &events[i]
 		}
 	}
 	return nil
 }
 
 func (ctx *AuthBDDTestContext) getEmittedEventTypes() []string {
-	var types []string
-	for _, event := range ctx.testObserver.events {
+	snapshot := ctx.testObserver.snapshot()
+	types := make([]string, 0, len(snapshot))
+	for _, event := range snapshot {
 		types = append(types, event.Type())
 	}
 	return types
@@ -1218,6 +1218,7 @@ func (ctx *AuthBDDTestContext) iAttemptToAccessTheExpiredSession() error {
 	ctx.lastError = err // Store error but don't return it as this is expected behavior
 	return nil
 }
+
 // Additional BDD step implementations for missing events
 
 func (ctx *AuthBDDTestContext) iAccessAnExpiredSession() error {
@@ -1348,30 +1349,30 @@ func (ctx *AuthBDDTestContext) aNewAccessTokenShouldBeProvided() error {
 func (ctx *AuthBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTesting() error {
 	// Get all registered event types from the module
 	registeredEvents := ctx.module.GetRegisteredEventTypes()
-	
+
 	// Create event validation observer
 	validator := modular.NewEventValidationObserver("event-validator", registeredEvents)
 	_ = validator // Use validator to avoid unused variable error
-	
+
 	// Check which events were emitted during testing
 	emittedEvents := make(map[string]bool)
 	for _, event := range ctx.testObserver.events {
 		emittedEvents[event.Type()] = true
 	}
-	
+
 	// Check for missing events
 	var missingEvents []string
 	for _, eventType := range registeredEvents {
-			if !emittedEvents[eventType] {
-				missingEvents = append(missingEvents, eventType)
-			}
+		if !emittedEvents[eventType] {
+			missingEvents = append(missingEvents, eventType)
 		}
-		
-		if len(missingEvents) > 0 {
-			return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
-		}
-		
-		return nil
+	}
+
+	if len(missingEvents) > 0 {
+		return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
+	}
+
+	return nil
 }
 
 // initBDDSteps initializes all the BDD steps for the auth module
@@ -1381,7 +1382,9 @@ func (ctx *AuthBDDTestContext) initBDDSteps(s *godog.ScenarioContext) {
 
 	// JWT Token generation and validation
 	s.Given(`^I have user credentials and JWT configuration$`, ctx.iHaveUserCredentialsAndJWTConfiguration)
-	s.When(`^I generate a JWT token for the user$`, ctx.iGenerateAJWTTokenForTheUser)
+	// Support both phrasing variants used across feature scenarios. Use generic Step so it matches regardless of Given/When/Then/And context.
+	s.Step(`^I generate a JWT token for the user$`, ctx.iGenerateAJWTTokenForTheUser)
+	s.Step(`^I generate a JWT token for a user$`, ctx.iGenerateAJWTTokenForTheUser)
 	s.Then(`^the token should be created successfully$`, ctx.theTokenShouldBeCreatedSuccessfully)
 	s.Then(`^the token should contain the user information$`, ctx.theTokenShouldContainTheUserInformation)
 
@@ -1492,7 +1495,7 @@ func (ctx *AuthBDDTestContext) initBDDSteps(s *godog.ScenarioContext) {
 
 	s.When(`^I access an expired session$`, ctx.iAccessAnExpiredSession)
 	s.When(`^I validate an expired token$`, ctx.iValidateAnExpiredToken)
-	s.Then(`^the token should be rejected$`, ctx.theTokenShouldBeRejected)
+	// 'the token should be rejected' already registered above; avoid duplicate to prevent ambiguity
 
 	s.Given(`^I have a valid refresh token$`, ctx.iHaveAValidRefreshToken)
 	s.Then(`^a new access token should be provided$`, ctx.aNewAccessTokenShouldBeProvided)
@@ -1512,6 +1515,7 @@ func TestAuthModuleBDD(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

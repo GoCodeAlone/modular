@@ -246,6 +246,7 @@ func TestBaseConfigBDDFeatures(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features/base_config.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

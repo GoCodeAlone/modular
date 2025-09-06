@@ -576,6 +576,7 @@ func TestLoggerDecorator(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features/logger_decorator.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

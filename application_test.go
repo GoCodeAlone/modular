@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"regexp"
 	"testing"
 )
@@ -18,9 +17,9 @@ func TestNewApplication(t *testing.T) {
 	cp := NewStdConfigProvider(testCfg{Str: "test"})
 	log := &logger{}
 	tests := []struct {
-		name string
-		args args
-		want AppRegistry
+		name           string
+		args           args
+		expectedLogger Logger
 	}{
 		{
 			name: "TestNewApplication",
@@ -28,13 +27,7 @@ func TestNewApplication(t *testing.T) {
 				cfgProvider: nil,
 				logger:      nil,
 			},
-			want: &StdApplication{
-				cfgProvider:    nil,
-				cfgSections:    make(map[string]ConfigProvider),
-				svcRegistry:    ServiceRegistry{"logger": nil},
-				moduleRegistry: make(ModuleRegistry),
-				logger:         nil,
-			},
+			expectedLogger: nil,
 		},
 		{
 			name: "TestNewApplicationWithConfigProviderAndLogger",
@@ -42,19 +35,31 @@ func TestNewApplication(t *testing.T) {
 				cfgProvider: cp,
 				logger:      log,
 			},
-			want: &StdApplication{
-				cfgProvider:    cp,
-				cfgSections:    make(map[string]ConfigProvider),
-				svcRegistry:    ServiceRegistry{"logger": log},
-				moduleRegistry: make(ModuleRegistry),
-				logger:         log,
-			},
+			expectedLogger: log,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewStdApplication(tt.args.cfgProvider, tt.args.logger); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewStdApplication() = %v, want %v", got, tt.want)
+			got := NewStdApplication(tt.args.cfgProvider, tt.args.logger)
+
+			// Test functional properties
+			if got.ConfigProvider() != tt.args.cfgProvider {
+				t.Errorf("NewStdApplication().ConfigProvider() = %v, want %v", got.ConfigProvider(), tt.args.cfgProvider)
+			}
+
+			if got.Logger() != tt.expectedLogger {
+				t.Errorf("NewStdApplication().Logger() = %v, want %v", got.Logger(), tt.expectedLogger)
+			}
+
+			// Check that logger service is properly registered
+			svcRegistry := got.SvcRegistry()
+			if svcRegistry["logger"] != tt.expectedLogger {
+				t.Errorf("NewStdApplication() logger service = %v, want %v", svcRegistry["logger"], tt.expectedLogger)
+			}
+
+			// Verify config sections is initialized (empty map)
+			if len(got.ConfigSections()) != 0 {
+				t.Errorf("NewStdApplication().ConfigSections() should be empty, got %v", got.ConfigSections())
 			}
 		})
 	}
@@ -136,12 +141,14 @@ func Test_application_Init_ConfigRegistration(t *testing.T) {
 		testModule: testModule{name: "config-module"},
 	}
 
+	enhancedRegistry := NewEnhancedServiceRegistry()
 	app := &StdApplication{
-		cfgProvider:    stdConfig,
-		cfgSections:    make(map[string]ConfigProvider),
-		svcRegistry:    make(ServiceRegistry),
-		moduleRegistry: make(ModuleRegistry),
-		logger:         stdLogger,
+		cfgProvider:         stdConfig,
+		cfgSections:         make(map[string]ConfigProvider),
+		svcRegistry:         enhancedRegistry.AsServiceRegistry(),
+		enhancedSvcRegistry: enhancedRegistry,
+		moduleRegistry:      make(ModuleRegistry),
+		logger:              stdLogger,
 	}
 
 	// Register modules

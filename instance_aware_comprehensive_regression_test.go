@@ -251,13 +251,8 @@ database:
 		t.Setenv(key, value)
 	}
 
-	// Setup feeders
-	originalFeeders := ConfigFeeders
-	ConfigFeeders = []Feeder{
-		feeders.NewYamlFeeder(tmpFile),
-		feeders.NewEnvFeeder(),
-	}
-	defer func() { ConfigFeeders = originalFeeders }()
+	// Setup per-app feeders (avoid mutating global ConfigFeeders for parallel safety)
+	feedersSlice := []Feeder{feeders.NewYamlFeeder(tmpFile), feeders.NewEnvFeeder()}
 
 	// Create config with pointer semantics
 	dbConfig := &TestDatabaseConfig{
@@ -274,7 +269,7 @@ database:
 		App: TestAppSettings{
 			Name: "test-app",
 		},
-	}), logger)
+	}), logger).(*StdApplication)
 
 	// Register database config section with instance-aware provider
 	instancePrefixFunc := func(instanceKey string) string {
@@ -283,6 +278,8 @@ database:
 	configProvider := NewInstanceAwareConfigProvider(dbConfig, instancePrefixFunc)
 	app.RegisterConfigSection("database", configProvider)
 
+	// Apply per-app feeders before initialization
+	app.SetConfigFeeders(feedersSlice)
 	// Initialize the application (this should load YAML + apply instance-aware env overrides)
 	if err := app.Init(); err != nil {
 		t.Fatalf("Failed to initialize application: %v", err)

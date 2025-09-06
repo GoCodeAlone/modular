@@ -40,6 +40,9 @@ eventlogger:
   flushInterval: 5s                # How often to flush buffered events
   includeMetadata: true            # Include event metadata in logs
   includeStackTrace: false         # Include stack traces for error events
+  startupSync: false               # Emit startup operational events synchronously (no async delay)
+  shutdownEmitStopped: true        # Emit logger.stopped operational event on Stop()
+  shutdownDrainTimeout: 2s         # Max time to drain buffered events on Stop (0 = wait forever)
   eventTypeFilters:                # Optional: Only log specific event types
     - module.registered
     - service.registered
@@ -213,6 +216,24 @@ The module automatically maps event types to appropriate log levels:
 - **Buffering**: Events are buffered in memory before writing to reduce I/O overhead
 - **Error Isolation**: Failures in one output target don't affect others
 - **Graceful Degradation**: Buffer overflow results in dropped events with warnings
+
+### Startup & Shutdown Behavior
+
+The module supports fine‑grained control over lifecycle behavior:
+
+| Setting | Purpose | Typical Usage |
+|---------|---------|---------------|
+| `startupSync` | When true, emits operational startup events (config.loaded, output.registered, logger.started) synchronously inside `Start()` so tests or dependent logic can immediately observe them without arbitrary sleeps. | Enable in deterministic test suites to remove `time.Sleep` calls. Leave false in production to minimize startup blocking. |
+| `shutdownEmitStopped` | When true (default), emits a `eventlogger.logger.stopped` operational event after draining. Set false to suppress if you prefer a silent shutdown or want to avoid any late emissions during teardown. | Disable in environments where observers are already torn down or to reduce noise in integration tests. |
+| `shutdownDrainTimeout` | Bounded duration to wait for the event queue to drain during `Stop()`. If the timeout elapses, a warning is logged and shutdown proceeds. Zero (or negative) means wait indefinitely. | Tune to balance fast shutdown vs. ensuring critical events are flushed (e.g. increase for audit trails, reduce for fast ephemeral jobs). |
+
+#### Early Lifecycle Event Suppression
+
+Benign framework lifecycle events (e.g. `config.loaded`, `config.validated`, `module.registered`, `service.registered`) that arrive before the logger has fully started are silently dropped instead of producing `event logger not started` errors. This prevents noisy, misleading logs during application bootstrapping while keeping genuine misordering issues visible for other event types.
+
+#### Recommended Testing Pattern
+
+Enable `startupSync: true` in test configuration to make assertions against startup events immediately after `app.Start()` without introducing sleeps. Pair with a small `shutdownDrainTimeout` (e.g. `500ms`) to keep CI fast while still flushing most buffered events.
 
 ## Error Handling
 

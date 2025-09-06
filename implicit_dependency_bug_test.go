@@ -230,9 +230,25 @@ func TestServiceNamingGameAttempt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Skip empty service name test as it's not a valid case
+			// Handle empty service name test case specifically
 			if tt.serviceName == "" {
-				t.Skip("Empty service name is not a valid test case")
+				// Test that empty service names are handled gracefully
+				err := runServiceNamingGameTest(tt.serviceName)
+				// Empty service names should either:
+				// 1. Be allowed and work correctly (if the system handles them)
+				// 2. Return a specific error (if they're invalid)
+				// For now, let's test that the system doesn't crash and handles them consistently
+
+				// Test multiple times to ensure deterministic behavior even with empty names
+				for attempt := 1; attempt < 3; attempt++ {
+					err2 := runServiceNamingGameTest(tt.serviceName)
+					// The behavior should be consistent across attempts
+					if (err == nil) != (err2 == nil) {
+						t.Errorf("Inconsistent behavior with empty service name: attempt 1 error=%v, attempt %d error=%v", err, attempt+1, err2)
+					}
+				}
+
+				// The test passes as long as the behavior is consistent and doesn't crash
 				return
 			}
 

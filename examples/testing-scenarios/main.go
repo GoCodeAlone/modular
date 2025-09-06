@@ -65,12 +65,6 @@ func main() {
 	tenant := flag.String("tenant", "", "Tenant ID for multi-tenant testing")
 	flag.Parse()
 
-	// Configure feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
 	// Create application
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
@@ -79,6 +73,12 @@ func main() {
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 		)),
 	)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
+	}
 
 	// Create testing application wrapper
 	testApp := &TestingApp{

@@ -37,6 +37,7 @@ func (m *MockLogger) Warn(msg string, args ...any) {
 // in instance-aware scenarios, with verbose logging to show exactly
 // what's being looked for.
 func TestUserScenario_DatabaseDSNInstanceAware(t *testing.T) {
+	// Can't use t.Parallel because this test sets many env vars via t.Setenv
 	// This test demonstrates that the user can now get complete visibility
 	// into field-level configuration population, especially for Database
 	// module DSN values with instance-aware environment variables.

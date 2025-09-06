@@ -21,12 +21,6 @@ type AppConfig struct {
 }
 
 func main() {
-	// Configure feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
 	// Create a new application
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(&AppConfig{}),
@@ -49,6 +43,14 @@ func main() {
 	app.RegisterModule(chimux.NewChiMuxModule())
 	app.RegisterModule(reverseproxy.NewModule())
 	app.RegisterModule(httpserver.NewHTTPServerModule())
+
+	// Inject feeders per application before starting (cast to *StdApplication)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
+	}
 
 	// Start the application in background to demonstrate logging
 	go func() {

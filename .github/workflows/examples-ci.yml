@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '^1.23.5'
+  GO_VERSION: '^1.25'
 
 jobs:
   validate-examples:
@@ -254,11 +254,12 @@ jobs:
             if [ $EXIT_CODE -eq 0 ] && grep -q "Observer Pattern Demo completed successfully" app.log; then
               echo "✅ observer-pattern demo completed successfully"
               
-              # Verify key events were logged
-              if grep -q "module.registered" app.log && grep -q "service.registered" app.log; then
+              # Verify key lifecycle signals were logged (updated patterns)
+              # We now log structured messages like "Registered service" and "Initialized module".
+              if grep -q "Registered service" app.log && grep -q "Initialized module" app.log; then
                 echo "✅ observer-pattern logged expected lifecycle events"
               else
-                echo "❌ observer-pattern missing expected lifecycle events"
+                echo "❌ observer-pattern missing expected lifecycle events (looking for 'Registered service' and 'Initialized module')"
                 echo "📋 Application logs:"
                 cat app.log
                 exit 1
@@ -356,26 +357,24 @@ jobs:
           
           echo "🔍 Verifying go.mod configuration for ${{ matrix.example }}..."
           
-          # Check that replace directives point to correct paths
-          if ! grep -q "replace.*=> ../../" go.mod; then
-            echo "❌ Missing or incorrect replace directive in ${{ matrix.example }}/go.mod"
-            echo "Expected: replace github.com/GoCodeAlone/modular => ../../"
-            cat go.mod
-            exit 1
-          fi
-          
-          # Verify module name matches directory
+          # Allow either a short module name (directory) or fully-qualified path under the repo
           MODULE_NAME=$(grep "^module " go.mod | awk '{print $2}')
-          EXPECTED_NAME="${{ matrix.example }}"
-          
-          if [ "$MODULE_NAME" != "$EXPECTED_NAME" ]; then
-            echo "❌ Module name mismatch in ${{ matrix.example }}"
-            echo "Expected: $EXPECTED_NAME"
+          SHORT_NAME="${{ matrix.example }}"
+          FQ_EXPECTED="github.com/GoCodeAlone/modular/examples/${{ matrix.example }}"
+
+          if [ "$MODULE_NAME" != "$SHORT_NAME" ] && [ "$MODULE_NAME" != "$FQ_EXPECTED" ]; then
+            echo "❌ Module name unexpected in ${{ matrix.example }}"
             echo "Found: $MODULE_NAME"
+            echo "Expected one of: $SHORT_NAME OR $FQ_EXPECTED"
             exit 1
           fi
-          
-          echo "✅ go.mod configuration verified for ${{ matrix.example }}"
+
+          # The replace directive is optional when using go.work; warn if absent but don't fail.
+          if ! grep -q "replace .*github.com/GoCodeAlone/modular => ../../" go.mod; then
+            echo "⚠️  Warning: replace directive to root module not found (acceptable when using go.work)."
+          fi
+
+          echo "✅ go.mod configuration verified for ${{ matrix.example }} (module: $MODULE_NAME)"
 
   examples-overview:
     name: Examples Overview

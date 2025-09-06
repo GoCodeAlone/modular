@@ -54,13 +54,8 @@ func main() {
 		}
 	}()
 
-	// Configure feeders with verbose environment feeder
+	// Prepare feeders (per app; avoid global mutation)
 	envFeeder := feeders.NewEnvFeeder()
-
-	modular.ConfigFeeders = []modular.Feeder{
-		envFeeder, // Use environment feeder with verbose support when enabled
-		// Instance-aware feeding is handled automatically by the database module
-	}
 
 	// Create logger with DEBUG level to see verbose output
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -70,6 +65,11 @@ func main() {
 		modular.NewStdConfigProvider(&AppConfig{}),
 		logger,
 	)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{
+			envFeeder, // Use environment feeder with verbose support when enabled
+		})
+	}
 
 	// *** ENABLE VERBOSE CONFIGURATION DEBUGGING ***
 	// This is the key feature - it enables detailed DEBUG logging throughout

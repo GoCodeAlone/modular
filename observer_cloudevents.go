@@ -40,6 +40,89 @@ func NewCloudEvent(eventType, source string, data interface{}, metadata map[stri
 	return event
 }
 
+// ModuleLifecycleSchema is the schema identifier for module lifecycle payloads.
+const ModuleLifecycleSchema = "modular.module.lifecycle.v1"
+
+// ModuleLifecyclePayload represents a structured lifecycle event for a module or the application.
+// This provides a strongly-typed alternative to scattering lifecycle details across CloudEvent extensions.
+// Additional routing-friendly metadata (like action) is still duplicated into a small extension for fast filtering.
+type ModuleLifecyclePayload struct {
+	// Subject indicates whether this is a module or application lifecycle event (e.g., "module", "application").
+	Subject string `json:"subject"`
+	// Name is the module/application name.
+	Name string `json:"name"`
+	// Action is the lifecycle action (e.g., start|stop|init|register|fail|initialize|initialized).
+	Action string `json:"action"`
+	// Version optionally records the module version if available.
+	Version string `json:"version,omitempty"`
+	// Timestamp is when the lifecycle action occurred (RFC3339 in JSON output).
+	Timestamp time.Time `json:"timestamp"`
+	// Additional arbitrary metadata (kept minimal; prefer evolving the struct if fields become first-class).
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// NewModuleLifecycleEvent builds a CloudEvent for a module/application lifecycle using the structured payload.
+// It sets payload_schema and module_action extensions for lightweight routing without full payload decode.
+func NewModuleLifecycleEvent(source, subject, name, version, action string, metadata map[string]interface{}) cloudevents.Event {
+	payload := ModuleLifecyclePayload{
+		Subject:   subject,
+		Name:      name,
+		Action:    action,
+		Version:   version,
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+	evt := cloudevents.NewEvent()
+	evt.SetID(generateEventID())
+	evt.SetSource(source)
+	// Keep specific event type naming for backward compatibility where possible (module/application generic fallback)
+	switch subject {
+	case "module":
+		// Derive a conventional type if action matches known ones
+		switch action {
+		case "registered":
+			evt.SetType(EventTypeModuleRegistered)
+		case "initialized":
+			evt.SetType(EventTypeModuleInitialized)
+		case "started":
+			evt.SetType(EventTypeModuleStarted)
+		case "stopped":
+			evt.SetType(EventTypeModuleStopped)
+		case "failed":
+			evt.SetType(EventTypeModuleFailed)
+		default:
+			evt.SetType("com.modular.module.lifecycle")
+		}
+	case "application":
+		switch action {
+		case "started":
+			evt.SetType(EventTypeApplicationStarted)
+		case "stopped":
+			evt.SetType(EventTypeApplicationStopped)
+		case "failed":
+			evt.SetType(EventTypeApplicationFailed)
+		default:
+			evt.SetType("com.modular.application.lifecycle")
+		}
+	default:
+		evt.SetType("com.modular.lifecycle")
+	}
+	evt.SetTime(payload.Timestamp)
+	evt.SetSpecVersion(cloudevents.VersionV1)
+	_ = evt.SetData(cloudevents.ApplicationJSON, payload)
+	// CloudEvents 1.0 spec (section 3.1.1) restricts extension attribute names to **lower-case alphanumerics only**
+	// (regex: [a-z0-9]{1,20}). Hyphens / underscores are NOT permitted in extension names. The reviewer suggested
+	// using hyphens for readability; we intentionally retain plain concatenated names to remain strictly
+	// compliant with the spec across all transports and SDKs. If readability / grouping is desired downstream,
+	// mapping can be performed externally (e.g. transforming to labels / tags). These names are therefore
+	// intentionally left without separators.
+	evt.SetExtension("payloadschema", ModuleLifecycleSchema)
+	evt.SetExtension("moduleaction", action)
+	evt.SetExtension("lifecyclesubject", subject)
+	evt.SetExtension("lifecyclename", name)
+	return evt
+}
+
 // generateEventID generates a unique identifier for CloudEvents using UUIDv7.
 // UUIDv7 includes timestamp information which provides time-ordered uniqueness.
 func generateEventID() string {

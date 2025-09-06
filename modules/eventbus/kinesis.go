@@ -293,10 +293,12 @@ func (k *KinesisEventBus) subscribe(ctx context.Context, topic string, handler E
 // startShardReaders starts reading from all shards
 func (k *KinesisEventBus) startShardReaders() {
 	// Get stream description to find shards
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
-
+	// sync.WaitGroup.Go used (added in Go 1.23; stable in 1.25 toolchain baseline here).
+	// Rationale: ties Add/Done to the function scope, preventing leaks on early
+	// returns. Prior pattern: wg.Add(1); go func(){ defer wg.Done() ... }. Using
+	// the helper keeps shutdown (wg.Wait) correctness while remaining backwards
+	// compatible with our minimum Go version.
+	k.wg.Go(func() {
 		for {
 			select {
 			case <-k.ctx.Done():
@@ -321,7 +323,7 @@ func (k *KinesisEventBus) startShardReaders() {
 				time.Sleep(30 * time.Second)
 			}
 		}
-	}()
+	})
 }
 
 // readShard reads records from a specific shard

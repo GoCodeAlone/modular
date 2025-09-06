@@ -95,6 +95,7 @@ It helps with generating modules, configurations, and other common tasks.`,
 	// Add subcommands
 	cmd.AddCommand(NewGenerateCommand())
 	cmd.AddCommand(NewDebugCommand())
+	cmd.AddCommand(NewContractCommand())
 
 	return cmd
 }

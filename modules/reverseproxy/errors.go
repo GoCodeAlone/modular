@@ -21,6 +21,16 @@ var (
 	ErrDryRunModeNotEnabled     = errors.New("dry-run mode is not enabled")
 	ErrApplicationNil           = errors.New("app cannot be nil")
 	ErrLoggerNil                = errors.New("logger cannot be nil")
+	ErrBackendAlreadyExists     = errors.New("backend already exists")
+	ErrBackendIDOrURLRequired   = errors.New("backend id and service URL required")
+	ErrBackendIDRequired        = errors.New("backend id required")
+	ErrNoBackendsConfigured     = errors.New("no backends configured")
+
+	// Feature flag evaluation sentinel errors
+	ErrNoDecision            = errors.New("no-decision")
+	ErrEvaluatorFatal        = errors.New("evaluator-fatal")
+	ErrNoEvaluatorsAvailable = errors.New("no feature flag evaluators available")
+	ErrNoEvaluatorDecision   = errors.New("no evaluator provided decision")
 
 	// Event observation errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")

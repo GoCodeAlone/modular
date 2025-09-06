@@ -1,11 +1,9 @@
-module jsonschema-demo
+module github.com/GoCodeAlone/modular/examples/jsonschema-demo
 
-go 1.24.2
-
-toolchain go1.24.5
+go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/jsonschema v0.0.0-00010101000000-000000000000
@@ -23,7 +21,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

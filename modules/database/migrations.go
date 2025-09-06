@@ -140,8 +140,7 @@ func (m *migrationServiceImpl) RunMigration(ctx context.Context, migration Migra
 			"migration_id": migration.ID,
 			"version":      migration.Version,
 		}, nil)
-		if err := m.eventEmitter.EmitEvent(ctx, event); err != nil {
-			// Log error but don't fail migration for event emission issues
+		if err := m.eventEmitter.EmitEvent(modular.WithSynchronousNotification(ctx), event); err != nil {
 			logEmissionError("migration started", err)
 		}
 	}
@@ -157,7 +156,7 @@ func (m *migrationServiceImpl) RunMigration(ctx context.Context, migration Migra
 				"error":        err.Error(),
 				"duration_ms":  time.Since(startTime).Milliseconds(),
 			}, nil)
-			if emitErr := m.eventEmitter.EmitEvent(ctx, event); emitErr != nil {
+			if emitErr := m.eventEmitter.EmitEvent(modular.WithSynchronousNotification(ctx), event); emitErr != nil {
 				logEmissionError("migration failed", emitErr)
 			}
 		}
@@ -183,7 +182,7 @@ func (m *migrationServiceImpl) RunMigration(ctx context.Context, migration Migra
 				"error":        err.Error(),
 				"duration_ms":  time.Since(startTime).Milliseconds(),
 			}, nil)
-			if emitErr := m.eventEmitter.EmitEvent(ctx, event); emitErr != nil {
+			if emitErr := m.eventEmitter.EmitEvent(modular.WithSynchronousNotification(ctx), event); emitErr != nil {
 				logEmissionError("migration failed", emitErr)
 			}
 		}
@@ -207,7 +206,7 @@ func (m *migrationServiceImpl) RunMigration(ctx context.Context, migration Migra
 				"error":        err.Error(),
 				"duration_ms":  time.Since(startTime).Milliseconds(),
 			}, nil)
-			if emitErr := m.eventEmitter.EmitEvent(ctx, event); emitErr != nil {
+			if emitErr := m.eventEmitter.EmitEvent(modular.WithSynchronousNotification(ctx), event); emitErr != nil {
 				logEmissionError("migration record failed", emitErr)
 			}
 		}
@@ -225,7 +224,7 @@ func (m *migrationServiceImpl) RunMigration(ctx context.Context, migration Migra
 				"error":        err.Error(),
 				"duration_ms":  time.Since(startTime).Milliseconds(),
 			}, nil)
-			if emitErr := m.eventEmitter.EmitEvent(ctx, event); emitErr != nil {
+			if emitErr := m.eventEmitter.EmitEvent(modular.WithSynchronousNotification(ctx), event); emitErr != nil {
 				logEmissionError("migration commit failed", emitErr)
 			}
 		}
@@ -239,7 +238,7 @@ func (m *migrationServiceImpl) RunMigration(ctx context.Context, migration Migra
 			"version":      migration.Version,
 			"duration_ms":  time.Since(startTime).Milliseconds(),
 		}, nil)
-		if err := m.eventEmitter.EmitEvent(ctx, event); err != nil {
+		if err := m.eventEmitter.EmitEvent(modular.WithSynchronousNotification(ctx), event); err != nil {
 			logEmissionError("migration completed", err)
 		}
 	}

@@ -460,6 +460,7 @@ func TestApplicationLifecycle(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features/application_lifecycle.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

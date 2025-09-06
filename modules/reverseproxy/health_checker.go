@@ -55,12 +55,16 @@ type HealthCircuitBreakerInfo struct {
 // CircuitBreakerProvider defines a function to get circuit breaker information for a backend.
 type CircuitBreakerProvider func(backendID string) *HealthCircuitBreakerInfo
 
+// HealthEventEmitter is a callback used to emit backend health events.
+// Accepts event type and a data map for the event payload.
+type HealthEventEmitter func(eventType string, data map[string]interface{})
+
 // HealthChecker manages health checking for backend services.
 type HealthChecker struct {
 	config                 *HealthCheckConfig
 	httpClient             *http.Client
 	logger                 *slog.Logger
-	backends               map[string]string // backend_id -> base_url
+	backends               map[string]string // backend_id -> base_url (internal copy, immutable unless via UpdateBackends)
 	healthStatus           map[string]*HealthStatus
 	statusMutex            sync.RWMutex
 	requestTimes           map[string]time.Time // backend_id -> last_request_time
@@ -70,24 +74,78 @@ type HealthChecker struct {
 	running                bool
 	runningMutex           sync.RWMutex
 	circuitBreakerProvider CircuitBreakerProvider
+	eventEmitter           HealthEventEmitter // optional emitter for backend health events
+
+	// Internal immutable copies (protected by configMutex during replacement) to avoid races when external config maps mutate
+	configMutex              sync.RWMutex
+	healthEndpoints          map[string]string
+	backendHealthCheckConfig map[string]BackendHealthConfig
+	expectedStatusCodes      []int
 }
 
 // NewHealthChecker creates a new health checker with the given configuration.
 func NewHealthChecker(config *HealthCheckConfig, backends map[string]string, httpClient *http.Client, logger *slog.Logger) *HealthChecker {
-	return &HealthChecker{
-		config:       config,
-		httpClient:   httpClient,
-		logger:       logger,
-		backends:     backends,
-		healthStatus: make(map[string]*HealthStatus),
-		requestTimes: make(map[string]time.Time),
-		stopChan:     make(chan struct{}),
+	// Create defensive copies of mutable maps to avoid external concurrent mutation races.
+	backendsCopy := make(map[string]string, len(backends))
+	for k, v := range backends {
+		backendsCopy[k] = v
 	}
+	healthEndpointsCopy := make(map[string]string, len(config.HealthEndpoints))
+	for k, v := range config.HealthEndpoints {
+		healthEndpointsCopy[k] = v
+	}
+	backendHealthCfgCopy := make(map[string]BackendHealthConfig, len(config.BackendHealthCheckConfig))
+	for k, v := range config.BackendHealthCheckConfig {
+		backendHealthCfgCopy[k] = v
+	}
+	expectedCodesCopy := make([]int, len(config.ExpectedStatusCodes))
+	copy(expectedCodesCopy, config.ExpectedStatusCodes)
+
+	return &HealthChecker{
+		config:                   config,
+		httpClient:               httpClient,
+		logger:                   logger,
+		backends:                 backendsCopy,
+		healthStatus:             make(map[string]*HealthStatus),
+		requestTimes:             make(map[string]time.Time),
+		stopChan:                 make(chan struct{}),
+		healthEndpoints:          healthEndpointsCopy,
+		backendHealthCheckConfig: backendHealthCfgCopy,
+		expectedStatusCodes:      expectedCodesCopy,
+	}
+}
+
+// UpdateHealthConfig replaces internal copies of health-related configuration maps atomically.
+func (hc *HealthChecker) UpdateHealthConfig(ctx context.Context, cfg *HealthCheckConfig) {
+	if cfg == nil {
+		return
+	}
+	healthEndpointsCopy := make(map[string]string, len(cfg.HealthEndpoints))
+	for k, v := range cfg.HealthEndpoints {
+		healthEndpointsCopy[k] = v
+	}
+	backendHealthCfgCopy := make(map[string]BackendHealthConfig, len(cfg.BackendHealthCheckConfig))
+	for k, v := range cfg.BackendHealthCheckConfig {
+		backendHealthCfgCopy[k] = v
+	}
+	expectedCodesCopy := make([]int, len(cfg.ExpectedStatusCodes))
+	copy(expectedCodesCopy, cfg.ExpectedStatusCodes)
+	hc.configMutex.Lock()
+	hc.healthEndpoints = healthEndpointsCopy
+	hc.backendHealthCheckConfig = backendHealthCfgCopy
+	hc.expectedStatusCodes = expectedCodesCopy
+	hc.configMutex.Unlock()
+	hc.logger.DebugContext(ctx, "Health checker config updated", "health_endpoints", len(healthEndpointsCopy), "backend_specific", len(backendHealthCfgCopy))
 }
 
 // SetCircuitBreakerProvider sets the circuit breaker provider function.
 func (hc *HealthChecker) SetCircuitBreakerProvider(provider CircuitBreakerProvider) {
 	hc.circuitBreakerProvider = provider
+}
+
+// SetEventEmitter sets the callback used to emit health events.
+func (hc *HealthChecker) SetEventEmitter(emitter HealthEventEmitter) {
+	hc.eventEmitter = emitter
 }
 
 // Start begins the health checking process.
@@ -401,13 +459,14 @@ func (hc *HealthChecker) updateHealthStatus(backendID string, healthy bool, resp
 	hc.statusMutex.Lock()
 	defer hc.statusMutex.Unlock()
 
+	// INSERTED: capture previous healthy state
 	status, exists := hc.healthStatus[backendID]
 	if !exists {
 		return
 	}
+	prevHealthy := status.Healthy
 
-	now := time.Now()
-	status.LastCheck = now
+	status.LastCheck = time.Now()
 	status.ResponseTime = responseTime
 	status.DNSResolved = dnsResolved
 	status.ResolvedIPs = resolvedIPs
@@ -429,7 +488,7 @@ func (hc *HealthChecker) updateHealthStatus(backendID string, healthy bool, resp
 	status.Healthy = healthCheckPassing && !status.CircuitBreakerOpen
 
 	if healthCheckPassing {
-		status.LastSuccess = now
+		status.LastSuccess = time.Now()
 		status.LastError = ""
 		status.SuccessfulChecks++
 	} else {
@@ -440,12 +499,27 @@ func (hc *HealthChecker) updateHealthStatus(backendID string, healthy bool, resp
 			status.LastError = httpErr.Error()
 		}
 	}
+
+	// After computing status.Healthy, emit events on transitions
+	if hc.eventEmitter != nil && prevHealthy != status.Healthy {
+		if status.Healthy {
+			hc.eventEmitter(EventTypeBackendHealthy, map[string]interface{}{"backend": backendID})
+		} else {
+			hc.eventEmitter(EventTypeBackendUnhealthy, map[string]interface{}{"backend": backendID, "error": status.LastError})
+		}
+	}
 }
 
 // getHealthCheckEndpoint returns the health check endpoint for a backend.
+
 func (hc *HealthChecker) getHealthCheckEndpoint(backendID, baseURL string) string {
+	hc.configMutex.RLock()
+	backendHealthCfg := hc.backendHealthCheckConfig
+	healthEndpoints := hc.healthEndpoints
+	hc.configMutex.RUnlock()
+
 	// Check for backend-specific health endpoint
-	if backendConfig, exists := hc.config.BackendHealthCheckConfig[backendID]; exists && backendConfig.Endpoint != "" {
+	if backendConfig, exists := backendHealthCfg[backendID]; exists && backendConfig.Endpoint != "" {
 		// If it's a full URL, use it as is
 		if parsedURL, err := url.Parse(backendConfig.Endpoint); err == nil && parsedURL.Scheme != "" {
 			return backendConfig.Endpoint
@@ -460,7 +534,7 @@ func (hc *HealthChecker) getHealthCheckEndpoint(backendID, baseURL string) strin
 	}
 
 	// Check for global health endpoint override
-	if globalEndpoint, exists := hc.config.HealthEndpoints[backendID]; exists {
+	if globalEndpoint, exists := healthEndpoints[backendID]; exists {
 		// If it's a full URL, use it as is
 		if parsedURL, err := url.Parse(globalEndpoint); err == nil && parsedURL.Scheme != "" {
 			return globalEndpoint
@@ -480,54 +554,73 @@ func (hc *HealthChecker) getHealthCheckEndpoint(backendID, baseURL string) strin
 
 // getBackendInterval returns the health check interval for a backend.
 func (hc *HealthChecker) getBackendInterval(backendID string) time.Duration {
-	if backendConfig, exists := hc.config.BackendHealthCheckConfig[backendID]; exists && backendConfig.Interval > 0 {
+	hc.configMutex.RLock()
+	backendHealthCfg := hc.backendHealthCheckConfig
+	interval := hc.config.Interval
+	hc.configMutex.RUnlock()
+	if backendConfig, exists := backendHealthCfg[backendID]; exists && backendConfig.Interval > 0 {
 		return backendConfig.Interval
 	}
-	return hc.config.Interval
+	return interval
 }
 
 // getBackendTimeout returns the health check timeout for a backend.
 func (hc *HealthChecker) getBackendTimeout(backendID string) time.Duration {
-	if backendConfig, exists := hc.config.BackendHealthCheckConfig[backendID]; exists && backendConfig.Timeout > 0 {
+	hc.configMutex.RLock()
+	backendHealthCfg := hc.backendHealthCheckConfig
+	timeout := hc.config.Timeout
+	hc.configMutex.RUnlock()
+	if backendConfig, exists := backendHealthCfg[backendID]; exists && backendConfig.Timeout > 0 {
 		return backendConfig.Timeout
 	}
-	return hc.config.Timeout
+	return timeout
 }
 
 // getExpectedStatusCodes returns the expected status codes for a backend.
 func (hc *HealthChecker) getExpectedStatusCodes(backendID string) []int {
-	if backendConfig, exists := hc.config.BackendHealthCheckConfig[backendID]; exists && len(backendConfig.ExpectedStatusCodes) > 0 {
+	hc.configMutex.RLock()
+	backendHealthCfg := hc.backendHealthCheckConfig
+	expected := hc.expectedStatusCodes
+	hc.configMutex.RUnlock()
+	if backendConfig, exists := backendHealthCfg[backendID]; exists && len(backendConfig.ExpectedStatusCodes) > 0 {
 		return backendConfig.ExpectedStatusCodes
 	}
-	if len(hc.config.ExpectedStatusCodes) > 0 {
-		return hc.config.ExpectedStatusCodes
+	if len(expected) > 0 {
+		return expected
 	}
-	return []int{200} // default to 200 OK
+	return []int{200}
 }
 
 // isBackendHealthCheckEnabled returns whether health checking is enabled for a backend.
 func (hc *HealthChecker) isBackendHealthCheckEnabled(backendID string) bool {
-	if backendConfig, exists := hc.config.BackendHealthCheckConfig[backendID]; exists {
+	hc.configMutex.RLock()
+	backendHealthCfg := hc.backendHealthCheckConfig
+	hc.configMutex.RUnlock()
+	if backendConfig, exists := backendHealthCfg[backendID]; exists {
 		return backendConfig.Enabled
 	}
-	return true // default to enabled
+	return true
 }
 
 // UpdateBackends updates the list of backends to monitor.
 func (hc *HealthChecker) UpdateBackends(ctx context.Context, backends map[string]string) {
-	hc.statusMutex.Lock()
-	defer hc.statusMutex.Unlock()
+	// Clone incoming map first
+	cloned := make(map[string]string, len(backends))
+	for k, v := range backends {
+		cloned[k] = v
+	}
 
+	hc.statusMutex.Lock()
 	// Remove health status for backends that no longer exist
 	for backendID := range hc.healthStatus {
-		if _, exists := backends[backendID]; !exists {
+		if _, exists := cloned[backendID]; !exists {
 			delete(hc.healthStatus, backendID)
 			hc.logger.DebugContext(ctx, "Removed health status for backend", "backend", backendID)
 		}
 	}
-
-	// Add health status for new backends
-	for backendID, baseURL := range backends {
+	// Track new backends to start goroutines after releasing status lock if running
+	newBackends := make(map[string]string)
+	for backendID, baseURL := range cloned {
 		if _, exists := hc.healthStatus[backendID]; !exists {
 			hc.healthStatus[backendID] = &HealthStatus{
 				BackendID:   backendID,
@@ -540,11 +633,20 @@ func (hc *HealthChecker) UpdateBackends(ctx context.Context, backends map[string
 				ResolvedIPs: []string{},
 				LastRequest: time.Time{},
 			}
+			newBackends[backendID] = baseURL
 			hc.logger.DebugContext(ctx, "Added health status for new backend", "backend", backendID)
 		}
 	}
+	hc.backends = cloned
+	hc.statusMutex.Unlock()
 
-	hc.backends = backends
+	// If running, start periodic checks for new backends
+	if len(newBackends) > 0 && hc.IsRunning() {
+		for backendID, baseURL := range newBackends {
+			hc.wg.Add(1)
+			go hc.runPeriodicHealthCheck(ctx, backendID, baseURL)
+		}
+	}
 }
 
 // OverallHealthStatus represents the overall health status of the service.

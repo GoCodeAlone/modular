@@ -1,6 +1,12 @@
 name: Release
 run-name: Release ${{ github.event.inputs.version || github.event.inputs.releaseType }}
 
+# Explicit minimal permissions per security guidance (code scanning recommendation).
+# Provide ONLY the permission strictly required at the workflow scope. Jobs that need
+# additional scopes (e.g., creating PRs) declare their own permissions blocks.
+permissions:
+  contents: write        # needed to create tags/releases and read repo contents
+
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +23,11 @@ on:
           - minor
           - major
         default: 'patch'
+      skipModuleBump:
+        description: 'Skip running module bump (used when orchestrated by release-all)'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -27,128 +38,282 @@ on:
         description: 'Release type'
         required: true
         type: string
+      skipModuleBump:
+        description: 'Skip running module bump (used when orchestrated by release-all)'
+        required: false
+        type: boolean
+    outputs:
+      released_version:
+        description: 'Version tag produced by the release job'
+        value: ${{ jobs.release.outputs.released_version }}
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Harden job: restrict token further if steps don't need broader scopes
+    # Job requires only contents:write for tagging & release artifact upload.
+    permissions:
+      contents: write
+    outputs:
+      released_version: ${{ steps.version.outputs.next_version }}
+      core_changed: ${{ steps.detect.outputs.core_changed }}
+      skipped: ${{ steps.detect.outputs.skipped }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          
-      - name: Determine release version
-        id: version
+
+      - name: Detect core code changes since last tag
+        id: detect
+        shell: bash
         run: |
-          # Find the latest tag for the main library (excluding module tags)
-          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
-          echo "Latest tag: $LATEST_TAG"
-          
+          set -euo pipefail
+          LATEST_TAG=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n1 || echo '')
+          echo "Latest core tag: ${LATEST_TAG:-<none>}"
+          CHANGED=false
           if [ -z "$LATEST_TAG" ]; then
-            # No existing tag, start with v0.0.0
-            CURRENT_VERSION="v0.0.0"
-            echo "No previous version found, starting with v0.0.0"
+            # No prior release; treat as changed if any go files or go.mod/go.sum exist (initial release scenario)
+            if git ls-files '*.go' 'go.mod' 'go.sum' | grep -v '^modules/' | head -n1 >/dev/null 2>&1; then CHANGED=true; fi
           else
-            CURRENT_VERSION=$LATEST_TAG
-            echo "Current version: $CURRENT_VERSION"
-          fi
-          
-          # Remove the 'v' prefix for semver calculations
-          CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
-          
-          # Extract the parts
-          MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
-          MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
-          PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
-          
-          # Calculate next version based on release type
-          if [ "${{ github.event.inputs.releaseType }}" == "major" ]; then
-            NEXT_VERSION="v$((MAJOR + 1)).0.0"
-          elif [ "${{ github.event.inputs.releaseType }}" == "minor" ]; then
-            NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
-          else
-            NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-          fi
-          
-          # Use manual version if provided
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            MANUAL_VERSION="${{ github.event.inputs.version }}"
-            # Ensure the 'v' prefix
-            if [[ $MANUAL_VERSION != v* ]]; then
-              MANUAL_VERSION="v${MANUAL_VERSION}"
+            DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v '^modules/' || true)
+            RELEVANT=""
+            if [ -n "$DIFF" ]; then
+              while IFS= read -r f; do
+                [[ $f == *_test.go ]] && continue
+                [[ $f == *.md ]] && continue
+                [[ $f == .github/* ]] && continue
+                [[ $f == examples/* ]] && continue
+                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]] || [[ $f == ./go.mod ]] || [[ $f == ./go.sum ]]; then
+                  RELEVANT+="$f "
+                fi
+              done <<< "$DIFF"
             fi
-            NEXT_VERSION="${MANUAL_VERSION}"
+            [ -n "$RELEVANT" ] && CHANGED=true || CHANGED=false
+            echo "Relevant changed files: ${RELEVANT:-<none>}"
           fi
-          
-          echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
-          echo "Next version: ${NEXT_VERSION}"
+          echo "core_changed=$CHANGED" >> $GITHUB_OUTPUT
+          if [ "$CHANGED" != true ]; then
+            echo "No core changes since last tag; skipping release steps."; echo 'skipped=true' >> $GITHUB_OUTPUT; else echo 'skipped=false' >> $GITHUB_OUTPUT; fi
 
       - name: Set up Go
+        if: steps.detect.outputs.core_changed == 'true'
         uses: actions/setup-go@v5
         with:
-          go-version: '^1.23.5'
+          go-version: '^1.25'
           check-latest: true
 
+      - name: Build modcli
+        if: steps.detect.outputs.core_changed == 'true'
+        run: |
+          cd cmd/modcli
+          go build -o modcli
+
+      - name: Determine release version (contract-aware)
+        if: steps.detect.outputs.core_changed == 'true'
+        id: version
+        run: |
+          set -euo pipefail
+          INPUT_RELEASE_TYPE='${{ github.event.inputs.releaseType }}'
+          INPUT_MANUAL_VERSION='${{ github.event.inputs.version }}'
+          echo "Requested releaseType: $INPUT_RELEASE_TYPE"
+          if [ -n "$INPUT_MANUAL_VERSION" ]; then
+            echo "Manual version provided: $INPUT_MANUAL_VERSION"
+          fi
+
+          LATEST_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
+            if [ -z "$LATEST_TAG" ]; then
+              BASE_VERSION="v0.0.0"; PREV_CONTRACT_REF="";
+            else
+              BASE_VERSION="$LATEST_TAG"; PREV_CONTRACT_REF="$LATEST_TAG";
+            fi
+          echo "Latest base version: $BASE_VERSION"
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+
+          mkdir -p artifacts/contracts/prev artifacts/contracts/current artifacts/diffs
+          if [ -n "$PREV_CONTRACT_REF" ]; then
+            TMPDIR=$(mktemp -d)
+            git archive $PREV_CONTRACT_REF | tar -x -C "$TMPDIR"
+            mkdir -p "$TMPDIR/cmd/modcli" && cp cmd/modcli/modcli "$TMPDIR/cmd/modcli/modcli" || true
+            (cd "$TMPDIR" && ./cmd/modcli/modcli contract extract . -o core.json) || echo "Failed to extract previous contract"
+            [ -f "$TMPDIR/core.json" ] && mv "$TMPDIR/core.json" artifacts/contracts/prev/core.json
+          fi
+
+          ./cmd/modcli/modcli contract extract . -o artifacts/contracts/current/core.json || echo "Failed to extract current contract"
+
+          CHANGE_CLASS="none"; REASON="no contract changes"; BREAKING=0; ADDITIONS=0; MODIFICATIONS=0
+          DIFF_MD_PATH="artifacts/diffs/core.md"; DIFF_JSON_PATH="artifacts/diffs/core.json"
+          if [ -f artifacts/contracts/prev/core.json ] && [ -f artifacts/contracts/current/core.json ]; then
+            echo "Generating contract diffs (markdown + json)..."
+            # Generate JSON diff first; capture exit for breaking changes detection
+            if ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o "$DIFF_JSON_PATH" --format=json >/dev/null 2>&1; then
+              # No breaking changes (exit 0). Generate markdown for additions/modifications detail.
+              ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o "$DIFF_MD_PATH" --format=markdown >/dev/null 2>&1 || true
+              if [ -s "$DIFF_JSON_PATH" ]; then
+                # Parse counts via jq if available, else fallback simple grep/length heuristics
+                if command -v jq >/dev/null 2>&1; then
+                  BREAKING=$(jq '.Summary.TotalBreakingChanges // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                  ADDITIONS=$(jq '.Summary.TotalAdditions // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                  MODIFICATIONS=$(jq '.Summary.TotalModifications // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                else
+                  # Fallback: count occurrences in JSON text
+                  BREAKING=$(grep -c '"BreakingChanges"\s*:\s*\[' "$DIFF_JSON_PATH" || true)
+                  ADDITIONS=$(grep -c '"AddedItems"\s*:\s*\[' "$DIFF_JSON_PATH" || true)
+                  MODIFICATIONS=$(grep -c '"ModifiedItems"\s*:\s*\[' "$DIFF_JSON_PATH" || true)
+                fi
+              fi
+            else
+              echo "Breaking changes detected (non-zero exit)"
+              # Even if breaking, attempt to capture markdown for human-readable diff
+              ./cmd/modcli/modcli contract compare artifacts/contracts/prev/core.json artifacts/contracts/current/core.json -o "$DIFF_MD_PATH" --format=markdown >/dev/null 2>&1 || true
+              # JSON diff may still have been produced (exit non-zero because breaking). If present parse counts.
+              if [ -s "$DIFF_JSON_PATH" ]; then
+                if command -v jq >/dev/null 2>&1; then
+                  BREAKING=$(jq '.Summary.TotalBreakingChanges // 1' "$DIFF_JSON_PATH" 2>/dev/null || echo 1)
+                  ADDITIONS=$(jq '.Summary.TotalAdditions // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                  MODIFICATIONS=$(jq '.Summary.TotalModifications // 0' "$DIFF_JSON_PATH" 2>/dev/null || echo 0)
+                else
+                  BREAKING=1
+                fi
+              else
+                BREAKING=1
+              fi
+            fi
+            if [ "$BREAKING" -gt 0 ]; then
+              CHANGE_CLASS="major"; REASON="breaking changes ($BREAKING)";
+            elif [ "$ADDITIONS" -gt 0 ]; then
+              CHANGE_CLASS="minor"; REASON="additive changes ($ADDITIONS additions, $MODIFICATIONS modifications)";
+            else
+              CHANGE_CLASS="none"; REASON="no API surface changes";
+            fi
+          else
+            echo "No previous contract found; treating as initial state"
+            CHANGE_CLASS="none"; REASON="initial baseline (no previous contract)";
+          fi
+          echo "Contract change classification: $CHANGE_CLASS ($REASON)"
+          echo "breaking_changes=$BREAKING" >> $GITHUB_OUTPUT
+            echo "additions=$ADDITIONS" >> $GITHUB_OUTPUT
+            echo "modifications=$MODIFICATIONS" >> $GITHUB_OUTPUT
+
+          CUR=${BASE_VERSION#v}; MAJOR=${CUR%%.*}; REST=${CUR#*.}; MINOR=${REST%%.*}; PATCH=${CUR##*.}
+          if [ -n "$INPUT_MANUAL_VERSION" ]; then V="$INPUT_MANUAL_VERSION"; [[ $V == v* ]] || V="v$V"; NEXT_VERSION="$V"; REASON="manual override"; else
+            case "$CHANGE_CLASS" in
+              major) NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="contract breaking change" ;;
+              minor) if [ "$INPUT_RELEASE_TYPE" = "major" ]; then NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="user requested major"; else NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"; REASON="contract additive change"; fi ;;
+              none)  if [ "$INPUT_RELEASE_TYPE" = "major" ]; then NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="user requested major (no contract change)"; elif [ "$INPUT_RELEASE_TYPE" = "minor" ]; then NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"; REASON="user requested minor (no contract change)"; else NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"; REASON="patch (no contract change)"; fi ;;
+            esac
+          fi
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "change_class=$CHANGE_CLASS" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+          echo "Next version: $NEXT_VERSION ($REASON)"
+
       - name: Run tests
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           go test -v ./...
 
       - name: Generate changelog
-        id: changelog
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           TAG=${{ steps.version.outputs.next_version }}
-          
-          # Find the previous tag for the main library
-          PREV_TAG=$(git tag -l "v*" | grep -v "/" | sort -V | tail -n1 || echo "")
-          
-          # Generate changelog by looking at commits, excluding the modules/ directory
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found, including all history"
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" -- . ':!modules')
+          CHANGE_CLASS=${{ steps.version.outputs.change_class }}
+          BASE_VERSION=${{ steps.version.outputs.base_version }}
+          PREV_TAG="$BASE_VERSION"
+          if [ "$PREV_TAG" = "v0.0.0" ]; then
+            echo "No previous tag (initial or first release) – using full history for changelog"
+            RAW_LOG=$(git log --no-merges --pretty=format:"%H;%s" -- . ':!modules')
           else
-            echo "Generating changelog from $PREV_TAG to HEAD"
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD -- . ':!modules')
+            echo "Using previous tag $PREV_TAG for changelog range"
+            RAW_LOG=$(git log --no-merges --pretty=format:"%H;%s" ${PREV_TAG}..HEAD -- . ':!modules')
           fi
-          
-          # If no specific changes found
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- No specific changes to the main library since last release"
-          fi
-          
-          # Save changelog to a file
-          echo "# Release ${TAG}" > changelog.md
-          echo "" >> changelog.md
-          echo "## Changes" >> changelog.md
-          echo "" >> changelog.md
-          echo "$CHANGELOG" >> changelog.md
-          
-          # Escape special characters for GitHub Actions
-          CHANGELOG_ESCAPED=$(cat changelog.md | jq -Rs .)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
-          echo "Generated changelog for main library"
+          # Deduplicate commit subjects while preserving first occurrence order.
+          CHANGELOG=$(echo "$RAW_LOG" | awk -F';' 'BEGIN{OFS=""} { if(!seen[$2]++){ print "- " $2 " (" substr($1,1,7) ")" } }')
+          [ -n "$CHANGELOG" ] || CHANGELOG="- No specific changes to the main library since last release"
+          {
+            echo "# Release ${TAG}"; echo; echo "## Changes"; echo; echo "$CHANGELOG"; echo; echo "## API Contract Changes"; echo;
+            if [ -f artifacts/diffs/core.md ] && [ -s artifacts/diffs/core.md ]; then
+              case "$CHANGE_CLASS" in
+                major) echo "⚠️ Breaking changes detected (major bump)."; echo ;;
+                minor) echo "✅ Additive, backward-compatible changes (minor bump)."; echo ;;
+                none) echo "ℹ️ No public API surface changes detected."; echo ;;
+              esac
+              echo '```diff'
+              cat artifacts/diffs/core.md
+              echo '```'
+              # Also embed the raw JSON diff for direct inspection
+              if [ -f artifacts/diffs/core.json ] && [ -s artifacts/diffs/core.json ]; then
+                echo
+                echo "<details><summary>Raw Contract JSON Diff</summary>"
+                echo
+                echo '```json'
+                if command -v jq >/dev/null 2>&1; then jq . artifacts/diffs/core.json || cat artifacts/diffs/core.json; else cat artifacts/diffs/core.json; fi
+                echo '```'
+                echo
+                echo '</details>'
+              fi
+            else
+              echo "No API contract differences compared to previous release."
+            fi
+          } > changelog.md
+          # Changelog consumed directly by release step; no workflow outputs needed.
 
       - name: Create release
+        if: steps.detect.outputs.core_changed == 'true'
         id: create_release
         run: |
-          gh release create ${{ steps.version.outputs.next_version }} \
-            --title "Modular ${{ steps.version.outputs.next_version }}" \
+          set -euo pipefail
+          RELEASE_TAG=${{ steps.version.outputs.next_version }}
+          # Build core source archive excluding non-library artifacts:
+          # - modules/ and examples/ (distributed separately)
+          # - go.work / go.work.sum workspace files
+          # - scripts/ helper scripts
+          # - any testdata/ directories
+          # - CI / tooling config files (.golangci.yml, codecov config, workflows)
+          # - coverage profiles, bench outputs (*.out)
+          # - markdown docs except top-level README and LICENSE (keep README.md & LICENSE)
+          ARCHIVE=modular-${RELEASE_TAG}.tar.gz
+          git ls-files \
+            | grep -Ev '^(modules/|examples/)' \
+            | grep -Ev '^go\.work(\.sum)?$' \
+            | grep -Ev '^(scripts/)' \
+            | grep -Ev '(^|/)testdata(/|$)' \
+            | grep -Ev '^\.github/' \
+            | grep -Ev '^\.golangci\.yml$' \
+            | grep -Ev '^codecov\.yml$' \
+            | grep -Ev '\.(out|coverage)$' \
+            | grep -Ev '^(CONTRIBUTING\.md|MIGRATION_GUIDE\.md|DOCUMENTATION\.md|CLOUDEVENTS\.md|OBSERVER_PATTERN\.md|API_CONTRACT_MANAGEMENT\.md|CONCURRENCY_GUIDELINES\.md|RECOMMENDED_MODULES\.md)$' \
+            | tar -czf "$ARCHIVE" -T -
+          gh release create "$RELEASE_TAG" \
+            --title "Modular $RELEASE_TAG" \
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
+            "$ARCHIVE" \
             --latest
+          # Capture HTML URL (gh release view returns web URL in .url field)
+          RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)
+          echo "html_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "Release created: $RELEASE_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce to Go proxy
+        if: steps.detect.outputs.core_changed == 'true'
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
           MODULE_NAME="github.com/GoCodeAlone/modular"
-          
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
-          
           echo "Announced version ${VERSION} to Go proxy"
-      
-      - name: Display Release URL
-        run: echo "Released at ${{ steps.create_release.outputs.html_url }}"
+
+  bump-modules:
+    needs: release
+    if: needs.release.result == 'success' && needs.release.outputs.core_changed == 'true' && inputs.skipModuleBump != true
+    uses: ./.github/workflows/auto-bump-modules.yml
+    permissions:
+      contents: write      # push bump branch & tag refs
+      pull-requests: write # open/update PR
+    with:
+      coreVersion: ${{ needs.release.outputs.released_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

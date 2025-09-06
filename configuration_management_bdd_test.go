@@ -567,6 +567,7 @@ func TestConfigurationManagement(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features/configuration_management.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

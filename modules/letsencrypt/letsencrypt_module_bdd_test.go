@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ type LetsEncryptBDDTestContext struct {
 
 // testEventObserver captures CloudEvents during testing
 type testEventObserver struct {
+	mu     sync.RWMutex
 	events []cloudevents.Event
 }
 
@@ -37,7 +39,9 @@ func newTestEventObserver() *testEventObserver {
 }
 
 func (t *testEventObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
+	t.mu.Lock()
 	t.events = append(t.events, event.Clone())
+	t.mu.Unlock()
 	return nil
 }
 
@@ -46,8 +50,10 @@ func (t *testEventObserver) ObserverID() string {
 }
 
 func (t *testEventObserver) GetEvents() []cloudevents.Event {
+	t.mu.RLock()
 	events := make([]cloudevents.Event, len(t.events))
 	copy(events, t.events)
+	t.mu.RUnlock()
 	return events
 }
 
@@ -658,13 +664,30 @@ func (ctx *LetsEncryptBDDTestContext) aModuleStoppedEventShouldBeEmitted() error
 		return fmt.Errorf("event observer not configured")
 	}
 
-	events := ctx.eventObserver.GetEvents()
-	for _, event := range events {
-		if event.Type() == EventTypeModuleStopped {
-			return nil
-		}
+	// Wait briefly to account for asynchronous dispatch ordering where the
+	// module stopped event may arrive after the service stopped assertion.
+	if ctx.waitForEvent(EventTypeModuleStopped, 150*time.Millisecond) {
+		return nil
 	}
+	events := ctx.eventObserver.GetEvents()
 	return fmt.Errorf("module stopped event not found among %d events", len(events))
+}
+
+// waitForEvent polls the observer until the specified event type is observed or timeout expires
+func (ctx *LetsEncryptBDDTestContext) waitForEvent(eventType string, timeout time.Duration) bool {
+	if ctx.eventObserver == nil {
+		return false
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, e := range ctx.eventObserver.GetEvents() {
+			if e.Type() == eventType {
+				return true
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return false
 }
 
 func (ctx *LetsEncryptBDDTestContext) aCertificateIsRequestedForDomains() error {
@@ -1455,6 +1478,85 @@ func (ctx *LetsEncryptBDDTestContext) theEventShouldContainWarningDetails() erro
 	return fmt.Errorf("warning event not found")
 }
 
+// --- Task 4: Additional scenario step implementations ---
+// certificateIssuanceHitsRateLimits simulates LetsEncrypt API rate limiting conditions
+func (ctx *LetsEncryptBDDTestContext) certificateIssuanceHitsRateLimits() error {
+	if ctx.module == nil {
+		return fmt.Errorf("module not initialized")
+	}
+	ctx.module.emitEvent(context.Background(), EventTypeWarning, map[string]interface{}{
+		"warning":  "rate_limit_reached",
+		"type":     "certificates_per_registered_domain",
+		"retry_in": "3600s",
+	})
+	time.Sleep(10 * time.Millisecond)
+	return nil
+}
+
+// thereShouldBeARenewalEventForEachDomain asserts a renewal event exists for every configured domain
+func (ctx *LetsEncryptBDDTestContext) thereShouldBeARenewalEventForEachDomain() error {
+	if ctx.eventObserver == nil || ctx.config == nil {
+		return fmt.Errorf("test context not properly initialized")
+	}
+	expected := make(map[string]bool, len(ctx.config.Domains))
+	for _, d := range ctx.config.Domains {
+		expected[d] = false
+	}
+	for _, e := range ctx.eventObserver.GetEvents() {
+		if e.Type() == EventTypeCertificateRenewed {
+			data := make(map[string]interface{})
+			if err := e.DataAs(&data); err == nil {
+				if dom, ok := data["domain"].(string); ok {
+					if _, present := expected[dom]; present {
+						expected[dom] = true
+					}
+				}
+			}
+		}
+	}
+	missing := []string{}
+	for d, seen := range expected {
+		if !seen {
+			missing = append(missing, d)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing renewal events for domains: %v", missing)
+	}
+	return nil
+}
+
+// reconfigureToDNS01ChallengeWithCloudflare switches current config from HTTP to DNS-01
+func (ctx *LetsEncryptBDDTestContext) reconfigureToDNS01ChallengeWithCloudflare() error {
+	if ctx.config == nil {
+		return fmt.Errorf("no existing config to modify")
+	}
+	ctx.config.UseDNS = true
+	ctx.config.HTTPProvider = nil
+	ctx.config.DNSProvider = &DNSProviderConfig{Provider: "cloudflare", Cloudflare: &CloudflareConfig{Email: "test@example.com", APIToken: "updated-token"}}
+	mod, err := New(ctx.config)
+	if err != nil {
+		ctx.lastError = err
+		return err
+	}
+	ctx.module = mod
+	return nil
+}
+
+// aCertificateRequestFails simulates a failed certificate order
+func (ctx *LetsEncryptBDDTestContext) aCertificateRequestFails() error {
+	if ctx.module == nil {
+		return fmt.Errorf("module not initialized")
+	}
+	ctx.module.emitEvent(context.Background(), EventTypeError, map[string]interface{}{
+		"error":  "order_failed",
+		"domain": ctx.config.Domains[0],
+		"reason": "acme_server_temporary_error",
+	})
+	time.Sleep(10 * time.Millisecond)
+	return nil
+}
+
 // Test helper structures
 type testLogger struct{}
 
@@ -1464,189 +1566,147 @@ func (l *testLogger) Warn(msg string, keysAndValues ...interface{})    {}
 func (l *testLogger) Error(msg string, keysAndValues ...interface{})   {}
 func (l *testLogger) With(keysAndValues ...interface{}) modular.Logger { return l }
 
+// initLetsEncryptBDDSteps centralizes step registration for reuse / clarity
+func initLetsEncryptBDDSteps(s *godog.ScenarioContext) {
+	ctx := &LetsEncryptBDDTestContext{}
+
+	// Background
+	s.Given(`^I have a modular application with LetsEncrypt module configured$`, ctx.iHaveAModularApplicationWithLetsEncryptModuleConfigured)
+	// Initialization
+	s.When(`^the LetsEncrypt module is initialized$`, ctx.theLetsEncryptModuleIsInitialized)
+	s.When(`^the module is initialized$`, ctx.theModuleIsInitialized)
+	s.Then(`^the certificate service should be available$`, ctx.theCertificateServiceShouldBeAvailable)
+	s.Then(`^the module should be ready to manage certificates$`, ctx.theModuleShouldBeReadyToManageCertificates)
+	// HTTP-01 challenge
+	s.Given(`^I have LetsEncrypt configured for HTTP-01 challenge$`, ctx.iHaveLetsEncryptConfiguredForHTTP01Challenge)
+	s.When(`^the module is initialized with HTTP challenge type$`, ctx.theModuleIsInitializedWithHTTPChallengeType)
+	s.Then(`^the HTTP challenge handler should be configured$`, ctx.theHTTPChallengeHandlerShouldBeConfigured)
+	s.Then(`^the module should be ready for domain validation$`, ctx.theModuleShouldBeReadyForDomainValidation)
+	// DNS-01 challenge
+	s.Given(`^I have LetsEncrypt configured for DNS-01 challenge with Cloudflare$`, ctx.iHaveLetsEncryptConfiguredForDNS01ChallengeWithCloudflare)
+	s.When(`^the module is initialized with DNS challenge type$`, ctx.theModuleIsInitializedWithDNSChallengeType)
+	s.Then(`^the DNS challenge handler should be configured$`, ctx.theDNSChallengeHandlerShouldBeConfigured)
+	s.Then(`^the module should be ready for DNS validation$`, ctx.theModuleShouldBeReadyForDNSValidation)
+	// Certificate storage
+	s.Given(`^I have LetsEncrypt configured with custom certificate paths$`, ctx.iHaveLetsEncryptConfiguredWithCustomCertificatePaths)
+	s.When(`^the module initializes certificate storage$`, ctx.theModuleInitializesCertificateStorage)
+	s.Then(`^the certificate and key directories should be created$`, ctx.theCertificateAndKeyDirectoriesShouldBeCreated)
+	s.Then(`^the storage paths should be properly configured$`, ctx.theStoragePathsShouldBeProperlyConfigured)
+	// Staging environment
+	s.Given(`^I have LetsEncrypt configured for staging environment$`, ctx.iHaveLetsEncryptConfiguredForStagingEnvironment)
+	s.Then(`^the module should use the staging CA directory$`, ctx.theModuleShouldUseTheStagingCADirectory)
+	s.Then(`^certificate requests should use staging endpoints$`, ctx.certificateRequestsShouldUseStagingEndpoints)
+	// Production environment
+	s.Given(`^I have LetsEncrypt configured for production environment$`, ctx.iHaveLetsEncryptConfiguredForProductionEnvironment)
+	s.Then(`^the module should use the production CA directory$`, ctx.theModuleShouldUseTheProductionCADirectory)
+	s.Then(`^certificate requests should use production endpoints$`, ctx.certificateRequestsShouldUseProductionEndpoints)
+	// Multiple domains
+	s.Given(`^I have LetsEncrypt configured for multiple domains$`, ctx.iHaveLetsEncryptConfiguredForMultipleDomains)
+	s.When(`^a certificate is requested for multiple domains$`, ctx.aCertificateIsRequestedForMultipleDomains)
+	s.Then(`^the certificate should include all specified domains$`, ctx.theCertificateShouldIncludeAllSpecifiedDomains)
+	s.Then(`^the subject alternative names should be properly set$`, ctx.theSubjectAlternativeNamesShouldBeProperlySet)
+	// Service dependency injection
+	s.Given(`^I have LetsEncrypt module registered$`, ctx.iHaveLetsEncryptModuleRegistered)
+	s.When(`^other modules request the certificate service$`, ctx.otherModulesRequestTheCertificateService)
+	s.Then(`^they should receive the LetsEncrypt certificate service$`, ctx.theyShouldReceiveTheLetsEncryptCertificateService)
+	s.Then(`^the service should provide certificate retrieval functionality$`, ctx.theServiceShouldProvideCertificateRetrievalFunctionality)
+	// Error handling
+	s.Given(`^I have LetsEncrypt configured with invalid settings$`, ctx.iHaveLetsEncryptConfiguredWithInvalidSettings)
+	s.Then(`^appropriate configuration errors should be reported$`, ctx.appropriateConfigurationErrorsShouldBeReported)
+	s.Then(`^the module should fail gracefully$`, ctx.theModuleShouldFailGracefully)
+	// Shutdown
+	s.Given(`^I have an active LetsEncrypt module$`, ctx.iHaveAnActiveLetsEncryptModule)
+	s.When(`^the module is stopped$`, ctx.theModuleIsStopped)
+	s.Then(`^certificate renewal processes should be stopped$`, ctx.certificateRenewalProcessesShouldBeStopped)
+	s.Then(`^resources should be cleaned up properly$`, ctx.resourcesShouldBeCleanedUpProperly)
+	// Event scenarios
+	s.Given(`^I have a LetsEncrypt module with event observation enabled$`, ctx.iHaveALetsEncryptModuleWithEventObservationEnabled)
+	// Lifecycle events
+	s.When(`^the LetsEncrypt module starts$`, ctx.theLetsEncryptModuleStarts)
+	s.Then(`^a service started event should be emitted$`, ctx.aServiceStartedEventShouldBeEmitted)
+	s.Then(`^the event should contain service configuration details$`, ctx.theEventShouldContainServiceConfigurationDetails)
+	s.When(`^the LetsEncrypt module stops$`, ctx.theLetsEncryptModuleStops)
+	s.Then(`^a service stopped event should be emitted$`, ctx.aServiceStoppedEventShouldBeEmitted)
+	s.Then(`^a module stopped event should be emitted$`, ctx.aModuleStoppedEventShouldBeEmitted)
+	// Certificate lifecycle events
+	s.When(`^a certificate is requested for domains$`, ctx.aCertificateIsRequestedForDomains)
+	s.Then(`^a certificate requested event should be emitted$`, ctx.aCertificateRequestedEventShouldBeEmitted)
+	s.Then(`^the event should contain domain information$`, ctx.theEventShouldContainDomainInformation)
+	s.When(`^the certificate is successfully issued$`, ctx.theCertificateIsSuccessfullyIssued)
+	s.Then(`^a certificate issued event should be emitted$`, ctx.aCertificateIssuedEventShouldBeEmitted)
+	s.Then(`^the event should contain domain details$`, ctx.theEventShouldContainDomainDetails)
+	// Certificate renewal events
+	s.Given(`^I have existing certificates that need renewal$`, ctx.iHaveExistingCertificatesThatNeedRenewal)
+	s.When(`^certificates are renewed$`, ctx.certificatesAreRenewed)
+	s.Then(`^certificate renewed events should be emitted$`, ctx.certificateRenewedEventsShouldBeEmitted)
+	s.Then(`^the events should contain renewal details$`, ctx.theEventsShouldContainRenewalDetails)
+	// ACME protocol events
+	s.When(`^ACME challenges are processed$`, ctx.aCMEChallengesAreProcessed)
+	s.Then(`^ACME challenge events should be emitted$`, ctx.aCMEChallengeEventsShouldBeEmitted)
+	s.When(`^ACME authorization is completed$`, ctx.aCMEAuthorizationIsCompleted)
+	s.Then(`^ACME authorization events should be emitted$`, ctx.aCMEAuthorizationEventsShouldBeEmitted)
+	s.When(`^ACME orders are processed$`, ctx.aCMEOrdersAreProcessed)
+	s.Then(`^ACME order events should be emitted$`, ctx.aCMEOrderEventsShouldBeEmitted)
+	// Storage events
+	s.When(`^certificates are stored to disk$`, ctx.certificatesAreStoredToDisk)
+	s.Then(`^storage write events should be emitted$`, ctx.storageWriteEventsShouldBeEmitted)
+	s.When(`^certificates are read from storage$`, ctx.certificatesAreReadFromStorage)
+	s.Then(`^storage read events should be emitted$`, ctx.storageReadEventsShouldBeEmitted)
+	s.When(`^storage errors occur$`, ctx.storageErrorsOccur)
+	s.Then(`^storage error events should be emitted$`, ctx.storageErrorEventsShouldBeEmitted)
+	// Configuration events
+	s.When(`^the module configuration is loaded$`, ctx.theModuleConfigurationIsLoaded)
+	s.Then(`^a config loaded event should be emitted$`, ctx.aConfigLoadedEventShouldBeEmitted)
+	s.Then(`^the event should contain configuration details$`, ctx.theEventShouldContainConfigurationDetails)
+	s.When(`^the configuration is validated$`, ctx.theConfigurationIsValidated)
+	s.Then(`^a config validated event should be emitted$`, ctx.aConfigValidatedEventShouldBeEmitted)
+	// Certificate expiry events (use Step to allow Given/When/Then/And keyword flexibility in aggregated scenario)
+	s.Step(`^I have certificates approaching expiry$`, ctx.iHaveCertificatesApproachingExpiry)
+	s.When(`^certificate expiry monitoring runs$`, ctx.certificateExpiryMonitoringRuns)
+	s.Then(`^certificate expiring events should be emitted$`, ctx.certificateExpiringEventsShouldBeEmitted)
+	s.Then(`^the events should contain expiry details$`, ctx.theEventsShouldContainExpiryDetails)
+	s.When(`^certificates have expired$`, ctx.certificatesHaveExpired)
+	s.Then(`^certificate expired events should be emitted$`, ctx.certificateExpiredEventsShouldBeEmitted)
+	// Certificate revocation events
+	s.When(`^a certificate is revoked$`, ctx.aCertificateIsRevoked)
+	s.Then(`^a certificate revoked event should be emitted$`, ctx.aCertificateRevokedEventShouldBeEmitted)
+	s.Then(`^the event should contain revocation reason$`, ctx.theEventShouldContainRevocationReason)
+	// Module startup events
+	s.When(`^the module starts up$`, ctx.theModuleStartsUp)
+	s.Then(`^a module started event should be emitted$`, ctx.aModuleStartedEventShouldBeEmitted)
+	s.Then(`^the event should contain module information$`, ctx.theEventShouldContainModuleInformation)
+	// Error and warning events
+	s.When(`^an error condition occurs$`, ctx.anErrorConditionOccurs)
+	s.Then(`^an error event should be emitted$`, ctx.anErrorEventShouldBeEmitted)
+	s.Then(`^the event should contain error details$`, ctx.theEventShouldContainErrorDetails)
+	s.When(`^a warning condition occurs$`, ctx.aWarningConditionOccurs)
+	s.Then(`^a warning event should be emitted$`, ctx.aWarningEventShouldBeEmitted)
+	s.Then(`^the event should contain warning details$`, ctx.theEventShouldContainWarningDetails)
+
+	// Additional scenarios (Task 4)
+	// Rate limit warning
+	s.When(`^certificate issuance hits rate limits$`, ctx.certificateIssuanceHitsRateLimits)
+	// Per-domain renewal count assertion
+	s.Then(`^there should be a renewal event for each domain$`, ctx.thereShouldBeARenewalEventForEachDomain)
+	// Mixed challenge reconfiguration
+	s.When(`^I reconfigure to DNS-01 challenge with Cloudflare$`, ctx.reconfigureToDNS01ChallengeWithCloudflare)
+	// Certificate failure path
+	s.When(`^a certificate request fails$`, ctx.aCertificateRequestFails)
+	// Event validation
+	s.Then(`^all registered LetsEncrypt events should have been emitted during testing$`, ctx.allRegisteredEventsShouldBeEmittedDuringTesting)
+}
+
 // TestLetsEncryptModuleBDD runs the BDD tests for the LetsEncrypt module
 func TestLetsEncryptModuleBDD(t *testing.T) {
 	suite := godog.TestSuite{
-		ScenarioInitializer: func(s *godog.ScenarioContext) {
-			ctx := &LetsEncryptBDDTestContext{}
-
-			// Event observation scenarios
-			s.Given(`^I have a LetsEncrypt module with event observation enabled$`, ctx.iHaveALetsEncryptModuleWithEventObservationEnabled)
-			s.When(`^the LetsEncrypt module starts$`, ctx.theLetsEncryptModuleStarts)
-			s.Then(`^a service started event should be emitted$`, ctx.aServiceStartedEventShouldBeEmitted)
-			s.Then(`^the event should contain service configuration details$`, ctx.theEventShouldContainServiceConfigurationDetails)
-			s.When(`^the LetsEncrypt module stops$`, ctx.theLetsEncryptModuleStops)
-			s.Then(`^a service stopped event should be emitted$`, ctx.aServiceStoppedEventShouldBeEmitted)
-			s.Then(`^a module stopped event should be emitted$`, ctx.aModuleStoppedEventShouldBeEmitted)
-
-			s.When(`^a certificate is requested for domains$`, ctx.aCertificateIsRequestedForDomains)
-			s.Then(`^a certificate requested event should be emitted$`, ctx.aCertificateRequestedEventShouldBeEmitted)
-			s.Then(`^the event should contain domain information$`, ctx.theEventShouldContainDomainInformation)
-			s.When(`^the certificate is successfully issued$`, ctx.theCertificateIsSuccessfullyIssued)
-			s.Then(`^a certificate issued event should be emitted$`, ctx.aCertificateIssuedEventShouldBeEmitted)
-			s.Then(`^the event should contain domain details$`, ctx.theEventShouldContainDomainDetails)
-
-			s.Given(`^I have existing certificates that need renewal$`, ctx.iHaveExistingCertificatesThatNeedRenewal)
-			s.Then(`^I have existing certificates that need renewal$`, ctx.iHaveExistingCertificatesThatNeedRenewal)
-			s.When(`^certificates are renewed$`, ctx.certificatesAreRenewed)
-			s.Then(`^certificate renewed events should be emitted$`, ctx.certificateRenewedEventsShouldBeEmitted)
-			s.Then(`^the events should contain renewal details$`, ctx.theEventsShouldContainRenewalDetails)
-
-			s.When(`^ACME challenges are processed$`, ctx.aCMEChallengesAreProcessed)
-			s.Then(`^ACME challenge events should be emitted$`, ctx.aCMEChallengeEventsShouldBeEmitted)
-			s.When(`^ACME authorization is completed$`, ctx.aCMEAuthorizationIsCompleted)
-			s.Then(`^ACME authorization events should be emitted$`, ctx.aCMEAuthorizationEventsShouldBeEmitted)
-			s.When(`^ACME orders are processed$`, ctx.aCMEOrdersAreProcessed)
-			s.Then(`^ACME order events should be emitted$`, ctx.aCMEOrderEventsShouldBeEmitted)
-
-			s.When(`^certificates are stored to disk$`, ctx.certificatesAreStoredToDisk)
-			s.Then(`^storage write events should be emitted$`, ctx.storageWriteEventsShouldBeEmitted)
-			s.When(`^certificates are read from storage$`, ctx.certificatesAreReadFromStorage)
-			s.Then(`^storage read events should be emitted$`, ctx.storageReadEventsShouldBeEmitted)
-			s.When(`^storage errors occur$`, ctx.storageErrorsOccur)
-			s.Then(`^storage error events should be emitted$`, ctx.storageErrorEventsShouldBeEmitted)
-
-			// Background
-			s.Given(`^I have a modular application with LetsEncrypt module configured$`, ctx.iHaveAModularApplicationWithLetsEncryptModuleConfigured)
-
-			// Initialization
-			s.When(`^the LetsEncrypt module is initialized$`, ctx.theLetsEncryptModuleIsInitialized)
-			s.When(`^the module is initialized$`, ctx.theModuleIsInitialized)
-			s.Then(`^the certificate service should be available$`, ctx.theCertificateServiceShouldBeAvailable)
-			s.Then(`^the module should be ready to manage certificates$`, ctx.theModuleShouldBeReadyToManageCertificates)
-
-			// HTTP-01 challenge
-			s.Given(`^I have LetsEncrypt configured for HTTP-01 challenge$`, ctx.iHaveLetsEncryptConfiguredForHTTP01Challenge)
-			s.When(`^the module is initialized with HTTP challenge type$`, ctx.theModuleIsInitializedWithHTTPChallengeType)
-			s.Then(`^the HTTP challenge handler should be configured$`, ctx.theHTTPChallengeHandlerShouldBeConfigured)
-			s.Then(`^the module should be ready for domain validation$`, ctx.theModuleShouldBeReadyForDomainValidation)
-
-			// DNS-01 challenge
-			s.Given(`^I have LetsEncrypt configured for DNS-01 challenge with Cloudflare$`, ctx.iHaveLetsEncryptConfiguredForDNS01ChallengeWithCloudflare)
-			s.When(`^the module is initialized with DNS challenge type$`, ctx.theModuleIsInitializedWithDNSChallengeType)
-			s.Then(`^the DNS challenge handler should be configured$`, ctx.theDNSChallengeHandlerShouldBeConfigured)
-			s.Then(`^the module should be ready for DNS validation$`, ctx.theModuleShouldBeReadyForDNSValidation)
-
-			// Certificate storage
-			s.Given(`^I have LetsEncrypt configured with custom certificate paths$`, ctx.iHaveLetsEncryptConfiguredWithCustomCertificatePaths)
-			s.When(`^the module initializes certificate storage$`, ctx.theModuleInitializesCertificateStorage)
-			s.Then(`^the certificate and key directories should be created$`, ctx.theCertificateAndKeyDirectoriesShouldBeCreated)
-			s.Then(`^the storage paths should be properly configured$`, ctx.theStoragePathsShouldBeProperlyConfigured)
-
-			// Staging environment
-			s.Given(`^I have LetsEncrypt configured for staging environment$`, ctx.iHaveLetsEncryptConfiguredForStagingEnvironment)
-			s.Then(`^the module should use the staging CA directory$`, ctx.theModuleShouldUseTheStagingCADirectory)
-			s.Then(`^certificate requests should use staging endpoints$`, ctx.certificateRequestsShouldUseStagingEndpoints)
-
-			// Production environment
-			s.Given(`^I have LetsEncrypt configured for production environment$`, ctx.iHaveLetsEncryptConfiguredForProductionEnvironment)
-			s.Then(`^the module should use the production CA directory$`, ctx.theModuleShouldUseTheProductionCADirectory)
-			s.Then(`^certificate requests should use production endpoints$`, ctx.certificateRequestsShouldUseProductionEndpoints)
-
-			// Multiple domains
-			s.Given(`^I have LetsEncrypt configured for multiple domains$`, ctx.iHaveLetsEncryptConfiguredForMultipleDomains)
-			s.When(`^a certificate is requested for multiple domains$`, ctx.aCertificateIsRequestedForMultipleDomains)
-			s.Then(`^the certificate should include all specified domains$`, ctx.theCertificateShouldIncludeAllSpecifiedDomains)
-			s.Then(`^the subject alternative names should be properly set$`, ctx.theSubjectAlternativeNamesShouldBeProperlySet)
-
-			// Service dependency injection
-			s.Given(`^I have LetsEncrypt module registered$`, ctx.iHaveLetsEncryptModuleRegistered)
-			s.When(`^other modules request the certificate service$`, ctx.otherModulesRequestTheCertificateService)
-			s.Then(`^they should receive the LetsEncrypt certificate service$`, ctx.theyShouldReceiveTheLetsEncryptCertificateService)
-			s.Then(`^the service should provide certificate retrieval functionality$`, ctx.theServiceShouldProvideCertificateRetrievalFunctionality)
-
-			// Error handling
-			s.Given(`^I have LetsEncrypt configured with invalid settings$`, ctx.iHaveLetsEncryptConfiguredWithInvalidSettings)
-			s.Then(`^appropriate configuration errors should be reported$`, ctx.appropriateConfigurationErrorsShouldBeReported)
-			s.Then(`^the module should fail gracefully$`, ctx.theModuleShouldFailGracefully)
-
-			// Shutdown
-			s.Given(`^I have an active LetsEncrypt module$`, ctx.iHaveAnActiveLetsEncryptModule)
-			s.When(`^the module is stopped$`, ctx.theModuleIsStopped)
-			s.Then(`^certificate renewal processes should be stopped$`, ctx.certificateRenewalProcessesShouldBeStopped)
-			s.Then(`^resources should be cleaned up properly$`, ctx.resourcesShouldBeCleanedUpProperly)
-
-			// Event-related steps
-			s.Given(`^I have a LetsEncrypt module with event observation enabled$`, ctx.iHaveALetsEncryptModuleWithEventObservationEnabled)
-
-			// Lifecycle events
-			s.When(`^the LetsEncrypt module starts$`, ctx.theLetsEncryptModuleStarts)
-			s.Then(`^a service started event should be emitted$`, ctx.aServiceStartedEventShouldBeEmitted)
-			s.Then(`^the event should contain service configuration details$`, ctx.theEventShouldContainServiceConfigurationDetails)
-			s.When(`^the LetsEncrypt module stops$`, ctx.theLetsEncryptModuleStops)
-			s.Then(`^a service stopped event should be emitted$`, ctx.aServiceStoppedEventShouldBeEmitted)
-			s.Then(`^a module stopped event should be emitted$`, ctx.aModuleStoppedEventShouldBeEmitted)
-
-			// Certificate lifecycle events
-			s.When(`^a certificate is requested for domains$`, ctx.aCertificateIsRequestedForDomains)
-			s.Then(`^a certificate requested event should be emitted$`, ctx.aCertificateRequestedEventShouldBeEmitted)
-			s.Then(`^the event should contain domain information$`, ctx.theEventShouldContainDomainInformation)
-			s.When(`^the certificate is successfully issued$`, ctx.theCertificateIsSuccessfullyIssued)
-			s.Then(`^a certificate issued event should be emitted$`, ctx.aCertificateIssuedEventShouldBeEmitted)
-			s.Then(`^the event should contain domain details$`, ctx.theEventShouldContainDomainDetails)
-
-			// Certificate renewal events
-			s.Given(`^I have existing certificates that need renewal$`, ctx.iHaveExistingCertificatesThatNeedRenewal)
-			s.When(`^certificates are renewed$`, ctx.certificatesAreRenewed)
-			s.Then(`^certificate renewed events should be emitted$`, ctx.certificateRenewedEventsShouldBeEmitted)
-			s.Then(`^the events should contain renewal details$`, ctx.theEventsShouldContainRenewalDetails)
-
-			// ACME protocol events
-			s.When(`^ACME challenges are processed$`, ctx.aCMEChallengesAreProcessed)
-			s.Then(`^ACME challenge events should be emitted$`, ctx.aCMEChallengeEventsShouldBeEmitted)
-			s.When(`^ACME authorization is completed$`, ctx.aCMEAuthorizationIsCompleted)
-			s.Then(`^ACME authorization events should be emitted$`, ctx.aCMEAuthorizationEventsShouldBeEmitted)
-			s.When(`^ACME orders are processed$`, ctx.aCMEOrdersAreProcessed)
-			s.Then(`^ACME order events should be emitted$`, ctx.aCMEOrderEventsShouldBeEmitted)
-
-			// Storage events
-			s.When(`^certificates are stored to disk$`, ctx.certificatesAreStoredToDisk)
-			s.Then(`^storage write events should be emitted$`, ctx.storageWriteEventsShouldBeEmitted)
-			s.When(`^certificates are read from storage$`, ctx.certificatesAreReadFromStorage)
-			s.Then(`^storage read events should be emitted$`, ctx.storageReadEventsShouldBeEmitted)
-			s.When(`^storage errors occur$`, ctx.storageErrorsOccur)
-			s.Then(`^storage error events should be emitted$`, ctx.storageErrorEventsShouldBeEmitted)
-
-			// Configuration events
-			s.When(`^the module configuration is loaded$`, ctx.theModuleConfigurationIsLoaded)
-			s.Then(`^a config loaded event should be emitted$`, ctx.aConfigLoadedEventShouldBeEmitted)
-			s.Then(`^the event should contain configuration details$`, ctx.theEventShouldContainConfigurationDetails)
-			s.When(`^the configuration is validated$`, ctx.theConfigurationIsValidated)
-			s.Then(`^a config validated event should be emitted$`, ctx.aConfigValidatedEventShouldBeEmitted)
-
-			// Certificate expiry events
-			s.Given(`^I have certificates approaching expiry$`, ctx.iHaveCertificatesApproachingExpiry)
-			s.When(`^certificate expiry monitoring runs$`, ctx.certificateExpiryMonitoringRuns)
-			s.Then(`^certificate expiring events should be emitted$`, ctx.certificateExpiringEventsShouldBeEmitted)
-			s.Then(`^the events should contain expiry details$`, ctx.theEventsShouldContainExpiryDetails)
-			s.When(`^certificates have expired$`, ctx.certificatesHaveExpired)
-			s.Then(`^certificate expired events should be emitted$`, ctx.certificateExpiredEventsShouldBeEmitted)
-
-			// Certificate revocation events
-			s.When(`^a certificate is revoked$`, ctx.aCertificateIsRevoked)
-			s.Then(`^a certificate revoked event should be emitted$`, ctx.aCertificateRevokedEventShouldBeEmitted)
-			s.Then(`^the event should contain revocation reason$`, ctx.theEventShouldContainRevocationReason)
-
-			// Module startup events
-			s.When(`^the module starts up$`, ctx.theModuleStartsUp)
-			s.Then(`^a module started event should be emitted$`, ctx.aModuleStartedEventShouldBeEmitted)
-			s.Then(`^the event should contain module information$`, ctx.theEventShouldContainModuleInformation)
-
-			// Error and warning events
-			s.When(`^an error condition occurs$`, ctx.anErrorConditionOccurs)
-			s.Then(`^an error event should be emitted$`, ctx.anErrorEventShouldBeEmitted)
-			s.Then(`^the event should contain error details$`, ctx.theEventShouldContainErrorDetails)
-			s.When(`^a warning condition occurs$`, ctx.aWarningConditionOccurs)
-			s.Then(`^a warning event should be emitted$`, ctx.aWarningEventShouldBeEmitted)
-			s.Then(`^the event should contain warning details$`, ctx.theEventShouldContainWarningDetails)
-		},
+		ScenarioInitializer: initLetsEncryptBDDSteps,
 		Options: &godog.Options{
 			Format:   "pretty",
 			Paths:    []string{"features/letsencrypt_module.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
-
 	if suite.Run() != 0 {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
@@ -1656,17 +1716,17 @@ func TestLetsEncryptModuleBDD(t *testing.T) {
 func (ctx *LetsEncryptBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTesting() error {
 	// Get all registered event types from the module
 	registeredEvents := ctx.module.GetRegisteredEventTypes()
-	
+
 	// Create event validation observer
 	validator := modular.NewEventValidationObserver("event-validator", registeredEvents)
 	_ = validator // Use validator to avoid unused variable error
-	
+
 	// Check which events were emitted during testing
 	emittedEvents := make(map[string]bool)
 	for _, event := range ctx.eventObserver.GetEvents() {
 		emittedEvents[event.Type()] = true
 	}
-	
+
 	// Check for missing events
 	var missingEvents []string
 	for _, eventType := range registeredEvents {
@@ -1674,10 +1734,10 @@ func (ctx *LetsEncryptBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTe
 			missingEvents = append(missingEvents, eventType)
 		}
 	}
-	
+
 	if len(missingEvents) > 0 {
 		return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
 	}
-	
+
 	return nil
 }

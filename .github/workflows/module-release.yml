@@ -1,6 +1,11 @@
 name: Module Release
 run-name: Module Release for ${{ inputs.module || github.event.inputs.module }} - ${{ inputs.releaseType || github.event.inputs.releaseType }}
 
+# Minimal global permissions; individual jobs do not request escalation beyond content/package writes.
+permissions:
+  contents: write   # create tags & push version bumps
+  packages: write   # future-proof for publishing module artifacts
+
 on:
   workflow_dispatch:
     inputs:
@@ -60,6 +65,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect module changes since last tag
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODULE="${{ inputs.module || github.event.inputs.module }}"
+          if [ -z "$MODULE" ]; then
+            echo "No module input provided (prepare phase); skipping detection output."; echo 'changed=false' >> $GITHUB_OUTPUT; exit 0; fi
+          LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo '')
+          echo "Latest tag for ${MODULE}: ${LATEST_TAG:-<none>}"
+          CHANGED=false
+          if [ -z "$LATEST_TAG" ]; then
+            # First release: treat as changed if any go or go.mod/go.sum files exist
+            FILE=$(find "modules/${MODULE}" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -n1 || true)
+            [ -n "$FILE" ] && CHANGED=true || CHANGED=false
+            echo "No previous tag; initial existence implies changed? $CHANGED (sample: ${FILE:-none})"
+          else
+            DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${MODULE}/" || true)
+            echo "Raw changed files: ${DIFF:-<none>}"
+            RELEVANT=""
+            if [ -n "$DIFF" ]; then
+              while IFS= read -r f; do
+                [[ $f == *_test.go ]] && continue
+                [[ $f == *.md ]] && continue
+                if [[ $f == *.go ]] || [[ $f == */go.mod ]] || [[ $f == */go.sum ]]; then
+                  RELEVANT+="$f "
+                fi
+              done <<< "$DIFF"
+            fi
+            [ -n "$RELEVANT" ] && CHANGED=true || CHANGED=false
+            echo "Relevant: ${RELEVANT:-<none>} => changed? $CHANGED"
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
       - name: Get available modules
         id: get-modules
         run: |
@@ -74,68 +113,110 @@ jobs:
   release-module:
     needs: prepare-release
     runs-on: ubuntu-latest
+    if: needs.prepare-release.outputs.modules && needs.prepare-release.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          
-      - name: Determine release version
+      - name: Skip if no changes
+        id: skipcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Replicate detection using prepare-release step output (can't directly access its step outputs except via job outputs; we didn't expose changed there to avoid altering callers). Re-run quick detection.
+          MODULE="${{ inputs.module || github.event.inputs.module }}"
+          LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo '')
+          CHANGED=false
+          if [ -z "$LATEST_TAG" ]; then
+            FILE=$(find "modules/${MODULE}" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -n1 || true)
+            [ -n "$FILE" ] && CHANGED=true || CHANGED=false
+          else
+            DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD -- "modules/${MODULE}/" || true)
+            RELEVANT=$(echo "$DIFF" | grep -Ev '(_test.go$|\.md$)' | grep -E '(\.go$|/go.mod$|/go.sum$)' || true)
+            [ -n "$RELEVANT" ] && CHANGED=true || CHANGED=false
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          if [ "$CHANGED" != true ]; then
+            echo "No relevant changes for module ${MODULE}; creating no-op output markers and exiting."; exit 0; fi
+      - name: Set up Go
+        if: steps.skipcheck.outputs.changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25'
+          check-latest: true
+
+      - name: Build modcli
+        if: steps.skipcheck.outputs.changed == 'true'
+        run: |
+          cd cmd/modcli
+          go build -o modcli
+
+      - name: Determine release version (contract-aware)
+        if: steps.skipcheck.outputs.changed == 'true'
         id: version
         run: |
+          set -euo pipefail
           MODULE="${{ inputs.module || github.event.inputs.module }}"
+          INPUT_RELEASE_TYPE='${{ inputs.releaseType || github.event.inputs.releaseType }}'
+          INPUT_MANUAL_VERSION='${{ inputs.version || github.event.inputs.version }}'
           echo "Selected module: $MODULE"
-          
-          # Find the latest tag for this module
+          echo "Requested releaseType: $INPUT_RELEASE_TYPE"
+          [ -n "$INPUT_MANUAL_VERSION" ] && echo "Manual version override: $INPUT_MANUAL_VERSION"
+
           LATEST_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
-          echo "Latest tag: $LATEST_TAG"
-          
           if [ -z "$LATEST_TAG" ]; then
-            # No existing tag, start with v0.0.0
-            CURRENT_VERSION="v0.0.0"
-            echo "No previous version found, starting with v0.0.0"
+            BASE_VERSION="v0.0.0"; PREV_CONTRACT_REF=""; echo "No previous version found";
           else
-            CURRENT_VERSION=$(echo $LATEST_TAG | sed "s|modules/${MODULE}/||")
-            echo "Current version: $CURRENT_VERSION"
+            BASE_VERSION=${LATEST_TAG#modules/${MODULE}/}; PREV_CONTRACT_REF="$LATEST_TAG"; echo "Latest tag: $LATEST_TAG (base $BASE_VERSION)";
           fi
-          
-          # Remove the 'v' prefix for semver calculations
-          CURRENT_VERSION_NUM=$(echo $CURRENT_VERSION | sed 's/^v//')
-          
-          # Extract the parts
-          MAJOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f1)
-          MINOR=$(echo $CURRENT_VERSION_NUM | cut -d. -f2)
-          PATCH=$(echo $CURRENT_VERSION_NUM | cut -d. -f3)
-          
-          # Calculate next version based on release type
-          if [ "${{ inputs.releaseType || github.event.inputs.releaseType }}" == "major" ]; then
-            NEXT_VERSION="v$((MAJOR + 1)).0.0"
-          elif [ "${{ inputs.releaseType || github.event.inputs.releaseType }}" == "minor" ]; then
-            NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"
-          else
-            NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-          fi
-          
-          # Use manual version if provided
-          if [ -n "${{ inputs.version || github.event.inputs.version }}" ]; then
-            MANUAL_VERSION="${{ inputs.version || github.event.inputs.version }}"
-            # Ensure the 'v' prefix
-            if [[ $MANUAL_VERSION != v* ]]; then
-              MANUAL_VERSION="v${MANUAL_VERSION}"
+
+          mkdir -p artifacts/contracts/prev artifacts/contracts/current artifacts/diffs
+          if [ -n "$PREV_CONTRACT_REF" ]; then
+            TMPDIR=$(mktemp -d)
+            git archive $PREV_CONTRACT_REF | tar -x -C "$TMPDIR"
+            mkdir -p "$TMPDIR/cmd/modcli" && cp cmd/modcli/modcli "$TMPDIR/cmd/modcli/modcli" || true
+            (cd "$TMPDIR/modules/${MODULE}" && ../../cmd/modcli/modcli contract extract . -o contract.json) || echo "Prev contract extraction failed"
+            if [ -f "$TMPDIR/modules/${MODULE}/contract.json" ]; then
+              mv "$TMPDIR/modules/${MODULE}/contract.json" artifacts/contracts/prev/${MODULE}.json
             fi
-            NEXT_VERSION="${MANUAL_VERSION}"
           fi
-          
-          echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
+          ./cmd/modcli/modcli contract extract modules/${MODULE} -o artifacts/contracts/current/${MODULE}.json || echo "Current contract extraction failed"
+
+          CHANGE_CLASS="none"
+          DIFF_MD_PATH="artifacts/diffs/${MODULE}.md"
+          if [ -f artifacts/contracts/prev/${MODULE}.json ] && [ -f artifacts/contracts/current/${MODULE}.json ]; then
+            if ./cmd/modcli/modcli contract compare artifacts/contracts/prev/${MODULE}.json artifacts/contracts/current/${MODULE}.json -o artifacts/diffs/${MODULE}.json --format=markdown > "$DIFF_MD_PATH" 2>/dev/null; then
+              if [ -s "$DIFF_MD_PATH" ]; then CHANGE_CLASS="minor"; fi
+            else
+              echo "Breaking changes detected"; CHANGE_CLASS="major"; [ -s "$DIFF_MD_PATH" ] || echo "(Breaking changes; diff unavailable)" > "$DIFF_MD_PATH";
+            fi
+          else
+            if [ -f artifacts/contracts/current/${MODULE}.json ] && [ $(wc -c < artifacts/contracts/current/${MODULE}.json) -gt 20 ]; then CHANGE_CLASS="minor"; fi
+          fi
+          echo "Contract change classification: $CHANGE_CLASS"
+
+          CUR=${BASE_VERSION#v}; MAJOR=${CUR%%.*}; REST=${CUR#*.}; MINOR=${REST%%.*}; PATCH=${CUR##*.}
+          if [ -n "$INPUT_MANUAL_VERSION" ]; then V="$INPUT_MANUAL_VERSION"; [[ $V == v* ]] || V="v$V"; NEXT_VERSION="$V"; REASON="manual override"; else
+            case "$CHANGE_CLASS" in
+              major) NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="contract breaking change" ;;
+              minor) if [ "$INPUT_RELEASE_TYPE" = "major" ]; then NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="user requested major"; else NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"; REASON="contract additive change"; fi ;;
+              none)  if [ "$INPUT_RELEASE_TYPE" = "major" ]; then NEXT_VERSION="v$((MAJOR + 1)).0.0"; REASON="user requested major (no contract change)"; elif [ "$INPUT_RELEASE_TYPE" = "minor" ]; then NEXT_VERSION="v${MAJOR}.$((MINOR + 1)).0"; REASON="user requested minor (no contract change)"; else NEXT_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"; REASON="patch (no contract change)"; fi ;;
+            esac
+          fi
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
           echo "tag=modules/${MODULE}/${NEXT_VERSION}" >> $GITHUB_OUTPUT
           echo "module=${MODULE}" >> $GITHUB_OUTPUT
-          echo "Next version: ${NEXT_VERSION}, tag will be: ${MODULE}/${NEXT_VERSION}"
+          echo "change_class=$CHANGE_CLASS" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+          echo "Next version: ${NEXT_VERSION}, tag will be: modules/${MODULE}/${NEXT_VERSION} ($REASON)"
 
       - name: Generate changelog
-        id: changelog
+        if: steps.skipcheck.outputs.changed == 'true'
         run: |
           MODULE=${{ steps.version.outputs.module }}
           TAG=${{ steps.version.outputs.tag }}
+          CHANGE_CLASS=${{ steps.version.outputs.change_class }}
           
           # Find the previous tag for this module to use as starting point for changelog
           PREV_TAG=$(git tag -l "modules/${MODULE}/v*" | sort -V | tail -n1 || echo "")
@@ -160,16 +241,36 @@ jobs:
           echo "## Changes" >> changelog.md
           echo "" >> changelog.md
           echo "$CHANGELOG" >> changelog.md
-          
-          # Escape special characters for GitHub Actions
-          CHANGELOG_ESCAPED=$(cat changelog.md | jq -Rs .)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_ESCAPED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
+          echo "" >> changelog.md
+          echo "## API Contract Changes" >> changelog.md
+          echo "" >> changelog.md
+          if [ -f artifacts/diffs/${MODULE}.md ] && [ -s artifacts/diffs/${MODULE}.md ]; then
+            case "$CHANGE_CLASS" in
+              major) echo "⚠️ Breaking changes detected (major bump)." >> changelog.md; echo "" >> changelog.md ;;
+              minor) echo "✅ Additive, backward-compatible changes (minor bump)." >> changelog.md; echo "" >> changelog.md ;;
+              none)  echo "ℹ️ No public API surface changes detected." >> changelog.md; echo "" >> changelog.md ;;
+            esac
+            echo '```diff' >> changelog.md
+            cat artifacts/diffs/${MODULE}.md >> changelog.md
+            echo '```' >> changelog.md
+            if [ -f artifacts/diffs/${MODULE}.json ] && [ -s artifacts/diffs/${MODULE}.json ]; then
+              echo "" >> changelog.md
+              echo "<details><summary>Raw Contract JSON Diff</summary>" >> changelog.md
+              echo "" >> changelog.md
+              echo '```json' >> changelog.md
+              if command -v jq >/dev/null 2>&1; then jq . artifacts/diffs/${MODULE}.json >> changelog.md || cat artifacts/diffs/${MODULE}.json >> changelog.md; else cat artifacts/diffs/${MODULE}.json >> changelog.md; fi
+              echo '```' >> changelog.md
+              echo "" >> changelog.md
+              echo '</details>' >> changelog.md
+            fi
+          else
+            echo "No API contract differences compared to previous release." >> changelog.md
+          fi
+
           echo "Generated changelog for $MODULE"
 
       - name: Create release
+        if: steps.skipcheck.outputs.changed == 'true'
         id: create_release
         run: |
           gh release create ${{ steps.version.outputs.tag }} \
@@ -177,6 +278,12 @@ jobs:
             --notes-file changelog.md \
             --repo ${{ github.repository }} \
             --latest=false
+          # Attach module-only source archive
+          MOD=${{ steps.version.outputs.module }}
+          VERSION=${{ steps.version.outputs.next_version }}
+          ARCHIVE=${MOD}-${VERSION}.tar.gz
+          tar -czf "$ARCHIVE" modules/${MOD}
+          gh release upload ${{ steps.version.outputs.tag }} "$ARCHIVE" --repo ${{ github.repository }} --clobber
           
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}
@@ -186,10 +293,14 @@ jobs:
             echo "Deleting asset: $asset"
             gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
           done
+          # Capture URL for display step
+          RELEASE_URL=$(gh release view ${{ steps.version.outputs.tag }} --json url --jq .url)
+          echo "html_url=$RELEASE_URL" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce to Go proxy
+        if: steps.skipcheck.outputs.changed == 'true'
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
           MODULE_NAME="github.com/GoCodeAlone/modular/modules/${{ steps.version.outputs.module }}"
@@ -198,5 +309,3 @@ jobs:
           
           echo "Announced version ${{steps.version.outputs.module}}@${VERSION} to Go proxy"
 
-      - name: Display Release URL
-        run: echo "Released at ${{ steps.create_release.outputs.html_url }}"

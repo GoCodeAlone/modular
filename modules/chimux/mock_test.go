@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
@@ -154,6 +155,25 @@ func (m *MockApplication) IsVerboseConfig() bool {
 func (m *MockApplication) SetVerboseConfig(verbose bool) {
 	// No-op in mock
 }
+
+// Context returns a background context for the mock application
+func (m *MockApplication) Context() context.Context { return context.Background() }
+
+// GetServicesByModule returns services for a module (mock returns empty slice)
+func (m *MockApplication) GetServicesByModule(moduleName string) []string { return []string{} }
+
+// GetServiceEntry returns a service registry entry (mock returns nil)
+func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+
+// GetServicesByInterface returns services implementing an interface (mock empty slice)
+func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
+}
+
+// ServiceIntrospector returns nil (tests don't use advanced introspection)
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 // TenantApplication interface methods
 // GetTenantService returns the application's tenant service

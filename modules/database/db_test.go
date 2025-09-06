@@ -53,10 +53,6 @@ database:
 		t.Fatalf("Failed to close config file: %v", err)
 	}
 
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder(configFile.Name()),
-	}
-
 	// Create a new application
 	app := modular.NewStdApplication(
 		modular.NewStdConfigProvider(nil),
@@ -67,6 +63,13 @@ database:
 			},
 		)),
 	)
+
+	// Inject feeders for this app instance only (avoid mutating global state)
+	if stdApp, ok := app.(*modular.StdApplication); ok {
+		stdApp.SetConfigFeeders([]modular.Feeder{feeders.NewYamlFeeder(configFile.Name())})
+	} else {
+		t.Fatalf("unexpected application concrete type: %T", app)
+	}
 
 	app.RegisterModule(database.NewModule())
 	app.RegisterModule(&YourModule{t: t})

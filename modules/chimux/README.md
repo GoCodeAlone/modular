@@ -196,6 +196,33 @@ The chimux module will automatically discover and use any registered `Middleware
 
 ## Advanced Usage
 
+### Route Pattern Matching & Dynamic Segment Mismatches
+
+The underlying Chi router matches the *pattern shape* – a registered route with a
+dynamic segment (e.g. `/api/users/{id}`) matches `/api/users/123` as expected, but a
+request to `/api/users/` (trailing slash, missing segment) or `/api/users` (no trailing
+slash, missing segment) will **not** invoke that handler. This is intentional: Chi treats
+`/api/users` and `/api/users/` as distinct from `/api/users/{id}` to avoid accidental
+shadowing and ambiguous parameter extraction.
+
+If you want both collection and entity semantics, register both patterns explicitly:
+
+```go
+router.Route("/api/users", func(r chimux.Router) {
+    r.Get("/", listUsers)        // GET /api/users
+    r.Post("/", createUser)      // POST /api/users
+    r.Route("/{id}", func(r chimux.Router) { // GET /api/users/{id}
+        r.Get("/", getUser)     // (Chi normalizes without extra segment; trailing slash optional when calling)
+        r.Put("/", updateUser)
+        r.Delete("/", deleteUser)
+    })
+})
+```
+
+For optional trailing segments, prefer explicit duplication instead of relying on
+middleware redirects. Keeping patterns explicit makes route introspection, dynamic
+enable/disable operations, and emitted routing events deterministic.
+
 ### Adding custom middleware to specific routes
 
 ```go

@@ -87,6 +87,7 @@ func argsToMap(args []any) map[string]any {
 }
 
 func TestBaseLoggerDecorator(t *testing.T) {
+	t.Parallel()
 	t.Run("Forwards all calls to inner logger", func(t *testing.T) {
 		inner := NewTestLogger()
 		decorator := NewBaseLoggerDecorator(inner)
@@ -119,6 +120,7 @@ func TestBaseLoggerDecorator(t *testing.T) {
 }
 
 func TestDualWriterLoggerDecorator(t *testing.T) {
+	t.Parallel()
 	t.Run("Logs to both primary and secondary loggers", func(t *testing.T) {
 		primary := NewTestLogger()
 		secondary := NewTestLogger()
@@ -169,6 +171,7 @@ func TestDualWriterLoggerDecorator(t *testing.T) {
 }
 
 func TestValueInjectionLoggerDecorator(t *testing.T) {
+	t.Parallel()
 	t.Run("Injects values into all log events", func(t *testing.T) {
 		inner := NewTestLogger()
 		decorator := NewValueInjectionLoggerDecorator(inner, "service", "test-service", "version", "1.0.0")
@@ -218,6 +221,7 @@ func TestValueInjectionLoggerDecorator(t *testing.T) {
 }
 
 func TestFilterLoggerDecorator(t *testing.T) {
+	t.Parallel()
 	t.Run("Filters by message content", func(t *testing.T) {
 		inner := NewTestLogger()
 		decorator := NewFilterLoggerDecorator(inner, []string{"secret", "password"}, nil, nil)
@@ -294,6 +298,7 @@ func TestFilterLoggerDecorator(t *testing.T) {
 }
 
 func TestLevelModifierLoggerDecorator(t *testing.T) {
+	t.Parallel()
 	t.Run("Modifies log levels according to mapping", func(t *testing.T) {
 		inner := NewTestLogger()
 		levelMappings := map[string]string{
@@ -340,6 +345,7 @@ func TestLevelModifierLoggerDecorator(t *testing.T) {
 }
 
 func TestPrefixLoggerDecorator(t *testing.T) {
+	t.Parallel()
 	t.Run("Adds prefix to all messages", func(t *testing.T) {
 		inner := NewTestLogger()
 		decorator := NewPrefixLoggerDecorator(inner, "[MODULE]")
@@ -367,6 +373,7 @@ func TestPrefixLoggerDecorator(t *testing.T) {
 }
 
 func TestDecoratorComposition(t *testing.T) {
+	t.Parallel()
 	t.Run("Can compose multiple decorators", func(t *testing.T) {
 		primary := NewTestLogger()
 		secondary := NewTestLogger()
@@ -404,6 +411,7 @@ func TestDecoratorComposition(t *testing.T) {
 
 // Test the SetLogger/Service integration fix
 func TestSetLoggerServiceIntegration(t *testing.T) {
+	t.Parallel()
 	t.Run("SetLogger updates both app.Logger() and service registry", func(t *testing.T) {
 		initialLogger := NewTestLogger()
 		app := NewStdApplication(NewStdConfigProvider(&struct{}{}), initialLogger)

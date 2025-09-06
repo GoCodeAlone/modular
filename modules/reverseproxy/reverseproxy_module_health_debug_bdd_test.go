@@ -26,12 +26,12 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithHealthChecksConfigu
 	// Create configuration with DNS-based health checking
 	ctx.config = &ReverseProxyConfig{
 		BackendServices: map[string]string{
-			"dns-backend": testServer.URL, // Uses a URL that requires DNS resolution
+			"dns-backend": testServer.URL,
 		},
 		Routes: map[string]string{
 			"/api/*": "dns-backend",
 		},
-		DefaultBackend: testServer.URL,
+		DefaultBackend: "dns-backend",
 		HealthCheck: HealthCheckConfig{
 			Enabled:  true,
 			Interval: 500 * time.Millisecond,
@@ -39,12 +39,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithHealthChecksConfigu
 		},
 	}
 
-	// Register the configuration and module
-	reverseproxyConfigProvider := modular.NewStdConfigProvider(ctx.config)
-	ctx.app.RegisterConfigSection("reverseproxy", reverseproxyConfigProvider)
-	ctx.app.RegisterModule(&ReverseProxyModule{})
-
-	return ctx.app.Init()
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) healthChecksShouldBePerformedUsingDNSResolution() error {
@@ -123,7 +118,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCustomHealthEndpoin
 			"/healthy/*":   "healthy-backend",
 			"/unhealthy/*": "unhealthy-backend",
 		},
-		DefaultBackend: healthyBackend.URL,
+		DefaultBackend: "healthy-backend",
 		HealthCheck: HealthCheckConfig{
 			Enabled:  true,
 			Interval: 200 * time.Millisecond,
@@ -135,12 +130,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithCustomHealthEndpoin
 		},
 	}
 
-	// Register the configuration and module
-	reverseproxyConfigProvider := modular.NewStdConfigProvider(ctx.config)
-	ctx.app.RegisterConfigSection("reverseproxy", reverseproxyConfigProvider)
-	ctx.app.RegisterModule(&ReverseProxyModule{})
-
-	return ctx.app.Init()
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) healthChecksUseDifferentEndpointsPerBackend() error {
@@ -232,7 +222,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithPerBackendHealthChe
 			"/fast/*": "fast-backend",
 			"/slow/*": "slow-backend",
 		},
-		DefaultBackend: fastBackend.URL,
+		DefaultBackend: "fast-backend",
 		HealthCheck: HealthCheckConfig{
 			Enabled:  true,
 			Interval: 300 * time.Millisecond,
@@ -248,12 +238,7 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithPerBackendHealthChe
 		},
 	}
 
-	// Register the configuration and module
-	reverseproxyConfigProvider := modular.NewStdConfigProvider(ctx.config)
-	ctx.app.RegisterConfigSection("reverseproxy", reverseproxyConfigProvider)
-	ctx.app.RegisterModule(&ReverseProxyModule{})
-
-	return ctx.app.Init()
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) eachBackendShouldUseItsSpecificHealthCheckSettings() error {
@@ -304,13 +289,21 @@ func (ctx *ReverseProxyBDDTestContext) healthCheckBehaviorShouldDifferPerBackend
 func (ctx *ReverseProxyBDDTestContext) iConfigureHealthChecksWithRecentRequestThresholds() error {
 	// Update configuration to include recent request thresholds
 	ctx.config.HealthCheck.RecentRequestThreshold = 10 * time.Second
+	// Ensure health checking is enabled (some callers might not have enabled it yet)
+	ctx.config.HealthCheck.Enabled = true
+	if ctx.config.HealthCheck.Interval == 0 {
+		ctx.config.HealthCheck.Interval = 500 * time.Millisecond
+	}
+	if ctx.config.HealthCheck.Timeout == 0 {
+		ctx.config.HealthCheck.Timeout = 200 * time.Millisecond
+	}
 
 	// Re-register the updated configuration
 	reverseproxyConfigProvider := modular.NewStdConfigProvider(ctx.config)
 	ctx.app.RegisterConfigSection("reverseproxy", reverseproxyConfigProvider)
 
-	// Reinitialize the app to pick up the new configuration
-	return ctx.app.Init()
+	// Reinitialize the app to pick up the new configuration (full setup path for safety)
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) iMakeFewerRequestsThanTheThreshold() error {
@@ -368,6 +361,7 @@ func (ctx *ReverseProxyBDDTestContext) thresholdBasedHealthCheckingShouldBeRespe
 }
 
 func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithExpectedHealthCheckStatusCodes() error {
+	ctx.resetContext()
 	// Create a backend that returns various status codes
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
@@ -380,21 +374,28 @@ func (ctx *ReverseProxyBDDTestContext) iHaveAReverseProxyWithExpectedHealthCheck
 	ctx.testServers = append(ctx.testServers, testServer)
 
 	// Configure with specific expected status codes
-	ctx.config.BackendServices = map[string]string{
-		"custom-health-backend": testServer.URL,
-	}
-	ctx.config.HealthCheck.BackendHealthCheckConfig = map[string]BackendHealthConfig{
-		"custom-health-backend": {
-			Endpoint:            "/health",
-			ExpectedStatusCodes: []int{200, 202}, // Accept both 200 and 202
+	ctx.config = &ReverseProxyConfig{
+		BackendServices: map[string]string{
+			"custom-health-backend": testServer.URL,
+		},
+		Routes: map[string]string{
+			"/api/*": "custom-health-backend",
+		},
+		DefaultBackend: "custom-health-backend",
+		HealthCheck: HealthCheckConfig{
+			Enabled:  true,
+			Interval: 300 * time.Millisecond,
+			Timeout:  100 * time.Millisecond,
+			BackendHealthCheckConfig: map[string]BackendHealthConfig{
+				"custom-health-backend": {
+					Endpoint:            "/health",
+					ExpectedStatusCodes: []int{200, 202},
+				},
+			},
 		},
 	}
 
-	// Re-register configuration
-	reverseproxyConfigProvider := modular.NewStdConfigProvider(ctx.config)
-	ctx.app.RegisterConfigSection("reverseproxy", reverseproxyConfigProvider)
-
-	return ctx.app.Init()
+	return ctx.setupApplicationWithConfig()
 }
 
 func (ctx *ReverseProxyBDDTestContext) healthChecksAcceptConfiguredStatusCodes() error {
@@ -654,8 +655,7 @@ func (ctx *ReverseProxyBDDTestContext) iAccessTheDebugBackendsEndpoint() error {
 	if err != nil {
 		return fmt.Errorf("failed to access debug backends endpoint: %v", err)
 	}
-	defer resp.Body.Close()
-
+	// Do NOT close here; subsequent step will read the body then close it.
 	ctx.lastResponse = resp
 	return nil
 }
@@ -669,14 +669,19 @@ func (ctx *ReverseProxyBDDTestContext) backendStatusInformationShouldBeReturned(
 		return fmt.Errorf("expected status 200, got %d", ctx.lastResponse.StatusCode)
 	}
 
-	// Parse response
-	var backends map[string]interface{}
-	if err := json.NewDecoder(ctx.lastResponse.Body).Decode(&backends); err != nil {
-		return fmt.Errorf("failed to parse backends info: %v", err)
+	// If already parsed (second assertion), reuse cached data
+	if ctx.debugBackendsData == nil {
+		var backends map[string]interface{}
+		decErr := json.NewDecoder(ctx.lastResponse.Body).Decode(&backends)
+		ctx.lastResponse.Body.Close()
+		if decErr != nil {
+			return fmt.Errorf("failed to parse backends info: %v", decErr)
+		}
+		ctx.debugBackendsData = backends
 	}
 
 	// Verify backend information is included
-	if len(backends) == 0 {
+	if len(ctx.debugBackendsData) == 0 {
 		return fmt.Errorf("debug backends should include backend status information")
 	}
 
@@ -688,14 +693,13 @@ func (ctx *ReverseProxyBDDTestContext) iAccessTheDebugFeatureFlagsEndpoint() err
 	if err != nil {
 		return fmt.Errorf("failed to access debug flags endpoint: %v", err)
 	}
-	defer resp.Body.Close()
-
+	// Don't close yet; consumer step will decode & close.
 	ctx.lastResponse = resp
 	return nil
 }
 
 func (ctx *ReverseProxyBDDTestContext) featureFlagStatusShouldBeReturned() error {
-	if ctx.lastResponse == nil {
+	if ctx.lastResponse == nil && ctx.debugFlagsData == nil {
 		return fmt.Errorf("no response available")
 	}
 
@@ -703,10 +707,14 @@ func (ctx *ReverseProxyBDDTestContext) featureFlagStatusShouldBeReturned() error
 		return fmt.Errorf("expected status 200, got %d", ctx.lastResponse.StatusCode)
 	}
 
-	// Parse response
-	var flags map[string]interface{}
-	if err := json.NewDecoder(ctx.lastResponse.Body).Decode(&flags); err != nil {
-		return fmt.Errorf("failed to parse flags info: %v", err)
+	if ctx.debugFlagsData == nil && ctx.lastResponse != nil {
+		var flags map[string]interface{}
+		decErr := json.NewDecoder(ctx.lastResponse.Body).Decode(&flags)
+		ctx.lastResponse.Body.Close()
+		if decErr != nil {
+			return fmt.Errorf("failed to parse flags info: %v", decErr)
+		}
+		ctx.debugFlagsData = flags
 	}
 
 	// Feature flags endpoint should return some information

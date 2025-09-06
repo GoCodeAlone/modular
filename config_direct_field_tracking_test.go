@@ -12,6 +12,7 @@ import (
 
 // TestDirectFeederFieldTracking tests field tracking when calling feeder.Feed() directly
 func TestDirectFeederFieldTracking(t *testing.T) {
+	// Single test case; set env vars up-front, then allow subtest parallelization safely
 	tests := []struct {
 		name    string
 		envVars map[string]string
@@ -26,12 +27,13 @@ func TestDirectFeederFieldTracking(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		// Set env for this case before starting subtest (cannot vary concurrently anyway)
+		for k, v := range tt.envVars {
+			t.Setenv(k, v)
+		}
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment variables
-			for key, value := range tt.envVars {
-				t.Setenv(key, value)
-			}
-
+			t.Parallel()
 			// Create logger that captures debug output
 			mockLogger := new(MockLogger)
 			mockLogger.On("Debug", mock.Anything, mock.Anything).Return()
@@ -47,29 +49,17 @@ func TestDirectFeederFieldTracking(t *testing.T) {
 					Debug bool   `env:"APP_DEBUG"`
 				}
 			}
-
 			config := &TestConfig{}
 
-			// Create environment feeder with field tracking
 			envFeeder := feeders.NewEnvFeeder()
 			envFeeder.SetVerboseDebug(true, mockLogger)
-
-			// Set up field tracking bridge
 			bridge := NewFieldTrackingBridge(tracker)
 			envFeeder.SetFieldTracker(bridge)
-
-			// Feed configuration directly
 			err := envFeeder.Feed(config)
 			require.NoError(t, err)
-
-			// Verify that config values were actually set
 			assert.Equal(t, "Test App", config.App.Name)
 			assert.True(t, config.App.Debug)
-
-			// Verify that field populations were tracked
 			assert.NotEmpty(t, tracker.FieldPopulations, "Should have tracked field populations")
-
-			// Print tracked populations for debugging
 			t.Logf("Tracked %d field populations:", len(tracker.FieldPopulations))
 			for i, fp := range tracker.FieldPopulations {
 				t.Logf("  %d: %s -> %v (from %s:%s)", i, fp.FieldPath, fp.Value, fp.SourceType, fp.SourceKey)
@@ -80,7 +70,7 @@ func TestDirectFeederFieldTracking(t *testing.T) {
 
 // TestInstanceAwareDirectFieldTracking tests instance-aware field tracking with direct feeding
 func TestInstanceAwareDirectFieldTracking(t *testing.T) {
-	// Set up environment variables for instance-aware tracking
+	// Cannot use t.Parallel here because this test directly calls t.Setenv; Go 1.25 forbids Setenv in parallel tests at the same level
 	envVars := map[string]string{
 		"DB_PRIMARY_DRIVER":   "postgres",
 		"DB_PRIMARY_DSN":      "postgres://localhost/primary",

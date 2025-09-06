@@ -101,15 +101,30 @@ func (h *CompositeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Create a response recorder to capture the merged response.
 	recorder := httptest.NewRecorder()
 
+	// Read and buffer the request body once (if any) before launching parallel goroutines.
+	var bodyBytes []byte
+	if r.Body != nil {
+		// ReadAll returns empty slice and nil error for empty body; that's fine.
+		if data, err := io.ReadAll(r.Body); err == nil {
+			bodyBytes = data
+			// Reset original request body so downstream middleware (if any) can still read it later.
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		} else {
+			// On error we log by returning an error response; safer than racing later.
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Create a context with timeout for all backend requests.
 	ctx, cancel := context.WithTimeout(r.Context(), h.responseTimeout)
 	defer cancel()
 
 	// Use either parallel or sequential execution based on configuration.
 	if h.parallel {
-		h.executeParallel(ctx, recorder, r)
+		h.executeParallel(ctx, recorder, r, bodyBytes)
 	} else {
-		h.executeSequential(ctx, recorder, r)
+		h.executeSequential(ctx, recorder, r, bodyBytes)
 	}
 
 	// Get the final response from the recorder.
@@ -147,19 +162,15 @@ func (h *CompositeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // executeParallel executes all backend requests in parallel.
-func (h *CompositeHandler) executeParallel(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func (h *CompositeHandler) executeParallel(ctx context.Context, w http.ResponseWriter, r *http.Request, bodyBytes []byte) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	responses := make(map[string]*http.Response)
 
 	// Create a wait group to track each backend request.
 	for _, backend := range h.backends {
-		wg.Add(1)
-
-		// Execute each request in a separate goroutine.
-		go func(b *Backend) {
-			defer wg.Done()
-
+		b := backend // capture loop variable
+		wg.Go(func() {
 			// Check the circuit breaker before making the request.
 			circuitBreaker := h.circuitBreakers[b.ID]
 			if circuitBreaker != nil && circuitBreaker.IsOpen() {
@@ -168,7 +179,7 @@ func (h *CompositeHandler) executeParallel(ctx context.Context, w http.ResponseW
 			}
 
 			// Execute the request.
-			resp, err := h.executeBackendRequest(ctx, b, r) //nolint:bodyclose // Response body is closed in mergeResponses cleanup
+			resp, err := h.executeBackendRequest(ctx, b, r, bodyBytes) //nolint:bodyclose // Response body is closed in mergeResponses cleanup
 			if err != nil {
 				if circuitBreaker != nil {
 					circuitBreaker.RecordFailure()
@@ -185,7 +196,7 @@ func (h *CompositeHandler) executeParallel(ctx context.Context, w http.ResponseW
 			mu.Lock()
 			responses[b.ID] = resp
 			mu.Unlock()
-		}(backend)
+		})
 	}
 
 	// Wait for all requests to complete.
@@ -203,7 +214,7 @@ func (h *CompositeHandler) executeParallel(ctx context.Context, w http.ResponseW
 }
 
 // executeSequential executes backend requests one at a time.
-func (h *CompositeHandler) executeSequential(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func (h *CompositeHandler) executeSequential(ctx context.Context, w http.ResponseWriter, r *http.Request, bodyBytes []byte) {
 	responses := make(map[string]*http.Response)
 
 	// Execute each request sequentially.
@@ -216,7 +227,7 @@ func (h *CompositeHandler) executeSequential(ctx context.Context, w http.Respons
 		}
 
 		// Execute the request.
-		resp, err := h.executeBackendRequest(ctx, backend, r) //nolint:bodyclose // Response body is closed in mergeResponses cleanup
+		resp, err := h.executeBackendRequest(ctx, backend, r, bodyBytes) //nolint:bodyclose // Response body is closed in mergeResponses cleanup
 		if err != nil {
 			if circuitBreaker != nil {
 				circuitBreaker.RecordFailure()
@@ -245,7 +256,7 @@ func (h *CompositeHandler) executeSequential(ctx context.Context, w http.Respons
 }
 
 // executeBackendRequest sends a request to a backend and returns the response.
-func (h *CompositeHandler) executeBackendRequest(ctx context.Context, backend *Backend, r *http.Request) (*http.Response, error) {
+func (h *CompositeHandler) executeBackendRequest(ctx context.Context, backend *Backend, r *http.Request, bodyBytes []byte) (*http.Response, error) {
 	// Clone the request to avoid modifying the original.
 	backendURL := backend.URL + r.URL.Path
 	if r.URL.RawQuery != "" {
@@ -265,21 +276,9 @@ func (h *CompositeHandler) executeBackendRequest(ctx context.Context, backend *B
 		}
 	}
 
-	// Properly handle the request body if present.
-	if r.Body != nil {
-		// Get the body content.
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read request body: %w", err)
-		}
-
-		// Reset the original request body so it can be read again.
-		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-		// Set the body for the new request.
+	// Attach pre-read body (if any) without mutating the shared request.
+	if len(bodyBytes) > 0 {
 		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-		// Set content length.
 		req.ContentLength = int64(len(bodyBytes))
 	}
 

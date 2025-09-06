@@ -103,3 +103,10 @@ var (
 	ErrIncompatibleFieldTypes     = errors.New("incompatible types for field assignment")
 	ErrIncompatibleInterfaceValue = errors.New("incompatible interface value for field")
 )
+
+// Error checking helper functions
+
+// IsErrCircularDependency checks if an error is a circular dependency error
+func IsErrCircularDependency(err error) bool {
+	return errors.Is(err, ErrCircularDependency)
+}

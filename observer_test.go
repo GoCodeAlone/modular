@@ -10,6 +10,7 @@ import (
 )
 
 func TestCloudEvent(t *testing.T) {
+	t.Parallel()
 	metadata := map[string]interface{}{"key": "value"}
 	event := NewCloudEvent(
 		"test.event",
@@ -41,6 +42,7 @@ func TestCloudEvent(t *testing.T) {
 }
 
 func TestFunctionalObserver(t *testing.T) {
+	t.Parallel()
 	called := false
 	var receivedEvent cloudevents.Event
 
@@ -82,6 +84,7 @@ func TestFunctionalObserver(t *testing.T) {
 var errTest = errors.New("test error")
 
 func TestFunctionalObserverWithError(t *testing.T) {
+	t.Parallel()
 	expectedErr := errTest
 
 	handler := func(ctx context.Context, event cloudevents.Event) error {
@@ -104,6 +107,7 @@ func TestFunctionalObserverWithError(t *testing.T) {
 }
 
 func TestEventTypeConstants(t *testing.T) {
+	t.Parallel()
 	// Test that our event type constants are properly defined with reverse domain notation
 	expectedEventTypes := map[string]string{
 		"EventTypeModuleRegistered":    "com.modular.module.registered",
@@ -215,6 +219,7 @@ func (m *mockSubject) GetObservers() []ObserverInfo {
 }
 
 func TestSubjectObserverInteraction(t *testing.T) {
+	t.Parallel()
 	subject := newMockSubject()
 
 	// Create observers

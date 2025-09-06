@@ -112,12 +112,7 @@ func (ctx *EventBusBDDTestContext) iHaveAModularApplicationWithEventbusModuleCon
 	// Create application with eventbus config
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Apply per-app empty feeders instead of mutating global modular.ConfigFeeders
 
 	// Create basic eventbus configuration for testing
 	ctx.eventbusConfig = &EventBusConfig{
@@ -135,6 +130,9 @@ func (ctx *EventBusBDDTestContext) iHaveAModularApplicationWithEventbusModuleCon
 	// Create app with empty main config
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create and register eventbus module
 	ctx.module = NewModule().(*EventBusModule)
@@ -155,12 +153,7 @@ func (ctx *EventBusBDDTestContext) iHaveAnEventbusServiceWithEventObservationEna
 	// Create application with eventbus config
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Apply per-app empty feeders instead of mutating global modular.ConfigFeeders
 
 	// Create basic eventbus configuration for testing
 	ctx.eventbusConfig = &EventBusConfig{
@@ -178,6 +171,9 @@ func (ctx *EventBusBDDTestContext) iHaveAnEventbusServiceWithEventObservationEna
 	// Create app with empty main config - USE OBSERVABLE for events
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create and register eventbus module
 	ctx.module = NewModule().(*EventBusModule)
@@ -754,6 +750,7 @@ func (ctx *EventBusBDDTestContext) iSubscribeToTopicWithAFailingHandler(topic st
 	}
 
 	ctx.subscriptions[topic] = subscription
+	ctx.lastSubscription = subscription // ensure unsubscribe step can find the subscription
 
 	return nil
 }
@@ -1998,12 +1995,7 @@ func (ctx *EventBusBDDTestContext) tenantConfigurationsShouldNotInterfere() erro
 func (ctx *EventBusBDDTestContext) setupApplicationWithConfig() error {
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Apply per-app empty feeders instead of mutating global modular.ConfigFeeders
 
 	// Create provider with the eventbus config
 	eventbusConfigProvider := modular.NewStdConfigProvider(ctx.eventbusConfig)
@@ -2011,6 +2003,9 @@ func (ctx *EventBusBDDTestContext) setupApplicationWithConfig() error {
 	// Create app with empty main config
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create and register eventbus module
 	ctx.module = NewModule().(*EventBusModule)
@@ -2175,6 +2170,9 @@ func TestEventBusModuleBDD(t *testing.T) {
 			ctx.Then(`^all topics from all engines should be returned$`, testCtx.allTopicsFromAllEnginesShouldBeReturned)
 			ctx.Then(`^subscriber counts should be aggregated correctly$`, testCtx.subscriberCountsShouldBeAggregatedCorrectly)
 
+			// Event validation (mega-scenario)
+			ctx.Then(`^all registered events should be emitted during testing$`, testCtx.allRegisteredEventsShouldBeEmittedDuringTesting)
+
 			// Steps for tenant isolation scenarios
 			ctx.Given(`^I have a multi-tenant eventbus configuration$`, testCtx.iHaveAMultiTenantEventbusConfiguration)
 			ctx.When(`^tenant "([^"]*)" publishes an event to "([^"]*)"$`, testCtx.tenantPublishesAnEventToTopic)
@@ -2192,6 +2190,7 @@ func TestEventBusModuleBDD(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

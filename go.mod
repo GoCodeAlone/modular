@@ -1,8 +1,8 @@
 module github.com/GoCodeAlone/modular
 
-go 1.23.0
+go 1.25
 
-toolchain go1.24.2
+toolchain go1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0
@@ -21,6 +21,7 @@ require (
 	github.com/gofrs/uuid v4.3.1+incompatible // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-memdb v1.3.4 // indirect
+	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

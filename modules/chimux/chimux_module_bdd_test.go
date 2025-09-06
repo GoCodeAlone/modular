@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,10 +30,12 @@ type ChiMuxBDDTestContext struct {
 	routeGroups         []string
 	eventObserver       *testEventObserver
 	lastResponse        *httptest.ResponseRecorder
+	appliedMiddleware   []string // track applied middleware names for removal simulation
 }
 
 // Test event observer for capturing emitted events
 type testEventObserver struct {
+	mu     sync.RWMutex
 	events []cloudevents.Event
 }
 
@@ -42,7 +46,10 @@ func newTestEventObserver() *testEventObserver {
 }
 
 func (t *testEventObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
-	t.events = append(t.events, event.Clone())
+	clone := event.Clone()
+	t.mu.Lock()
+	t.events = append(t.events, clone)
+	t.mu.Unlock()
 	return nil
 }
 
@@ -51,11 +58,17 @@ func (t *testEventObserver) ObserverID() string {
 }
 
 func (t *testEventObserver) GetEvents() []cloudevents.Event {
-	return t.events
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	events := make([]cloudevents.Event, len(t.events))
+	copy(events, t.events)
+	return events
 }
 
 func (t *testEventObserver) ClearEvents() {
+	t.mu.Lock()
 	t.events = make([]cloudevents.Event, 0)
+	t.mu.Unlock()
 }
 
 // Test middleware provider
@@ -90,6 +103,7 @@ func (ctx *ChiMuxBDDTestContext) resetContext() {
 	ctx.middlewareProviders = []MiddlewareProvider{}
 	ctx.routeGroups = []string{}
 	ctx.eventObserver = nil
+	ctx.appliedMiddleware = []string{}
 }
 
 func (ctx *ChiMuxBDDTestContext) iHaveAModularApplicationWithChimuxModuleConfigured() error {
@@ -951,9 +965,41 @@ func (ctx *ChiMuxBDDTestContext) iHaveRegisteredRoutes() error {
 }
 
 func (ctx *ChiMuxBDDTestContext) iRemoveARouteFromTheRouter() error {
-	// Chi router doesn't support runtime route removal
-	// Skip this test as the functionality is not implemented
-	return godog.ErrPending
+	// Actually disable a route via the chimux runtime feature
+	if ctx.module == nil {
+		return fmt.Errorf("chimux module not available")
+	}
+	// Expect a previously registered GET route (like /test-route) in routes map
+	var target string
+	for p, m := range ctx.routes {
+		if m == "GET" || strings.HasPrefix(m, "GET") {
+			target = p
+			break
+		}
+	}
+	if target == "" {
+		return fmt.Errorf("no GET route available to disable")
+	}
+	// target key may include method if earlier logic stored differently; normalize
+	pattern := target
+	if strings.HasPrefix(pattern, "/") == false {
+		// keys like "/test-route" expected; if stored as "/test-route" that's fine
+		// if stored as pattern only skip
+	}
+	// Disable route using new module API
+	if err := ctx.module.DisableRoute("GET", pattern); err != nil {
+		return fmt.Errorf("failed to disable route: %w", err)
+	}
+	// Perform request to verify 404
+	req := httptest.NewRequest("GET", pattern, nil)
+	w := httptest.NewRecorder()
+	ctx.module.router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		return fmt.Errorf("expected 404 after disabling route, got %d", w.Code)
+	}
+	// Allow brief delay for event observer to capture emitted removal event
+	time.Sleep(20 * time.Millisecond)
+	return nil
 }
 
 func (ctx *ChiMuxBDDTestContext) aRouteRemovedEventShouldBeEmitted() error {
@@ -986,16 +1032,36 @@ func (ctx *ChiMuxBDDTestContext) theEventShouldContainTheRemovedRouteInformation
 
 func (ctx *ChiMuxBDDTestContext) iHaveMiddlewareAppliedToTheRouter() error {
 	// Set up middleware for removal testing
-	ctx.middlewareProviders = []MiddlewareProvider{
-		&testMiddlewareProvider{name: "test-middleware", order: 1},
+	if ctx.routerService == nil {
+		return fmt.Errorf("router service not available")
 	}
+	// Apply named middleware using new runtime-controllable facility
+	name := "test-middleware"
+	ctx.routerService.UseNamed(name, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Test-Middleware-Applied", name)
+			next.ServeHTTP(w, r)
+		})
+	})
+	ctx.appliedMiddleware = append(ctx.appliedMiddleware, name)
 	return nil
 }
 
 func (ctx *ChiMuxBDDTestContext) iRemoveMiddlewareFromTheRouter() error {
-	// Chi router doesn't support runtime middleware removal
-	// Skip this test as the functionality is not implemented
-	return godog.ErrPending
+	if ctx.module == nil {
+		return fmt.Errorf("chimux module not available")
+	}
+	if len(ctx.appliedMiddleware) == 0 {
+		return fmt.Errorf("no middleware applied to remove")
+	}
+	removed := ctx.appliedMiddleware[0]
+	if err := ctx.module.RemoveMiddleware(removed); err != nil {
+		return fmt.Errorf("failed to remove middleware: %w", err)
+	}
+	ctx.appliedMiddleware = ctx.appliedMiddleware[1:]
+	// Allow brief time for event capture
+	time.Sleep(10 * time.Millisecond)
+	return nil
 }
 
 func (ctx *ChiMuxBDDTestContext) aMiddlewareRemovedEventShouldBeEmitted() error {
@@ -1337,6 +1403,7 @@ func TestChiMuxModuleBDD(t *testing.T) {
 			Format:   "pretty",
 			Paths:    []string{"features"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 

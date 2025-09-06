@@ -89,7 +89,7 @@ Feature: Event Logger Module
 
   Scenario: Emit events during buffer overflow
     Given I have an event logger with small buffer and event observation enabled
-    When I emit more events than the buffer can hold
+    When I rapidly emit more events than the buffer can hold
     Then buffer full events should be emitted
     And event dropped events should be emitted
     And the events should contain drop reasons
@@ -99,3 +99,19 @@ Feature: Event Logger Module
     When I emit a test event for processing
     Then an output error event should be emitted
     And the error event should contain error details
+
+  Scenario: Queue events until eventlogger is ready
+    Given I have an event logger module configured but not started
+    When I emit events before the eventlogger starts
+    Then the events should be queued without errors
+    When the eventlogger starts
+    Then all queued events should be processed and logged
+    And the events should be processed in order
+
+  Scenario: Queue overflow handling with graceful degradation
+    Given I have an event logger module configured with queue overflow testing
+    When I emit more events than the queue can hold before start
+    Then older events should be dropped from the queue
+    And newer events should be preserved in the queue
+    When the eventlogger starts
+    Then only the preserved events should be processed

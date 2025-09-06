@@ -46,6 +46,7 @@ func (m *MockComplexFeeder) FeedKey(key string, target interface{}) error {
 }
 
 func TestNewStdConfigProvider(t *testing.T) {
+	t.Parallel()
 	cfg := &testCfg{Str: "test", Num: 42}
 	provider := NewStdConfigProvider(cfg)
 
@@ -54,6 +55,7 @@ func TestNewStdConfigProvider(t *testing.T) {
 }
 
 func TestStdConfigProvider_GetConfig(t *testing.T) {
+	t.Parallel()
 	cfg := &testCfg{Str: "test", Num: 42}
 	provider := &StdConfigProvider{cfg: cfg}
 
@@ -61,6 +63,7 @@ func TestStdConfigProvider_GetConfig(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
+	t.Parallel()
 	cfg := NewConfig()
 
 	assert.NotNil(t, cfg)
@@ -70,6 +73,7 @@ func TestNewConfig(t *testing.T) {
 }
 
 func TestConfig_AddStructKey(t *testing.T) {
+	t.Parallel()
 	cfg := NewConfig()
 	target := &testCfg{}
 
@@ -96,6 +100,7 @@ func (t *testSetupCfg) Setup() error {
 }
 
 func TestConfig_Feed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		setupConfig    func() (*Config, *MockComplexFeeder)
@@ -210,6 +215,7 @@ func TestConfig_Feed(t *testing.T) {
 }
 
 func Test_createTempConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("with pointer", func(t *testing.T) {
 		originalCfg := &testCfg{Str: "test", Num: 42}
 		tempCfg, info, err := createTempConfig(originalCfg)
@@ -232,6 +238,7 @@ func Test_createTempConfig(t *testing.T) {
 }
 
 func Test_updateConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("with pointer config", func(t *testing.T) {
 		originalCfg := &testCfg{Str: "old", Num: 0}
 		tempCfg := &testCfg{Str: "new", Num: 42}
@@ -280,6 +287,7 @@ func Test_updateConfig(t *testing.T) {
 }
 
 func Test_updateSectionConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("with pointer section config", func(t *testing.T) {
 		originalCfg := &testSectionCfg{Enabled: false, Name: "old"}
 		tempCfg := &testSectionCfg{Enabled: true, Name: "new"}
@@ -333,9 +341,9 @@ func Test_updateSectionConfig(t *testing.T) {
 }
 
 func Test_loadAppConfig(t *testing.T) {
-	// Save original ConfigFeeders and restore after test
-	originalFeeders := ConfigFeeders
-	defer func() { ConfigFeeders = originalFeeders }()
+	t.Parallel()
+	// Tests now rely on per-application feeders (SetConfigFeeders) instead of mutating
+	// the global ConfigFeeders slice to support safe parallelization.
 
 	tests := []struct {
 		name           string
@@ -517,7 +525,8 @@ func Test_loadAppConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app := tt.setupApp()
-			ConfigFeeders = tt.setupFeeders()
+			// Use per-app feeders; StdApplication exposes SetConfigFeeders directly.
+			app.SetConfigFeeders(tt.setupFeeders())
 
 			err := loadAppConfig(app)
 
@@ -528,8 +537,8 @@ func Test_loadAppConfig(t *testing.T) {
 				tt.validateResult(t, app)
 			}
 
-			// Assert that all mock expectations were met
-			for _, feeder := range ConfigFeeders {
+			// Assert that all mock expectations were met on the feeders we injected
+			for _, feeder := range app.configFeeders {
 				if mockFeeder, ok := feeder.(*MockComplexFeeder); ok {
 					mockFeeder.AssertExpectations(t)
 				}
@@ -559,6 +568,7 @@ func (m *MockVerboseAwareFeeder) SetVerboseDebug(enabled bool, logger interface{
 }
 
 func TestConfig_SetVerboseDebug(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name               string
 		setVerbose         bool
@@ -628,6 +638,7 @@ func TestConfig_SetVerboseDebug(t *testing.T) {
 }
 
 func TestConfig_AddFeeder_WithVerboseDebug(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name              string
 		verboseEnabled    bool
@@ -685,6 +696,7 @@ func TestConfig_AddFeeder_WithVerboseDebug(t *testing.T) {
 }
 
 func TestConfig_Feed_VerboseDebug(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		enableVerbose bool
@@ -728,6 +740,7 @@ func TestConfig_Feed_VerboseDebug(t *testing.T) {
 }
 
 func TestProcessMainConfig(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		hasProvider   bool
@@ -788,6 +801,7 @@ func TestProcessMainConfig(t *testing.T) {
 }
 
 func TestProcessSectionConfigs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		sections      map[string]ConfigProvider
