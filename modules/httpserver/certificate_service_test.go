@@ -136,6 +136,9 @@ func (m *SimpleMockApplication) GetServicesByInterface(interfaceType reflect.Typ
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// ServiceIntrospector returns nil (not needed in certificate tests)
+func (m *SimpleMockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 // SimpleMockLogger implements modular.Logger for certificate service tests
 type SimpleMockLogger struct{}
 

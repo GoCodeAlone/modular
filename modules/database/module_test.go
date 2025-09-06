@@ -75,6 +75,9 @@ func (a *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// ServiceIntrospector returns nil (not used in database module tests)
+func (a *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 type MockConfigProvider struct {
 	config interface{}
 }

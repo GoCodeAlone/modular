@@ -136,6 +136,9 @@ func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// ServiceIntrospector returns nil for tests that don't require advanced introspection
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 // MockLogger implements a minimal logger for testing
 type MockLogger struct{}
 

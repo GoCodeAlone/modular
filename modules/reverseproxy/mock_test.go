@@ -194,6 +194,24 @@ func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return entries
 }
 
+// mockServiceIntrospector adapts legacy mock querying helpers to the new ServiceIntrospector.
+type mockServiceIntrospector struct{ legacy *MockApplication }
+
+func (msi *mockServiceIntrospector) GetServicesByModule(moduleName string) []string {
+	return msi.legacy.GetServicesByModule(moduleName)
+}
+
+func (msi *mockServiceIntrospector) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return msi.legacy.GetServiceEntry(serviceName)
+}
+
+func (msi *mockServiceIntrospector) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return msi.legacy.GetServicesByInterface(interfaceType)
+}
+
+// ServiceIntrospector provides non-nil implementation to avoid nil dereferences in tests.
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return &mockServiceIntrospector{legacy: m} }
+
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider
 func NewStdConfigProvider(config interface{}) modular.ConfigProvider {
 	return &mockConfigProvider{config: config}
@@ -317,6 +335,24 @@ func (m *MockTenantService) RemoveTenant(tid modular.TenantID) error {
 func (m *MockTenantService) RegisterTenantAwareModule(module modular.TenantAwareModule) error {
 	return nil
 }
+
+// mockTenantServiceIntrospector adapts tenant mock legacy methods.
+type mockTenantServiceIntrospector struct{ legacy *MockTenantApplication }
+
+func (mtsi *mockTenantServiceIntrospector) GetServicesByModule(moduleName string) []string {
+	return mtsi.legacy.GetServicesByModule(moduleName)
+}
+
+func (mtsi *mockTenantServiceIntrospector) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return mtsi.legacy.GetServiceEntry(serviceName)
+}
+
+func (mtsi *mockTenantServiceIntrospector) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return mtsi.legacy.GetServicesByInterface(interfaceType)
+}
+
+// ServiceIntrospector provides non-nil implementation for tenant mock.
+func (m *MockTenantApplication) ServiceIntrospector() modular.ServiceIntrospector { return &mockTenantServiceIntrospector{legacy: m} }
 
 // MockLogger implements the Logger interface for testing
 type MockLogger struct {

@@ -172,6 +172,9 @@ func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// ServiceIntrospector returns nil (tests don't use advanced introspection)
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 // TenantApplication interface methods
 // GetTenantService returns the application's tenant service
 func (m *MockApplication) GetTenantService() (modular.TenantService, error) {

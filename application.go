@@ -158,15 +158,8 @@ type Application interface {
 	// IsVerboseConfig returns whether verbose configuration debugging is enabled.
 	IsVerboseConfig() bool
 
-	// Deprecated: direct service registry introspection on Application. Use ServiceIntrospector() instead.
-	GetServicesByModule(moduleName string) []string
-	// Deprecated: use ServiceIntrospector().GetServiceEntry.
-	GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool)
-	// Deprecated: use ServiceIntrospector().GetServicesByInterface.
-	GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry
-
 	// ServiceIntrospector groups advanced service registry introspection helpers.
-	// Prefer this for new code to avoid expanding the core Application interface.
+	// Use this instead of adding new methods directly to Application.
 	ServiceIntrospector() ServiceIntrospector
 }
 
@@ -1531,26 +1524,4 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 	return provider, nil
 }
 
-// GetServicesByModule returns all services provided by a specific module
-func (app *StdApplication) GetServicesByModule(moduleName string) []string {
-	if app.enhancedSvcRegistry != nil {
-		return app.enhancedSvcRegistry.GetServicesByModule(moduleName)
-	}
-	return nil
-}
-
-// GetServiceEntry retrieves detailed information about a registered service
-func (app *StdApplication) GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool) {
-	if app.enhancedSvcRegistry != nil {
-		return app.enhancedSvcRegistry.GetServiceEntry(serviceName)
-	}
-	return nil, false
-}
-
-// GetServicesByInterface returns all services that implement the given interface
-func (app *StdApplication) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
-	if app.enhancedSvcRegistry != nil {
-		return app.enhancedSvcRegistry.GetServicesByInterface(interfaceType)
-	}
-	return nil
-}
+// (Intentionally removed old direct service introspection methods; use ServiceIntrospector())

@@ -24,10 +24,10 @@ func TestUserScenarioReproduction(t *testing.T) {
 	}
 
 	// Verify the enhanced service registry methods work
-	services := app.GetServicesByModule("nil-service")
+	services := app.ServiceIntrospector().GetServicesByModule("nil-service")
 	t.Logf("Services from nil-service module: %v", services)
 
-	entry, found := app.GetServiceEntry("nilService")
+	entry, found := app.ServiceIntrospector().GetServiceEntry("nilService")
 	if found {
 		t.Logf("Found service entry: %+v", entry)
 	} else {
@@ -35,7 +35,7 @@ func TestUserScenarioReproduction(t *testing.T) {
 	}
 
 	interfaceType := reflect.TypeOf((*TestUserInterface)(nil)).Elem()
-	interfaceServices := app.GetServicesByInterface(interfaceType)
+	interfaceServices := app.ServiceIntrospector().GetServicesByInterface(interfaceType)
 	t.Logf("Services implementing interface: %d", len(interfaceServices))
 
 	t.Log("✅ User scenario completed without panic")
@@ -47,18 +47,18 @@ func TestBackwardsCompatibilityCheck(t *testing.T) {
 	var app Application = NewStdApplication(nil, &mockTestLogger{})
 
 	// Test that new methods are available and don't panic
-	services := app.GetServicesByModule("nonexistent")
+	services := app.ServiceIntrospector().GetServicesByModule("nonexistent")
 	if len(services) != 0 {
 		t.Errorf("Expected empty services for nonexistent module, got %v", services)
 	}
 
-	entry, found := app.GetServiceEntry("nonexistent")
+	entry, found := app.ServiceIntrospector().GetServiceEntry("nonexistent")
 	if found || entry != nil {
 		t.Errorf("Expected no entry for nonexistent service, got %v, %v", entry, found)
 	}
 
 	interfaceType := reflect.TypeOf((*TestUserInterface)(nil)).Elem()
-	interfaceServices := app.GetServicesByInterface(interfaceType)
+	interfaceServices := app.ServiceIntrospector().GetServicesByInterface(interfaceType)
 	if len(interfaceServices) != 0 {
 		t.Errorf("Expected no interface services, got %v", interfaceServices)
 	}

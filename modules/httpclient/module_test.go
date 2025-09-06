@@ -97,6 +97,9 @@ func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// ServiceIntrospector returns nil (advanced introspection unused in tests)
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 func (m *MockApplication) IsVerboseConfig() bool {
 	return false
 }

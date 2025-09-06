@@ -115,6 +115,9 @@ func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// ServiceIntrospector returns nil for tests
+func (a *mockApp) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 type mockConfigProvider struct{}
 
 func (m *mockConfigProvider) GetConfig() interface{} {

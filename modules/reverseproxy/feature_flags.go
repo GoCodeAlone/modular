@@ -186,7 +186,7 @@ func (a *FeatureFlagAggregator) discoverEvaluators() []weightedEvaluatorInstance
 
 	// Use interface-based discovery to find all FeatureFlagEvaluator services
 	evaluatorType := reflect.TypeOf((*FeatureFlagEvaluator)(nil)).Elem()
-	entries := a.app.GetServicesByInterface(evaluatorType)
+	entries := a.app.ServiceIntrospector().GetServicesByInterface(evaluatorType)
 	for _, entry := range entries {
 		// Check if it's the same instance as ourselves (prevent self-ingestion)
 		if entry.Service == a {
