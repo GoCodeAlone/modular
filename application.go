@@ -36,11 +36,7 @@ type AppRegistry interface {
 // Basic usage pattern:
 //
 //	app := modular.NewStdApplication(configProvider, logger)
-//	app.RegisterModule(&MyModule{})
-//	app.RegisterModule(&AnotherModule{})
-//	if err := app.Run(); err != nil {
-//	    log.Fatal(err)
-//	}
+
 type Application interface {
 	// ConfigProvider retrieves the application's main configuration provider.
 	// This provides access to application-level configuration that isn't
@@ -162,18 +158,23 @@ type Application interface {
 	// IsVerboseConfig returns whether verbose configuration debugging is enabled.
 	IsVerboseConfig() bool
 
-	// GetServicesByModule returns all services provided by a specific module.
-	// This method provides access to the enhanced service registry information
-	// that tracks module-to-service associations.
+	// Deprecated: direct service registry introspection on Application. Use ServiceIntrospector() instead.
 	GetServicesByModule(moduleName string) []string
-
-	// GetServiceEntry retrieves detailed information about a registered service,
-	// including which module provided it and naming information.
+	// Deprecated: use ServiceIntrospector().GetServiceEntry.
 	GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool)
+	// Deprecated: use ServiceIntrospector().GetServicesByInterface.
+	GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry
 
-	// GetServicesByInterface returns all services that implement the given interface.
-	// This enables interface-based service discovery for modules that need to
-	// aggregate services by capability rather than name.
+	// ServiceIntrospector groups advanced service registry introspection helpers.
+	// Prefer this for new code to avoid expanding the core Application interface.
+	ServiceIntrospector() ServiceIntrospector
+}
+
+// ServiceIntrospector provides advanced service registry introspection helpers.
+// This extension interface allows future additions without expanding Application.
+type ServiceIntrospector interface {
+	GetServicesByModule(moduleName string) []string
+	GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool)
 	GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry
 }
 
@@ -257,6 +258,28 @@ type StdApplication struct {
 	verboseConfig       bool          // Flag for verbose configuration debugging
 	initialized         bool          // Tracks whether Init has already been successfully executed
 	configFeeders       []Feeder      // Optional per-application feeders (override global ConfigFeeders if non-nil)
+}
+
+// ServiceIntrospectorImpl implements ServiceIntrospector backed by StdApplication's enhanced registry.
+type ServiceIntrospectorImpl struct {
+	app *StdApplication
+}
+
+func (s *ServiceIntrospectorImpl) GetServicesByModule(moduleName string) []string {
+	return s.app.enhancedSvcRegistry.GetServicesByModule(moduleName)
+}
+
+func (s *ServiceIntrospectorImpl) GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool) {
+	return s.app.enhancedSvcRegistry.GetServiceEntry(serviceName)
+}
+
+func (s *ServiceIntrospectorImpl) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	return s.app.enhancedSvcRegistry.GetServicesByInterface(interfaceType)
+}
+
+// ServiceIntrospector returns an implementation of ServiceIntrospector.
+func (app *StdApplication) ServiceIntrospector() ServiceIntrospector {
+	return &ServiceIntrospectorImpl{app: app}
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.

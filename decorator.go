@@ -122,6 +122,11 @@ func (d *BaseApplicationDecorator) GetServicesByInterface(interfaceType reflect.
 	return d.inner.GetServicesByInterface(interfaceType)
 }
 
+// ServiceIntrospector forwards to the inner application's ServiceIntrospector implementation.
+func (d *BaseApplicationDecorator) ServiceIntrospector() ServiceIntrospector {
+	return d.inner.ServiceIntrospector()
+}
+
 // TenantAware methods - if inner supports TenantApplication interface
 func (d *BaseApplicationDecorator) GetTenantService() (TenantService, error) {
 	if tenantApp, ok := d.inner.(TenantApplication); ok {

@@ -202,3 +202,5 @@ func (m *mockApplicationForNilSubjectTest) GetServiceEntry(serviceName string) (
 func (m *mockApplicationForNilSubjectTest) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
 	return nil
 }
+
+func (m *mockApplicationForNilSubjectTest) ServiceIntrospector() ServiceIntrospector { return nil }
