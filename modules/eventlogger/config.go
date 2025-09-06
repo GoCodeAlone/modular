@@ -42,8 +42,8 @@ type EventLoggerConfig struct {
 	ShutdownEmitStopped bool `yaml:"shutdownEmitStopped" default:"true" desc:"Emit logger stopped operational event on Stop"`
 
 	// ShutdownDrainTimeout specifies how long Stop() should wait for in-flight events to drain.
-	// A zero or negative duration means unlimited wait (current behavior using WaitGroup).
-	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Maximum time to wait for draining event queue on Stop"`
+	// Zero or negative duration means unlimited wait (Stop blocks until all events processed).
+	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Maximum time to wait for draining event queue on Stop. Zero or negative = unlimited wait."`
 }
 
 // OutputTargetConfig configures a specific output target for event logs.

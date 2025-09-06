@@ -604,14 +604,18 @@ func (m *EventLoggerModule) OnEvent(ctx context.Context, event cloudevents.Event
 				return
 			} else {
 				// Queue is full - drop oldest event and add new one
+				var droppedEventType string
 				if len(m.eventQueue) > 0 {
-					// Shift slice to remove first element (oldest)
+					// Capture dropped event type for debugging visibility then shift slice
+					droppedEventType = m.eventQueue[0].Type()
 					copy(m.eventQueue, m.eventQueue[1:])
 					m.eventQueue[len(m.eventQueue)-1] = event
 				}
 				if m.logger != nil {
 					m.logger.Debug("Event queue full, dropped oldest event",
-						"queue_size", m.queueMaxSize, "new_event", event.Type())
+						"queue_size", m.queueMaxSize,
+						"new_event", event.Type(),
+						"dropped_event", droppedEventType)
 				}
 				queueResult = nil
 				return

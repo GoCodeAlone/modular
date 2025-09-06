@@ -860,7 +860,12 @@ func (m *ChiMuxModule) disabledRouteMiddleware() func(http.Handler) http.Handler
 			if rctx != nil && len(rctx.RoutePatterns) > 0 {
 				pattern = rctx.RoutePatterns[len(rctx.RoutePatterns)-1]
 			} else {
-				// Fallback to request path (may cause mismatch for dynamic patterns)
+				// Fallback to the raw request path. WARNING: For parameterized routes (e.g. /users/{id})
+				// chi records the pattern as /users/{id} but r.URL.Path will be the concrete value
+				// such as /users/123. This means a disabled route registered as /users/{id} will NOT
+				// match here and the route may remain active. Admin tooling disabling dynamic routes
+				// should therefore prefer invoking DisableRoute() with the original pattern captured
+				// at registration time rather than a concrete request path.
 				pattern = r.URL.Path
 			}
 			method := r.Method

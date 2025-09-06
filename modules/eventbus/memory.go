@@ -218,10 +218,7 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	// (when rotation disabled) to preserve deterministic ordering and avoid per-publish RNG cost.
 	if m.config.RotateSubscriberOrder && len(allMatchingSubs) > 1 {
 		pc := atomic.AddUint64(&m.pubCounter, 1) - 1
-		ln := len(allMatchingSubs)
-		if ln <= 0 {
-			return nil
-		}
+		ln := len(allMatchingSubs) // ln >= 2 here due to enclosing condition
 		// Compute rotation starting offset. We keep start as uint64 and avoid any uint64->int cast
 		// (gosec G115) by performing a manual copy instead of slicing with an int index.
 		start64 := pc % uint64(ln)
