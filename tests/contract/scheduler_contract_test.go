@@ -10,7 +10,7 @@ import (
 func TestScheduler_Contract_Register(t *testing.T) {
 	t.Run("should register job with valid cron expression", func(t *testing.T) {
 		t.Skip("TODO: Implement job registration with cron validation in scheduler")
-		
+
 		// Expected behavior:
 		// - Given valid cron expression and job function
 		// - When registering job
@@ -20,7 +20,7 @@ func TestScheduler_Contract_Register(t *testing.T) {
 
 	t.Run("should reject duplicate job IDs", func(t *testing.T) {
 		t.Skip("TODO: Implement duplicate job ID detection in scheduler")
-		
+
 		// Expected behavior:
 		// - Given job ID that already exists
 		// - When registering duplicate job
@@ -30,7 +30,7 @@ func TestScheduler_Contract_Register(t *testing.T) {
 
 	t.Run("should reject invalid cron expressions", func(t *testing.T) {
 		t.Skip("TODO: Implement cron expression validation in scheduler")
-		
+
 		// Expected behavior:
 		// - Given malformed or invalid cron expression
 		// - When registering job
@@ -40,7 +40,7 @@ func TestScheduler_Contract_Register(t *testing.T) {
 
 	t.Run("should validate maxConcurrency limits", func(t *testing.T) {
 		t.Skip("TODO: Implement maxConcurrency validation in scheduler")
-		
+
 		// Expected behavior:
 		// - Given job with maxConcurrency setting
 		// - When registering job
@@ -50,7 +50,7 @@ func TestScheduler_Contract_Register(t *testing.T) {
 
 	t.Run("should handle job registration with metadata", func(t *testing.T) {
 		t.Skip("TODO: Implement job metadata handling in scheduler")
-		
+
 		// Expected behavior:
 		// - Given job with metadata (description, tags, priority)
 		// - When registering job
@@ -62,7 +62,7 @@ func TestScheduler_Contract_Register(t *testing.T) {
 func TestScheduler_Contract_CronValidation(t *testing.T) {
 	t.Run("should support standard cron formats", func(t *testing.T) {
 		t.Skip("TODO: Implement standard cron format support")
-		
+
 		// Expected behavior:
 		// - Given standard 5-field cron expressions
 		// - When validating cron
@@ -72,7 +72,7 @@ func TestScheduler_Contract_CronValidation(t *testing.T) {
 
 	t.Run("should support extended cron formats", func(t *testing.T) {
 		t.Skip("TODO: Implement extended cron format support (6-field with seconds)")
-		
+
 		// Expected behavior:
 		// - Given 6-field cron expressions with seconds
 		// - When validating cron
@@ -82,7 +82,7 @@ func TestScheduler_Contract_CronValidation(t *testing.T) {
 
 	t.Run("should reject malformed cron expressions", func(t *testing.T) {
 		t.Skip("TODO: Implement malformed cron rejection")
-		
+
 		// Expected behavior:
 		// - Given invalid cron syntax (wrong field count, invalid ranges)
 		// - When validating cron
@@ -92,7 +92,7 @@ func TestScheduler_Contract_CronValidation(t *testing.T) {
 
 	t.Run("should handle special cron keywords", func(t *testing.T) {
 		t.Skip("TODO: Implement special cron keyword support (@yearly, @monthly, etc.)")
-		
+
 		// Expected behavior:
 		// - Given special keywords like @yearly, @daily, @hourly
 		// - When validating cron
@@ -104,7 +104,7 @@ func TestScheduler_Contract_CronValidation(t *testing.T) {
 func TestScheduler_Contract_StartStop(t *testing.T) {
 	t.Run("should start scheduler and begin job execution", func(t *testing.T) {
 		t.Skip("TODO: Implement scheduler start functionality")
-		
+
 		// Expected behavior:
 		// - Given registered jobs in stopped scheduler
 		// - When starting scheduler
@@ -114,7 +114,7 @@ func TestScheduler_Contract_StartStop(t *testing.T) {
 
 	t.Run("should stop scheduler and halt job execution", func(t *testing.T) {
 		t.Skip("TODO: Implement scheduler stop functionality")
-		
+
 		// Expected behavior:
 		// - Given running scheduler with active jobs
 		// - When stopping scheduler
@@ -124,7 +124,7 @@ func TestScheduler_Contract_StartStop(t *testing.T) {
 
 	t.Run("should handle start/stop sequencing", func(t *testing.T) {
 		t.Skip("TODO: Implement proper start/stop sequencing")
-		
+
 		// Expected behavior:
 		// - Given scheduler in various states (stopped, starting, started, stopping)
 		// - When calling start/stop
@@ -134,7 +134,7 @@ func TestScheduler_Contract_StartStop(t *testing.T) {
 
 	t.Run("should support graceful shutdown", func(t *testing.T) {
 		t.Skip("TODO: Implement graceful shutdown with timeout")
-		
+
 		// Expected behavior:
 		// - Given running jobs during shutdown
 		// - When stopping scheduler with timeout
@@ -146,7 +146,7 @@ func TestScheduler_Contract_StartStop(t *testing.T) {
 func TestScheduler_Contract_BackfillPolicy(t *testing.T) {
 	t.Run("should handle missed executions during downtime", func(t *testing.T) {
 		t.Skip("TODO: Implement missed execution handling (backfill policy)")
-		
+
 		// Expected behavior:
 		// - Given scheduler downtime with missed job executions
 		// - When scheduler restarts
@@ -156,7 +156,7 @@ func TestScheduler_Contract_BackfillPolicy(t *testing.T) {
 
 	t.Run("should enforce bounded backfill limits", func(t *testing.T) {
 		t.Skip("TODO: Implement bounded backfill enforcement")
-		
+
 		// Expected behavior:
 		// - Given many missed executions (> limit)
 		// - When applying backfill
@@ -166,7 +166,7 @@ func TestScheduler_Contract_BackfillPolicy(t *testing.T) {
 
 	t.Run("should support different backfill strategies", func(t *testing.T) {
 		t.Skip("TODO: Implement multiple backfill strategies")
-		
+
 		// Expected behavior:
 		// - Given different backfill policies (none, last-only, bounded, time-window)
 		// - When configuring job backfill
@@ -178,7 +178,7 @@ func TestScheduler_Contract_BackfillPolicy(t *testing.T) {
 func TestScheduler_Contract_Concurrency(t *testing.T) {
 	t.Run("should enforce maxConcurrency limits", func(t *testing.T) {
 		t.Skip("TODO: Implement maxConcurrency enforcement")
-		
+
 		// Expected behavior:
 		// - Given job with maxConcurrency limit
 		// - When job execution overlaps
@@ -188,7 +188,7 @@ func TestScheduler_Contract_Concurrency(t *testing.T) {
 
 	t.Run("should handle worker pool management", func(t *testing.T) {
 		t.Skip("TODO: Implement worker pool for job execution")
-		
+
 		// Expected behavior:
 		// - Given configured worker pool size
 		// - When executing multiple jobs
@@ -198,7 +198,7 @@ func TestScheduler_Contract_Concurrency(t *testing.T) {
 
 	t.Run("should support concurrent job execution", func(t *testing.T) {
 		t.Skip("TODO: Implement safe concurrent job execution")
-		
+
 		// Expected behavior:
 		// - Given multiple jobs scheduled simultaneously
 		// - When executing jobs concurrently
@@ -210,7 +210,7 @@ func TestScheduler_Contract_Concurrency(t *testing.T) {
 func TestScheduler_Contract_ErrorHandling(t *testing.T) {
 	t.Run("should handle job execution failures gracefully", func(t *testing.T) {
 		t.Skip("TODO: Implement job execution failure handling")
-		
+
 		// Expected behavior:
 		// - Given job that throws error during execution
 		// - When job fails
@@ -220,7 +220,7 @@ func TestScheduler_Contract_ErrorHandling(t *testing.T) {
 
 	t.Run("should emit scheduler events for monitoring", func(t *testing.T) {
 		t.Skip("TODO: Implement scheduler event emission")
-		
+
 		// Expected behavior:
 		// - Given scheduler operations (start, stop, job execution, errors)
 		// - When operations occur
@@ -230,7 +230,7 @@ func TestScheduler_Contract_ErrorHandling(t *testing.T) {
 
 	t.Run("should provide job execution history", func(t *testing.T) {
 		t.Skip("TODO: Implement job execution history tracking")
-		
+
 		// Expected behavior:
 		// - Given job executions over time
 		// - When querying execution history
@@ -243,7 +243,7 @@ func TestScheduler_Contract_Interface(t *testing.T) {
 	t.Run("should implement Scheduler interface", func(t *testing.T) {
 		// This test validates that the scheduler implements required interfaces
 		t.Skip("TODO: Validate Scheduler interface implementation")
-		
+
 		// TODO: Replace with actual interface validation when implemented
 		// scheduler := NewScheduler(config)
 		// assert.Implements(t, (*Scheduler)(nil), scheduler)
@@ -251,7 +251,7 @@ func TestScheduler_Contract_Interface(t *testing.T) {
 
 	t.Run("should provide required scheduling methods", func(t *testing.T) {
 		t.Skip("TODO: Validate all Scheduler methods are implemented")
-		
+
 		// Expected interface methods:
 		// - Register(jobID string, schedule string, jobFunc JobFunc, options ...JobOption) error
 		// - Start(ctx context.Context) error

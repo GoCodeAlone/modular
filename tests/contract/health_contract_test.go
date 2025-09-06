@@ -10,7 +10,7 @@ import (
 func TestHealth_Contract_AggregationLogic(t *testing.T) {
 	t.Run("should aggregate health using worst-state logic", func(t *testing.T) {
 		t.Skip("TODO: Implement worst-state health aggregation in health aggregator")
-		
+
 		// Expected behavior:
 		// - Given modules with different health states (healthy, degraded, unhealthy)
 		// - When aggregating overall health
@@ -20,7 +20,7 @@ func TestHealth_Contract_AggregationLogic(t *testing.T) {
 
 	t.Run("should handle healthy state aggregation", func(t *testing.T) {
 		t.Skip("TODO: Implement healthy state aggregation")
-		
+
 		// Expected behavior:
 		// - Given all modules reporting healthy status
 		// - When aggregating health
@@ -30,7 +30,7 @@ func TestHealth_Contract_AggregationLogic(t *testing.T) {
 
 	t.Run("should handle degraded state aggregation", func(t *testing.T) {
 		t.Skip("TODO: Implement degraded state aggregation")
-		
+
 		// Expected behavior:
 		// - Given mix of healthy and degraded modules
 		// - When aggregating health
@@ -40,7 +40,7 @@ func TestHealth_Contract_AggregationLogic(t *testing.T) {
 
 	t.Run("should handle unhealthy state aggregation", func(t *testing.T) {
 		t.Skip("TODO: Implement unhealthy state aggregation")
-		
+
 		// Expected behavior:
 		// - Given any modules reporting unhealthy status
 		// - When aggregating health
@@ -52,7 +52,7 @@ func TestHealth_Contract_AggregationLogic(t *testing.T) {
 func TestHealth_Contract_ReadinessLogic(t *testing.T) {
 	t.Run("should exclude optional module failures from readiness", func(t *testing.T) {
 		t.Skip("TODO: Implement readiness calculation with optional module exclusion")
-		
+
 		// Expected behavior:
 		// - Given optional modules that are failing
 		// - When calculating readiness status
@@ -62,7 +62,7 @@ func TestHealth_Contract_ReadinessLogic(t *testing.T) {
 
 	t.Run("should include required modules in readiness", func(t *testing.T) {
 		t.Skip("TODO: Implement required module inclusion in readiness calculation")
-		
+
 		// Expected behavior:
 		// - Given required modules with any failure state
 		// - When calculating readiness status
@@ -72,7 +72,7 @@ func TestHealth_Contract_ReadinessLogic(t *testing.T) {
 
 	t.Run("should distinguish between health and readiness", func(t *testing.T) {
 		t.Skip("TODO: Implement health vs readiness distinction")
-		
+
 		// Expected behavior:
 		// - Given application with degraded optional modules
 		// - When checking health vs readiness
@@ -82,7 +82,7 @@ func TestHealth_Contract_ReadinessLogic(t *testing.T) {
 
 	t.Run("should handle module criticality levels", func(t *testing.T) {
 		t.Skip("TODO: Implement module criticality handling in readiness")
-		
+
 		// Expected behavior:
 		// - Given modules with different criticality levels (critical, important, optional)
 		// - When calculating readiness
@@ -94,7 +94,7 @@ func TestHealth_Contract_ReadinessLogic(t *testing.T) {
 func TestHealth_Contract_StatusDetails(t *testing.T) {
 	t.Run("should provide detailed module health information", func(t *testing.T) {
 		t.Skip("TODO: Implement detailed module health information in aggregator")
-		
+
 		// Expected behavior:
 		// - Given health check request with details
 		// - When aggregating health status
@@ -104,7 +104,7 @@ func TestHealth_Contract_StatusDetails(t *testing.T) {
 
 	t.Run("should include health check timestamps", func(t *testing.T) {
 		t.Skip("TODO: Implement health check timestamp tracking")
-		
+
 		// Expected behavior:
 		// - Given health checks executed at different times
 		// - When reporting health status
@@ -114,7 +114,7 @@ func TestHealth_Contract_StatusDetails(t *testing.T) {
 
 	t.Run("should provide health trend information", func(t *testing.T) {
 		t.Skip("TODO: Implement health trend tracking")
-		
+
 		// Expected behavior:
 		// - Given health status changes over time
 		// - When reporting health status
@@ -124,7 +124,7 @@ func TestHealth_Contract_StatusDetails(t *testing.T) {
 
 	t.Run("should include dependency health impact", func(t *testing.T) {
 		t.Skip("TODO: Implement dependency health impact analysis")
-		
+
 		// Expected behavior:
 		// - Given modules with dependencies on other modules
 		// - When aggregating health
@@ -136,7 +136,7 @@ func TestHealth_Contract_StatusDetails(t *testing.T) {
 func TestHealth_Contract_HealthChecks(t *testing.T) {
 	t.Run("should execute module health checks", func(t *testing.T) {
 		t.Skip("TODO: Implement module health check execution")
-		
+
 		// Expected behavior:
 		// - Given modules implementing health check interface
 		// - When performing health aggregation
@@ -146,7 +146,7 @@ func TestHealth_Contract_HealthChecks(t *testing.T) {
 
 	t.Run("should handle health check timeouts", func(t *testing.T) {
 		t.Skip("TODO: Implement health check timeout handling")
-		
+
 		// Expected behavior:
 		// - Given health check that exceeds timeout duration
 		// - When executing health check
@@ -156,7 +156,7 @@ func TestHealth_Contract_HealthChecks(t *testing.T) {
 
 	t.Run("should cache health check results", func(t *testing.T) {
 		t.Skip("TODO: Implement health check result caching")
-		
+
 		// Expected behavior:
 		// - Given repeated health check requests within cache period
 		// - When aggregating health
@@ -166,7 +166,7 @@ func TestHealth_Contract_HealthChecks(t *testing.T) {
 
 	t.Run("should support health check dependencies", func(t *testing.T) {
 		t.Skip("TODO: Implement health check dependency ordering")
-		
+
 		// Expected behavior:
 		// - Given modules with health check dependencies
 		// - When executing health checks
@@ -178,7 +178,7 @@ func TestHealth_Contract_HealthChecks(t *testing.T) {
 func TestHealth_Contract_Monitoring(t *testing.T) {
 	t.Run("should emit health status events", func(t *testing.T) {
 		t.Skip("TODO: Implement health status event emission")
-		
+
 		// Expected behavior:
 		// - Given health status changes (healthy -> degraded -> unhealthy)
 		// - When status transitions occur
@@ -188,7 +188,7 @@ func TestHealth_Contract_Monitoring(t *testing.T) {
 
 	t.Run("should provide health metrics", func(t *testing.T) {
 		t.Skip("TODO: Implement health metrics collection")
-		
+
 		// Expected behavior:
 		// - Given ongoing health checks and status changes
 		// - When collecting metrics
@@ -198,7 +198,7 @@ func TestHealth_Contract_Monitoring(t *testing.T) {
 
 	t.Run("should support health alerting thresholds", func(t *testing.T) {
 		t.Skip("TODO: Implement health alerting threshold configuration")
-		
+
 		// Expected behavior:
 		// - Given configurable health alerting thresholds
 		// - When health status meets threshold conditions
@@ -210,7 +210,7 @@ func TestHealth_Contract_Monitoring(t *testing.T) {
 func TestHealth_Contract_Configuration(t *testing.T) {
 	t.Run("should support configurable health check intervals", func(t *testing.T) {
 		t.Skip("TODO: Implement configurable health check intervals")
-		
+
 		// Expected behavior:
 		// - Given different health check interval configurations
 		// - When scheduling health checks
@@ -220,7 +220,7 @@ func TestHealth_Contract_Configuration(t *testing.T) {
 
 	t.Run("should support configurable timeout values", func(t *testing.T) {
 		t.Skip("TODO: Implement configurable health check timeouts")
-		
+
 		// Expected behavior:
 		// - Given different timeout requirements for different modules
 		// - When configuring health checks
@@ -230,7 +230,7 @@ func TestHealth_Contract_Configuration(t *testing.T) {
 
 	t.Run("should support health check enablement/disablement", func(t *testing.T) {
 		t.Skip("TODO: Implement health check enablement controls")
-		
+
 		// Expected behavior:
 		// - Given modules that can have health checks disabled
 		// - When configuring health aggregator
@@ -242,7 +242,7 @@ func TestHealth_Contract_Configuration(t *testing.T) {
 func TestHealth_Contract_ErrorHandling(t *testing.T) {
 	t.Run("should handle health check panics gracefully", func(t *testing.T) {
 		t.Skip("TODO: Implement health check panic recovery")
-		
+
 		// Expected behavior:
 		// - Given health check that panics during execution
 		// - When panic occurs
@@ -252,7 +252,7 @@ func TestHealth_Contract_ErrorHandling(t *testing.T) {
 
 	t.Run("should provide error context for failed checks", func(t *testing.T) {
 		t.Skip("TODO: Implement error context for health check failures")
-		
+
 		// Expected behavior:
 		// - Given health check that fails with error
 		// - When aggregating health status
@@ -262,7 +262,7 @@ func TestHealth_Contract_ErrorHandling(t *testing.T) {
 
 	t.Run("should handle concurrent health check execution", func(t *testing.T) {
 		t.Skip("TODO: Implement thread-safe concurrent health check execution")
-		
+
 		// Expected behavior:
 		// - Given concurrent health check requests
 		// - When executing health checks
@@ -275,7 +275,7 @@ func TestHealth_Contract_Interface(t *testing.T) {
 	t.Run("should implement HealthAggregator interface", func(t *testing.T) {
 		// This test validates that the aggregator implements required interfaces
 		t.Skip("TODO: Validate HealthAggregator interface implementation")
-		
+
 		// TODO: Replace with actual interface validation when implemented
 		// aggregator := NewHealthAggregator()
 		// assert.Implements(t, (*HealthAggregator)(nil), aggregator)
@@ -283,7 +283,7 @@ func TestHealth_Contract_Interface(t *testing.T) {
 
 	t.Run("should provide required health methods", func(t *testing.T) {
 		t.Skip("TODO: Validate all HealthAggregator methods are implemented")
-		
+
 		// Expected interface methods:
 		// - GetOverallHealth() HealthStatus
 		// - GetReadinessStatus() ReadinessStatus
