@@ -229,7 +229,10 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 		ln := len(allMatchingSubs) // >=2 here due to enclosing condition
 		// start64 is safe: ln is an int from slice length; converting ln to uint64 cannot overflow
 		// because slice length fits in native int and hence within uint64. We avoid casting the
-		// result back to int for indexing by performing manual copy loops below.
+		// result back to int for indexing by performing manual copy loops below. This explicit
+		// explanation addresses prior review feedback about clarifying why this conversion is
+		// acceptable with respect to gosec rule G115 (integer overflow risk) – the direction here
+		// (int -> uint64) is widening and therefore cannot truncate or overflow.
 		start64 := pc % uint64(ln)
 		if start64 != 0 { // avoid allocation when rotation index is zero
 			rotated := make([]*memorySubscription, 0, ln)

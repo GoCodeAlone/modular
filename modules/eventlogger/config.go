@@ -45,7 +45,7 @@ type EventLoggerConfig struct {
 	// If > 0: Stop() waits up to the specified duration then returns (remaining events may be dropped).
 	// If <= 0: Stop() waits indefinitely for a full drain (lossless shutdown) unless the parent context cancels.
 	// This explicit <= 0 contract avoids ambiguous huge timeouts and lets operators choose bounded vs. lossless.
-	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Max drain wait on Stop; <=0 = wait indefinitely for all events"`
+	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Max drain wait on Stop; zero or negative (<=0) means wait indefinitely for all events"`
 }
 
 // OutputTargetConfig configures a specific output target for event logs.
