@@ -55,7 +55,10 @@ jobs:
 
           echo "==> Building modcli in main worktree"
           # Build from the worktree root using explicit package path to avoid the previous relative path ambiguity
-          ( cd main-worktree && go build -o cmd/modcli/modcli ./cmd/modcli ) || { echo "Failed to build modcli in main worktree"; exit 1; }
+          # Previous attempt invoked `go build ./cmd/modcli` from the worktree root which led Go to infer an import path
+          # containing the directory name (…/main-worktree/…), causing: "main module (...) does not contain package .../main-worktree/cmd/modcli".
+          # Building from inside the package directory avoids that path misinterpretation.
+          ( cd main-worktree/cmd/modcli && go build -o modcli . ) || { echo "Failed to build modcli in main worktree"; exit 1; }
 
           echo "==> Extracting contracts from origin/main snapshot"
           ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
