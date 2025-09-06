@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/examples/auth-demo
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
+	github.com/GoCodeAlone/modular v1.4.2
 	github.com/GoCodeAlone/modular/modules/auth v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000

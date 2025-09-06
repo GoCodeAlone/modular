@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/chimux
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
+	github.com/GoCodeAlone/modular v1.4.2
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/go-chi/chi/v5 v5.2.2
@@ -30,5 +30,3 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/GoCodeAlone/modular => ../../
