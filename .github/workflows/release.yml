@@ -308,10 +308,13 @@ jobs:
   bump-modules:
     needs: release
     if: needs.release.result == 'success' && needs.release.outputs.core_changed == 'true' && inputs.skipModuleBump != true
+    # Reusable workflow call to bump module dependency versions after core release
     uses: ./.github/workflows/auto-bump-modules.yml
     permissions:
-      contents: write      # push bump branch & tag refs
-      pull-requests: write # open/update PR
+      contents: write        # push bump branch & tag refs
+      pull-requests: write   # open/update PR
+      actions: read          # required by called workflow (declared in auto-bump-modules.yml)
+      checks: write          # allow updating / creating status checks if that workflow does so
     with:
       coreVersion: ${{ needs.release.outputs.released_version }}
     secrets:
