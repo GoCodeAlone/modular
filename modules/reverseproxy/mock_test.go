@@ -210,7 +210,9 @@ func (msi *mockServiceIntrospector) GetServicesByInterface(interfaceType reflect
 }
 
 // ServiceIntrospector provides non-nil implementation to avoid nil dereferences in tests.
-func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return &mockServiceIntrospector{legacy: m} }
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector {
+	return &mockServiceIntrospector{legacy: m}
+}
 
 // NewStdConfigProvider is a simple mock implementation of modular.ConfigProvider
 func NewStdConfigProvider(config interface{}) modular.ConfigProvider {
@@ -352,7 +354,9 @@ func (mtsi *mockTenantServiceIntrospector) GetServicesByInterface(interfaceType 
 }
 
 // ServiceIntrospector provides non-nil implementation for tenant mock.
-func (m *MockTenantApplication) ServiceIntrospector() modular.ServiceIntrospector { return &mockTenantServiceIntrospector{legacy: m} }
+func (m *MockTenantApplication) ServiceIntrospector() modular.ServiceIntrospector {
+	return &mockTenantServiceIntrospector{legacy: m}
+}
 
 // MockLogger implements the Logger interface for testing
 type MockLogger struct {

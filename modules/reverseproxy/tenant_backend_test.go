@@ -517,7 +517,9 @@ func (m *mockTenantApplication) GetServicesByInterface(interfaceType reflect.Typ
 // mockTenantServiceIntrospector2 provides ServiceIntrospector implementation for this testify-based mock.
 type mockTenantServiceIntrospector2 struct{ legacy *mockTenantApplication }
 
-func (mtsi *mockTenantServiceIntrospector2) GetServicesByModule(moduleName string) []string { return []string{} }
+func (mtsi *mockTenantServiceIntrospector2) GetServicesByModule(moduleName string) []string {
+	return []string{}
+}
 func (mtsi *mockTenantServiceIntrospector2) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
 	return nil, false
 }
