@@ -5,8 +5,9 @@
 - [Modular Framework Detailed Documentation](#modular-framework-detailed-documentation)
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
+  - [Governance \& Best Practices](#governance--best-practices)
   - [Application Builder API](#application-builder-api)
-    - [Concurrency & Race Guidelines](#concurrency--race-guidelines)
+  - [Concurrency \& Race Guidelines](#concurrency--race-guidelines)
     - [Builder Pattern](#builder-pattern)
       - [Basic Usage](#basic-usage)
     - [Functional Options](#functional-options)
@@ -100,6 +101,22 @@
 ## Introduction
 
 The Modular framework provides a structured approach to building modular Go applications. This document offers in-depth explanations of the framework's features and capabilities, providing developers with the knowledge they need to build robust, maintainable applications.
+
+## Governance & Best Practices
+
+High-level non-negotiable principles and quality gates are defined in the `memory/constitution.md` (versioned project constitution). For actionable, day-to-day engineering checklists (interfaces, constructors, reflection, logging, concurrency, API export review, boilerplate reduction) see `GO_BEST_PRACTICES.md`.
+
+Quick references:
+- Constitution Articles XI–XV: Idiomatic Go, API stability, documentation freshness, boilerplate targets, style enforcement.
+- `GO_BEST_PRACTICES.md`: Implementation guidelines & PR checklists.
+- `CONCURRENCY_GUIDELINES.md`: Race-safe patterns and synchronization practices.
+
+When adding a feature:
+1. Start with spec → plan (research/contracts) → tasks (TDD first).
+2. Write failing test(s) before implementation.
+3. Update docs & examples in the same PR—stale docs block merge.
+4. Run full lint + test matrix (core, modules, examples, CLI).
+5. Verify API diff shows only intended additive or properly deprecated changes.
 
 ## Application Builder API
 ## Concurrency & Race Guidelines
