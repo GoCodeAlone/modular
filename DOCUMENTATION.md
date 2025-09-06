@@ -4,6 +4,7 @@
 
 - [Modular Framework Detailed Documentation](#modular-framework-detailed-documentation)
   - [Table of Contents](#table-of-contents)
+  - [Baseline Framework Tasks](#baseline-framework-tasks)
   - [Introduction](#introduction)
   - [Governance \& Best Practices](#governance--best-practices)
   - [Application Builder API](#application-builder-api)
@@ -101,6 +102,22 @@
 ## Introduction
 
 The Modular framework provides a structured approach to building modular Go applications. This document offers in-depth explanations of the framework's features and capabilities, providing developers with the knowledge they need to build robust, maintainable applications.
+
+## Baseline Framework Tasks
+
+The modular framework implementation follows a structured approach defined in `specs/001-baseline-specification-for/tasks.md`. This file contains 70 ordered tasks across 9 phases that implement the baseline functionality:
+
+- **Phase 3.1**: Setup - Task scaffolding, test structure, and build targets
+- **Phase 3.2**: Contract & Integration Tests - TDD approach with failing tests first
+- **Phase 3.3**: Core Models - Entity structures from the data model
+- **Phase 3.4**: Core Services & Interfaces - Service contract definitions
+- **Phase 3.5**: Service Implementations - Initial service stubs
+- **Phase 3.6**: Incremental Feature Completion - Complete implementations
+- **Phase 3.7**: Integration Wiring - Component integration
+- **Phase 3.8**: Quickstart Pass & End-to-End - Full integration testing
+- **Phase 3.9**: Polish & Performance - Optimization and cleanup
+
+For detailed task information, see `specs/001-baseline-specification-for/tasks.md`. To run the task validation suite, use `make tasks-check` which runs linting and all tests.
 
 ## Governance & Best Practices
 
