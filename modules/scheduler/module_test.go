@@ -83,6 +83,9 @@ func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.
 	return nil
 }
 
+// ServiceIntrospector returns nil for tests
+func (a *mockApp) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 func (a *mockApp) Init() error {
 	return nil
 }
