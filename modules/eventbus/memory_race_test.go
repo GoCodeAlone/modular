@@ -2,7 +2,6 @@ package eventbus
 
 import (
 	"context"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -96,8 +95,7 @@ func TestMemoryEventBusHighConcurrencyRace(t *testing.T) {
 	// We allow substantial slack because of drop mode and potential worker lag under race detector.
 	// Only fail if delivered count is implausibly low (<25% of published AND no drops recorded suggesting accounting bug).
 	if deliveredTotal < minPublished/4 && droppedTotal == 0 {
-		_, _, _, _ = runtime.Caller(0)
-		// Provide diagnostic context.
+		// Provide diagnostic context directly via fatal message (removed runtime.Caller diagnostic noise).
 		if deliveredTotal < minPublished/4 {
 			t.Fatalf("delivered too low: delivered=%d dropped=%d published=%d threshold=%d", deliveredTotal, droppedTotal, minPublished, minPublished/4)
 		}

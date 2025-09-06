@@ -223,6 +223,10 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	// Decline rationale: The fairness feature is opt‑in; when disabled there is zero overhead.
 	// When enabled, the extra allocation happens only for non‑zero rotation offsets. Empirical
 	// profiling should justify any added complexity before adopting in‑place rotation tricks.
+	// NOTE: A prior review suggested guarding cancellation with an atomic flag; we retain the
+	// existing small RWMutex protected flag accessed via isCancelled() to keep related fields
+	// consistently guarded and because this path is dwarfed by handler execution time. An
+	// atomic here would add complexity without proven contention benefit.
 	if m.config.RotateSubscriberOrder && len(allMatchingSubs) > 1 {
 		pc := atomic.AddUint64(&m.pubCounter, 1) - 1
 		ln := len(allMatchingSubs) // ln >= 2 here due to enclosing condition
