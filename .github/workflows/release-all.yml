@@ -180,7 +180,6 @@ jobs:
       - name: Post-release housekeeping
         run: |
           set -euo pipefail
-          # Placeholder for future auto-generated tasks (e.g. regenerate docs)
           go fmt ./... >/dev/null 2>&1 || true
       - name: Create cleanup PR if changes
         id: pr
@@ -192,13 +191,14 @@ jobs:
           git config user.name 'github-actions'
           git config user.email 'github-actions@users.noreply.github.com'
           git checkout -b "$BRANCH" || git checkout "$BRANCH"
-          if git diff --quiet; then
+          git fetch origin main:refs/remotes/origin/main || true
+          if git diff --quiet origin/main...; then
             echo 'No cleanup changes.'
             echo "created=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           git add .
-            git commit -m "chore: post-release core cleanup for ${{ needs.release-core.outputs.released_version }}" || true
+          git commit -m "chore: post-release core cleanup for ${{ needs.release-core.outputs.released_version }}" || true
           git push origin "$BRANCH" || true
           PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: post-release core cleanup ${BRANCH}" --body "Automated housekeeping after core release." --head "$BRANCH" --base main --draft=false)
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
@@ -228,7 +228,8 @@ jobs:
     needs:
       - release-core
       - core-cleanup
-    if: needs.release-core.result == 'success' && (needs.core-cleanup.outputs.pr_created == 'false' || needs.core-cleanup.outputs.pr_merged == 'true')
+    # Always perform bump after successful core release (don't block on open trivial cleanup PR)
+    if: needs.release-core.result == 'success'
     uses: ./.github/workflows/auto-bump-modules.yml
     with:
       coreVersion: ${{ needs.release-core.outputs.released_version }}
