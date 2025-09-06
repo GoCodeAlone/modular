@@ -178,11 +178,11 @@ jobs:
           path: artifacts/
           retention-days: 30
 
-        - name: Summary (baseline missing notice)
-          if: env.baseline_has_contract == 'false'
-          run: |
-            echo "## API Contract Check" >> $GITHUB_STEP_SUMMARY
-            echo "Baseline (origin/main) lacks contract subcommand; diff skipped. This is expected until main includes the CLI feature." >> $GITHUB_STEP_SUMMARY
+      - name: Summary (baseline missing notice)
+        if: env.baseline_has_contract == 'false'
+        run: |
+          echo "## API Contract Check" >> $GITHUB_STEP_SUMMARY
+          echo "Baseline (origin/main) lacks contract subcommand; diff skipped. This is expected until main includes the CLI feature." >> $GITHUB_STEP_SUMMARY
 
       - name: Generate contract summary
         id: summary
