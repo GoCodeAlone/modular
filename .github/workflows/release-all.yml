@@ -12,12 +12,12 @@ on:
         default: patch
 
 permissions:
-  # Need contents write for tagging/releases, actions write for workflow dispatches,
-  # pull-requests & checks write are required by the called auto-bump-modules workflow
-  contents: write
-  actions: write
-  pull-requests: write
-  checks: write
+  # Principle of least privilege: core orchestration requires these scopes. No others granted globally.
+  contents: write        # create tags/releases
+  actions: write         # dispatch called workflows
+  pull-requests: write   # create/update bump PRs
+  checks: write          # update status checks from composite jobs
+  packages: write        # allow future artifact/package publication without further scope changes
 
 jobs:
 

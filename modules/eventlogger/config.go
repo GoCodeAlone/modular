@@ -41,12 +41,11 @@ type EventLoggerConfig struct {
 	// When false, the module will not emit com.modular.eventlogger.stopped to avoid races with shutdown.
 	ShutdownEmitStopped bool `yaml:"shutdownEmitStopped" default:"true" desc:"Emit logger stopped operational event on Stop"`
 
-	// ShutdownDrainTimeout specifies how long Stop() should wait for in-flight events to drain.
-	// Zero or negative duration means "wait indefinitely" (Stop blocks until all events processed).
-	// This allows operators to explicitly choose between a bounded shutdown and a fully
-	// lossless drain. A very large positive value is NOT treated specially—only <=0 triggers
-	// the indefinite behavior.
-	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Maximum time to wait for draining event queue on Stop. Zero or negative = unlimited wait."`
+	// ShutdownDrainTimeout controls graceful shutdown behavior for in‑flight events.
+	// If > 0: Stop() waits up to the specified duration then returns (remaining events may be dropped).
+	// If <= 0: Stop() waits indefinitely for a full drain (lossless shutdown) unless the parent context cancels.
+	// This explicit <= 0 contract avoids ambiguous huge timeouts and lets operators choose bounded vs. lossless.
+	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Max drain wait on Stop; <=0 = wait indefinitely for all events"`
 }
 
 // OutputTargetConfig configures a specific output target for event logs.

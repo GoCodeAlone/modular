@@ -27,10 +27,12 @@ package eventbus
 //   prometheus_collector_stub.go -> //go:build !prometheus
 // This keeps mainline source simple while letting consumers tailor binaries without forking.
 //
-// Build tag guidance: To exclude Prometheus support, supply -tags "!prometheus" (assuming
-// you split the collector into tagged files as described). Similarly a datadog specific
-// exporter could live behind a datadog build tag. We keep a unified file here until a
-// concrete need for binary size reduction or dependency trimming warrants the split.
+// Build tag guidance: To exclude Prometheus support, supply -tags "!prometheus" (after
+// splitting into prometheus_collector.go / prometheus_collector_stub.go). Likewise a
+// Datadog exporter can live behind a `datadog` tag. We intentionally keep everything in a
+// single file until (a) dependency graph or (b) binary size pressure justifies tag split.
+// This documents the approach so consumers understand the future direction without
+// misinterpreting current unified source as a lack of modularity.
 
 import (
 	"context"

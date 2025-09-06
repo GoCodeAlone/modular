@@ -1,6 +1,11 @@
 name: Module Release
 run-name: Module Release for ${{ inputs.module || github.event.inputs.module }} - ${{ inputs.releaseType || github.event.inputs.releaseType }}
 
+# Minimal global permissions; individual jobs do not request escalation beyond content/package writes.
+permissions:
+  contents: write   # create tags & push version bumps
+  packages: write   # future-proof for publishing module artifacts
+
 on:
   workflow_dispatch:
     inputs:

@@ -25,7 +25,8 @@ env:
   GO_VERSION: '^1.25'
 
 permissions:
-  contents: write
+  contents: write   # tagging & attaching release assets
+  packages: write   # allow publishing to registries if added later
       
 jobs:
   prepare:
