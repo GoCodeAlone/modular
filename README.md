@@ -70,6 +70,11 @@ Each module is designed to be:
 
 > 📖 For detailed information about each module, see the [modules directory](modules/README.md) or click on the individual module links above.
 
+### Governance & Engineering Standards
+Core, non-negotiable project principles (TDD, lifecycle determinism, API stability, performance baselines, multi-tenancy isolation) are codified in the versioned [Project Constitution](memory/constitution.md). Day-to-day implementation checklists (interfaces, reflection usage, error style, logging fields, concurrency annotations, export review) live in [Go Best Practices](GO_BEST_PRACTICES.md). Concurrency rules and race avoidance patterns are documented in [Concurrency & Race Guidelines](CONCURRENCY_GUIDELINES.md).
+
+Always update docs & examples in the same PR as feature code; stale documentation is considered a failing gate.
+
 ## 🌩️ Observer Pattern with CloudEvents Support
 
 Modular includes a powerful Observer pattern implementation with CloudEvents specification support, enabling event-driven communication between components while maintaining full backward compatibility.
