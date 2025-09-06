@@ -147,6 +147,7 @@ jobs:
           fi
           PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: bump module dependencies to ${CORE}" --body "Automated update of module go.mod files and docs to ${CORE}." --head "$BRANCH" --base main --draft=false)
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "created=true" >> $GITHUB_OUTPUT
 
       - name: Run full tests (core + modules + examples + CLI)
@@ -177,8 +178,36 @@ jobs:
         run: |
           set -euo pipefail
           PR=${{ steps.pr.outputs.pr_url }}
+          BRANCH=${{ steps.pr.outputs.branch }}
           [ -z "$PR" ] && { echo 'No PR URL'; exit 0; }
-          # Try to enable auto-merge first; if policies block it, attempt an admin squash merge; otherwise leave PR open
-            if ! gh pr merge "$PR" --squash --delete-branch --auto; then
-              gh pr merge "$PR" --squash --delete-branch --admin || echo "Merge deferred: branch policies prevent automatic merge"
+          echo "Preparing to merge $PR (branch: $BRANCH)"
+          # Ensure branch is up to date with main if repository requires it
+          if [ -n "$BRANCH" ]; then
+            git fetch origin main "$BRANCH"
+            git checkout "$BRANCH" || true
+            # If branch is behind main, attempt a rebase (clean history; final merge is squash anyway)
+            if ! git merge-base --is-ancestor origin/main "$BRANCH"; then
+              echo "Branch is behind main; attempting rebase onto origin/main"
+              if git rebase origin/main; then
+                echo "Rebase succeeded; pushing updated branch"
+                git push --force-with-lease origin "$BRANCH" || git push --force origin "$BRANCH"
+              else
+                echo "Rebase conflict; aborting rebase and leaving PR for manual resolution"
+                git rebase --abort || true
+                exit 0
+              fi
             fi
+          fi
+          # Approve the PR (idempotent)
+          gh pr review "$PR" --approve || echo "Approval step skipped"
+          # Try enabling auto-merge (squash)
+          if gh pr merge "$PR" --squash --delete-branch --auto; then
+            echo "Auto-merge enabled (or PR merged immediately)."
+            exit 0
+          fi
+          echo "Auto-merge not enabled; attempting direct squash merge"
+          if gh pr merge "$PR" --squash --delete-branch; then
+            echo "PR merged via direct squash."
+            exit 0
+          fi
+          echo "Merge deferred: branch policies or status checks prevented automatic merge"
