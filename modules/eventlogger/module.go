@@ -603,7 +603,12 @@ func (m *EventLoggerModule) OnEvent(ctx context.Context, event cloudevents.Event
 				queueResult = nil
 				return
 			} else {
-				// Queue is full - drop oldest event and add new one
+				// Queue is full - drop oldest event and add new one. We log both the incoming event type
+				// and the dropped oldest event type for observability. This path intentionally avoids
+				// emitting an operational CloudEvent because the logger itself is not yet started; emitting
+				// here would risk recursive generation of events that also attempt to enqueue. Once started,
+				// pressure signals are emitted via BufferFull/EventDropped events on the hot path with
+				// safeguards to prevent amplification loops (see further below in non-started path logic).
 				var droppedEventType string
 				if len(m.eventQueue) > 0 {
 					// Capture dropped event type for debugging visibility then shift slice

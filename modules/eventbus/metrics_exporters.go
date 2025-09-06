@@ -21,10 +21,13 @@ package eventbus
 //   go exporter.Run(ctx)
 //   ... later cancel();
 //
-// NOTE: Prometheus and Datadog dependencies are optional. If you want to exclude one of these
-// exporters for a build, prefer Go build tags (e.g. //go:build !prometheus) with the exporter
-// implementation moved to a separate file guarded by that tag, rather than manual comment edits.
-// This file keeps both implementations active by default for convenience.
+// NOTE: Prometheus and Datadog dependencies are optional. If you want to exclude an exporter
+// from a particular build, prefer Go build tags instead of editing this file manually. Example:
+//   //go:build !prometheus
+//   // +build !prometheus
+// Move the Prometheus collector implementation into a prometheus_collector.go file guarded by
+// a complementary build tag (e.g. //go:build prometheus). This keeps the default experience
+// simple (both available) while allowing consumers to tailor binaries without forking.
 
 import (
 	"context"

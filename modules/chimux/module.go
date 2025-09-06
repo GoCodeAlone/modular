@@ -146,6 +146,10 @@ type ChiMuxModule struct {
 	subject       modular.Subject // Added for event observation
 	// disabledRoutes keeps track of routes that have been disabled at runtime.
 	// Keyed by HTTP method (uppercase) then the original registered pattern.
+	// A disabled route short‑circuits matching before reaching the underlying chi mux
+	// allowing dynamic feature flag style shutdown without removing the route from
+	// the registry (so it can be re‑enabled later). Patterns are stored exactly as
+	// originally registered to avoid ambiguity with chi's internal normalized form.
 	disabledRoutes map[string]map[string]bool
 	// disabledMu guards access to disabledRoutes for concurrent reads/writes.
 	disabledMu sync.RWMutex
@@ -153,8 +157,8 @@ type ChiMuxModule struct {
 	routeRegistry []struct{ method, pattern string }
 	// middleware tracking for runtime enable/disable
 	middlewareMu    sync.RWMutex
-	middlewares     map[string]*controllableMiddleware
-	middlewareOrder []string
+	middlewares     map[string]*controllableMiddleware // keyed by middleware name provided at registration
+	middlewareOrder []string                           // preserves deterministic application order for rebuilds
 }
 
 // NewChiMuxModule creates a new instance of the chimux module.

@@ -214,8 +214,23 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 		return nil
 	}
 
-	// Optional rotation for fairness. We deliberately removed the previous random shuffle fallback
-	// (when rotation disabled) to preserve deterministic ordering and avoid per-publish RNG cost.
+	// Optional rotation for fairness.
+	// Rationale:
+	//   * Deterministic order when rotation disabled (stable slice) improves testability and
+	//     reasoning about delivery ordering.
+	//   * When rotation enabled we perform a logical rotation using an incrementing counter
+	//     rather than allocating + copying on every publish via append/slice tricks or
+	//     performing a random shuffle. This yields O(n) copies only when the starting offset
+	//     changes (and only for length > 1) with no RNG cost and avoids uint64->int casts
+	//     that would require additional lint suppression.
+	//   * Slice re-slicing with append could avoid an allocation in the start!=0 case, but the
+	//     explicit copy keeps the code straightforward and side-effect free (no aliasing that
+	//     could surprise future mutations) while cost is negligible relative to handler work.
+	//   * We intentionally do not randomize: fairness over time is achieved by round‑robin
+	//     style rotation (pubCounter % len) which ensures equal start positions statistically
+	//     without introducing randomness into delivery order for reproducibility.
+	// If performance profiling later shows this allocation hot, a specialized in-place rotate
+	// could be introduced guarded by benchmarks.
 	if m.config.RotateSubscriberOrder && len(allMatchingSubs) > 1 {
 		pc := atomic.AddUint64(&m.pubCounter, 1) - 1
 		ln := len(allMatchingSubs) // ln >= 2 here due to enclosing condition
