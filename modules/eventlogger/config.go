@@ -42,7 +42,10 @@ type EventLoggerConfig struct {
 	ShutdownEmitStopped bool `yaml:"shutdownEmitStopped" default:"true" desc:"Emit logger stopped operational event on Stop"`
 
 	// ShutdownDrainTimeout specifies how long Stop() should wait for in-flight events to drain.
-	// Zero or negative duration means unlimited wait (Stop blocks until all events processed).
+	// Zero or negative duration means "wait indefinitely" (Stop blocks until all events processed).
+	// This allows operators to explicitly choose between a bounded shutdown and a fully
+	// lossless drain. A very large positive value is NOT treated specially—only <=0 triggers
+	// the indefinite behavior.
 	ShutdownDrainTimeout time.Duration `yaml:"shutdownDrainTimeout" default:"2s" desc:"Maximum time to wait for draining event queue on Stop. Zero or negative = unlimited wait."`
 }
 

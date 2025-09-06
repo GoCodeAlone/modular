@@ -180,21 +180,21 @@ func NewChiMuxModule() modular.Module {
 // controllableMiddleware wraps a Chi middleware with a fast enable/disable flag.
 //
 // Why this exists instead of removing middleware from the chi chain:
-//   * Chi builds a linear slice of middleware; removing items would require
+//   - Chi builds a linear slice of middleware; removing items would require
 //     rebuilding the chain and can race with in‑flight requests referencing the
 //     old handler sequence.
-//   * A single atomic flag read on each request is cheaper and simpler than
+//   - A single atomic flag read on each request is cheaper and simpler than
 //     chain reconstruction + synchronization around route rebuilds. Toggling is
 //     expected to be extremely rare (admin action / config reload) while reads
 //     happen on every request.
-//   * Keeping the wrapper stable avoids subtle ordering drift; the original
+//   - Keeping the wrapper stable avoids subtle ordering drift; the original
 //     registration order is preserved in middlewareOrder for deterministic
 //     reasoning and event emission.
 //
 // Thread-safety & performance:
-//   * enabled is an atomic.Bool so hot-path requests avoid taking a lock.
-//   * Disable simply flips the flag; the wrapper then becomes a no-op pass‑through.
-//   * We intentionally DO NOT attempt an atomic pointer swap to a passthrough
+//   - enabled is an atomic.Bool so hot-path requests avoid taking a lock.
+//   - Disable simply flips the flag; the wrapper then becomes a no-op pass‑through.
+//   - We intentionally DO NOT attempt an atomic pointer swap to a passthrough
 //     function; the single conditional branch keeps clarity and is negligible
 //     compared to typical middleware work (logging, auth, etc.). Premature
 //     micro‑optimizations are avoided until profiling justifies them.
@@ -887,12 +887,15 @@ func (m *ChiMuxModule) disabledRouteMiddleware() func(http.Handler) http.Handler
 			if rctx != nil && len(rctx.RoutePatterns) > 0 {
 				pattern = rctx.RoutePatterns[len(rctx.RoutePatterns)-1]
 			} else {
-				// Fallback to the raw request path. WARNING: For parameterized routes (e.g. /users/{id})
-				// chi records the pattern as /users/{id} but r.URL.Path will be the concrete value
-				// such as /users/123. This means a disabled route registered as /users/{id} will NOT
-				// match here and the route may remain active. Admin tooling disabling dynamic routes
-				// should therefore prefer invoking DisableRoute() with the original pattern captured
-				// at registration time rather than a concrete request path.
+				// Fallback to the raw request path.
+				// WARNING: Parameterized mismatch nuance. For parameterized routes (e.g. /users/{id}) chi
+				// records the pattern as /users/{id} but r.URL.Path is the concrete value /users/123.
+				// If DisableRoute() was called with the pattern /users/{id} we only mark that symbolic
+				// pattern as disabled. When we fall back to r.URL.Path here (because RouteContext is
+				// unavailable or empty), we compare against /users/123 which will not match the stored
+				// disabled entry. Net effect: the route still responds. To reliably disable dynamic
+				// routes, always call DisableRoute() using the original pattern (capture it at
+				// registration time) and avoid relying on raw-path fallbacks in admin tooling.
 				pattern = r.URL.Path
 			}
 			method := r.Method

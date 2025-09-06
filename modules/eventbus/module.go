@@ -149,7 +149,7 @@ type EventBusModule struct {
 	router    *EngineRouter
 	mutex     sync.RWMutex
 	isStarted bool
-	subject   modular.Subject // Observer notification target. Lazily created & guarded by m.mutex to avoid races and to skip allocation when apps never register observers.
+	subject   modular.Subject // Observer notification target. Guarded by m.mutex to avoid a data race with RegisterObservers & emission helpers; not allocated unless observers are actually registered (zero‑cost when observation unused).
 }
 
 // DeliveryStats represents basic delivery outcomes for an engine or aggregate.

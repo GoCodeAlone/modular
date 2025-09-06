@@ -214,9 +214,15 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 		return nil
 	}
 
-	// Optional rotation for fairness: if RotateSubscriberOrder && len>1 we round-robin the
-	// starting index using pubCounter%len to avoid perpetual head-of-line bias. We copy into
-	// a new slice only when start!=0; clarity > micro-optimization until profiling justifies.
+	// Optional rotation for fairness: if RotateSubscriberOrder && len>1 we round‑robin the
+	// starting index (pubCounter % len) to avoid perpetual head‑of‑line bias when one early
+	// subscriber is slow. We allocate a rotated slice only when start != 0. This trades a
+	// single allocation (for the rotated view) in the less common fairness path for simpler
+	// code; if profiling ever shows this as material we could do an in‑place three‑part
+	// reverse or ring‑buffer view, but we intentionally delay such micro‑optimization.
+	// Decline rationale: The fairness feature is opt‑in; when disabled there is zero overhead.
+	// When enabled, the extra allocation happens only for non‑zero rotation offsets. Empirical
+	// profiling should justify any added complexity before adopting in‑place rotation tricks.
 	if m.config.RotateSubscriberOrder && len(allMatchingSubs) > 1 {
 		pc := atomic.AddUint64(&m.pubCounter, 1) - 1
 		ln := len(allMatchingSubs) // ln >= 2 here due to enclosing condition
@@ -435,6 +441,10 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 		if sub.isCancelled() {
 			return
 		}
+		// Decline rationale (atomic flag suggestion): we keep the small RLock‑protected isCancelled()
+		// helper instead of an atomic.Bool to preserve consistency with other guarded fields and
+		// avoid widening the struct with an additional atomic value. The lock is expected to be
+		// uncontended and the helper is on a non‑hot path relative to user handler execution time.
 		select {
 		case <-m.ctx.Done():
 			return
