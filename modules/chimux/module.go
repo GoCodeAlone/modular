@@ -888,14 +888,22 @@ func (m *ChiMuxModule) disabledRouteMiddleware() func(http.Handler) http.Handler
 				pattern = rctx.RoutePatterns[len(rctx.RoutePatterns)-1]
 			} else {
 				// Fallback to the raw request path.
-				// WARNING: Parameterized mismatch nuance. For parameterized routes (e.g. /users/{id}) chi
-				// records the pattern as /users/{id} but r.URL.Path is the concrete value /users/123.
-				// If DisableRoute() was called with the pattern /users/{id} we only mark that symbolic
-				// pattern as disabled. When we fall back to r.URL.Path here (because RouteContext is
-				// unavailable or empty), we compare against /users/123 which will not match the stored
-				// disabled entry. Net effect: the route still responds. To reliably disable dynamic
-				// routes, always call DisableRoute() using the original pattern (capture it at
-				// registration time) and avoid relying on raw-path fallbacks in admin tooling.
+				// Parameterized mismatch nuance: chi records the symbolic pattern (e.g. /users/{id}) in
+				// RouteContext.RoutePatterns, but the raw URL path is the concrete value (/users/123).
+				// disabledRoutes stores ONLY the originally registered symbolic pattern. If we do not
+				// have a RouteContext (some early middleware, non‑chi handler injection, or tests that
+				// bypass chi) we must fall back to r.URL.Path. Comparing /users/123 against a stored
+				// key /users/{id} will never match, so the route will appear enabled even if disabled.
+				// Operational guidance:
+				//   1. Always invoke DisableRoute with the exact pattern string used at registration.
+				//   2. For dynamic routes exposed to admin tooling, capture and present the symbolic
+				//      pattern (not an example concrete path) so disabling works reliably.
+				//   3. If a future need arises to disable by concrete path segment we could enrich
+				//      disabledRoutes with a reverse lookup of recognized chi parameters; premature
+				//      generalization avoided here to keep lookups O(1) and simple.
+				//   4. The mismatch only occurs when RouteContext is absent; normal chi routing always
+				//      supplies the pattern slice so dynamic disables are effective in steady state.
+				// This expanded comment documents the trade‑off explicitly per review feedback.
 				pattern = r.URL.Path
 			}
 			method := r.Method

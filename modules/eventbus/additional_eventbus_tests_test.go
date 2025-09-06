@@ -66,8 +66,8 @@ func TestEventBusUnsubscribe(t *testing.T) {
 	}
 	defer m.Stop(context.Background())
 
-	count := 0
-	sub, err := m.Subscribe(context.Background(), "once.topic", func(ctx context.Context, e Event) error { count++; return nil })
+	var count int64
+	sub, err := m.Subscribe(context.Background(), "once.topic", func(ctx context.Context, e Event) error { atomic.AddInt64(&count, 1); return nil })
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -76,8 +76,8 @@ func TestEventBusUnsubscribe(t *testing.T) {
 		t.Fatalf("publish1: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if count != 1 {
-		t.Fatalf("expected 1 delivery got %d", count)
+	if atomic.LoadInt64(&count) != 1 {
+		t.Fatalf("expected 1 delivery got %d", atomic.LoadInt64(&count))
 	}
 
 	if err := m.Unsubscribe(context.Background(), sub); err != nil {
@@ -87,7 +87,7 @@ func TestEventBusUnsubscribe(t *testing.T) {
 		t.Fatalf("publish2: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if count != 1 {
+	if atomic.LoadInt64(&count) != 1 {
 		t.Fatalf("expected no additional deliveries after unsubscribe")
 	}
 }

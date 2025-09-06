@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -19,7 +20,7 @@ func TestCustomMemoryUnsubscribe(t *testing.T) {
 	}
 
 	var count int64
-	sub, err := eb.Subscribe(ctx, "beta.topic", func(ctx context.Context, e Event) error { count++; return nil })
+	sub, err := eb.Subscribe(ctx, "beta.topic", func(ctx context.Context, e Event) error { atomic.AddInt64(&count, 1); return nil })
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -30,13 +31,13 @@ func TestCustomMemoryUnsubscribe(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if count == 1 {
+		if atomic.LoadInt64(&count) == 1 {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if count != 1 {
-		t.Fatalf("expected first event processed, got %d", count)
+	if atomic.LoadInt64(&count) != 1 {
+		t.Fatalf("expected first event processed, got %d", atomic.LoadInt64(&count))
 	}
 
 	// unsubscribe and publish some more events which should not be processed
@@ -48,8 +49,8 @@ func TestCustomMemoryUnsubscribe(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	if count != 1 {
-		t.Fatalf("expected no further events after unsubscribe, got %d", count)
+	if atomic.LoadInt64(&count) != 1 {
+		t.Fatalf("expected no further events after unsubscribe, got %d", atomic.LoadInt64(&count))
 	}
 
 	// confirm subscriber count for topic now zero

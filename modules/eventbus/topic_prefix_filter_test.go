@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -22,7 +23,7 @@ func TestTopicPrefixFilter(t *testing.T) {
 	}
 
 	var received int64
-	sub, err := bus.Subscribe(ctx, "allow.something", func(ctx context.Context, e Event) error { received++; return nil })
+	sub, err := bus.Subscribe(ctx, "allow.something", func(ctx context.Context, e Event) error { atomic.AddInt64(&received, 1); return nil })
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -39,13 +40,13 @@ func TestTopicPrefixFilter(t *testing.T) {
 
 	deadline := time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
-		if received == 1 {
+		if atomic.LoadInt64(&received) == 1 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if received != 1 {
-		t.Fatalf("expected only 1 allowed event processed got %d", received)
+	if atomic.LoadInt64(&received) != 1 {
+		t.Fatalf("expected only 1 allowed event processed got %d", atomic.LoadInt64(&received))
 	}
 
 	// sanity: publishing more allowed events increments counter
@@ -55,13 +56,13 @@ func TestTopicPrefixFilter(t *testing.T) {
 	}
 	deadline = time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
-		if received == 2 {
+		if atomic.LoadInt64(&received) == 2 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if received != 2 {
-		t.Fatalf("expected 2 total allowed events got %d", received)
+	if atomic.LoadInt64(&received) != 2 {
+		t.Fatalf("expected 2 total allowed events got %d", atomic.LoadInt64(&received))
 	}
 
 	_ = bus.Stop(ctx)

@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -24,13 +25,13 @@ func TestCustomMemoryFilterReject(t *testing.T) {
 	}
 
 	// Subscribe to both allowed and denied topics; only allowed should receive events.
-	allowedCount := int64(0)
-	deniedCount := int64(0)
-	_, err = bus.Subscribe(context.Background(), "allow.test", func(ctx context.Context, e Event) error { allowedCount++; return nil })
+	var allowedCount int64
+	var deniedCount int64
+	_, err = bus.Subscribe(context.Background(), "allow.test", func(ctx context.Context, e Event) error { atomic.AddInt64(&allowedCount, 1); return nil })
 	if err != nil {
 		t.Fatalf("subscribe allow: %v", err)
 	}
-	_, err = bus.Subscribe(context.Background(), "deny.test", func(ctx context.Context, e Event) error { deniedCount++; return nil })
+	_, err = bus.Subscribe(context.Background(), "deny.test", func(ctx context.Context, e Event) error { atomic.AddInt64(&deniedCount, 1); return nil })
 	if err != nil {
 		t.Fatalf("subscribe deny: %v", err)
 	}
@@ -42,11 +43,11 @@ func TestCustomMemoryFilterReject(t *testing.T) {
 	// Wait briefly for allowed delivery.
 	time.Sleep(20 * time.Millisecond)
 
-	if allowedCount != 1 {
-		t.Fatalf("expected allowedCount=1 got %d", allowedCount)
+	if atomic.LoadInt64(&allowedCount) != 1 {
+		t.Fatalf("expected allowedCount=1 got %d", atomic.LoadInt64(&allowedCount))
 	}
-	if deniedCount != 0 {
-		t.Fatalf("expected deniedCount=0 got %d", deniedCount)
+	if atomic.LoadInt64(&deniedCount) != 0 {
+		t.Fatalf("expected deniedCount=0 got %d", atomic.LoadInt64(&deniedCount))
 	}
 
 	metrics := bus.GetMetrics()

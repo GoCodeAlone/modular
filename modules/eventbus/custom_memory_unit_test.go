@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -26,7 +27,7 @@ func TestCustomMemorySubscriptionAndMetrics(t *testing.T) {
 	// synchronous subscription
 	var syncCount int64
 	subSync, err := eb.Subscribe(ctx, "alpha.topic", func(ctx context.Context, e Event) error {
-		syncCount++
+		atomic.AddInt64(&syncCount, 1)
 		return nil
 	})
 	if err != nil {
@@ -42,7 +43,7 @@ func TestCustomMemorySubscriptionAndMetrics(t *testing.T) {
 	// async subscription
 	var asyncCount int64
 	subAsync, err := eb.SubscribeAsync(ctx, "alpha.topic", func(ctx context.Context, e Event) error {
-		asyncCount++
+		atomic.AddInt64(&asyncCount, 1)
 		return nil
 	})
 	if err != nil {
@@ -63,13 +64,13 @@ func TestCustomMemorySubscriptionAndMetrics(t *testing.T) {
 	// wait for async handler to process
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if syncCount == int64(totalEvents) && asyncCount == int64(totalEvents) {
+		if atomic.LoadInt64(&syncCount) == int64(totalEvents) && atomic.LoadInt64(&asyncCount) == int64(totalEvents) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if syncCount != int64(totalEvents) || asyncCount != int64(totalEvents) {
-		t.Fatalf("handlers did not process all events: sync=%d async=%d", syncCount, asyncCount)
+	if atomic.LoadInt64(&syncCount) != int64(totalEvents) || atomic.LoadInt64(&asyncCount) != int64(totalEvents) {
+		t.Fatalf("handlers did not process all events: sync=%d async=%d", atomic.LoadInt64(&syncCount), atomic.LoadInt64(&asyncCount))
 	}
 
 	// validate ProcessedEvents counters on underlying subscription concrete types

@@ -3,6 +3,7 @@ package eventbus
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -81,15 +82,15 @@ func TestMemoryRotateSubscriberOrder(t *testing.T) {
 	if err := bus.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	recv1 := 0
-	recv2 := 0
-	_, _ = bus.Subscribe(context.Background(), "rot.topic", func(ctx context.Context, e Event) error { recv1++; return nil })
-	_, _ = bus.Subscribe(context.Background(), "rot.topic", func(ctx context.Context, e Event) error { recv2++; return nil })
+	var recv1 int64
+	var recv2 int64
+	_, _ = bus.Subscribe(context.Background(), "rot.topic", func(ctx context.Context, e Event) error { atomic.AddInt64(&recv1, 1); return nil })
+	_, _ = bus.Subscribe(context.Background(), "rot.topic", func(ctx context.Context, e Event) error { atomic.AddInt64(&recv2, 1); return nil })
 	for i := 0; i < 5; i++ {
 		_ = bus.Publish(context.Background(), Event{Topic: "rot.topic"})
 	}
 	time.Sleep(40 * time.Millisecond)
-	if (recv1 + recv2) == 0 {
+	if atomic.LoadInt64(&recv1)+atomic.LoadInt64(&recv2) == 0 {
 		t.Fatalf("expected deliveries with rotation enabled")
 	}
 }

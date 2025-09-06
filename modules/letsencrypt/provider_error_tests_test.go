@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -79,9 +80,9 @@ func TestStartRenewalTimerIntervalHook(t *testing.T) {
 	pair, _ := tls.X509KeyPair(certPEM, keyPEM)
 	m.certificates["short.com"] = &pair
 	m.user, _ = m.initUser()
-	renewed := false
+	var renewed int32
 	m.obtainCertificate = func(r certificate.ObtainRequest) (*certificate.Resource, error) {
-		renewed = true
+		atomic.StoreInt32(&renewed, 1)
 		return &certificate.Resource{Certificate: certPEM, PrivateKey: keyPEM}, nil
 	}
 	m.registerAccountFunc = func(opts registration.RegisterOptions) (*registration.Resource, error) {
@@ -96,7 +97,7 @@ func TestStartRenewalTimerIntervalHook(t *testing.T) {
 	defer cancel()
 	m.startRenewalTimer(ctx)
 	time.Sleep(30 * time.Millisecond)
-	if !renewed {
+	if atomic.LoadInt32(&renewed) != 1 {
 		t.Fatalf("expected renewal to occur with short interval")
 	}
 	close(m.shutdownChan)

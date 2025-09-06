@@ -214,24 +214,22 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 		return nil
 	}
 
-	// Optional rotation for fairness: if RotateSubscriberOrder && len>1 we round‑robin the
-	// starting index (pubCounter % len) to avoid perpetual head‑of‑line bias when one early
-	// subscriber is slow. We allocate a rotated slice only when start != 0. This trades a
-	// single allocation (for the rotated view) in the less common fairness path for simpler
-	// code; if profiling ever shows this as material we could do an in‑place three‑part
-	// reverse or ring‑buffer view, but we intentionally delay such micro‑optimization.
-	// Decline rationale: The fairness feature is opt‑in; when disabled there is zero overhead.
-	// When enabled, the extra allocation happens only for non‑zero rotation offsets. Empirical
-	// profiling should justify any added complexity before adopting in‑place rotation tricks.
-	// NOTE: A prior review suggested guarding cancellation with an atomic flag; we retain the
-	// existing small RWMutex protected flag accessed via isCancelled() to keep related fields
-	// consistently guarded and because this path is dwarfed by handler execution time. An
-	// atomic here would add complexity without proven contention benefit.
+	// Optional rotation for fairness: when RotateSubscriberOrder is enabled and there is more
+	// than one subscriber we round‑robin the starting index (pubCounter % len) to reduce
+	// perpetual head‑of‑line bias if an early subscriber is slow. We allocate a rotated slice
+	// only when the computed start offset is non‑zero. This keeps the common zero‑offset path
+	// allocation‑free while keeping the code straightforward. Further micro‑optimization (e.g.
+	// in‑place three‑segment reverse) is intentionally deferred until profiling shows material
+	// impact. Feature is opt‑in; disabled means zero added cost.
+	// Cancellation flag atomic vs lock rationale: we keep the tiny RWMutex protected flag via
+	// isCancelled() so all subscription life‑cycle fields remain consistently guarded; handler
+	// execution dominates latency so an atomic provides no demonstrated benefit yet.
 	if m.config.RotateSubscriberOrder && len(allMatchingSubs) > 1 {
 		pc := atomic.AddUint64(&m.pubCounter, 1) - 1
-		ln := len(allMatchingSubs) // ln >= 2 here due to enclosing condition
-		// Compute rotation starting offset. We keep start as uint64 and avoid any uint64->int cast
-		// (gosec G115) by performing a manual copy instead of slicing with an int index.
+		ln := len(allMatchingSubs) // >=2 here due to enclosing condition
+		// start64 is safe: ln is an int from slice length; converting ln to uint64 cannot overflow
+		// because slice length fits in native int and hence within uint64. We avoid casting the
+		// result back to int for indexing by performing manual copy loops below.
 		start64 := pc % uint64(ln)
 		if start64 != 0 { // avoid allocation when rotation index is zero
 			rotated := make([]*memorySubscription, 0, ln)
