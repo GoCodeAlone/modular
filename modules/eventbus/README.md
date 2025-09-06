@@ -28,6 +28,8 @@ The EventBus Module provides a publish-subscribe messaging system for Modular ap
 - **Metrics & Monitoring**: Built-in metrics collection (custom engines)
 - **Tenant Isolation**: Support for multi-tenant applications
 - **Graceful Shutdown**: Proper cleanup of all engines and subscriptions
+ - **Delivery Stats API**: Lightweight counters for delivered vs dropped events (memory engine) aggregated per-engine and module-wide
+ - **Metrics Exporters**: Prometheus collector and Datadog StatsD exporter for delivery statistics
 
 ## Installation
 
@@ -101,6 +103,151 @@ eventbus:
       engine: "kinesis-stream"
     - topics: ["*"]  # Fallback for all other topics
       engine: "redis-durable"
+
+### Delivery Modes & Backpressure (Memory Engine)
+
+The in-process memory engine supports configurable delivery semantics to balance throughput, fairness, and reliability when subscriber channels become congested.
+
+Configuration fields (per engine config.map for a memory engine):
+
+```yaml
+eventbus:
+  engines:
+    - name: "memory-fast"
+      type: "memory"
+      config:
+        # Existing settings...
+        workerCount: 5
+        maxEventQueueSize: 1000
+        defaultEventBufferSize: 32
+
+        # New delivery / fairness controls
+        deliveryMode: drop            # drop | block | timeout (default: drop)
+        publishBlockTimeout: 250ms    # only used when deliveryMode: timeout
+        rotateSubscriberOrder: true   # fairness rotation (default: true)
+```
+
+Modes:
+- drop (default): Non-blocking send. If a subscriber channel buffer is full the event is dropped for that subscriber (other subscribers still attempted). Highest throughput, possible per-subscriber loss under bursty load.
+- block: Publisher goroutine blocks until each subscriber accepts the event (or context cancelled). Provides strongest delivery at the cost of publisher backpressure; a slow subscriber stalls publishers.
+- timeout: Like block but each subscriber send has an upper bound (`publishBlockTimeout`). If the timeout elapses the event is dropped for that subscriber and publishing proceeds. Reduces head-of-line blocking risk while greatly lowering starvation compared to pure drop mode.
+
+Fairness:
+- When `rotateSubscriberOrder` is true (default) the memory engine performs a deterministic rotation of the subscriber slice based on a monotonically increasing publish counter. This gives each subscription a chance to be first periodically, preventing chronic starvation when buffers are near capacity.
+- When false, iteration order is the static registration order (legacy behavior) and early subscribers can dominate under sustained pressure. A light random shuffle is applied per publish as a best-effort mitigation.
+
+Observability:
+- The memory engine maintains internal delivered and dropped counters (exposed via a `Stats()` method).
+- Module-level helpers expose aggregate (`eventBus.Stats()`) and per-engine (`eventBus.PerEngineStats()`) delivery counts suitable for exporting to metrics backends (Prometheus, Datadog, etc.). Example:
+
+```go
+delivered, dropped := eventBus.Stats()
+perEngine := eventBus.PerEngineStats() // map[engineName]DeliveryStats
+for name, s := range perEngine {
+  fmt.Printf("engine=%s delivered=%d dropped=%d\n", name, s.Delivered, s.Dropped)
+}
+```
+
+Test Stability Note:
+Async subscriptions are processed via a worker pool so their delivered count may lag momentarily after publishers finish. When writing tests that compare sync vs async distribution, allow a short settling period (poll until async count stops increasing) and use wide fairness bounds (e.g. async within 25%–300% of sync) to avoid flakiness while still detecting pathological starvation.
+
+Backward Compatibility:
+- If you do not set any of the new fields, behavior remains equivalent to previous versions (drop mode with fairness rotation enabled by default, which improves starvation resilience without changing loss semantics).
+
+Tuning Guidance:
+- Start with `drop` in high-throughput low-criticality paths where occasional loss is acceptable.
+- Use `timeout` with a modest `publishBlockTimeout` (e.g. 5-50ms) for balanced fairness and latency in mixed-speed subscriber sets.
+- Reserve `block` for critical fan-out where all subscribers must process every event and you are comfortable applying backpressure to publishers.
+
+Example (balanced):
+```yaml
+eventbus:
+  engines:
+    - name: "memory-balanced"
+      type: "memory"
+      config:
+        workerCount: 8
+        defaultEventBufferSize: 64
+        deliveryMode: timeout
+        publishBlockTimeout: 25ms
+        rotateSubscriberOrder: true
+```
+
+### Metrics Export (Prometheus & Datadog)
+
+Delivery statistics (delivered vs dropped) can be exported via the built-in Prometheus Collector or a Datadog StatsD exporter.
+
+#### Prometheus
+
+Register the collector with your Prometheus registry (global or custom):
+
+```go
+import (
+  "github.com/GoCodeAlone/modular/modules/eventbus"
+  prom "github.com/prometheus/client_golang/prometheus"
+  promhttp "github.com/prometheus/client_golang/prometheus/promhttp"
+  "net/http"
+)
+
+// After module start and obtaining eventBus reference
+collector := eventbus.NewPrometheusCollector(eventBus, "modular_eventbus")
+prom.MustRegister(collector)
+
+http.Handle("/metrics", promhttp.Handler())
+go http.ListenAndServe(":2112", nil)
+```
+
+Emitted metrics (Counter):
+- `modular_eventbus_delivered_total{engine="_all"}` – Aggregate delivered (processed) events
+- `modular_eventbus_dropped_total{engine="_all"}` – Aggregate dropped (not processed) events
+- Per-engine variants with `engine="<engineName>"`
+
+Example PromQL:
+```promql
+rate(modular_eventbus_delivered_total{engine!="_all"}[5m])
+rate(modular_eventbus_dropped_total{engine="_all"}[5m])
+```
+
+#### Datadog (DogStatsD)
+
+Start the exporter in a background goroutine. It periodically snapshots stats and emits gauges.
+
+```go
+import (
+  "time"
+  "github.com/GoCodeAlone/modular/modules/eventbus"
+)
+
+exporter, err := eventbus.NewDatadogStatsdExporter(eventBus, eventbus.DatadogExporterConfig{
+  Address:           "127.0.0.1:8125", // DogStatsD agent address
+  Namespace:         "modular.eventbus.",
+  FlushInterval:     5 * time.Second,
+  MaxPacketSize:     1432,
+  IncludePerEngine:  true,
+  IncludeGoroutines: true,
+})
+if err != nil { panic(err) }
+go exporter.Run() // call exporter.Close() on shutdown
+```
+
+Emitted gauges (namespace-prefixed):
+- `delivered_total` / `dropped_total` (tags: `engine:<name>` plus aggregate `engine:_all`)
+- `go.goroutines` (optional) for exporter process health
+
+Datadog query examples:
+```
+avg:modular.eventbus.delivered_total{engine:_all}.as_count()
+top(avg:modular.eventbus.dropped_total{*} by {engine}, 5, 'mean', 'desc')
+```
+
+#### Semantics
+`delivered` counts events whose handlers executed (success or failure). `dropped` counts events that could not be enqueued or processed (channel full, timeout, worker pool saturation). These sets are disjoint per subscription, so `delivered + dropped` approximates total published events actually observed by subscribers.
+
+#### Shutdown
+Always call `exporter.Close()` (Datadog) during module/application shutdown to flush final metrics.
+
+#### Extensibility
+You can build custom exporters by polling `eventBus.PerEngineStats()` periodically and forwarding the numbers to your metrics system of choice.
 ```
 
 ## Usage

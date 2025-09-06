@@ -93,6 +93,27 @@ type EventBusConfig struct {
 	// Must be at least 1. Used in single-engine mode.
 	WorkerCount int `json:"workerCount,omitempty" yaml:"workerCount,omitempty" validate:"omitempty,min=1" env:"WORKER_COUNT"`
 
+	// DeliveryMode controls how publish behaves when a subscriber queue is full.
+	//   drop     - (default) non-blocking send; event is dropped if subscriber channel is full
+	//   block    - block indefinitely until space is available in the subscriber channel
+	//   timeout  - block up to PublishBlockTimeout then drop if still full
+	// This applies to the memory engine. Other engines may implement differently.
+	DeliveryMode string `json:"deliveryMode,omitempty" yaml:"deliveryMode,omitempty" validate:"omitempty,oneof=drop block timeout" env:"DELIVERY_MODE"`
+
+	// PublishBlockTimeout is used when DeliveryMode == "timeout". Zero means no wait.
+	PublishBlockTimeout time.Duration `json:"publishBlockTimeout,omitempty" yaml:"publishBlockTimeout,omitempty" env:"PUBLISH_BLOCK_TIMEOUT"`
+
+	// RotateSubscriberOrder when true rotates the ordering of subscribers per publish
+	// to reduce starvation and provide fairer drop distribution. This is now OPT-IN.
+	// Historical note: an earlier revision forced this to true during validation which
+	// made it impossible for users to explicitly disable the feature (a plain bool
+	// cannot distinguish an "unset" zero value from an explicitly configured false).
+	// We intentionally removed the auto-enable logic so that leaving the field absent
+	// (or false) will NOT enable rotation. Users that want fairness rotation must set
+	// rotateSubscriberOrder: true explicitly in configuration. This trades a changed
+	// default for honoring explicit operator intent.
+	RotateSubscriberOrder bool `json:"rotateSubscriberOrder,omitempty" yaml:"rotateSubscriberOrder,omitempty" env:"ROTATE_SUBSCRIBER_ORDER"`
+
 	// EventTTL is the time to live for events.
 	// Events older than this value may be automatically removed from queues
 	// or marked as expired. Used for event cleanup and storage management.
@@ -187,6 +208,11 @@ func (c *EventBusConfig) ValidateConfig() error {
 		if c.WorkerCount == 0 {
 			c.WorkerCount = 5 // Default value
 		}
+		if c.DeliveryMode == "" {
+			c.DeliveryMode = "drop" // Default
+		}
+		// NOTE: We intentionally DO NOT force RotateSubscriberOrder to true here.
+		// See field comment for rationale. Default remains false unless explicitly enabled.
 		if c.RetentionDays == 0 {
 			c.RetentionDays = 7 // Default value
 		}

@@ -267,7 +267,9 @@ func (r *RedisEventBus) subscribe(ctx context.Context, topic string, handler Eve
 	r.subscriptions[topic][sub.id] = sub
 	r.topicMutex.Unlock()
 
-	// Start message listener goroutine
+	// Start message listener goroutine. We intentionally use explicit wg.Add(1)/Done
+	// instead of sync.WaitGroup.Go to mirror the memory engine style and reserve
+	// the helper for broader supervisory loops; symmetry aids reasoning during reviews.
 	r.wg.Add(1)
 	go r.handleMessages(sub)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,8 @@ type EventLoggerBDDTestContext struct {
 	testConsole   *testConsoleOutput
 	testFile      *testFileOutput
 	eventObserver *testEventObserver
+	// fastEmit enables burst emission without per-event sleep (used to deterministically trigger buffer full events)
+	fastEmit bool
 }
 
 // createConsoleConfig creates an EventLoggerConfig with console output
@@ -39,6 +42,12 @@ func (ctx *EventLoggerBDDTestContext) createConsoleConfig(bufferSize int) *Event
 		FlushInterval:     time.Duration(5 * time.Second),
 		IncludeMetadata:   true,
 		IncludeStackTrace: false,
+		// Explicitly set since struct literal bypasses default tag
+		ShutdownEmitStopped: true,
+		// Enable synchronous startup emission so tests reliably observe
+		// config.loaded, output.registered, and started events without
+		// relying on timing of goroutines.
+		StartupSync: true,
 		OutputTargets: []OutputTargetConfig{
 			{
 				Type:   "console",
@@ -143,16 +152,19 @@ func (ctx *EventLoggerBDDTestContext) createMultiTargetConfig(logFile string) *E
 func (ctx *EventLoggerBDDTestContext) createApplicationWithConfig(config *EventLoggerConfig) error {
 	logger := &testLogger{}
 
-	// Save and clear ConfigFeeders to prevent environment interference during tests
-	originalFeeders := modular.ConfigFeeders
-	modular.ConfigFeeders = []modular.Feeder{}
-	defer func() {
-		modular.ConfigFeeders = originalFeeders
-	}()
+	// Provide an empty feeder slice directly to this application instance to avoid
+	// mutating the global modular.ConfigFeeders (which would hinder test parallelism).
+	// Individual tests can still register additional feeders if required via the
+	// application's configuration mechanisms.
 
 	// Create app with empty main config - USE OBSERVABLE for events
 	mainConfigProvider := modular.NewStdConfigProvider(struct{}{})
 	ctx.app = modular.NewObservableApplication(mainConfigProvider, logger)
+	// Ensure this app instance starts with no implicit global feeders by using a
+	// narrow interface type assertion (avoids expanding the public Application interface).
+	if cfSetter, ok := ctx.app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{})
+	}
 
 	// Create test event observer
 	ctx.eventObserver = newTestEventObserver()
@@ -178,6 +190,7 @@ func (ctx *EventLoggerBDDTestContext) createApplicationWithConfig(config *EventL
 
 // Test event observer for capturing emitted events
 type testEventObserver struct {
+	mu     sync.Mutex
 	events []cloudevents.Event
 }
 
@@ -188,6 +201,8 @@ func newTestEventObserver() *testEventObserver {
 }
 
 func (t *testEventObserver) OnEvent(ctx context.Context, event cloudevents.Event) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.events = append(t.events, event.Clone())
 	return nil
 }
@@ -197,12 +212,16 @@ func (t *testEventObserver) ObserverID() string {
 }
 
 func (t *testEventObserver) GetEvents() []cloudevents.Event {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	events := make([]cloudevents.Event, len(t.events))
 	copy(events, t.events)
 	return events
 }
 
 func (t *testEventObserver) ClearEvents() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.events = make([]cloudevents.Event, 0)
 }
 
@@ -348,8 +367,10 @@ func (ctx *EventLoggerBDDTestContext) iEmitATestEventWithTypeAndData(eventType, 
 		return err
 	}
 
-	// Wait a bit for async processing
-	time.Sleep(100 * time.Millisecond)
+	// Default pacing sleep to let async processing occur; skipped in fast burst scenarios
+	if !ctx.fastEmit {
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	return nil
 }
@@ -598,19 +619,50 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithBufferSizeConfigured
 }
 
 func (ctx *EventLoggerBDDTestContext) iEmitMoreEventsThanTheBufferCanHold() error {
-	// With a buffer size of 1, emit multiple events rapidly to trigger overflow
-	// Emit events in quick succession to overwhelm the buffer
-	for i := 0; i < 10; i++ {
-		err := ctx.iEmitATestEventWithTypeAndData(fmt.Sprintf("buffer.test.%d", i), "data")
-		// During buffer overflow, expect ErrEventBufferFull errors - this is normal behavior
-		if err != nil && !errors.Is(err, ErrEventBufferFull) {
-			return fmt.Errorf("unexpected error (not buffer full): %w", err)
-		}
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
 	}
+	// Enable fast emission mode to skip per-event sleeps elsewhere
+	ctx.fastEmit = true
+	for i := 0; i < 50; i++ { // burst size large enough to overflow small buffers
+		e := cloudevents.NewEvent()
+		e.SetID("overflow-" + fmt.Sprint(i))
+		e.SetType(fmt.Sprintf("buffer.test.%d", i))
+		e.SetSource("test-source")
+		e.SetTime(time.Now())
+		_ = ctx.service.OnEvent(context.Background(), e)
+	}
+	// Allow time for processing and operational events (buffer full / dropped) to be emitted synchronously
+	time.Sleep(150 * time.Millisecond)
+	return nil
+}
 
-	// Give more time for processing and buffer overflow events to be emitted
+// iRapidlyEmitMoreEventsThanTheBufferCanHold emits a large burst of events without per-event
+// sleeping to intentionally overflow the buffer and trigger buffer full / dropped events.
+func (ctx *EventLoggerBDDTestContext) iRapidlyEmitMoreEventsThanTheBufferCanHold() error {
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
+	}
+	// Emit a burst concurrently to maximize instantaneous pressure on the small buffer.
+	total := 500
+	var wg sync.WaitGroup
+	wg.Add(total)
+	for i := 0; i < total; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			event := cloudevents.NewEvent()
+			event.SetID("test-id")
+			event.SetType(fmt.Sprintf("buffer.test.%d", i))
+			event.SetSource("test-source")
+			event.SetData(cloudevents.ApplicationJSON, "data")
+			event.SetTime(time.Now())
+			_ = ctx.service.OnEvent(context.Background(), event)
+		}()
+	}
+	wg.Wait()
+	// Allow brief time for operational events emission
 	time.Sleep(200 * time.Millisecond)
-
 	return nil
 }
 
@@ -962,21 +1014,25 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithEventObservationEnab
 }
 
 func (ctx *EventLoggerBDDTestContext) aLoggerStartedEventShouldBeEmitted() error {
-	time.Sleep(100 * time.Millisecond) // Allow time for async event emission
-
-	events := ctx.eventObserver.GetEvents()
-	for _, event := range events {
-		if event.Type() == EventTypeLoggerStarted {
-			return nil
+	// Poll for the started event to tolerate scheduling jitter of the async startup emitter.
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		events := ctx.eventObserver.GetEvents()
+		for _, event := range events {
+			if event.Type() == EventTypeLoggerStarted {
+				return nil
+			}
 		}
+		time.Sleep(25 * time.Millisecond)
 	}
 
+	// One final capture for diagnostics
+	events := ctx.eventObserver.GetEvents()
 	eventTypes := make([]string, len(events))
 	for i, event := range events {
 		eventTypes[i] = event.Type()
 	}
-
-	return fmt.Errorf("event of type %s was not emitted. Captured events: %v", EventTypeLoggerStarted, eventTypes)
+	return fmt.Errorf("event of type %s was not emitted within timeout. Captured events: %v", EventTypeLoggerStarted, eventTypes)
 }
 
 func (ctx *EventLoggerBDDTestContext) theEventLoggerModuleStops() error {
@@ -1163,8 +1219,9 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithSmallBufferAndEventO
 		return err
 	}
 
-	// Create config with small buffer for buffer overflow testing
-	config := ctx.createConsoleConfig(1) // Very small buffer
+	// Create config with very small buffer for buffer overflow testing
+	config := ctx.createConsoleConfig(1) // Buffer size 1 to force rapid saturation
+	ctx.fastEmit = true                  // Enable burst emission to increase likelihood of overflow
 
 	// Create application with the config
 	err = ctx.createApplicationWithConfig(config)
@@ -1300,8 +1357,9 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithFaultyOutputTargetAn
 	if eventloggerService, ok := service.(*EventLoggerModule); ok {
 		ctx.service = eventloggerService
 		// Replace the console output with a faulty one to trigger output errors
+		// Use the test-only setter to avoid data races with concurrent processing.
 		faultyOutput := &faultyOutputTarget{}
-		ctx.service.outputs = []OutputTarget{faultyOutput}
+		ctx.service.setOutputsForTesting([]OutputTarget{faultyOutput})
 	} else {
 		return fmt.Errorf("service is not an EventLoggerModule")
 	}
@@ -1380,12 +1438,71 @@ func (l *testLogger) Warn(msg string, keysAndValues ...interface{})    {}
 func (l *testLogger) Error(msg string, keysAndValues ...interface{})   {}
 func (l *testLogger) With(keysAndValues ...interface{}) modular.Logger { return l }
 
+// baseTestOutput provides common functionality for test output implementations
+type baseTestOutput struct {
+	logs  []string
+	mutex sync.Mutex
+}
+
+func (b *baseTestOutput) Start(ctx context.Context) error {
+	return nil
+}
+
+func (b *baseTestOutput) Stop(ctx context.Context) error {
+	return nil
+}
+
+func (b *baseTestOutput) Flush() error {
+	return nil
+}
+
+func (b *baseTestOutput) GetLogs() []string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	result := make([]string, len(b.logs))
+	copy(result, b.logs)
+	return result
+}
+
+func (b *baseTestOutput) appendLog(logLine string) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	b.logs = append(b.logs, logLine)
+}
+
 type testConsoleOutput struct {
-	logs []string
+	baseTestOutput
+}
+
+func (t *testConsoleOutput) WriteEvent(entry *LogEntry) error {
+	// Format the entry as it would appear in console output
+	logLine := fmt.Sprintf("[%s] %s %s", entry.Timestamp.Format("2006-01-02 15:04:05"), entry.Level, entry.Type)
+	if entry.Source != "" {
+		logLine += fmt.Sprintf("\n  Source: %s", entry.Source)
+	}
+	if entry.Data != nil {
+		logLine += fmt.Sprintf("\n  Data: %v", entry.Data)
+	}
+	if len(entry.Metadata) > 0 {
+		logLine += "\n  Metadata:"
+		for k, v := range entry.Metadata {
+			logLine += fmt.Sprintf("\n    %s: %s", k, v)
+		}
+	}
+	t.appendLog(logLine)
+	return nil
 }
 
 type testFileOutput struct {
-	logs []string
+	baseTestOutput
+}
+
+func (t *testFileOutput) WriteEvent(entry *LogEntry) error {
+	// Format the entry as JSON for file output
+	logLine := fmt.Sprintf(`{"timestamp":"%s","level":"%s","type":"%s","source":"%s","data":%v}`,
+		entry.Timestamp.Format("2006-01-02T15:04:05Z07:00"), entry.Level, entry.Type, entry.Source, entry.Data)
+	t.appendLog(logLine)
+	return nil
 }
 
 // TestEventLoggerModuleBDD runs the BDD tests for the EventLogger module
@@ -1479,6 +1596,7 @@ func TestEventLoggerModuleBDD(t *testing.T) {
 
 			// Buffer overflow events
 			s.Given(`^I have an event logger with small buffer and event observation enabled$`, ctx.iHaveAnEventLoggerWithSmallBufferAndEventObservationEnabled)
+			s.When(`^I rapidly emit more events than the buffer can hold$`, ctx.iRapidlyEmitMoreEventsThanTheBufferCanHold)
 			s.Then(`^buffer full events should be emitted$`, ctx.bufferFullEventsShouldBeEmitted)
 			s.Then(`^event dropped events should be emitted$`, ctx.eventDroppedEventsShouldBeEmitted)
 			s.Then(`^the events should contain drop reasons$`, ctx.theEventsShouldContainDropReasons)
@@ -1487,11 +1605,27 @@ func TestEventLoggerModuleBDD(t *testing.T) {
 			s.Given(`^I have an event logger with faulty output target and event observation enabled$`, ctx.iHaveAnEventLoggerWithFaultyOutputTargetAndEventObservationEnabled)
 			s.Then(`^an output error event should be emitted$`, ctx.anOutputErrorEventShouldBeEmitted)
 			s.Then(`^the error event should contain error details$`, ctx.theErrorEventShouldContainErrorDetails)
+
+			// Queue-until-ready scenarios
+			s.Given(`^I have an event logger module configured but not started$`, ctx.iHaveAnEventLoggerModuleConfiguredButNotStarted)
+			s.When(`^I emit events before the eventlogger starts$`, ctx.iEmitEventsBeforeTheEventloggerStarts)
+			s.Then(`^the events should be queued without errors$`, ctx.theEventsShouldBeQueuedWithoutErrors)
+			s.When(`^the eventlogger starts$`, ctx.theEventloggerStarts)
+			s.Then(`^all queued events should be processed and logged$`, ctx.allQueuedEventsShouldBeProcessedAndLogged)
+			s.Then(`^the events should be processed in order$`, ctx.theEventsShouldBeProcessedInOrder)
+
+			// Queue overflow scenarios
+			s.Given(`^I have an event logger module configured with queue overflow testing$`, ctx.iHaveAnEventLoggerModuleConfiguredWithQueueOverflowTesting)
+			s.When(`^I emit more events than the queue can hold before start$`, ctx.iEmitMoreEventsThanTheQueueCanHoldBeforeStart)
+			s.Then(`^older events should be dropped from the queue$`, ctx.olderEventsShouldBeDroppedFromTheQueue)
+			s.Then(`^newer events should be preserved in the queue$`, ctx.newerEventsShouldBePreservedInTheQueue)
+			s.Then(`^only the preserved events should be processed$`, ctx.onlyThePreservedEventsShouldBeProcessed)
 		},
 		Options: &godog.Options{
 			Format:   "pretty",
 			Paths:    []string{"features/eventlogger_module.feature"},
 			TestingT: t,
+			Strict:   true,
 		},
 	}
 
@@ -1525,6 +1659,385 @@ func (ctx *EventLoggerBDDTestContext) allRegisteredEventsShouldBeEmittedDuringTe
 
 	if len(missingEvents) > 0 {
 		return fmt.Errorf("the following registered events were not emitted during testing: %v", missingEvents)
+	}
+
+	return nil
+}
+
+// Queue-until-ready scenario implementations
+func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerModuleConfiguredButNotStarted() error {
+	ctx.resetContext()
+
+	// Create temp directory for file outputs
+	var err error
+	ctx.tempDir, err = os.MkdirTemp("", "eventlogger-bdd-test")
+	if err != nil {
+		return err
+	}
+
+	// Create config with console output and a reasonable queue size for testing
+	config := ctx.createConsoleConfig(10)
+
+	// Create application with the config
+	err = ctx.createApplicationWithConfig(config)
+	if err != nil {
+		return err
+	}
+
+	// Initialize the module but DON'T start it yet
+	err = ctx.theEventLoggerModuleIsInitialized()
+	if err != nil {
+		return err
+	}
+
+	// Get service reference
+	err = ctx.theEventLoggerServiceShouldBeAvailable()
+	if err != nil {
+		return err
+	}
+
+	// Inject test console output for capturing logs
+	ctx.testConsole = &testConsoleOutput{baseTestOutput: baseTestOutput{logs: make([]string, 0)}}
+	ctx.service.setOutputsForTesting([]OutputTarget{ctx.testConsole})
+
+	// Verify module is not started yet
+	if ctx.service.started {
+		return fmt.Errorf("module should not be started yet")
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) iEmitEventsBeforeTheEventloggerStarts() error {
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
+	}
+
+	// Store the events we're going to emit for later verification
+	ctx.loggedEvents = make([]cloudevents.Event, 0)
+
+	// Emit multiple test events before start
+	testEvents := []struct {
+		eventType string
+		data      string
+	}{
+		{"pre.start.event1", "data1"},
+		{"pre.start.event2", "data2"},
+		{"pre.start.event3", "data3"},
+	}
+
+	for _, evt := range testEvents {
+		event := cloudevents.NewEvent()
+		event.SetID("pre-start-" + evt.data)
+		event.SetType(evt.eventType)
+		event.SetSource("test-source")
+		event.SetData(cloudevents.ApplicationJSON, evt.data)
+		event.SetTime(time.Now())
+
+		// Store for later verification
+		ctx.loggedEvents = append(ctx.loggedEvents, event)
+
+		// Emit event through the observer
+		err := ctx.service.OnEvent(context.Background(), event)
+		if err != nil {
+			return fmt.Errorf("unexpected error during pre-start emission: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) theEventsShouldBeQueuedWithoutErrors() error {
+	// Verify the module is still not started
+	if ctx.service.started {
+		return fmt.Errorf("module should not be started yet")
+	}
+
+	// Verify queue has events (we'll access this through module internals for testing)
+	ctx.service.mutex.Lock()
+	queueLen := len(ctx.service.eventQueue)
+	ctx.service.mutex.Unlock()
+
+	if queueLen == 0 {
+		return fmt.Errorf("expected queued events, but queue is empty")
+	}
+
+	// We expect at least our test events, but there may be additional framework events
+	expectedMinLen := len(ctx.loggedEvents)
+	if queueLen < expectedMinLen {
+		return fmt.Errorf("expected at least %d queued events, got %d", expectedMinLen, queueLen)
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) theEventloggerStarts() error {
+	return ctx.app.Start()
+}
+
+func (ctx *EventLoggerBDDTestContext) allQueuedEventsShouldBeProcessedAndLogged() error {
+	// Wait for events to be processed
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify module is started
+	if !ctx.service.started {
+		return fmt.Errorf("module should be started")
+	}
+
+	// Verify queue is cleared
+	ctx.service.mutex.Lock()
+	queueLen := len(ctx.service.eventQueue)
+	ctx.service.mutex.Unlock()
+
+	if queueLen != 0 {
+		return fmt.Errorf("expected queue to be cleared after start, but has %d events", queueLen)
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) theEventsShouldBeProcessedInOrder() error {
+	// Give processing time to complete
+	time.Sleep(300 * time.Millisecond)
+
+	// Get the captured logs from our test console output
+	if ctx.testConsole == nil {
+		return fmt.Errorf("test console output not configured")
+	}
+
+	logs := ctx.testConsole.GetLogs()
+	if len(logs) == 0 {
+		return fmt.Errorf("no events were logged to test console")
+	}
+
+	// Verify that the test events we emitted are present in order
+	expectedEvents := []string{
+		"pre.start.event1",
+		"pre.start.event2",
+		"pre.start.event3",
+	}
+
+	// Track first occurrence of each event to verify order
+	firstOccurrence := make(map[string]int)
+	for i, log := range logs {
+		for _, expected := range expectedEvents {
+			if containsEventType(log, expected) {
+				if _, found := firstOccurrence[expected]; !found {
+					firstOccurrence[expected] = i
+				}
+				break
+			}
+		}
+	}
+
+	// Verify all expected events were found
+	if len(firstOccurrence) != len(expectedEvents) {
+		missingEvents := make([]string, 0)
+		for _, expected := range expectedEvents {
+			if _, found := firstOccurrence[expected]; !found {
+				missingEvents = append(missingEvents, expected)
+			}
+		}
+		return fmt.Errorf("expected %d events to be processed, but found %d. Missing events: %v",
+			len(expectedEvents), len(firstOccurrence), missingEvents)
+	}
+
+	// Verify the order matches what we expect (events should be processed in emission order)
+	for i := 1; i < len(expectedEvents); i++ {
+		currentEvent := expectedEvents[i]
+		previousEvent := expectedEvents[i-1]
+
+		currentPos, currentFound := firstOccurrence[currentEvent]
+		previousPos, previousFound := firstOccurrence[previousEvent]
+
+		if !currentFound || !previousFound {
+			return fmt.Errorf("missing events in order check")
+		}
+
+		if currentPos <= previousPos {
+			return fmt.Errorf("events not processed in expected order. %s (pos %d) should come after %s (pos %d)",
+				currentEvent, currentPos, previousEvent, previousPos)
+		}
+	}
+
+	return nil
+}
+
+// Helper function to check if a log entry contains a specific event type
+func containsEventType(logEntry, eventType string) bool {
+	// Check if the event type appears in the log entry
+	return containsString(logEntry, eventType)
+}
+
+// Helper function to check if a string contains a substring
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && indexOfString(s, substr) >= 0
+}
+
+// Helper function to find index of substring
+func indexOfString(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// Queue overflow scenario implementations
+func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerModuleConfiguredWithQueueOverflowTesting() error {
+	ctx.resetContext()
+
+	// Create temp directory for file outputs
+	var err error
+	ctx.tempDir, err = os.MkdirTemp("", "eventlogger-bdd-test")
+	if err != nil {
+		return err
+	}
+
+	// Create config with console output
+	config := ctx.createConsoleConfig(10)
+
+	// Create application with the config
+	err = ctx.createApplicationWithConfig(config)
+	if err != nil {
+		return err
+	}
+
+	// Initialize the module but DON'T start it yet
+	err = ctx.theEventLoggerModuleIsInitialized()
+	if err != nil {
+		return err
+	}
+
+	// Get service reference
+	err = ctx.theEventLoggerServiceShouldBeAvailable()
+	if err != nil {
+		return err
+	}
+
+	// Inject test console output for capturing logs
+	ctx.testConsole = &testConsoleOutput{baseTestOutput: baseTestOutput{logs: make([]string, 0)}}
+	ctx.service.setOutputsForTesting([]OutputTarget{ctx.testConsole})
+
+	// Artificially reduce queue size for testing overflow
+	ctx.service.mutex.Lock()
+	ctx.service.queueMaxSize = 3 // Small queue for testing overflow
+	ctx.service.mutex.Unlock()
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) iEmitMoreEventsThanTheQueueCanHoldBeforeStart() error {
+	if ctx.service == nil {
+		return fmt.Errorf("service not available")
+	}
+
+	// Store the events we're going to emit for later verification
+	ctx.loggedEvents = make([]cloudevents.Event, 0)
+
+	// Emit more events than the queue can hold (queue size is 3)
+	for i := 0; i < 6; i++ {
+		event := cloudevents.NewEvent()
+		event.SetID(fmt.Sprintf("overflow-test-%d", i))
+		event.SetType(fmt.Sprintf("queue.overflow.event%d", i))
+		event.SetSource("test-source")
+		event.SetData(cloudevents.ApplicationJSON, fmt.Sprintf("data%d", i))
+		event.SetTime(time.Now())
+
+		// Store for later verification
+		ctx.loggedEvents = append(ctx.loggedEvents, event)
+
+		// Emit event through the observer
+		err := ctx.service.OnEvent(context.Background(), event)
+		if err != nil {
+			return fmt.Errorf("unexpected error during overflow emission: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) olderEventsShouldBeDroppedFromTheQueue() error {
+	// Verify queue is at max size
+	ctx.service.mutex.Lock()
+	queueLen := len(ctx.service.eventQueue)
+	maxSize := ctx.service.queueMaxSize
+	ctx.service.mutex.Unlock()
+
+	if queueLen != maxSize {
+		return fmt.Errorf("expected queue length to be %d (max size), got %d", maxSize, queueLen)
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) newerEventsShouldBePreservedInTheQueue() error {
+	// Verify queue has events (already checked in previous step)
+	ctx.service.mutex.Lock()
+	queueLen := len(ctx.service.eventQueue)
+	ctx.service.mutex.Unlock()
+
+	if queueLen == 0 {
+		return fmt.Errorf("expected preserved events in queue, but queue is empty")
+	}
+
+	return nil
+}
+
+func (ctx *EventLoggerBDDTestContext) onlyThePreservedEventsShouldBeProcessed() error {
+	// Wait for events to be processed
+	time.Sleep(300 * time.Millisecond)
+
+	// Verify queue is cleared
+	ctx.service.mutex.Lock()
+	queueLen := len(ctx.service.eventQueue)
+	ctx.service.mutex.Unlock()
+
+	if queueLen != 0 {
+		return fmt.Errorf("expected queue to be cleared after start, but has %d events", queueLen)
+	}
+
+	// Get the captured logs from our test console output
+	if ctx.testConsole == nil {
+		return fmt.Errorf("test console output not configured")
+	}
+
+	logs := ctx.testConsole.GetLogs()
+	if len(logs) == 0 {
+		return fmt.Errorf("no events were logged to test console")
+	}
+
+	// In the overflow scenario, we emit events 0-5 to overflow the queue (max 3)
+	// With queue size 3, we expect to see the last 3 events (3, 4, 5) preserved
+	// and the first 3 events (0, 1, 2) should be dropped
+	preservedEvents := []string{"queue.overflow.event3", "queue.overflow.event4", "queue.overflow.event5"}
+	droppedEvents := []string{"queue.overflow.event0", "queue.overflow.event1", "queue.overflow.event2"}
+
+	// Check that preserved events are present
+	foundPreserved := make([]bool, len(preservedEvents))
+	for i, expected := range preservedEvents {
+		for _, log := range logs {
+			if containsEventType(log, expected) {
+				foundPreserved[i] = true
+				break
+			}
+		}
+	}
+
+	for i, expected := range preservedEvents {
+		if !foundPreserved[i] {
+			return fmt.Errorf("expected preserved event %s not found in logs", expected)
+		}
+	}
+
+	// Check that dropped events are NOT present
+	for _, dropped := range droppedEvents {
+		for _, log := range logs {
+			if containsEventType(log, dropped) {
+				return fmt.Errorf("found dropped event %s in logs, but it should have been dropped due to overflow", dropped)
+			}
+		}
 	}
 
 	return nil

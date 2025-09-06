@@ -1,6 +1,9 @@
 package modular
 
-import "reflect"
+import (
+	"fmt"
+	"reflect"
+)
 
 // ServiceRegistry allows registration and retrieval of services by name.
 // Services are stored as interface{} values and must be type-asserted
@@ -9,6 +12,177 @@ import "reflect"
 // Services enable loose coupling between modules by providing a shared
 // registry where modules can publish functionality for others to consume.
 type ServiceRegistry map[string]any
+
+// ServiceRegistryEntry represents an enhanced service registry entry
+// that tracks both the service instance and its providing module.
+type ServiceRegistryEntry struct {
+	// Service is the actual service instance
+	Service any
+
+	// ModuleName is the name of the module that provided this service
+	ModuleName string
+
+	// ModuleType is the reflect.Type of the module that provided this service
+	ModuleType reflect.Type
+
+	// OriginalName is the original name requested when registering the service
+	OriginalName string
+
+	// ActualName is the final name used in the registry (may be modified for uniqueness)
+	ActualName string
+}
+
+// EnhancedServiceRegistry provides enhanced service registry functionality
+// that tracks module associations and handles automatic conflict resolution.
+type EnhancedServiceRegistry struct {
+	// services maps service names to their registry entries
+	services map[string]*ServiceRegistryEntry
+
+	// moduleServices maps module names to their provided services
+	moduleServices map[string][]string
+
+	// nameCounters tracks usage counts for conflict resolution
+	nameCounters map[string]int
+
+	// currentModule tracks the module currently being initialized
+	currentModule Module
+}
+
+// NewEnhancedServiceRegistry creates a new enhanced service registry.
+func NewEnhancedServiceRegistry() *EnhancedServiceRegistry {
+	return &EnhancedServiceRegistry{
+		services:       make(map[string]*ServiceRegistryEntry),
+		moduleServices: make(map[string][]string),
+		nameCounters:   make(map[string]int),
+	}
+}
+
+// SetCurrentModule sets the module that is currently being initialized.
+// This is used to track which module is registering services.
+func (r *EnhancedServiceRegistry) SetCurrentModule(module Module) {
+	r.currentModule = module
+}
+
+// ClearCurrentModule clears the current module context.
+func (r *EnhancedServiceRegistry) ClearCurrentModule() {
+	r.currentModule = nil
+}
+
+// RegisterService registers a service with automatic conflict resolution.
+// If a service name conflicts, it will automatically append module information.
+func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (string, error) {
+	var moduleName string
+	var moduleType reflect.Type
+
+	if r.currentModule != nil {
+		moduleName = r.currentModule.Name()
+		moduleType = reflect.TypeOf(r.currentModule)
+	}
+
+	// Generate unique name handling conflicts
+	actualName := r.generateUniqueName(name, moduleName, moduleType)
+
+	// Create registry entry
+	entry := &ServiceRegistryEntry{
+		Service:      service,
+		ModuleName:   moduleName,
+		ModuleType:   moduleType,
+		OriginalName: name,
+		ActualName:   actualName,
+	}
+
+	// Register the service
+	r.services[actualName] = entry
+
+	// Track module associations
+	if moduleName != "" {
+		r.moduleServices[moduleName] = append(r.moduleServices[moduleName], actualName)
+	}
+
+	return actualName, nil
+}
+
+// GetService retrieves a service by name.
+func (r *EnhancedServiceRegistry) GetService(name string) (any, bool) {
+	entry, exists := r.services[name]
+	if !exists {
+		return nil, false
+	}
+	return entry.Service, true
+}
+
+// GetServiceEntry retrieves the full service registry entry.
+func (r *EnhancedServiceRegistry) GetServiceEntry(name string) (*ServiceRegistryEntry, bool) {
+	entry, exists := r.services[name]
+	return entry, exists
+}
+
+// GetServicesByModule returns all services provided by a specific module.
+func (r *EnhancedServiceRegistry) GetServicesByModule(moduleName string) []string {
+	return r.moduleServices[moduleName]
+}
+
+// GetServicesByInterface returns all services that implement the given interface.
+func (r *EnhancedServiceRegistry) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	var results []*ServiceRegistryEntry
+
+	for _, entry := range r.services {
+		if entry.Service == nil {
+			continue // Skip nil services
+		}
+		serviceType := reflect.TypeOf(entry.Service)
+		if serviceType != nil && serviceType.Implements(interfaceType) {
+			results = append(results, entry)
+		}
+	}
+
+	return results
+}
+
+// AsServiceRegistry returns a backwards-compatible ServiceRegistry view.
+func (r *EnhancedServiceRegistry) AsServiceRegistry() ServiceRegistry {
+	registry := make(ServiceRegistry)
+	for name, entry := range r.services {
+		registry[name] = entry.Service
+	}
+	return registry
+}
+
+// generateUniqueName creates a unique service name handling conflicts.
+func (r *EnhancedServiceRegistry) generateUniqueName(originalName, moduleName string, moduleType reflect.Type) string {
+	// Try original name first
+	if r.nameCounters[originalName] == 0 {
+		r.nameCounters[originalName] = 1
+		return originalName
+	}
+
+	// Name conflict exists - try with module name
+	if moduleName != "" {
+		moduleBasedName := fmt.Sprintf("%s.%s", originalName, moduleName)
+		if r.nameCounters[moduleBasedName] == 0 {
+			r.nameCounters[moduleBasedName] = 1
+			return moduleBasedName
+		}
+	}
+
+	// Still conflicts - try with module type name
+	if moduleType != nil {
+		typeName := moduleType.Elem().Name()
+		if typeName == "" {
+			typeName = moduleType.String()
+		}
+		typeBasedName := fmt.Sprintf("%s.%s", originalName, typeName)
+		if r.nameCounters[typeBasedName] == 0 {
+			r.nameCounters[typeBasedName] = 1
+			return typeBasedName
+		}
+	}
+
+	// Final fallback - append counter
+	counter := r.nameCounters[originalName] + 1
+	r.nameCounters[originalName] = counter
+	return fmt.Sprintf("%s.%d", originalName, counter)
+}
 
 // ServiceProvider defines a service offered by a module.
 // Services are registered in the application's service registry and can

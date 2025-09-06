@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -107,6 +108,19 @@ func (m *MockApplication) IsVerboseConfig() bool {
 func (m *MockApplication) SetVerboseConfig(verbose bool) {
 	// No-op in mock
 }
+
+// Newly added methods to satisfy updated Application interface
+func (m *MockApplication) Context() context.Context                       { return context.Background() }
+func (m *MockApplication) GetServicesByModule(moduleName string) []string { return []string{} }
+func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
+}
+
+// ServiceIntrospector returns nil (not needed in tests)
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 // MockLogger is a mock implementation of the modular.Logger interface
 type MockLogger struct {

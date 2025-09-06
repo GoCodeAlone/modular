@@ -1496,8 +1496,8 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 	}
 	goVersion, errGoVer := getGoVersion()
 	if errGoVer != nil {
-		slog.Warn("Could not detect Go version, using default 1.23.5", "error", errGoVer)
-		goVersion = "1.23.5" // Fallback
+		slog.Warn("Could not detect Go version, using default 1.25", "error", errGoVer)
+		goVersion = "1.25" // Updated fallback to current project baseline
 	}
 	if err := newModFile.AddGoStmt(goVersion); err != nil {
 		return fmt.Errorf("failed to add go statement: %w", err)
@@ -1513,7 +1513,8 @@ func generateGoModFile(outputDir string, options *ModuleOptions) error {
 		return fmt.Errorf("failed to add modular requirement: %w", err)
 	}
 	if options.GenerateTests {
-		if err := newModFile.AddRequire("github.com/stretchr/testify", "v1.10.0"); err != nil {
+		// Updated testify version to align with root module and avoid immediate tidy changes
+		if err := newModFile.AddRequire("github.com/stretchr/testify", "v1.11.0"); err != nil {
 			return fmt.Errorf("failed to add testify requirement: %w", err)
 		}
 	}
@@ -1577,11 +1578,11 @@ func generateGoldenGoMod(options *ModuleOptions, goModPath string) error {
 	modulePath := fmt.Sprintf("example.com/%s", options.PackageName)
 	goModContent := fmt.Sprintf(`module %s
 
-go 1.23.5
+go 1.25
 
 require (
 	github.com/GoCodeAlone/modular v1.6.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 )
 
 replace github.com/GoCodeAlone/modular => ../../../../../../

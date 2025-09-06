@@ -1,9 +1,9 @@
-module logmasker-example
+module github.com/GoCodeAlone/modular/examples/logmasker-example
 
-go 1.23.0
+go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/logmasker v0.0.0
 )
 

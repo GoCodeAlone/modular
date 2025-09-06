@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -192,3 +193,14 @@ func (m *mockApplicationForNilSubjectTest) Logger() Logger                { retu
 func (m *mockApplicationForNilSubjectTest) SetLogger(logger Logger)       {}
 func (m *mockApplicationForNilSubjectTest) SetVerboseConfig(enabled bool) {}
 func (m *mockApplicationForNilSubjectTest) IsVerboseConfig() bool         { return false }
+func (m *mockApplicationForNilSubjectTest) GetServicesByModule(moduleName string) []string {
+	return nil
+}
+func (m *mockApplicationForNilSubjectTest) GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (m *mockApplicationForNilSubjectTest) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	return nil
+}
+
+func (m *mockApplicationForNilSubjectTest) ServiceIntrospector() ServiceIntrospector { return nil }

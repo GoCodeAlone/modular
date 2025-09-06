@@ -1,9 +1,11 @@
 module github.com/GoCodeAlone/modular/modules/jsonschema
 
-go 1.24.2
+go 1.25
+
+toolchain go1.25.0
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v0.0.0-00010101000000-000000000000
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
@@ -25,7 +27,7 @@ require (
 	github.com/spf13/pflag v1.0.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

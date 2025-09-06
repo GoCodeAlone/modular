@@ -11,12 +11,6 @@ import (
 )
 
 func main() {
-	// Define config feeders
-	modular.ConfigFeeders = []modular.Feeder{
-		feeders.NewYamlFeeder("config.yaml"),
-		feeders.NewEnvFeeder(),
-	}
-
 	// Create application with debug logging
 	logger := slog.New(slog.NewTextHandler(
 		os.Stdout,
@@ -39,6 +33,14 @@ func main() {
 	if err != nil {
 		logger.Error("Failed to create application", "error", err)
 		os.Exit(1)
+	}
+
+	// Inject config feeders per application (avoid global mutation)
+	if cfSetter, ok := app.(interface{ SetConfigFeeders([]modular.Feeder) }); ok {
+		cfSetter.SetConfigFeeders([]modular.Feeder{
+			feeders.NewYamlFeeder("config.yaml"),
+			feeders.NewEnvFeeder(),
+		})
 	}
 
 	// Initialize TenantService (advanced setup still manual for now)

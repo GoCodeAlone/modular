@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"testing/synctest"
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
@@ -70,6 +73,18 @@ func (a *mockApp) RegisterService(name string, service any) error {
 func (a *mockApp) GetService(name string, target any) error {
 	return nil
 }
+
+// New interface-introspection methods added to Application; provide minimal mock implementations
+func (a *mockApp) GetServicesByModule(moduleName string) []string { return nil }
+func (a *mockApp) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return nil
+}
+
+// ServiceIntrospector returns nil for tests
+func (a *mockApp) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 func (a *mockApp) Init() error {
 	return nil
@@ -304,12 +319,22 @@ func TestSchedulerOperations(t *testing.T) {
 			t.Fatal("Job did not execute within timeout")
 		}
 
-		// Get job history
-		history, err := module.GetJobHistory(jobID)
-		require.NoError(t, err)
-		assert.Len(t, history, 1, "Should have one execution record")
-		assert.Equal(t, jobID, history[0].JobID)
-		assert.Equal(t, "completed", history[0].Status)
+		// Poll for job completion and history persistence
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			to, _ := module.GetJob(jobID)
+			if to.Status == JobStatusCompleted {
+				history, err := module.GetJobHistory(jobID)
+				require.NoError(t, err)
+				if len(history) == 1 && history[0].Status == string(JobStatusCompleted) {
+					assert.Equal(t, jobID, history[0].JobID)
+					return
+				}
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		to, _ := module.GetJob(jobID)
+		t.Fatalf("Job history not stable; final status=%v", to.Status)
 	})
 
 	t.Run("JobFailure", func(t *testing.T) {
@@ -358,6 +383,45 @@ func TestSchedulerOperations(t *testing.T) {
 	// Stop the module
 	err = module.Stop(ctx)
 	require.NoError(t, err)
+}
+
+// TestSchedulerImmediateJobSynctest demonstrates deterministic timing using synctest.
+// It schedules a job 1s in the future and advances virtual time instantly.
+func TestSchedulerImmediateJobSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Use standard module setup
+		module := NewModule().(*SchedulerModule)
+		app := newMockApp()
+		module.RegisterConfig(app)
+		module.Init(app)
+		ctx := context.Background()
+		executed := make(chan struct{}, 1)
+		// Schedule job BEFORE starting so Start's initial due-job dispatch sees it.
+		job := Job{
+			Name:  "synctest-job",
+			RunAt: time.Now(), // due immediately
+			JobFunc: func(ctx context.Context) error {
+				executed <- struct{}{}
+				return nil
+			},
+		}
+		if _, err := module.ScheduleJob(job); err != nil {
+			t.Fatalf("schedule: %v", err)
+		}
+		if err := module.Start(ctx); err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		// Wait until goroutines settle.
+		synctest.Wait()
+		select {
+		case <-executed:
+		default:
+			t.Fatalf("job did not execute in virtual time")
+		}
+		if err := module.Stop(ctx); err != nil {
+			t.Fatalf("stop: %v", err)
+		}
+	})
 }
 
 func TestSchedulerConfiguration(t *testing.T) {
@@ -490,5 +554,120 @@ func TestJobPersistence(t *testing.T) {
 		if err != nil && !os.IsNotExist(err) {
 			t.Logf("Failed to remove temp file %s: %v", tempFile, err)
 		}
+	})
+}
+
+// Additional coverage tests for validation errors, resume logic, cleanup, and persistence edge cases.
+func TestSchedulerEdgeCases(t *testing.T) {
+	module := NewModule().(*SchedulerModule)
+	app := newMockApp()
+	module.RegisterConfig(app)
+	module.Init(app)
+	ctx := context.Background()
+	require.NoError(t, module.Start(ctx))
+	defer module.Stop(ctx)
+
+	t.Run("ScheduleJobMissingTiming", func(t *testing.T) {
+		_, err := module.ScheduleJob(Job{Name: "no-timing"})
+		assert.ErrorIs(t, err, ErrJobInvalidSchedule)
+	})
+
+	t.Run("ScheduleRecurringMissingSchedule", func(t *testing.T) {
+		_, err := module.ScheduleJob(Job{Name: "rec-missing", IsRecurring: true})
+		// Current implementation returns ErrJobInvalidSchedule before specific recurring check
+		assert.ErrorIs(t, err, ErrJobInvalidSchedule)
+	})
+
+	t.Run("ScheduleRecurringInvalidCron", func(t *testing.T) {
+		_, err := module.ScheduleJob(Job{Name: "rec-invalid", IsRecurring: true, Schedule: "* * *"})
+		assert.Error(t, err)
+	})
+
+	t.Run("ResumeJobMissingID", func(t *testing.T) {
+		_, err := module.scheduler.ResumeJob(Job{})
+		assert.ErrorIs(t, err, ErrJobIDRequired)
+	})
+
+	t.Run("ResumeJobNoNextRunTime", func(t *testing.T) {
+		// Past run time with no future next run forces ErrJobNoValidNextRunTime
+		_, err := module.scheduler.ResumeJob(Job{ID: "abc", RunAt: time.Now().Add(-1 * time.Hour)})
+		assert.ErrorIs(t, err, ErrJobNoValidNextRunTime)
+	})
+
+	t.Run("ResumeRecurringJobMissingID", func(t *testing.T) {
+		_, err := module.scheduler.ResumeRecurringJob(Job{IsRecurring: true, Schedule: "* * * * *"})
+		assert.ErrorIs(t, err, ErrRecurringJobIDRequired)
+	})
+
+	t.Run("ResumeRecurringJobNotRecurring", func(t *testing.T) {
+		_, err := module.scheduler.ResumeRecurringJob(Job{ID: "id1", IsRecurring: false})
+		assert.ErrorIs(t, err, ErrJobMustBeRecurring)
+	})
+
+	t.Run("ResumeRecurringJobInvalidCron", func(t *testing.T) {
+		_, err := module.scheduler.ResumeRecurringJob(Job{ID: "id2", IsRecurring: true, Schedule: "* * *"})
+		assert.Error(t, err)
+	})
+
+	// Success path: resume one-time job with future RunAt
+	t.Run("ResumeJobSuccess", func(t *testing.T) {
+		future := time.Now().Add(30 * time.Minute)
+		job := Job{ID: "resume-one", Name: "resume-one", RunAt: future, Status: JobStatusCancelled}
+		// Add job to store first
+		require.NoError(t, module.scheduler.jobStore.AddJob(job))
+		_, err := module.scheduler.ResumeJob(job)
+		assert.NoError(t, err)
+		stored, err := module.scheduler.GetJob("resume-one")
+		require.NoError(t, err)
+		assert.Equal(t, JobStatusPending, stored.Status)
+		assert.NotNil(t, stored.NextRun)
+		if stored.NextRun != nil {
+			assert.WithinDuration(t, future, *stored.NextRun, time.Minute) // allow minute boundary drift
+		}
+	})
+
+	// Success path: resume recurring job with valid cron schedule
+	t.Run("ResumeRecurringJobSuccess", func(t *testing.T) {
+		job := Job{ID: "resume-rec", Name: "resume-rec", IsRecurring: true, Schedule: "* * * * *", Status: JobStatusCancelled}
+		require.NoError(t, module.scheduler.jobStore.AddJob(job))
+		_, err := module.scheduler.ResumeRecurringJob(job)
+		assert.NoError(t, err)
+		stored, err := module.scheduler.GetJob("resume-rec")
+		require.NoError(t, err)
+		assert.Equal(t, JobStatusPending, stored.Status)
+		assert.NotNil(t, stored.NextRun)
+	})
+}
+
+func TestMemoryJobStoreCleanupAndPersistenceEdges(t *testing.T) {
+	store := NewMemoryJobStore(24 * time.Hour)
+
+	// Add executions with different times
+	oldExec := JobExecution{JobID: "job1", StartTime: time.Now().Add(-48 * time.Hour), Status: "completed"}
+	recentExec := JobExecution{JobID: "job1", StartTime: time.Now(), Status: "completed"}
+	require.NoError(t, store.AddJobExecution(oldExec))
+	require.NoError(t, store.AddJobExecution(recentExec))
+
+	// Cleanup older than 24h
+	cutoff := time.Now().Add(-24 * time.Hour)
+	require.NoError(t, store.CleanupOldExecutions(cutoff))
+	execs, err := store.GetJobExecutions("job1")
+	require.NoError(t, err)
+	assert.Len(t, execs, 1)
+	assert.Equal(t, recentExec.StartTime, execs[0].StartTime)
+
+	t.Run("LoadFromFileNonexistent", func(t *testing.T) {
+		jobs, err := store.LoadFromFile("/tmp/nonexistent-file-should-not-exist.json")
+		require.NoError(t, err)
+		assert.Len(t, jobs, 0)
+	})
+
+	t.Run("SaveAndLoadEmptyJobs", func(t *testing.T) {
+		tmp := fmt.Sprintf("/tmp/scheduler-empty-%d.json", time.Now().UnixNano())
+		require.NoError(t, store.SaveToFile([]Job{}, tmp))
+		jobs, err := store.LoadFromFile(tmp)
+		require.NoError(t, err)
+		assert.Len(t, jobs, 0)
+		_ = os.Remove(tmp)
 	})
 }

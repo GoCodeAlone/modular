@@ -1,0 +1,278 @@
+name: API Contract Check
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'modules/**/go.mod'
+      - 'modules/**/go.sum'
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+env:
+  GO_VERSION: '^1.25'
+
+jobs:
+  contract-check:
+    name: API Contract Check
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.contract-diff.outputs.has_changes }}
+      breaking_changes: ${{ steps.contract-diff.outputs.breaking_changes }}
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      - name: Build modcli (PR workspace)
+        run: |
+          cd cmd/modcli
+          go build -o modcli
+
+      - name: Extract contracts (main & PR) using worktree
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/contracts/main artifacts/contracts/pr
+          echo "==> Preparing worktree for origin/main"
+          git fetch origin main --quiet
+          MAIN_SHA=$(git rev-parse origin/main)
+          echo "Main commit: $MAIN_SHA"
+          git worktree add --quiet main-worktree "$MAIN_SHA"
+
+          echo "==> Building modcli in main worktree"
+          # Build from the worktree root using explicit package path to avoid the previous relative path ambiguity
+          # Previous attempt invoked `go build ./cmd/modcli` from the worktree root which led Go to infer an import path
+          # containing the directory name (…/main-worktree/…), causing: "main module (...) does not contain package .../main-worktree/cmd/modcli".
+          # Building from inside the package directory avoids that path misinterpretation.
+          ( cd main-worktree/cmd/modcli && go build -o modcli . ) || { echo "Failed to build modcli in main worktree"; exit 1; }
+
+          echo "==> Checking for contract subcommand in main"
+          if ( cd main-worktree/cmd/modcli && ./modcli --help 2>&1 | grep -q "contract" ); then
+            echo "Contract subcommand FOUND in main; performing baseline extraction"
+            echo "baseline_has_contract=true" >> $GITHUB_ENV
+            echo "==> Extracting contracts from origin/main snapshot"
+            ( cd main-worktree && ./cmd/modcli/modcli contract extract . -o ../artifacts/contracts/main/core.json || echo "Failed core framework extraction (main)" )
+            for module_dir in main-worktree/modules/*/; do
+              if [ -f "$module_dir/go.mod" ]; then
+                name=$(basename "$module_dir")
+                echo "Extracting (main) module: $name"
+                ( cd main-worktree && ./cmd/modcli/modcli contract extract "./modules/$name" -o "../artifacts/contracts/main/${name}.json" || echo "Failed to extract $name (main)" )
+              fi
+            done
+          else
+            echo "Contract subcommand NOT present on main; skipping baseline extraction (will treat as no-op diff)"
+            echo "baseline_has_contract=false" >> $GITHUB_ENV
+          fi
+
+          echo "==> Rebuilding modcli in PR workspace"
+          ( cd cmd/modcli && go build -o modcli )
+
+          echo "==> Extracting contracts from PR (current) workspace"
+          ./cmd/modcli/modcli contract extract . -o artifacts/contracts/pr/core.json || echo "Failed core framework extraction (pr)"
+          for module_dir in modules/*/; do
+            if [ -f "$module_dir/go.mod" ]; then
+              name=$(basename "$module_dir")
+              echo "Extracting (pr) module: $name"
+              ./cmd/modcli/modcli contract extract "./modules/$name" -o "artifacts/contracts/pr/${name}.json" || echo "Failed to extract $name (pr)" 
+            fi
+          done
+
+          echo "==> Cleaning up worktree"
+          git worktree remove --force main-worktree || echo "Worktree removal failed (non-fatal)"
+
+      - name: Compare contracts and generate diffs
+        id: contract-diff
+        run: |
+          mkdir -p artifacts/diffs
+          breaking_changes=false
+          has_changes=false
+
+          if [ "${baseline_has_contract:-false}" = "false" ]; then
+            echo "Baseline lacks contract extraction capability; marking check as passed (no baseline to diff)."
+            echo 'has_changes=false' >> $GITHUB_OUTPUT
+            echo 'breaking_changes=false' >> $GITHUB_OUTPUT
+            echo '{"notice":"baseline main branch lacks contract command; diff skipped"}' > artifacts/diffs/summary.json
+            exit 0
+          fi
+
+          # Helper: evaluate diff json for additions/modifications to mark has_changes
+          eval_has_changes() {
+            local json_file="$1"
+            if [ -f "$json_file" ]; then
+              # Using jq to read summary counts; jq is available on ubuntu-latest
+              if command -v jq >/dev/null 2>&1; then
+                local adds mods breaks
+                adds=$(jq -r '.Summary.TotalAdditions // 0' "$json_file" 2>/dev/null || echo 0)
+                mods=$(jq -r '.Summary.TotalModifications // 0' "$json_file" 2>/dev/null || echo 0)
+                breaks=$(jq -r '.Summary.TotalBreakingChanges // 0' "$json_file" 2>/dev/null || echo 0)
+                if [ "${adds}" != "0" ] || [ "${mods}" != "0" ] || [ "${breaks}" != "0" ]; then
+                  has_changes=true
+                fi
+                # If any breaking changes found ensure breaking_changes flag propagates (defensive)
+                if [ "${breaks}" != "0" ]; then
+                  breaking_changes=true
+                fi
+              else
+                echo "jq not found; skipping fine-grained change detection for $json_file" >&2
+              fi
+            fi
+          }
+
+          # Compare core framework
+          if [ -f "artifacts/contracts/main/core.json" ] && [ -f "artifacts/contracts/pr/core.json" ]; then
+            echo "Comparing core framework contract..."
+            set +e
+            ./cmd/modcli/modcli contract compare artifacts/contracts/main/core.json artifacts/contracts/pr/core.json -o artifacts/diffs/core.json --format=markdown > artifacts/diffs/core.md 2>/dev/null
+            exit_code=$?
+            set -e
+            if [ $exit_code -eq 0 ]; then
+              echo "Core framework: No breaking changes exit code"
+            else
+              echo "Core framework: Breaking changes detected (exit code $exit_code)!"
+              breaking_changes=true
+            fi
+            eval_has_changes artifacts/diffs/core.json
+          fi
+
+          # Compare all modules
+          for module_dir in modules/*/; do
+            module_name=$(basename "$module_dir")
+            if [ -f "artifacts/contracts/main/${module_name}.json" ] && [ -f "artifacts/contracts/pr/${module_name}.json" ]; then
+              echo "Comparing module: $module_name"
+              set +e
+              ./cmd/modcli/modcli contract compare "artifacts/contracts/main/${module_name}.json" "artifacts/contracts/pr/${module_name}.json" -o "artifacts/diffs/${module_name}.json" --format=markdown > "artifacts/diffs/${module_name}.md" 2>/dev/null
+              exit_code=$?
+              set -e
+              if [ $exit_code -eq 0 ]; then
+                echo "Module $module_name: No breaking changes exit code"
+              else
+                echo "Module $module_name: Breaking changes detected (exit code $exit_code)!"
+                breaking_changes=true
+              fi
+              eval_has_changes "artifacts/diffs/${module_name}.json"
+            fi
+          done
+
+          echo "breaking_changes=$breaking_changes" >> $GITHUB_OUTPUT
+          echo "has_changes=$has_changes" >> $GITHUB_OUTPUT
+
+      - name: Upload contract artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-contracts-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 30
+
+        - name: Summary (baseline missing notice)
+          if: env.baseline_has_contract == 'false'
+          run: |
+            echo "## API Contract Check" >> $GITHUB_STEP_SUMMARY
+            echo "Baseline (origin/main) lacks contract subcommand; diff skipped. This is expected until main includes the CLI feature." >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate contract summary
+        id: summary
+        if: steps.contract-diff.outputs.has_changes == 'true'
+        run: |
+          echo "## 📋 API Contract Changes Summary" > contract-summary.md
+          echo "" >> contract-summary.md
+          if [ "${{ steps.contract-diff.outputs.breaking_changes }}" == "true" ]; then
+            echo "⚠️ **WARNING: This PR contains breaking API changes!**" >> contract-summary.md
+            echo "" >> contract-summary.md
+          else
+            echo "✅ **No breaking changes detected - only additions and non-breaking modifications**" >> contract-summary.md
+            echo "" >> contract-summary.md
+          fi
+          echo "### Changed Components:" >> contract-summary.md
+          echo "" >> contract-summary.md
+          if [ -f "artifacts/diffs/core.md" ] && [ -s "artifacts/diffs/core.md" ]; then
+            echo "#### Core Framework" >> contract-summary.md
+            echo "" >> contract-summary.md
+            cat artifacts/diffs/core.md >> contract-summary.md
+            echo "" >> contract-summary.md
+          fi
+          for diff_file in artifacts/diffs/*.md; do
+            if [ -f "$diff_file" ] && [ -s "$diff_file" ]; then
+              module_name=$(basename "$diff_file" .md)
+              if [ "$module_name" != "core" ]; then
+                echo "#### Module: $module_name" >> contract-summary.md
+                echo "" >> contract-summary.md
+                cat "$diff_file" >> contract-summary.md
+                echo "" >> contract-summary.md
+              fi
+            fi
+          done
+          echo "### Artifacts" >> contract-summary.md
+            echo "" >> contract-summary.md
+          echo "📁 Full contract diffs and JSON artifacts are available in the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." >> contract-summary.md
+
+      - name: Comment PR with contract changes
+        if: steps.contract-diff.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'contract-summary.md';
+            if (fs.existsSync(path)) {
+              const summary = fs.readFileSync(path, 'utf8');
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+              });
+              const botComment = comments.find(comment =>
+                comment.user.type === 'Bot' &&
+                comment.body.includes('📋 API Contract Changes Summary')
+              );
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: summary
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.pull_request.number,
+                  body: summary
+                });
+              }
+            }
+
+      - name: Fail if breaking changes
+        if: steps.contract-diff.outputs.breaking_changes == 'true'
+        run: |
+          echo "::error::Breaking API changes detected! Please review the contract diff and ensure this is intentional."
+          echo "If this is a major version change, consider:"
+          echo "1. Updating version numbers appropriately"
+          echo "2. Adding migration guides"
+          echo "3. Updating documentation"
+          echo "4. Communicating breaking changes to users"
+          exit 1
+
+  contract-passed:
+    name: API Contract Passed
+    runs-on: ubuntu-latest
+    needs: contract-check
+    # Only report pass if the contract-check job itself succeeded. Previous condition could mask early failures.
+    if: ${{ needs.contract-check.result == 'success' }}
+    steps:
+      - name: Contract check passed
+        run: |
+          echo "✅ API contract check passed - no breaking changes detected"

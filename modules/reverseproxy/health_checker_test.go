@@ -208,6 +208,8 @@ func TestHealthChecker_CustomHealthEndpoints(t *testing.T) {
 		HealthEndpoints: map[string]string{
 			"backend1": "/health",
 			"backend2": "/api/status",
+			// Include backend5 with a full URL so we don't rely on post-construction mutation
+			"backend5": "http://127.0.0.1:9005/check",
 		},
 		BackendHealthCheckConfig: map[string]BackendHealthConfig{
 			"backend3": {
@@ -237,8 +239,7 @@ func TestHealthChecker_CustomHealthEndpoints(t *testing.T) {
 	endpoint = hc.getHealthCheckEndpoint("backend4", "http://127.0.0.1:8080")
 	assert.Equal(t, "http://127.0.0.1:8080", endpoint)
 
-	// Test full URL in endpoint
-	config.HealthEndpoints["backend5"] = "http://127.0.0.1:9005/check"
+	// Test full URL in endpoint (pre-configured)
 	endpoint = hc.getHealthCheckEndpoint("backend5", "http://127.0.0.1:8080")
 	assert.Equal(t, "http://127.0.0.1:9005/check", endpoint)
 }

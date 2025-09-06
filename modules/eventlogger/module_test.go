@@ -3,6 +3,8 @@ package eventlogger
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -64,7 +66,7 @@ func TestEventLoggerModule_ObserverInterface(t *testing.T) {
 
 	err := module.OnEvent(context.Background(), event)
 	if !errors.Is(err, ErrLoggerNotStarted) {
-		t.Errorf("Expected ErrLoggerNotStarted, got %v", err)
+		t.Errorf("Expected ErrLoggerNotStarted when not initialized, got %v", err)
 	}
 }
 
@@ -284,6 +286,48 @@ func TestEventLoggerModule_EventProcessing(t *testing.T) {
 	}
 }
 
+// TestEventLoggerModule_QueueFull ensures that when the pre-start queue is full the
+// oldest event is dropped and the debug log includes the dropped_event field.
+func TestEventLoggerModule_QueueFull(t *testing.T) {
+	// Use small queue size to trigger condition quickly
+	app := &MockApplication{configSections: make(map[string]modular.ConfigProvider), logger: &MockLogger{}}
+	module := NewModule().(*EventLoggerModule)
+
+	// Manually set minimal initialized state (mirrors Init essentials) to focus on queue logic
+	module.mutex.Lock()
+	module.config = &EventLoggerConfig{Enabled: true, BufferSize: 1, FlushInterval: time.Second}
+	module.logger = app.logger
+	module.eventQueue = make([]cloudevents.Event, 0)
+	module.queueMaxSize = 3
+	module.mutex.Unlock()
+
+	// Publish three events while not started to fill queue
+	for i := 0; i < 3; i++ {
+		evt := modular.NewCloudEvent("test.queue."+strconv.Itoa(i), "test", nil, nil)
+		if err := module.OnEvent(context.Background(), evt); err != nil {
+			t.Fatalf("unexpected error queueing event %d: %v", i, err)
+		}
+	}
+	// Fourth causes drop of oldest (index 0)
+	droppedType := "test.queue.0"
+	evt := modular.NewCloudEvent("test.queue.3", "test", nil, nil)
+	if err := module.OnEvent(context.Background(), evt); err != nil {
+		t.Fatalf("unexpected error queueing overflow event: %v", err)
+	}
+
+	// Validate queue retains last 3 including new one but not the dropped
+	module.mutex.RLock()
+	if len(module.eventQueue) != 3 {
+		t.Fatalf("expected queue size 3 after overflow, got %d", len(module.eventQueue))
+	}
+	for _, e := range module.eventQueue {
+		if e.Type() == droppedType {
+			t.Fatalf("expected dropped event %s not to remain in queue", droppedType)
+		}
+	}
+	module.mutex.RUnlock()
+}
+
 func TestEventLoggerModule_EventFiltering(t *testing.T) {
 	module := &EventLoggerModule{
 		config: &EventLoggerConfig{
@@ -390,14 +434,25 @@ func (m *MockApplication) RegisterService(name string, service any) error { retu
 func (m *MockApplication) ConfigSections() map[string]modular.ConfigProvider {
 	return m.configSections
 }
-func (m *MockApplication) GetService(name string, target any) error { return nil }
-func (m *MockApplication) IsVerboseConfig() bool                    { return false }
-func (m *MockApplication) SetVerboseConfig(bool)                    {}
-func (m *MockApplication) SetLogger(modular.Logger)                 {}
-func (m *MockApplication) Init() error                              { return nil }
-func (m *MockApplication) Start() error                             { return nil }
-func (m *MockApplication) Stop() error                              { return nil }
-func (m *MockApplication) Run() error                               { return nil }
+func (m *MockApplication) GetService(name string, target any) error       { return nil }
+func (m *MockApplication) IsVerboseConfig() bool                          { return false }
+func (m *MockApplication) SetVerboseConfig(bool)                          {}
+func (m *MockApplication) SetLogger(modular.Logger)                       {}
+func (m *MockApplication) Init() error                                    { return nil }
+func (m *MockApplication) Start() error                                   { return nil }
+func (m *MockApplication) Stop() error                                    { return nil }
+func (m *MockApplication) Run() error                                     { return nil }
+func (m *MockApplication) Context() context.Context                       { return context.Background() }
+func (m *MockApplication) GetServicesByModule(moduleName string) []string { return []string{} }
+func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
+}
+
+// ServiceIntrospector returns nil (unused in tests)
+func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 type MockLogger struct {
 	entries []MockLogEntry

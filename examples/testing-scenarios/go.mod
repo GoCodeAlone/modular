@@ -1,11 +1,11 @@
-module testing-scenarios
+module github.com/GoCodeAlone/modular/examples/testing-scenarios
 
-go 1.24.2
+go 1.25
 
-toolchain go1.24.5
+toolchain go1.25.0
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v1.4.1
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/reverseproxy v0.0.0-00010101000000-000000000000

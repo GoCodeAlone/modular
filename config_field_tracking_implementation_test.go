@@ -54,6 +54,9 @@ func SetupFieldTrackingForFeeders(cfgFeeders []Feeder, tracker FieldTracker) {
 
 // TestEnhancedFieldTracking tests the enhanced field tracking functionality
 func TestEnhancedFieldTracking(t *testing.T) {
+	// NOTE: This test uses t.Setenv, so it must NOT call t.Parallel on the same *testing.T
+	// per Go 1.25 rules (tests using t.Setenv or t.Chdir cannot use t.Parallel). Keep it
+	// serial to avoid panic: "test using t.Setenv or t.Chdir can not use t.Parallel".
 	tests := []struct {
 		name     string
 		envVars  map[string]string
@@ -95,11 +98,14 @@ func TestEnhancedFieldTracking(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		// Set env for this test case
+		for key, value := range tt.envVars {
+			t.Setenv(key, value)
+		}
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment variables
-			for key, value := range tt.envVars {
-				t.Setenv(key, value)
-			}
+			// Subtest does not call t.Setenv, but the parent did so we also avoid t.Parallel here to
+			// keep semantics simple and consistent (can't parallelize parent anyway). If additional
+			// cases without env mutation are added we can split them into a separate parallel test.
 
 			// Create logger that captures debug output
 			mockLogger := new(MockLogger)
@@ -161,6 +167,7 @@ func TestEnhancedFieldTracking(t *testing.T) {
 
 // TestInstanceAwareFieldTracking tests instance-aware field tracking
 func TestInstanceAwareFieldTracking(t *testing.T) {
+	// Uses t.Setenv; cannot call t.Parallel on this *testing.T (Go 1.25 restriction).
 	// Set up environment variables for instance-aware tracking
 	envVars := map[string]string{
 		"DB_PRIMARY_DRIVER":   "postgres",

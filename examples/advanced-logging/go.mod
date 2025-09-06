@@ -1,11 +1,11 @@
-module advanced-logging
+module github.com/GoCodeAlone/modular/examples/advanced-logging
 
-go 1.24.2
+go 1.25
 
-toolchain go1.24.4
+toolchain go1.25.0
 
 require (
-	github.com/GoCodeAlone/modular v1.6.0
+	github.com/GoCodeAlone/modular v1.4.1
 	github.com/GoCodeAlone/modular/modules/chimux v1.1.0
 	github.com/GoCodeAlone/modular/modules/httpclient v0.1.0
 	github.com/GoCodeAlone/modular/modules/httpserver v0.1.1

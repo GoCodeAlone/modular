@@ -26,7 +26,7 @@ app.RegisterModule(&APIModule{})
 app.Run()
 ```
 
-**After (v2.x)**:
+**After (v1.7.x)**:
 ```go
 app, err := modular.NewApplication(
     modular.WithLogger(logger),
@@ -53,7 +53,7 @@ app.RegisterService("tenantService", tenantService)
 // Manual tenant registration and configuration...
 ```
 
-**After (v2.x)**:
+**After (v1.7.x)**:
 ```go
 tenantLoader := &MyTenantLoader{}
 app, err := modular.NewApplication(
@@ -77,7 +77,7 @@ app := modular.NewObservableApplication(configProvider, logger)
 // Manual observer registration...
 ```
 
-**After (v2.x)**:
+**After (v1.7.x)**:
 ```go
 app, err := modular.NewApplication(
     modular.WithLogger(logger),

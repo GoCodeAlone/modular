@@ -213,7 +213,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	// Start cron scheduler
 	s.cronScheduler.Start()
 
-	// Start job dispatcher
+	// Start job dispatcher (explicit Add/go because dispatchPendingJobs manages Done)
 	s.wg.Add(1)
 	go s.dispatchPendingJobs()
 

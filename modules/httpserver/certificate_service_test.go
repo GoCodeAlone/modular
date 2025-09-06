@@ -126,6 +126,19 @@ func (m *SimpleMockApplication) SetVerboseConfig(verbose bool) {
 	// No-op for these tests
 }
 
+// Newly added methods to satisfy updated Application interface
+func (m *SimpleMockApplication) Context() context.Context                       { return context.Background() }
+func (m *SimpleMockApplication) GetServicesByModule(moduleName string) []string { return []string{} }
+func (m *SimpleMockApplication) GetServiceEntry(serviceName string) (*modular.ServiceRegistryEntry, bool) {
+	return nil, false
+}
+func (m *SimpleMockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
+	return []*modular.ServiceRegistryEntry{}
+}
+
+// ServiceIntrospector returns nil (not needed in certificate tests)
+func (m *SimpleMockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
 // SimpleMockLogger implements modular.Logger for certificate service tests
 type SimpleMockLogger struct{}
 
