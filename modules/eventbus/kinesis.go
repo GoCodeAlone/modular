@@ -293,6 +293,8 @@ func (k *KinesisEventBus) subscribe(ctx context.Context, topic string, handler E
 // startShardReaders starts reading from all shards
 func (k *KinesisEventBus) startShardReaders() {
 	// Get stream description to find shards
+	// sync.WaitGroup.Go used (Go >=1.23); improves correctness by tying Add/Done
+	// to function scope. Legacy pattern would manually Add(1)/defer Done().
 	k.wg.Go(func() {
 		for {
 			select {

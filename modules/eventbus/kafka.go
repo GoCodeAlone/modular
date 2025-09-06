@@ -385,7 +385,10 @@ func (k *KafkaEventBus) startConsumerGroup() {
 		return
 	}
 
-	// Start consuming (Go 1.25 WaitGroup.Go)
+	// Start consuming using sync.WaitGroup.Go (added in Go 1.23, stable in 1.25 toolchain here).
+	// Rationale: simplifies lifecycle management vs manual Add/Done pairing and
+	// makes early returns (context cancellation / error) less error-prone. Older
+	// Go versions would require wg.Add(1); go func(){ defer wg.Done() ... }.
 	k.wg.Go(func() {
 		for {
 			if err := k.consumerGroup.Consume(k.ctx, topics, handler); err != nil {

@@ -177,7 +177,30 @@ func NewChiMuxModule() modular.Module {
 	}
 }
 
-// controllableMiddleware wraps a middleware with an enabled flag so it can be disabled at runtime.
+// controllableMiddleware wraps a Chi middleware with a fast enable/disable flag.
+//
+// Why this exists instead of removing middleware from the chi chain:
+//   * Chi builds a linear slice of middleware; removing items would require
+//     rebuilding the chain and can race with in‑flight requests referencing the
+//     old handler sequence.
+//   * A single atomic flag read on each request is cheaper and simpler than
+//     chain reconstruction + synchronization around route rebuilds. Toggling is
+//     expected to be extremely rare (admin action / config reload) while reads
+//     happen on every request.
+//   * Keeping the wrapper stable avoids subtle ordering drift; the original
+//     registration order is preserved in middlewareOrder for deterministic
+//     reasoning and event emission.
+//
+// Thread-safety & performance:
+//   * enabled is an atomic.Bool so hot-path requests avoid taking a lock.
+//   * Disable simply flips the flag; the wrapper then becomes a no-op pass‑through.
+//   * We intentionally DO NOT attempt an atomic pointer swap to a passthrough
+//     function; the single conditional branch keeps clarity and is negligible
+//     compared to typical middleware work (logging, auth, etc.). Premature
+//     micro‑optimizations are avoided until profiling justifies them.
+//
+// This structure is intentionally small: name (for admin/UI & events), the
+// original middleware function, and the enabled flag.
 type controllableMiddleware struct {
 	name    string
 	fn      Middleware
