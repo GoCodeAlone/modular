@@ -4,6 +4,7 @@
 
 - [Modular Framework Detailed Documentation](#modular-framework-detailed-documentation)
   - [Table of Contents](#table-of-contents)
+  - [Baseline Framework Tasks](#baseline-framework-tasks)
   - [Introduction](#introduction)
   - [Governance \& Best Practices](#governance--best-practices)
   - [Application Builder API](#application-builder-api)
@@ -101,6 +102,56 @@
 ## Introduction
 
 The Modular framework provides a structured approach to building modular Go applications. This document offers in-depth explanations of the framework's features and capabilities, providing developers with the knowledge they need to build robust, maintainable applications.
+
+## Baseline Framework Tasks
+
+The modular framework implementation follows a structured approach defined in `specs/001-baseline-specification-for/tasks.md`. This file contains 70 ordered tasks across 9 phases that implement the baseline functionality:
+
+- **Phase 3.1**: Setup - Task scaffolding, test structure, and build targets ✅
+- **Phase 3.2**: Contract & Integration Tests - TDD approach with failing tests first ✅
+- **Phase 3.3**: Core Models - Entity structures from the data model ✅
+- **Phase 3.4**: Core Services & Interfaces - Service contract definitions ✅
+- **Phase 3.5**: Service Implementations - Initial service stubs ✅
+- **Phase 3.6**: Incremental Feature Completion - Complete implementations ✅
+- **Phase 3.7**: Integration Wiring - Component integration ✅
+- **Phase 3.8**: Quickstart Pass & End-to-End - Full integration testing ✅
+- **Phase 3.9**: Polish & Performance - Optimization and cleanup ✅
+
+### Implementation Status: COMPLETE ✅
+
+All 70 baseline tasks (T001-T070) have been successfully implemented, providing:
+
+- **Core Infrastructure**: Complete application lifecycle management with deterministic ordering
+- **Service Registry**: O(1) lookup performance with conflict resolution and pre-sized maps
+- **Configuration System**: Multi-source loading, validation, provenance tracking, and hot-reload
+- **Authentication**: JWT/OIDC/API key validation with comprehensive principal mapping
+- **Health Monitoring**: Worst-case aggregation with readiness/liveness separation
+- **Lifecycle Events**: CloudEvents-based structured events with observer pattern
+- **Job Scheduling**: Cron parsing, concurrency limits, and backfill policies
+- **Certificate Management**: ACME integration with automated renewal and escalation
+- **Performance Optimization**: Pre-sized maps, benchmark guardrails, and regression detection
+- **End-to-End Validation**: Complete integration tests demonstrating real-world usage
+
+### Quickstart Verification
+
+The framework now fully supports the quickstart flow outlined in the specification:
+
+1. **Application Creation**: `app := modular.NewApplication()`
+2. **Module Registration**: `app.RegisterModule(httpModule, authModule, dbModule)`
+3. **Enhanced Lifecycle**: `app.EnableEnhancedLifecycle()` for advanced features
+4. **Configuration**: Multi-source configuration with automatic validation
+5. **Service Discovery**: Automatic service registration and dependency injection
+6. **Execution**: `app.RunWithEnhancedLifecycle()` with graceful shutdown
+
+For detailed task information, see `specs/001-baseline-specification-for/tasks.md`. To run the task validation suite, use `make tasks-check` which runs linting and all tests.
+
+### Performance Baselines
+
+Service registry performance baselines are established in `performance/baseline.md`:
+- **Lookup**: <20ns per operation with zero allocations
+- **Registration**: ~485ns average per service (up to 1000 services)
+- **Memory**: Linear growth with optimal map pre-sizing
+- **Regression Detection**: >10% threshold monitoring for performance changes
 
 ## Governance & Best Practices
 
