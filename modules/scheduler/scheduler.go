@@ -58,10 +58,12 @@ type JobBackfillPolicy struct {
 	Priority            int              `json:"priority,omitempty"`
 }
 
-// BackfillStrategy represents different strategies for handling missed executions
+// BackfillStrategy defines strategies for backfilling missed executions
 type BackfillStrategy string
 
 const (
+	// BackfillStrategyAll missed executions
+	BackfillStrategyAll BackfillStrategy = "all"
 	// BackfillStrategyNone means don't backfill missed executions
 	BackfillStrategyNone BackfillStrategy = "none"
 	// BackfillStrategyLast means only backfill the last missed execution
@@ -123,10 +125,10 @@ type Scheduler struct {
 	wg             sync.WaitGroup
 	isStarted      bool
 	schedulerMutex sync.Mutex
-	
+
 	// T045: Concurrency tracking for maxConcurrency enforcement
-	runningJobs    map[string]int      // jobID -> current execution count
-	runningMutex   sync.RWMutex        // protects runningJobs map
+	runningJobs  map[string]int // jobID -> current execution count
+	runningMutex sync.RWMutex   // protects runningJobs map
 }
 
 // debugEnabled returns true when SCHEDULER_DEBUG env var is set to a non-empty value
@@ -368,7 +370,7 @@ func (s *Scheduler) executeJob(job Job) {
 		if currentCount >= job.MaxConcurrency {
 			s.runningMutex.Unlock()
 			if s.logger != nil {
-				s.logger.Warn("Job execution skipped - max concurrency reached", 
+				s.logger.Warn("Job execution skipped - max concurrency reached",
 					"id", job.ID, "current", currentCount, "max", job.MaxConcurrency)
 			}
 			// Emit event for maxConcurrency reached
@@ -382,7 +384,7 @@ func (s *Scheduler) executeJob(job Job) {
 		}
 		s.runningJobs[job.ID] = currentCount + 1
 		s.runningMutex.Unlock()
-		
+
 		// Ensure we decrement the counter when done
 		defer func() {
 			s.runningMutex.Lock()
@@ -516,7 +518,7 @@ func (s *Scheduler) calculateBackfillJobs(job Job) []time.Time {
 
 	now := time.Now()
 	var missedTimes []time.Time
-	
+
 	// Calculate the time window to check for missed executions
 	startTime := now
 	if job.LastRun != nil {
@@ -540,12 +542,12 @@ func (s *Scheduler) calculateBackfillJobs(job Job) []time.Time {
 		if nextTime.After(now) {
 			break
 		}
-		
+
 		// Check if this execution was actually missed (within reason)
 		if nextTime.Add(5 * time.Minute).Before(now) { // 5-minute grace period
 			missedTimes = append(missedTimes, nextTime)
 		}
-		
+
 		currentTime = nextTime
 	}
 
@@ -556,7 +558,7 @@ func (s *Scheduler) calculateBackfillJobs(job Job) []time.Time {
 			return missedTimes[len(missedTimes)-1:]
 		}
 		return nil
-		
+
 	case BackfillStrategyBounded:
 		maxCount := job.BackfillPolicy.MaxMissedExecutions
 		if maxCount <= 0 {
@@ -566,11 +568,11 @@ func (s *Scheduler) calculateBackfillJobs(job Job) []time.Time {
 			return missedTimes[len(missedTimes)-maxCount:]
 		}
 		return missedTimes
-		
+
 	case BackfillStrategyTimeWindow:
 		// Already filtered by time window above
 		return missedTimes
-		
+
 	default:
 		return nil
 	}
@@ -590,10 +592,10 @@ func (s *Scheduler) processBackfillJobs(job Job, missedTimes []time.Time) {
 	for _, missedTime := range missedTimes {
 		backfillJob := job
 		backfillJob.ID = fmt.Sprintf("%s-backfill-%d", job.ID, missedTime.Unix())
-		backfillJob.RunAt = time.Now() // Execute immediately
+		backfillJob.RunAt = time.Now()  // Execute immediately
 		backfillJob.IsRecurring = false // Backfill jobs are one-time
 		backfillJob.Status = JobStatusPending
-		
+
 		// Add metadata to indicate this is a backfill execution
 		if backfillJob.Metadata == nil {
 			backfillJob.Metadata = make(map[string]interface{})
@@ -626,9 +628,9 @@ func (s *Scheduler) processBackfillJobs(job Job, missedTimes []time.Time) {
 
 	// Emit backfill event
 	s.emitEvent(context.Background(), "job.backfill_processed", map[string]interface{}{
-		"job_id":           job.ID,
-		"job_name":         job.Name,
-		"missed_count":     len(missedTimes),
+		"job_id":            job.ID,
+		"job_name":          job.Name,
+		"missed_count":      len(missedTimes),
 		"backfill_strategy": string(job.BackfillPolicy.Strategy),
 	})
 }
@@ -744,7 +746,7 @@ func (s *Scheduler) ScheduleJob(job Job) (string, error) {
 	// Register with cron if recurring
 	if job.IsRecurring && s.isStarted {
 		s.registerWithCron(job)
-		
+
 		// T046: Process backfill if policy is configured
 		if job.BackfillPolicy != nil && job.BackfillPolicy.Strategy != BackfillStrategyNone {
 			missedTimes := s.calculateBackfillJobs(job)
