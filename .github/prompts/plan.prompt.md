@@ -15,6 +15,8 @@ Given the implementation details provided as an argument, do this:
    - Any technical constraints or dependencies mentioned
 
 3. Read the constitution at `/memory/constitution.md` to understand constitutional requirements.
+   - Validate the specification includes a Scope Classification section produced by the spec step; ERROR if missing.
+   - Parse CORE vs MODULE counts; if any MODULE item overlaps a defined CORE area (lifecycle, registry, configuration, multi-tenancy context, lifecycle events, health, error taxonomy) → ERROR "Module encroaches on core: <item>".
 
 4. Execute the implementation plan template:
    - Load `/templates/plan-template.md` (already copied to IMPL_PLAN path)
@@ -26,7 +28,12 @@ Given the implementation details provided as an argument, do this:
      * Phase 0 generates research.md
      * Phase 1 generates data-model.md, contracts/, quickstart.md
      * Phase 2 generates tasks.md
-   - Incorporate user-provided details from arguments into Technical Context: $ARGUMENTS
+    - Incorporate user-provided details from arguments into Technical Context: $ARGUMENTS
+    - In Technical Context add a "Scope Enforcement" subsection summarizing:
+       * List of CORE components (from spec) that will remain in root
+       * List of MODULE components with their module directories
+       * Any contested items resolved with rationale
+    - During Phase 1 generation ensure contracts/data-model segregate CORE vs MODULE types (e.g., do not add auth-specific entities to core data-model). If violation detected during extraction → ERROR "Scope violation in design artifact: <file> <description>".
    - Update Progress Tracking as you complete each phase
 
 5. Verify execution completed:
@@ -34,6 +41,14 @@ Given the implementation details provided as an argument, do this:
    - Ensure all required artifacts were generated
    - Confirm no ERROR states in execution
 
-6. Report results with branch name, file paths, and generated artifacts.
+ 6. Report results with branch name, file paths, generated artifacts, and CORE vs MODULE counts reaffirmed.
+  
+ 7. Validate consistency across prompts:
+      - Ensure same error phrase prefixes used: "ERROR" (all caps) followed by colon.
+      - Ensure scope related errors use one of:
+         * "Module encroaches on core: <item>"
+         * "Scope violation in design artifact: <file> <description>"
+         * "Missing Scope Classification section in spec"
+      - If inconsistency found → emit ERROR summary and abort.
 
 Use absolute paths with the repository root for all file operations to avoid path issues.
