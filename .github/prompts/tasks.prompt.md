@@ -14,6 +14,10 @@ Given the context provided as an argument, do this:
    - IF EXISTS: Read contracts/ for API endpoints  
    - IF EXISTS: Read research.md for technical decisions
    - IF EXISTS: Read quickstart.md for test scenarios
+    - Identify for every described functionality whether it is classified as CORE (belongs in repository root framework) or MODULE (belongs under `modules/<name>/`).
+       * CORE: lifecycle orchestration, configuration system, service registry, tenant/instance context, lifecycle events dispatcher, health aggregation.
+       * MODULE: auth, cache, database drivers, http server/client adapters, reverse proxy, scheduler jobs, event bus implementations, certificate/ACME management, JSON schema validation, routing integrations, logging decorators.
+       * If any functionality lacks classification → ERROR "Unclassified functionality: <item>".
    
    Note: Not all projects have all documents. For example:
    - CLI tools might not have contracts/
@@ -28,6 +32,9 @@ Given the context provided as an argument, do this:
      * **Core tasks**: One per entity, service, CLI command, endpoint
      * **Integration tasks**: DB connections, middleware, logging
      * **Polish tasks [P]**: Unit tests, performance, docs
+       * Each task MUST include a `[CORE]` or `[MODULE:<module-name>]` tag prefix before the description.
+          - Example: `T012 [CORE][P] Implement service registry entry struct in service_registry_entry.go`
+          - Example: `T039 [MODULE:auth] Implement JWT validator in modules/auth/jwt_validator.go`
 
 4. Task generation rules:
    - Each contract file → contract test task marked [P]
@@ -36,6 +43,8 @@ Given the context provided as an argument, do this:
    - Each user story → integration test marked [P]
    - Different files = can be parallel [P]
    - Same file = sequential (no [P])
+   - CORE tasks may not introduce or modify files inside `modules/` (enforce separation) → if violation detected: ERROR "Core task mis-scoped: <task id>"
+   - MODULE tasks must write only inside `modules/<module>/` (except tests placed in module or shared test helpers) → else ERROR "Module task mis-scoped: <task id>"
 
 5. Order tasks by dependencies:
    - Setup before everything
@@ -55,6 +64,8 @@ Given the context provided as an argument, do this:
    - Clear file paths for each task
    - Dependency notes
    - Parallel execution guidance
+   - A classification summary table listing counts of CORE vs MODULE tasks
+   - A validation section stating: no mis-scoped tasks, all functionality classified
 
 Context for task generation: $ARGUMENTS
 

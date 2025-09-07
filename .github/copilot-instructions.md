@@ -148,6 +148,71 @@ Working example applications:
 4. **Logging**: Log errors at appropriate levels with structured logging
 5. **Graceful Degradation**: Handle optional dependencies gracefully
 
+## Automated PR Code Review (GitHub Copilot Agent Guidance)
+
+When performing a pull request review, apply the checklist from `.github/pull_request_template.md` systematically. Respond with concise, actionable comments. Use line suggestions only when a clear fix is deterministic. Avoid style-only nits unless they violate stated standards or constitution.
+
+### Review Procedure
+1. Parse PR description; extract: change type, claimed motivation, breaking change note.
+2. Run quality gates mentally (or via CI artifacts):
+  - Missing failing test before implementation (unless docs-only) → request justification.
+  - Lint failures or skipped lint → request resolution or waiver rationale referencing `.golangci.yml` rule names.
+  - Any new exported symbol without doc comment → suggest adding Go doc.
+3. Compare API contract if `contract-check` comment/artifact present:
+  - Added items: ensure doc comments & tests.
+  - Breaking changes: require migration notes + deprecation window compliance.
+4. Configuration changes:
+  - New struct fields must have `yaml/json/default/required/desc` tags as appropriate.
+  - Dynamic reload fields: confirm justification + safe semantics.
+5. Multi-tenancy / instance:
+  - Check for cross-tenant map access; ensure tenant/instance parameters propagated.
+6. Performance-sensitive paths:
+  - Hot path (registry lookups, config merge) changes → ask for benchmark deltas or mark N/A.
+7. Error handling & logging:
+  - Ensure `fmt.Errorf("context: %w", err)` pattern; no capitalized messages; no secrets in logs.
+8. Concurrency:
+  - New goroutines: verify cancellation, error propagation, ownership comment.
+9. Boilerplate / duplication:
+  - >2 near-identical blocks → suggest refactor or rationale.
+10. Documentation:
+   - If behavior changes public API or module usage, confirm related README / `DOCUMENTATION.md` updates.
+
+### Comment Categories
+- `BLOCKER`: Must be resolved (correctness, safety, breaking contract, failing gates)
+- `RECOMMEND`: Improves maintainability or clarity
+- `QUESTION`: Clarify intent or hidden assumption
+- `NIT`: Only if violates explicit style/constitution; otherwise omit
+
+### Response Template
+Summarize at top:
+```
+Summary: <one line>
+Blockers: <count> | Recommendations: <count> | Questions: <count>
+Key Risks: <short list or 'None'>
+Contract Impact: <None|Additions|Breaking>
+```
+Then list comments grouped by category. End with either `APPROVE`, `REQUEST_CHANGES`, or `COMMENT` rationale.
+
+### Auto-Approve Criteria
+Return APPROVE if and only if:
+- No BLOCKER items
+- All checklist items either satisfied or explicitly justified
+- No unreviewed breaking changes
+
+### Scope Boundaries
+Do not: propose architectural rewrites, introduce new dependencies, or refactor unrelated files in review suggestions. Keep within diff scope.
+
+### Security & Secrets Scan
+Flag occurrences of obvious secrets (API keys, private keys) or accidental debug dumps.
+
+### Large PR Strategy
+If >500 added LOC: request splitting unless change is mechanical (generated, rename, vendored). Provide rationale.
+
+### Tone
+Concise, neutral, professional. Avoid apologies unless fixing prior incorrect review guidance.
+
+---
+
 ## Development Tools
 
 ### CLI Tool (`modcli`)
