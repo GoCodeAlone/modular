@@ -65,7 +65,6 @@ func NewDispatcher(config *DispatchConfig) *Dispatcher {
 
 // Dispatch sends a lifecycle event to all registered observers
 func (d *Dispatcher) Dispatch(ctx context.Context, event *Event) error {
-	// TODO: Implement event dispatching to observers
 	if !d.running {
 		return ErrDispatcherNotRunning
 	}
@@ -75,33 +74,59 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event *Event) error {
 		return ErrEventCannotBeNil
 	}
 
-	// Add event to buffer
+	// Set event timestamp if not set
+	if event.Timestamp.IsZero() {
+		event.Timestamp = time.Now()
+	}
+
+	// Update metrics if enabled
+	if d.config.EnableMetrics {
+		d.updateMetrics(event)
+	}
+
+	// Add event to buffer with backpressure warning
 	select {
 	case d.eventChan <- event:
-		return ErrDispatchNotImplemented
+		return nil
 	default:
-		return ErrEventBufferFull
+		// Buffer is full - log warning and attempt non-blocking dispatch
+		if d.config.EnableMetrics {
+			d.metrics.BackpressureWarnings++
+		}
+
+		// Try to dispatch immediately to avoid dropping
+		return d.dispatchToObservers(ctx, event)
 	}
 }
 
 // RegisterObserver registers an observer to receive lifecycle events
 func (d *Dispatcher) RegisterObserver(ctx context.Context, observer EventObserver) error {
-	// TODO: Implement observer registration
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	d.observers[observer.ID()] = observer
-	return ErrRegisterObserverNotImplemented
+
+	// Update metrics
+	if d.config.EnableMetrics {
+		d.metrics.ActiveObservers = int64(len(d.observers))
+	}
+
+	return nil
 }
 
 // UnregisterObserver removes an observer from receiving events
 func (d *Dispatcher) UnregisterObserver(ctx context.Context, observerID string) error {
-	// TODO: Implement observer unregistration
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	delete(d.observers, observerID)
-	return ErrUnregisterObserverNotImplemented
+
+	// Update metrics
+	if d.config.EnableMetrics {
+		d.metrics.ActiveObservers = int64(len(d.observers))
+	}
+
+	return nil
 }
 
 // GetObservers returns all currently registered observers
@@ -119,7 +144,6 @@ func (d *Dispatcher) GetObservers(ctx context.Context) ([]EventObserver, error) 
 
 // Start begins the event dispatcher service
 func (d *Dispatcher) Start(ctx context.Context) error {
-	// TODO: Implement dispatcher startup
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -129,15 +153,14 @@ func (d *Dispatcher) Start(ctx context.Context) error {
 
 	d.running = true
 
-	// TODO: Start background goroutine for processing events
+	// Start background goroutine for processing events
 	go d.processEvents(ctx)
 
-	return ErrStartNotImplemented
+	return nil
 }
 
 // Stop gracefully shuts down the event dispatcher
 func (d *Dispatcher) Stop(ctx context.Context) error {
-	// TODO: Implement graceful shutdown
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -148,7 +171,7 @@ func (d *Dispatcher) Stop(ctx context.Context) error {
 	d.running = false
 	close(d.stopChan)
 
-	return ErrStopNotImplemented
+	return nil
 }
 
 // IsRunning returns true if the dispatcher is currently running
@@ -158,14 +181,16 @@ func (d *Dispatcher) IsRunning() bool {
 	return d.running
 }
 
-// processEvents processes events in background (stub implementation)
+// processEvents processes events in background
 func (d *Dispatcher) processEvents(ctx context.Context) {
-	// TODO: Implement event processing loop
 	for {
 		select {
 		case event := <-d.eventChan:
-			// TODO: Process event and send to observers
-			_ = event
+			// Process event and send to observers
+			err := d.dispatchToObservers(ctx, event)
+			if err != nil && d.config.EnableMetrics {
+				d.metrics.DispatchErrors++
+			}
 		case <-d.stopChan:
 			return
 		case <-ctx.Done():
@@ -286,4 +311,88 @@ func (o *BasicObserver) EventTypes() []EventType {
 // Priority returns the priority of this observer (higher = called first)
 func (o *BasicObserver) Priority() int {
 	return o.priority
+}
+
+// dispatchToObservers sends an event to all interested observers
+func (d *Dispatcher) dispatchToObservers(ctx context.Context, event *Event) error {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	// Sort observers by priority (higher priority first)
+	observers := d.getSortedObservers(event)
+
+	for _, observer := range observers {
+		// Check if observer is interested in this event type
+		if !d.isObserverInterestedInEvent(observer, event) {
+			continue
+		}
+
+		// Create timeout context for observer
+		timeoutCtx, cancel := context.WithTimeout(ctx, d.config.ObserverTimeout)
+
+		// Call observer with error handling
+		func() {
+			defer cancel()
+			defer func() {
+				if r := recover(); r != nil {
+					// Log panic but continue with other observers
+					if d.config.EnableMetrics {
+						d.metrics.ObserverPanics++
+					}
+				}
+			}()
+
+			err := observer.OnEvent(timeoutCtx, event)
+			if err != nil && d.config.EnableMetrics {
+				d.metrics.ObserverErrors++
+			}
+		}()
+	}
+
+	return nil
+}
+
+// getSortedObservers returns observers sorted by priority (highest first)
+func (d *Dispatcher) getSortedObservers(event *Event) []EventObserver {
+	observers := make([]EventObserver, 0, len(d.observers))
+	for _, observer := range d.observers {
+		observers = append(observers, observer)
+	}
+
+	// Simple bubble sort by priority (highest first)
+	for i := 0; i < len(observers)-1; i++ {
+		for j := 0; j < len(observers)-i-1; j++ {
+			if observers[j].Priority() < observers[j+1].Priority() {
+				observers[j], observers[j+1] = observers[j+1], observers[j]
+			}
+		}
+	}
+
+	return observers
+}
+
+// isObserverInterestedInEvent checks if an observer wants to receive this event
+func (d *Dispatcher) isObserverInterestedInEvent(observer EventObserver, event *Event) bool {
+	eventTypes := observer.EventTypes()
+
+	// If observer has no specific event types, it receives all events
+	if len(eventTypes) == 0 {
+		return true
+	}
+
+	// Check if observer is interested in this event type
+	for _, eventType := range eventTypes {
+		if eventType == event.Type {
+			return true
+		}
+	}
+
+	return false
+}
+
+// updateMetrics updates dispatcher metrics
+func (d *Dispatcher) updateMetrics(event *Event) {
+	d.metrics.TotalEvents++
+	d.metrics.EventsByType[event.Type]++
+	d.metrics.EventsByStatus[event.Status]++
 }
