@@ -1,4 +1,3 @@
-// Package modular provides enhanced lifecycle management and application orchestration
 package modular
 
 import (
@@ -12,17 +11,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/GoCodeAlone/modular/health"
-	"github.com/GoCodeAlone/modular/lifecycle"
-)
-
-// Static errors for enhanced lifecycle management
-var (
-	ErrEnhancedLifecycleAlreadyEnabled = errors.New("enhanced lifecycle is already enabled")
-	ErrEnhancedLifecycleNotEnabled     = errors.New("enhanced lifecycle is not enabled; call EnableEnhancedLifecycle() first")
-	ErrApplicationAlreadyStarted       = errors.New("application is already started")
-	ErrApplicationNotStarted           = errors.New("application is not started")
 )
 
 // AppRegistry provides registry functionality for applications.
@@ -259,11 +247,6 @@ type StdApplication struct {
 	logger              Logger
 	ctx                 context.Context
 	cancel              context.CancelFunc
-	tenantService       TenantService         // Added tenant service reference
-	verboseConfig       bool                  // Flag for verbose configuration debugging
-	initialized         bool                  // Tracks whether Init has already been successfully executed
-	configFeeders       []Feeder              // Optional per-application feeders (override global ConfigFeeders if non-nil)
-	lifecycle           *ApplicationLifecycle // Enhanced lifecycle manager (T050)
 }
 
 // ServiceIntrospectorImpl implements ServiceIntrospector backed by StdApplication's enhanced registry.
@@ -1538,134 +1521,3 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 }
 
 // (Intentionally removed old direct service introspection methods; use ServiceIntrospector())
-
-// EnableEnhancedLifecycle enables the enhanced lifecycle manager with integrated
-// configuration validation, lifecycle events, health aggregation, and enhanced service registry.
-// This method implements T051-T055 from the baseline specification.
-func (app *StdApplication) EnableEnhancedLifecycle() error {
-	if app.lifecycle != nil {
-		return ErrEnhancedLifecycleAlreadyEnabled
-	}
-
-	app.lifecycle = NewApplicationLifecycle(app)
-	app.logger.Debug("Enhanced lifecycle manager enabled")
-	return nil
-}
-
-// InitWithEnhancedLifecycle initializes the application using the enhanced lifecycle manager.
-// This integrates configuration validation gates, service registry population,
-// and lifecycle event dispatching (T051-T053).
-func (app *StdApplication) InitWithEnhancedLifecycle(ctx context.Context) error {
-	if app.lifecycle == nil {
-		return ErrEnhancedLifecycleNotEnabled
-	}
-
-	if app.initialized {
-		app.logger.Debug("Application already initialized, skipping enhanced initialization")
-		return nil
-	}
-
-	// Use the enhanced lifecycle initialization
-	if err := app.lifecycle.InitializeWithLifecycle(ctx); err != nil {
-		return fmt.Errorf("enhanced lifecycle initialization failed: %w", err)
-	}
-
-	// Mark as initialized
-	app.initialized = true
-	return nil
-}
-
-// StartWithEnhancedLifecycle starts the application using the enhanced lifecycle manager.
-// This provides deterministic start order, health monitoring integration,
-// and lifecycle event emission (T050, T053).
-func (app *StdApplication) StartWithEnhancedLifecycle(ctx context.Context) error {
-	if app.lifecycle == nil {
-		return ErrEnhancedLifecycleNotEnabled
-	}
-
-	// Ensure we're initialized first
-	if !app.initialized {
-		if err := app.InitWithEnhancedLifecycle(ctx); err != nil {
-			return fmt.Errorf("initialization failed: %w", err)
-		}
-	}
-
-	return app.lifecycle.StartWithLifecycle(ctx)
-}
-
-// StopWithEnhancedLifecycle stops the application using the enhanced lifecycle manager.
-// This provides reverse deterministic order, graceful shutdown with timeout,
-// and lifecycle event emission (T050, T054).
-func (app *StdApplication) StopWithEnhancedLifecycle(ctx context.Context) error {
-	if app.lifecycle == nil {
-		return ErrEnhancedLifecycleNotEnabled
-	}
-
-	return app.lifecycle.StopWithLifecycle(ctx)
-}
-
-// RunWithEnhancedLifecycle runs the application using the enhanced lifecycle manager.
-// This is equivalent to calling EnableEnhancedLifecycle(), InitWithEnhancedLifecycle(),
-// StartWithEnhancedLifecycle(), and then waiting for termination signals before
-// calling StopWithEnhancedLifecycle().
-func (app *StdApplication) RunWithEnhancedLifecycle() error {
-	// Enable enhanced lifecycle if not already enabled
-	if app.lifecycle == nil {
-		if err := app.EnableEnhancedLifecycle(); err != nil {
-			return fmt.Errorf("failed to enable enhanced lifecycle: %w", err)
-		}
-	}
-
-	// Create base context
-	ctx := context.Background()
-
-	// Initialize with enhanced lifecycle
-	if err := app.InitWithEnhancedLifecycle(ctx); err != nil {
-		return fmt.Errorf("enhanced initialization failed: %w", err)
-	}
-
-	// Start with enhanced lifecycle
-	if err := app.StartWithEnhancedLifecycle(ctx); err != nil {
-		return fmt.Errorf("enhanced startup failed: %w", err)
-	}
-
-	// Setup signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Wait for termination signal
-	sig := <-sigChan
-	app.logger.Info("Received signal, performing enhanced shutdown", "signal", sig)
-
-	// Create shutdown context with timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Stop with enhanced lifecycle
-	return app.StopWithEnhancedLifecycle(shutdownCtx)
-}
-
-// GetLifecycleManager returns the enhanced lifecycle manager if enabled.
-// This provides access to health aggregation, lifecycle events, and other
-// enhanced lifecycle features.
-func (app *StdApplication) GetLifecycleManager() *ApplicationLifecycle {
-	return app.lifecycle
-}
-
-// GetHealthAggregator returns the health aggregator if enhanced lifecycle is enabled.
-// Convenience method for accessing health monitoring functionality.
-func (app *StdApplication) GetHealthAggregator() (health.HealthAggregator, error) {
-	if app.lifecycle == nil {
-		return nil, ErrEnhancedLifecycleNotEnabled
-	}
-	return app.lifecycle.GetHealthAggregator(), nil
-}
-
-// GetLifecycleDispatcher returns the lifecycle event dispatcher if enhanced lifecycle is enabled.
-// Convenience method for accessing lifecycle event functionality.
-func (app *StdApplication) GetLifecycleDispatcher() (lifecycle.EventDispatcher, error) {
-	if app.lifecycle == nil {
-		return nil, ErrEnhancedLifecycleNotEnabled
-	}
-	return app.lifecycle.GetLifecycleDispatcher(), nil
-}

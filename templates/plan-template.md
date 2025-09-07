@@ -88,44 +88,101 @@ specs/[###-feature]/
 └── tasks.md             # Phase 2 output (/tasks command - NOT created by /plan)
 ```
 
+ios/ or android/
 ### Source Code (repository root)
 ```
-# Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+# Option 1: Go Project (DEFAULT)
+# Domain-Driven Design (DDD) aligned, Go conventions (no /src). Tests live beside code using *_test.go.
+# Public API surface kept minimal; internal implementation hidden under /internal.
 
-tests/
-├── contract/
-├── integration/
-└── unit/
+cmd/
+   <app-name>/
+      main.go                # Application entrypoint (wire composition here, keep logic minimal)
 
-# Option 2: Web application (when "frontend" + "backend" detected)
+internal/
+   domain/                 # Core domain model (pure, no external dependencies)
+      <bounded-context>/
+         entity.go            # Aggregates / Entities
+         value_object.go
+         repository.go        # Interfaces ONLY (e.g., Repository ports)
+         service.go           # Domain services (pure funcs / stateless where possible)
+         entity_test.go       # Example co-located domain tests
+   application/            # Use cases (orchestrate domain + ports)
+      <feature>/
+         usecase.go
+         usecase_test.go
+   interfaces/             # Adapters (driving + driven) a.k.a. delivery layer (HTTP, gRPC, CLI)
+      http/
+         handlers.go
+         middleware.go
+         handlers_test.go
+      cli/
+         commands.go
+   infrastructure/         # Technical implementations of ports (DB, cache, messaging, etc.)
+      persistence/
+         <entity>_repo.go
+         migrations/
+      cache/
+      messaging/
+      config/
+   platform/               # Cross-cutting (logging setup, tracing, metrics, DI wiring if used)
+
+pkg/                      # (Optional) Reusable packages intended for external consumption
+   <lib-name>/
+      api.go
+
+configs/                  # Configuration files / examples (YAML, JSON, TOML)
+deploy/                   # Infrastructure as code / deployment manifests (optional)
+docs/                     # Extended documentation (beyond auto-generated)
+tools/                    # Helper scripts / code generation tools
+Makefile                  # Common developer workflows (lint, test, build)
+
+# Tests follow Go convention; no separate /tests tree. Additional high-level integration / e2e tests MAY live under:
+test/                     # (Optional) Black-box integration/e2e tests spanning multiple packages
+   integration/
+   e2e/
+
+# Option 2: Web application (frontend + backend)
+# Embed the Go Project structure inside backend/; frontend follows its ecosystem conventions.
 backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
+   cmd/
+      <app-name>/main.go
+   internal/
+      domain/
+      application/
+      interfaces/
+         http/
+         cli/
+      infrastructure/
+      platform/
+   pkg/
+   configs/
+   docs/
+   tools/
+   test/                   # Optional integration/e2e for backend
 
 frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
+   src/
+      components/
+      pages/ (or routes/ per framework)
+      services/
+      lib/
+   public/
+   tests/
+   package.json (or equivalent)
 
 # Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
+api/                      # Same structure as Option 1 (Go Project)
+   cmd/
+   internal/
+   pkg/
+   test/
 
-ios/ or android/
-└── [platform-specific structure]
+ios/ or android/          # Platform-specific client implementation
+   <standard platform layout>
 ```
 
-**Structure Decision**: [DEFAULT to Option 1 unless Technical Context indicates web/mobile app]
+**Structure Decision**: [DEFAULT to Option 1 (Go Project) unless Technical Context indicates web/mobile split]
 
 ## Phase 0: Outline & Research
 1. **Extract unknowns from Technical Context** above:
