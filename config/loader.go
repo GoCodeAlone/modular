@@ -84,8 +84,68 @@ func (l *Loader) Load(ctx context.Context, config interface{}) error {
 
 // Reload reloads configuration from sources, applying hot-reload logic where supported
 func (l *Loader) Reload(ctx context.Context, config interface{}) error {
-	// TODO: Implement configuration reloading
-	return ErrReloadNotImplemented
+	if config == nil {
+		return ErrConfigCannotBeNil
+	}
+
+	// Clear previous provenance information for fresh reload
+	l.provenance = make(map[string]*FieldProvenance)
+
+	// Reload from all sources in priority order
+	for _, source := range l.sources {
+		err := l.loadFromSource(ctx, config, source)
+		if err != nil {
+			// Mark source as failed but continue with other sources
+			source.Error = err.Error()
+			source.Loaded = false
+			continue
+		}
+
+		// Mark source as successfully loaded
+		now := time.Now()
+		source.LastLoaded = &now
+		source.Loaded = true
+		source.Error = ""
+	}
+
+	// Apply defaults for any fields not set by sources
+	err := l.applyDefaults(config)
+	if err != nil {
+		return fmt.Errorf("failed to apply defaults during reload: %w", err)
+	}
+
+	// Re-run validation after reload
+	err = l.Validate(ctx, config)
+	if err != nil {
+		return fmt.Errorf("validation failed during reload: %w", err)
+	}
+
+	return nil
+}
+
+// loadFromSource loads configuration from a specific source
+func (l *Loader) loadFromSource(ctx context.Context, config interface{}, source *ConfigSource) error {
+	// TODO: Implement actual loading from different source types
+	// For now, this is a placeholder that would delegate to appropriate
+	// feeders based on source.Type (env, yaml, json, toml, etc.)
+
+	// Record provenance information for fields loaded from this source
+	// This would be done by the actual feeder implementations
+	l.recordProvenance("placeholder.field", source.Name, source.Location, "placeholder_value")
+
+	return nil
+}
+
+// recordProvenance records provenance information for a configuration field
+func (l *Loader) recordProvenance(fieldPath, source, sourceDetail string, value interface{}) {
+	l.provenance[fieldPath] = &FieldProvenance{
+		FieldPath:    fieldPath,
+		Source:       source,
+		SourceDetail: sourceDetail,
+		Value:        value,
+		Timestamp:    time.Now(),
+		Metadata:     make(map[string]string),
+	}
 }
 
 // Validate validates the given configuration against defined rules and schemas

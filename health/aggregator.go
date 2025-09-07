@@ -111,24 +111,76 @@ func (a *Aggregator) CheckAll(ctx context.Context) (*AggregatedStatus, error) {
 		a.lastResults[name] = result
 	}
 
-	// TODO: Apply worst-state logic and readiness exclusion
-	status := &AggregatedStatus{
-		OverallStatus:   StatusUnknown,
-		ReadinessStatus: StatusUnknown,
-		LivenessStatus:  StatusUnknown,
-		Timestamp:       time.Now(),
-		CheckResults:    results,
-		Summary: &StatusSummary{
-			TotalChecks: len(results),
-		},
+	// Apply worst-state logic and calculate summaries
+	summary := &StatusSummary{
+		TotalChecks: len(results),
 	}
 
-	return status, ErrCheckAllNotImplemented
+	// Calculate overall status using worst-case logic
+	overallStatus := StatusHealthy
+	readinessStatus := StatusHealthy
+	livenessStatus := StatusHealthy
+
+	for _, result := range results {
+		// Update summary counts
+		switch result.Status {
+		case StatusHealthy:
+			summary.PassingChecks++
+		case StatusWarning:
+			summary.WarningChecks++
+		case StatusCritical:
+			summary.CriticalChecks++
+			summary.FailingChecks++
+		case StatusUnknown:
+			summary.UnknownChecks++
+		}
+
+		// Apply worst-case logic for overall status
+		if result.Status == StatusCritical {
+			overallStatus = StatusCritical
+		} else if result.Status == StatusWarning && overallStatus != StatusCritical {
+			overallStatus = StatusWarning
+		} else if result.Status == StatusUnknown && overallStatus == StatusHealthy {
+			overallStatus = StatusUnknown
+		}
+
+		// Separate aggregation for readiness and liveness
+		if result.CheckType == CheckTypeReadiness || result.CheckType == CheckTypeGeneral {
+			if result.Status == StatusCritical {
+				readinessStatus = StatusCritical
+			} else if result.Status == StatusWarning && readinessStatus != StatusCritical {
+				readinessStatus = StatusWarning
+			} else if result.Status == StatusUnknown && readinessStatus == StatusHealthy {
+				readinessStatus = StatusUnknown
+			}
+		}
+
+		if result.CheckType == CheckTypeLiveness || result.CheckType == CheckTypeGeneral {
+			if result.Status == StatusCritical {
+				livenessStatus = StatusCritical
+			} else if result.Status == StatusWarning && livenessStatus != StatusCritical {
+				livenessStatus = StatusWarning
+			} else if result.Status == StatusUnknown && livenessStatus == StatusHealthy {
+				livenessStatus = StatusUnknown
+			}
+		}
+	}
+
+	status := &AggregatedStatus{
+		OverallStatus:   overallStatus,
+		ReadinessStatus: readinessStatus,
+		LivenessStatus:  livenessStatus,
+		Timestamp:       time.Now(),
+		CheckResults:    results,
+		Summary:         summary,
+		Metadata:        make(map[string]interface{}),
+	}
+
+	return status, nil
 }
 
 // CheckOne runs a specific health check by name
 func (a *Aggregator) CheckOne(ctx context.Context, name string) (*CheckResult, error) {
-	// TODO: Implement single check execution
 	a.mu.RLock()
 	checker, exists := a.checkers[name]
 	a.mu.RUnlock()
@@ -151,7 +203,7 @@ func (a *Aggregator) CheckOne(ctx context.Context, name string) (*CheckResult, e
 	a.lastResults[name] = result
 	a.mu.Unlock()
 
-	return result, ErrCheckOneNotImplemented
+	return result, nil
 }
 
 // GetStatus returns the current aggregated health status without running checks
