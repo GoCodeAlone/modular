@@ -69,6 +69,7 @@ type CheckResult struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Duration  time.Duration          `json:"duration"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	CheckType CheckType              `json:"check_type,omitempty"` // T044: Check type for readiness/liveness separation
 
 	// Check-specific details
 	Details map[string]interface{} `json:"details,omitempty"`

@@ -50,19 +50,44 @@ type JobExecution struct {
 	Error     string    `json:"error,omitempty"`
 }
 
+// JobBackfillPolicy defines how missed executions should be handled
+type JobBackfillPolicy struct {
+	Strategy            BackfillStrategy `json:"strategy"`
+	MaxMissedExecutions int              `json:"maxMissedExecutions,omitempty"`
+	MaxBackfillDuration time.Duration    `json:"maxBackfillDuration,omitempty"`
+	Priority            int              `json:"priority,omitempty"`
+}
+
+// BackfillStrategy represents different strategies for handling missed executions
+type BackfillStrategy string
+
+const (
+	// BackfillStrategyNone means don't backfill missed executions
+	BackfillStrategyNone BackfillStrategy = "none"
+	// BackfillStrategyLast means only backfill the last missed execution
+	BackfillStrategyLast BackfillStrategy = "last"
+	// BackfillStrategyBounded means backfill up to MaxMissedExecutions
+	BackfillStrategyBounded BackfillStrategy = "bounded"
+	// BackfillStrategyTimeWindow means backfill within MaxBackfillDuration
+	BackfillStrategyTimeWindow BackfillStrategy = "time_window"
+)
+
 // Job represents a scheduled job
 type Job struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Schedule    string     `json:"schedule,omitempty"`
-	RunAt       time.Time  `json:"runAt,omitempty"`
-	IsRecurring bool       `json:"isRecurring"`
-	JobFunc     JobFunc    `json:"-"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
-	Status      JobStatus  `json:"status"`
-	LastRun     *time.Time `json:"lastRun,omitempty"`
-	NextRun     *time.Time `json:"nextRun,omitempty"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Schedule       string                 `json:"schedule,omitempty"`
+	RunAt          time.Time              `json:"runAt,omitempty"`
+	IsRecurring    bool                   `json:"isRecurring"`
+	JobFunc        JobFunc                `json:"-"`
+	CreatedAt      time.Time              `json:"createdAt"`
+	UpdatedAt      time.Time              `json:"updatedAt"`
+	Status         JobStatus              `json:"status"`
+	LastRun        *time.Time             `json:"lastRun,omitempty"`
+	NextRun        *time.Time             `json:"nextRun,omitempty"`
+	MaxConcurrency int                    `json:"maxConcurrency,omitempty"` // T045: Max concurrent executions
+	BackfillPolicy *JobBackfillPolicy     `json:"backfillPolicy,omitempty"` // T046: Backfill policy
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`       // T046: Job metadata
 }
 
 // JobStatus represents the status of a job
@@ -98,6 +123,10 @@ type Scheduler struct {
 	wg             sync.WaitGroup
 	isStarted      bool
 	schedulerMutex sync.Mutex
+	
+	// T045: Concurrency tracking for maxConcurrency enforcement
+	runningJobs    map[string]int      // jobID -> current execution count
+	runningMutex   sync.RWMutex        // protects runningJobs map
 }
 
 // debugEnabled returns true when SCHEDULER_DEBUG env var is set to a non-empty value
@@ -168,6 +197,7 @@ func NewScheduler(jobStore JobStore, opts ...SchedulerOption) *Scheduler {
 		queueSize:     100,
 		checkInterval: time.Second,
 		cronEntries:   make(map[string]cron.EntryID),
+		runningJobs:   make(map[string]int), // T045: Initialize concurrency tracking
 	}
 
 	// Apply options
@@ -331,6 +361,39 @@ func (s *Scheduler) worker(id int) {
 
 // executeJob runs a job and records its execution
 func (s *Scheduler) executeJob(job Job) {
+	// T045: Check maxConcurrency limit before executing
+	if job.MaxConcurrency > 0 {
+		s.runningMutex.Lock()
+		currentCount := s.runningJobs[job.ID]
+		if currentCount >= job.MaxConcurrency {
+			s.runningMutex.Unlock()
+			if s.logger != nil {
+				s.logger.Warn("Job execution skipped - max concurrency reached", 
+					"id", job.ID, "current", currentCount, "max", job.MaxConcurrency)
+			}
+			// Emit event for maxConcurrency reached
+			s.emitEvent(context.Background(), "job.max_concurrency_reached", map[string]interface{}{
+				"job_id":          job.ID,
+				"job_name":        job.Name,
+				"current_count":   currentCount,
+				"max_concurrency": job.MaxConcurrency,
+			})
+			return
+		}
+		s.runningJobs[job.ID] = currentCount + 1
+		s.runningMutex.Unlock()
+		
+		// Ensure we decrement the counter when done
+		defer func() {
+			s.runningMutex.Lock()
+			s.runningJobs[job.ID]--
+			if s.runningJobs[job.ID] <= 0 {
+				delete(s.runningJobs, job.ID)
+			}
+			s.runningMutex.Unlock()
+		}()
+	}
+
 	if s.logger != nil {
 		s.logger.Debug("Executing job", "id", job.ID, "name", job.Name)
 	}
@@ -434,6 +497,140 @@ func (s *Scheduler) executeJob(job Job) {
 	if err := s.jobStore.UpdateJob(job); err != nil && s.logger != nil {
 		s.logger.Warn("Failed to update recurring job", "jobID", job.ID, "error", err)
 	}
+}
+
+// T046: calculateBackfillJobs determines which missed executions should be backfilled
+func (s *Scheduler) calculateBackfillJobs(job Job) []time.Time {
+	if job.BackfillPolicy == nil || job.BackfillPolicy.Strategy == BackfillStrategyNone {
+		return nil
+	}
+
+	// Parse cron schedule to calculate missed executions
+	schedule, err := cron.ParseStandard(job.Schedule)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("Failed to parse cron schedule for backfill", "schedule", job.Schedule, "error", err)
+		}
+		return nil
+	}
+
+	now := time.Now()
+	var missedTimes []time.Time
+	
+	// Calculate the time window to check for missed executions
+	startTime := now
+	if job.LastRun != nil {
+		startTime = *job.LastRun
+	} else {
+		startTime = job.CreatedAt
+	}
+
+	// Apply time window limit if configured
+	if job.BackfillPolicy.MaxBackfillDuration > 0 {
+		earliestTime := now.Add(-job.BackfillPolicy.MaxBackfillDuration)
+		if startTime.Before(earliestTime) {
+			startTime = earliestTime
+		}
+	}
+
+	// Find all scheduled times between startTime and now
+	currentTime := startTime
+	for currentTime.Before(now) {
+		nextTime := schedule.Next(currentTime)
+		if nextTime.After(now) {
+			break
+		}
+		
+		// Check if this execution was actually missed (within reason)
+		if nextTime.Add(5 * time.Minute).Before(now) { // 5-minute grace period
+			missedTimes = append(missedTimes, nextTime)
+		}
+		
+		currentTime = nextTime
+	}
+
+	// Apply backfill strategy
+	switch job.BackfillPolicy.Strategy {
+	case BackfillStrategyLast:
+		if len(missedTimes) > 0 {
+			return missedTimes[len(missedTimes)-1:]
+		}
+		return nil
+		
+	case BackfillStrategyBounded:
+		maxCount := job.BackfillPolicy.MaxMissedExecutions
+		if maxCount <= 0 {
+			maxCount = 5 // Default limit
+		}
+		if len(missedTimes) > maxCount {
+			return missedTimes[len(missedTimes)-maxCount:]
+		}
+		return missedTimes
+		
+	case BackfillStrategyTimeWindow:
+		// Already filtered by time window above
+		return missedTimes
+		
+	default:
+		return nil
+	}
+}
+
+// T046: processBackfillJobs schedules backfill executions for missed jobs
+func (s *Scheduler) processBackfillJobs(job Job, missedTimes []time.Time) {
+	if len(missedTimes) == 0 {
+		return
+	}
+
+	if s.logger != nil {
+		s.logger.Info("Processing backfill jobs", "jobID", job.ID, "missedCount", len(missedTimes))
+	}
+
+	// Create backfill executions (usually run immediately)
+	for _, missedTime := range missedTimes {
+		backfillJob := job
+		backfillJob.ID = fmt.Sprintf("%s-backfill-%d", job.ID, missedTime.Unix())
+		backfillJob.RunAt = time.Now() // Execute immediately
+		backfillJob.IsRecurring = false // Backfill jobs are one-time
+		backfillJob.Status = JobStatusPending
+		
+		// Add metadata to indicate this is a backfill execution
+		if backfillJob.Metadata == nil {
+			backfillJob.Metadata = make(map[string]interface{})
+		}
+		backfillJob.Metadata["is_backfill"] = true
+		backfillJob.Metadata["original_schedule_time"] = missedTime.Format(time.RFC3339)
+		backfillJob.Metadata["backfill_priority"] = job.BackfillPolicy.Priority
+
+		// Store and queue the backfill job
+		err := s.jobStore.AddJob(backfillJob)
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Error("Failed to add backfill job", "originalJobID", job.ID, "error", err)
+			}
+			continue
+		}
+
+		// Queue for immediate execution (non-blocking)
+		select {
+		case s.jobQueue <- backfillJob:
+			if s.logger != nil {
+				s.logger.Debug("Queued backfill job", "jobID", backfillJob.ID, "originalSchedule", missedTime)
+			}
+		default:
+			if s.logger != nil {
+				s.logger.Warn("Job queue full, backfill job will be picked up in next cycle", "jobID", backfillJob.ID)
+			}
+		}
+	}
+
+	// Emit backfill event
+	s.emitEvent(context.Background(), "job.backfill_processed", map[string]interface{}{
+		"job_id":           job.ID,
+		"job_name":         job.Name,
+		"missed_count":     len(missedTimes),
+		"backfill_strategy": string(job.BackfillPolicy.Strategy),
+	})
 }
 
 // dispatchPendingJobs checks for and dispatches pending jobs
@@ -547,6 +744,12 @@ func (s *Scheduler) ScheduleJob(job Job) (string, error) {
 	// Register with cron if recurring
 	if job.IsRecurring && s.isStarted {
 		s.registerWithCron(job)
+		
+		// T046: Process backfill if policy is configured
+		if job.BackfillPolicy != nil && job.BackfillPolicy.Strategy != BackfillStrategyNone {
+			missedTimes := s.calculateBackfillJobs(job)
+			s.processBackfillJobs(job, missedTimes)
+		}
 	}
 
 	return job.ID, nil
