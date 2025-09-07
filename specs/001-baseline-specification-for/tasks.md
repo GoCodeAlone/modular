@@ -90,8 +90,18 @@ T057 [MODULE:letsencrypt][P] Update `modules/letsencrypt/README.md` (escalation 
 T058 [MODULE:scheduler][P] Update `modules/scheduler/README.md` (catch-up policies)
 T059 [CORE][P] Add dedicated docs `docs/errors_secrets.md`
 
-## Phase 3.7 Final Validation
-T060 [CORE] Final validation script & update spec/plan statuses `scripts/validate-feature.sh`
+## Phase 3.7 Test Finalization (Quality Gate)
+Purpose: Enforce template Phase 3.6 requirements (no placeholders, full assertions, deterministic timing, schema & API stability) prior to final validation.
+
+T060 [CORE] Placeholder & skip scan remediation script `scripts/test_placeholder_scan.sh` (fails if any `TODO|FIXME|t.Skip|placeholder|future implementation` remains in `*_test.go`)
+T061 [CORE] Coverage gap critical path additions `internal/test/coverage_gap_test.go` (adds assertions for uncovered error branches & boundary conditions revealed by coverage run)
+T062 [CORE] Timing determinism audit `internal/test/timing_audit_test.go` (fails if tests rely on arbitrary `time.Sleep` >50ms without `//deterministic-ok` annotation)
+T063 [CORE] Event schema snapshot guard `internal/observer/event_schema_snapshot_test.go` (captures JSON schema of emitted lifecycle/health/reload events; diff required for changes)
+T064 [CORE] Builder option & observer event doc parity test `internal/builder/options_doc_parity_test.go` (verifies every `With*` option & event type has matching section in `DOCUMENTATION.md` / relevant module README)
+T065 [CORE] Public API diff & interface widening guard `internal/api/api_diff_test.go` (compares exported symbols against baseline snapshot under `internal/api/.snapshots`)
+
+## Phase 3.8 Final Validation
+T066 [CORE] Final validation script & update spec/plan statuses `scripts/validate-feature.sh`
 
 ## Parallel Execution Guidance
 RED test wave (independent): T002–T022, T023–T030 may run concurrently (distinct files).  
@@ -99,16 +109,16 @@ GREEN implementation wave: T031–T050 follow respective test dependencies (see 
 Docs & polish tasks (T055–T059) run parallel after core implementations green.
 
 ## Dependency Graph (Abbrev)
-T031←T007; T032←T008; T033←T009; T034←(T002,T003,T004); T035←T034; T036←(T005,T006); T037←T036; T038←T015; T039←T016; T040←T018; T041←T018; T042←T019; T043←T020; T044←(T022,T038); T045←(T010,T031); T046←T011; T047←T012; T048←T013; T049←(T014,T034,T036); T050←(T016,T039); T051←(T035,T037,T049); T052←(T034,T036); T053←(T051); T054←(T034,T036,T049); T055–T059←(T031..T052); T060←ALL.
+T031←T007; T032←T008; T033←T009; T034←(T002,T003,T004); T035←T034; T036←(T005,T006); T037←T036; T038←T015; T039←T016; T040←T018; T041←T018; T042←T019; T043←T020; T044←(T022,T038); T045←(T010,T031); T046←T011; T047←T012; T048←T013; T049←(T014,T034,T036); T050←(T016,T039); T051←(T035,T037,T049); T052←(T034,T036); T053←(T051); T054←(T034,T036,T049); T055–T059←(T031..T052); T060–T065←(T055–T059, T001–T054); T066←ALL.
 
 ## Classification Summary
 | Category | Count |
 |----------|-------|
-| CORE | 39 |
+| CORE | 44 |
 | MODULE:auth | 6 |
 | MODULE:scheduler | 2 |
 | MODULE:letsencrypt | 3 |
-| TOTAL | 50 |
+| TOTAL | 55 |
 
 ## Validation
 - All functionalities classified (no unclassified items).  
@@ -122,5 +132,6 @@ T031←T007; T032←T008; T033←T009; T034←(T002,T003,T004); T035←T034; T03
 - Failing tests may initially use build tag `//go:build planned` to keep baseline green until implementation phase starts.
 - Benchmarks optional but recommended for regression tracking; remove tag once stable.
 - Integration tests avoid external network where possible; mock ACME interactions via local test harness.
+- Test Finalization phase enforces zero tolerance for lingering placeholders & undocumented public surface changes before final validation.
 
 
