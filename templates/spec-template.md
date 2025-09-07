@@ -82,6 +82,17 @@ When creating this spec from a user prompt:
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
 
+### API Evolution & Pattern Strategy *(mandatory when public API or module surface may change)*
+- Existing interfaces impacted? [list or "none"]
+- Can change be delivered via Builder option? [analysis / justification]
+- Can change be delivered via Observer event? [analysis / justification]
+- If neither pattern sufficient, why? [justification referencing tradeoffs]
+- New Builder options (name → default → description → backward compatibility note)
+- New Observer events (name → payload fields → emission trigger)
+- Deprecations required? [list or "none"]
+- Adapter layer needed? [plan or "N/A"]
+- Bounded context(s) touched & glossary alignment confirmed? [Yes/No]
+
 ---
 
 ## Review & Acceptance Checklist
@@ -99,6 +110,10 @@ When creating this spec from a user prompt:
 - [ ] Success criteria are measurable
 - [ ] Scope is clearly bounded
 - [ ] Dependencies and assumptions identified
+- [ ] Pattern strategy evaluated (Builder / Observer before interface mutation)
+- [ ] API change justification documented (if any)
+- [ ] Event additions include payload & timing description
+- [ ] Builder options list includes defaults & non-breaking confirmation
 
 ---
 

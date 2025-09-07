@@ -75,6 +75,27 @@
 - BUILD increments on every change?
 - Breaking changes handled? (parallel tests, migration plan)
 
+**Public API Stability & Review (Article XII)**:
+- Any new exported symbols? (list & rationale)
+- Added methods to existing interfaces? (FORBIDDEN unless deprecation + adapter path defined)
+- Constructor / interface change proposed? (justify why NOT solved via Builder option or Observer event)
+- Deprecations annotated with proper comment form?
+- Migration notes required? (link or state N/A)
+
+**Strategic Patterns & DDD (Article XVI)**:
+- Bounded contexts identified? (name each)
+- Domain glossary established? (central term list planned)
+- Builder options to be added (list names + defaults + backward compat note)
+- Observer events to add (name, payload schema, emission timing) & tests planned?
+- Interface widening avoided? (if not, justification & adapter strategy)
+- Anti-corruption layers required? (list external systems or N/A)
+- Ubiquitous language applied across config/logging/service names?
+
+**Performance & Operational Baselines** (cross-check with Constitution Articles X & XVI linkage):
+- Startup impact estimated? (<200ms target unaffected or measurement plan)
+- Service lookup complexity unchanged (O(1))?
+- Config field count increase risk assessed (provenance & validation impact)?
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -291,4 +312,4 @@ ios/ or android/          # Platform-specific client implementation
 - [ ] Complexity deviations documented
 
 ---
-*Based on Constitution v2.1.1 - See `/memory/constitution.md`*
+*Based on Constitution v1.2.0 - See `/memory/constitution.md`*
