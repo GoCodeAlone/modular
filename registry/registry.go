@@ -52,12 +52,36 @@ func NewRegistry(config *RegistryConfig) *Registry {
 		}
 	}
 
-	return &Registry{
-		services:   make(map[string]*ServiceEntry),
-		byType:     make(map[reflect.Type][]*ServiceEntry),
-		config:     config,
-		validators: make([]ServiceValidator, 0),
+	// Pre-size maps based on expected capacity for better performance
+	// Default capacity assumes typical modular applications with 20-50 services
+	expectedCapacity := 64
+	if config.ExpectedServiceCount > 0 {
+		// Use next power of 2 for optimal map performance
+		expectedCapacity = nextPowerOfTwo(config.ExpectedServiceCount)
 	}
+
+	return &Registry{
+		services:   make(map[string]*ServiceEntry, expectedCapacity),
+		byType:     make(map[reflect.Type][]*ServiceEntry, expectedCapacity/2), // Fewer unique types than services
+		config:     config,
+		validators: make([]ServiceValidator, 0, 4), // Pre-size for common validator count
+	}
+}
+
+// nextPowerOfTwo returns the next power of 2 greater than or equal to n
+func nextPowerOfTwo(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	if n&(n-1) == 0 {
+		return n // Already a power of 2
+	}
+
+	power := 1
+	for power < n {
+		power <<= 1
+	}
+	return power
 }
 
 // Register registers a service with the registry

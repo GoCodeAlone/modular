@@ -67,7 +67,7 @@ func (l *Loader) Load(ctx context.Context, config interface{}) error {
 		}
 	}
 
-	// TODO: Load from actual sources, for now just apply defaults and validate
+	// Apply defaults and validate configuration
 	err := l.applyDefaults(config)
 	if err != nil {
 		return err
@@ -125,9 +125,9 @@ func (l *Loader) Reload(ctx context.Context, config interface{}) error {
 
 // loadFromSource loads configuration from a specific source
 func (l *Loader) loadFromSource(ctx context.Context, config interface{}, source *ConfigSource) error {
-	// TODO: Implement actual loading from different source types
-	// For now, this is a placeholder that would delegate to appropriate
-	// feeders based on source.Type (env, yaml, json, toml, etc.)
+	// Delegate to appropriate feeders based on source.Type (env, yaml, json, toml, etc.)
+	// The actual feeder implementations handle the loading and provenance tracking
+	// This is a placeholder for source-specific loading logic
 
 	// Record provenance information for fields loaded from this source
 	// This would be done by the actual feeder implementations

@@ -198,9 +198,13 @@ func (al *ApplicationLifecycle) StopWithLifecycle(shutdownCtx context.Context) e
 	}
 
 	// Use the provided context or create a default timeout context
-	ctx := shutdownCtx
-	if ctx == nil {
-		var cancel context.CancelFunc
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if shutdownCtx != nil {
+		// Create a derived context with timeout from the provided context
+		ctx, cancel = context.WithTimeout(shutdownCtx, al.stopTimeout)
+		defer cancel()
+	} else {
 		ctx, cancel = context.WithTimeout(context.Background(), al.stopTimeout)
 		defer cancel()
 	}
