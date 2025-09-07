@@ -247,6 +247,18 @@ type StdApplication struct {
 	logger              Logger
 	ctx                 context.Context
 	cancel              context.CancelFunc
+	// configFeeders holds per-application configuration feeders. When nil, the
+	// package-level ConfigFeeders slice is used (backwards compatible behavior).
+	configFeeders []Feeder
+	// initialized is set to true once Init() completes successfully. Makes
+	// Init idempotent and allows tests to guard against double initialization.
+	initialized bool
+	// tenantService caches the TenantService after first successful lookup so
+	// subsequent calls avoid registry lookups and to allow internal helpers to
+	// check if multi-tenancy is enabled.
+	tenantService TenantService
+	// verboseConfig enables extra configuration loader debug logging when true.
+	verboseConfig bool
 }
 
 // ServiceIntrospectorImpl implements ServiceIntrospector backed by StdApplication's enhanced registry.

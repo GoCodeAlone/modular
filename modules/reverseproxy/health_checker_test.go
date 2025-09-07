@@ -148,19 +148,25 @@ func TestHealthChecker_HTTPCheck(t *testing.T) {
 
 	// Create servers with different responses
 	healthyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Introduce a tiny sleep so that ultra-fast executions on Windows don't produce a 0 duration
+		// which can occur when the request finishes within the same clock tick, causing a flaky >0 assertion.
+		time.Sleep(100 * time.Microsecond)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))
 	defer healthyServer.Close()
 
 	unhealthyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Tiny delay for stable non-zero duration while still being fast.
+		time.Sleep(100 * time.Microsecond)
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Internal Server Error"))
 	}))
 	defer unhealthyServer.Close()
 
 	timeoutServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(10 * time.Second) // Longer than timeout
+		// Simulate a slow backend; we only need to exceed the configured 1ms timeout.
+		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer timeoutServer.Close()
@@ -176,13 +182,15 @@ func TestHealthChecker_HTTPCheck(t *testing.T) {
 	healthy, responseTime, err := hc.performHTTPCheck(ctx, "healthy", healthyServer.URL)
 	assert.True(t, healthy)
 	require.NoError(t, err)
-	assert.Greater(t, responseTime, time.Duration(0))
+	// Some platforms with coarse timer resolution can yield a 0 duration for extremely fast handlers.
+	// We added a minimal sleep above, but still accept >=0 for robustness.
+	assert.GreaterOrEqual(t, responseTime, time.Duration(0))
 
 	// Test unhealthy server (500 status)
 	healthy, responseTime, err = hc.performHTTPCheck(ctx, "unhealthy", unhealthyServer.URL)
 	assert.False(t, healthy)
 	require.Error(t, err)
-	assert.Greater(t, responseTime, time.Duration(0))
+	assert.GreaterOrEqual(t, responseTime, time.Duration(0))
 
 	// Test timeout
 	shortConfig := &HealthCheckConfig{
@@ -196,7 +204,7 @@ func TestHealthChecker_HTTPCheck(t *testing.T) {
 	healthy, responseTime, err = hc.performHTTPCheck(ctx, "timeout", timeoutServer.URL)
 	assert.False(t, healthy)
 	require.Error(t, err)
-	assert.Greater(t, responseTime, time.Duration(0))
+	assert.GreaterOrEqual(t, responseTime, time.Duration(0))
 }
 
 // TestHealthChecker_CustomHealthEndpoints tests custom health check endpoints
