@@ -1,0 +1,312 @@
+// Package registry provides service registration and discovery capabilities
+package registry
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"sync"
+	"time"
+)
+
+// Static errors for registry package
+var (
+	ErrRegisterNotImplemented              = errors.New("register method not fully implemented")
+	ErrUnregisterNotImplemented            = errors.New("unregister method not fully implemented")
+	ErrResolveByNameNotImplemented         = errors.New("resolve by name method not fully implemented")
+	ErrResolveByInterfaceNotImplemented    = errors.New("resolve by interface method not fully implemented")
+	ErrResolveAllByInterfaceNotImplemented = errors.New("resolve all by interface method not fully implemented")
+	ErrListByScopeNotImplemented           = errors.New("list by scope method not yet implemented")
+	ErrGetDependenciesNotImplemented       = errors.New("get dependencies method not yet implemented")
+	ErrResolveWithTagsNotImplemented       = errors.New("resolve with tags method not yet implemented")
+	ErrResolveWithFilterNotImplemented     = errors.New("resolve with filter method not yet implemented")
+	ErrValidateRegistrationNotImplemented  = errors.New("validate registration method not fully implemented")
+	ErrValidateConflictNotImplemented      = errors.New("validate conflict method not yet implemented")
+	ErrValidateDependenciesNotImplemented  = errors.New("validate dependencies method not yet implemented")
+	ErrServiceNotFound                     = errors.New("service not found")
+	ErrNoServicesFoundForInterface         = errors.New("no services found implementing interface")
+	ErrAmbiguousInterfaceResolution        = errors.New("ambiguous interface resolution: multiple services implement interface")
+)
+
+// Registry implements the ServiceRegistry interface with basic map-based storage
+type Registry struct {
+	mu         sync.RWMutex
+	services   map[string]*ServiceEntry
+	byType     map[reflect.Type][]*ServiceEntry
+	config     *RegistryConfig
+	validators []ServiceValidator
+}
+
+// NewRegistry creates a new service registry
+func NewRegistry(config *RegistryConfig) *Registry {
+	if config == nil {
+		config = &RegistryConfig{
+			ConflictResolution:   ConflictResolutionError,
+			EnableHealthChecking: false,
+			EnableUsageTracking:  false,
+			EnableLazyResolution: false,
+		}
+	}
+
+	return &Registry{
+		services:   make(map[string]*ServiceEntry),
+		byType:     make(map[reflect.Type][]*ServiceEntry),
+		config:     config,
+		validators: make([]ServiceValidator, 0),
+	}
+}
+
+// Register registers a service with the registry
+func (r *Registry) Register(ctx context.Context, registration *ServiceRegistration) error {
+	// TODO: Implement full service registration with conflict resolution
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry := &ServiceEntry{
+		Registration:    registration,
+		Status:          ServiceStatusActive,
+		HealthStatus:    HealthStatusUnknown,
+		ActualName:      registration.Name,
+		ConflictedNames: nil,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		AccessedAt:      time.Now(),
+	}
+
+	r.services[registration.Name] = entry
+
+	// TODO: Index by interface types
+	for _, interfaceType := range registration.InterfaceTypes {
+		r.byType[interfaceType] = append(r.byType[interfaceType], entry)
+	}
+
+	return ErrRegisterNotImplemented
+}
+
+// Unregister removes a service from the registry
+func (r *Registry) Unregister(ctx context.Context, name string) error {
+	// TODO: Implement service unregistration
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.services, name)
+	return ErrUnregisterNotImplemented
+}
+
+// ResolveByName resolves a service by its registered name
+func (r *Registry) ResolveByName(ctx context.Context, name string) (interface{}, error) {
+	// TODO: Implement name-based service resolution
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	entry, exists := r.services[name]
+	if !exists {
+		return nil, ErrServiceNotFound
+	}
+
+	// Update access time if usage tracking is enabled
+	if r.config.EnableUsageTracking {
+		// TODO: Update usage statistics
+		entry.AccessedAt = time.Now()
+	}
+
+	return entry.Registration.Service, ErrResolveByNameNotImplemented
+}
+
+// ResolveByInterface resolves a service by its interface type
+func (r *Registry) ResolveByInterface(ctx context.Context, interfaceType reflect.Type) (interface{}, error) {
+	// TODO: Implement interface-based service resolution
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	entries, exists := r.byType[interfaceType]
+	if !exists || len(entries) == 0 {
+		return nil, ErrNoServicesFoundForInterface
+	}
+
+	if len(entries) > 1 {
+		return nil, ErrAmbiguousInterfaceResolution
+	}
+
+	return entries[0].Registration.Service, ErrResolveByInterfaceNotImplemented
+}
+
+// ResolveAllByInterface resolves all services implementing an interface
+func (r *Registry) ResolveAllByInterface(ctx context.Context, interfaceType reflect.Type) ([]interface{}, error) {
+	// TODO: Implement multiple service resolution by interface
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	entries, exists := r.byType[interfaceType]
+	if !exists {
+		return nil, nil
+	}
+
+	services := make([]interface{}, len(entries))
+	for i, entry := range entries {
+		services[i] = entry.Registration.Service
+	}
+
+	return services, ErrResolveAllByInterfaceNotImplemented
+}
+
+// List returns all registered services
+func (r *Registry) List(ctx context.Context) ([]*ServiceEntry, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	entries := make([]*ServiceEntry, 0, len(r.services))
+	for _, entry := range r.services {
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+// ListByScope returns services in a specific scope
+func (r *Registry) ListByScope(ctx context.Context, scope ServiceScope) ([]*ServiceEntry, error) {
+	// TODO: Implement scope-based service listing
+	return nil, ErrListByScopeNotImplemented
+}
+
+// Exists checks if a service with the given name exists
+func (r *Registry) Exists(ctx context.Context, name string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, exists := r.services[name]
+	return exists, nil
+}
+
+// GetDependencies returns the dependency graph for services
+func (r *Registry) GetDependencies(ctx context.Context) (*DependencyGraph, error) {
+	// TODO: Implement dependency graph construction
+	return nil, ErrGetDependenciesNotImplemented
+}
+
+// Resolver implements basic ServiceResolver interface
+type Resolver struct {
+	registry *Registry
+}
+
+// NewResolver creates a new service resolver
+func NewResolver(registry *Registry) *Resolver {
+	return &Resolver{registry: registry}
+}
+
+// ResolveWithTags resolves services matching specific tags
+func (r *Resolver) ResolveWithTags(ctx context.Context, tags []string) ([]interface{}, error) {
+	// TODO: Implement tag-based service resolution
+	return nil, ErrResolveWithTagsNotImplemented
+}
+
+// ResolveWithFilter resolves services matching a custom filter
+func (r *Resolver) ResolveWithFilter(ctx context.Context, filter ServiceFilter) ([]interface{}, error) {
+	// TODO: Implement filter-based service resolution
+	return nil, ErrResolveWithFilterNotImplemented
+}
+
+// ResolveLazy returns a lazy resolver for deferred service resolution
+func (r *Resolver) ResolveLazy(ctx context.Context, name string) LazyResolver {
+	// TODO: Implement lazy service resolution
+	return &lazyResolver{
+		registry:    r.registry,
+		serviceName: name,
+		resolved:    false,
+		service:     nil,
+	}
+}
+
+// ResolveOptional resolves a service if available, returns nil if not found
+func (r *Resolver) ResolveOptional(ctx context.Context, name string) (interface{}, error) {
+	service, err := r.registry.ResolveByName(ctx, name)
+	if err != nil {
+		// For optional resolution, we return nil service without error when not found
+		if errors.Is(err, ErrServiceNotFound) || errors.Is(err, ErrResolveByNameNotImplemented) {
+			return nil, nil
+		}
+		// Return other errors as-is
+		return nil, err
+	}
+	return service, nil
+}
+
+// lazyResolver implements LazyResolver interface
+type lazyResolver struct {
+	registry    *Registry
+	serviceName string
+	resolved    bool
+	service     interface{}
+	mu          sync.Mutex
+}
+
+// Resolve resolves the service when actually needed
+func (lr *lazyResolver) Resolve(ctx context.Context) (interface{}, error) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	if lr.resolved {
+		return lr.service, nil
+	}
+
+	service, err := lr.registry.ResolveByName(ctx, lr.serviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	lr.service = service
+	lr.resolved = true
+	return service, nil
+}
+
+// IsResolved returns true if the service has been resolved
+func (lr *lazyResolver) IsResolved() bool {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	return lr.resolved
+}
+
+// ServiceName returns the name of the service being resolved
+func (lr *lazyResolver) ServiceName() string {
+	return lr.serviceName
+}
+
+// Validator implements basic ServiceValidator interface
+type Validator struct {
+	rules []func(*ServiceRegistration) error
+}
+
+// NewValidator creates a new service validator
+func NewValidator() *Validator {
+	return &Validator{
+		rules: make([]func(*ServiceRegistration) error, 0),
+	}
+}
+
+// ValidateRegistration validates a service registration before allowing it
+func (v *Validator) ValidateRegistration(ctx context.Context, registration *ServiceRegistration) error {
+	// TODO: Implement registration validation
+	for _, rule := range v.rules {
+		if err := rule(registration); err != nil {
+			return err
+		}
+	}
+	return ErrValidateRegistrationNotImplemented
+}
+
+// ValidateConflict checks for registration conflicts and suggests resolutions
+func (v *Validator) ValidateConflict(ctx context.Context, registration *ServiceRegistration) (*ConflictAnalysis, error) {
+	// TODO: Implement conflict analysis
+	return nil, ErrValidateConflictNotImplemented
+}
+
+// ValidateDependencies checks if service dependencies can be satisfied
+func (v *Validator) ValidateDependencies(ctx context.Context, dependencies []string) error {
+	// TODO: Implement dependency validation
+	return ErrValidateDependenciesNotImplemented
+}
+
+// AddRule adds a validation rule
+func (v *Validator) AddRule(rule func(*ServiceRegistration) error) {
+	v.rules = append(v.rules, rule)
+}
