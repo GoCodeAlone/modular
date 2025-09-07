@@ -107,6 +107,35 @@ Legend:
 8. Isolation & leakage prevention tests (FR-038)
 9. Secret classification core model + module annotations (FR-049)
 
+### Scope Classification
+Core Components (remain in root framework scope):
+- Lifecycle management & module startup/shutdown orchestration
+- Service registry & dependency resolution (name + interface based)
+- Configuration system (feeders, validation, provenance, defaults)
+- Multi-tenancy & instance contexts
+- Observer/lifecycle event emission infrastructure
+- Dynamic configuration reload (planned)
+- Aggregate health & readiness aggregation (planned)
+- Error taxonomy (unified classification, planned consolidation)
+- Secret classification & redaction model (planned)
+- Service scope & tie-break priority logic (planned)
+- Decorator infrastructure (logging, tenant, observable wrappers)
+
+Module Components (delivered as separate modules):
+- auth (incl. upcoming OIDC provider SPI)
+- cache
+- database
+- httpserver
+- httpclient
+- reverseproxy
+- scheduler (with configurable catch-up policies)
+- eventbus
+- jsonschema
+- letsencrypt (ACME automation & escalation events)
+- chimux (router integration)
+
+Counts: Core = 11, Modules = 11. No module encroaches on core areas (health & reload remain core despite not yet implemented). If future contributions place health or reload logic into a module folder → must be rejected as scope violation.
+
 ### Clarification Resolutions
 All previous clarification questions resolved; matrix and actions updated accordingly. No outstanding [NEEDS CLARIFICATION] markers.
 
