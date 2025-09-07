@@ -247,4 +247,5 @@ type RegistryConfig struct {
 	CleanupInterval      time.Duration      `json:"cleanup_interval"`
 	MaxServiceAge        time.Duration      `json:"max_service_age"`
 	EnableLazyResolution bool               `json:"enable_lazy_resolution"`
+	ExpectedServiceCount int                `json:"expected_service_count" desc:"Expected number of services for map pre-sizing optimization"`
 }

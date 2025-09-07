@@ -83,12 +83,57 @@ All examples must:
 - Avoid copying large code blocks from core; import instead
 
 ## 13. Performance Guardrails
+
+### When to Add Benchmarks
 Add / update a benchmark when you:
 - Introduce reflection inside a loop
 - Modify service registry lookup or registration logic
 - Change synchronization (locks/atomics) on a hot path
 - Add allocation-heavy generics
-Run with: `go test -bench=. -benchmem` inside affected package.
+- Modify configuration loading or validation logic
+- Change module lifecycle or dependency resolution
+
+### Performance Validation Steps
+1. **Baseline Measurement**: Run `go test -bench=. -benchmem` before changes
+2. **Post-Change Measurement**: Run benchmarks after implementation
+3. **Threshold Analysis**: Flag changes with >10% regression in:
+   - ns/op (nanoseconds per operation)
+   - allocs/op (allocations per operation)
+   - B/op (bytes allocated per operation)
+4. **Documentation**: Include benchmark summary in PR if thresholds exceeded
+
+### Service Registry Performance Requirements
+The service registry must maintain O(1) lookup performance:
+- **Registration**: <1000ns per service for up to 1000 services
+- **Name Resolution**: <100ns per lookup with pre-sized maps
+- **Interface Resolution**: <500ns per lookup with type caching
+- **Memory**: <50 bytes overhead per registered service
+
+### Hot Path Optimization Guidelines
+1. **Map Pre-sizing**: Use `ExpectedServiceCount` in RegistryConfig for optimal map capacity
+2. **Interface Caching**: Cache reflect.Type lookups to avoid repeated reflection
+3. **Lock Granularity**: Prefer RWMutex over Mutex for read-heavy operations
+4. **Memory Pools**: Use sync.Pool for frequently allocated objects in hot paths
+
+### Benchmark Execution
+```bash
+# Run all benchmarks with memory statistics
+go test -bench=. -benchmem ./...
+
+# Run service registry benchmarks specifically
+go test -bench=Registry -benchmem ./registry
+
+# Compare before/after with benchstat
+go test -bench=. -count=5 -benchmem > old.txt
+# ... make changes ...
+go test -bench=. -count=5 -benchmem > new.txt
+benchstat old.txt new.txt
+```
+
+### Performance Regression Policy
+- **<5% regression**: Generally acceptable for correctness/feature improvements
+- **5-10% regression**: Requires justification and follow-up optimization issue
+- **>10% regression**: Must be explicitly approved or implementation redesigned
 
 ## 14. Panics Policy
 Only for programmer errors (impossible states). Document with `// invariant:` comment.
