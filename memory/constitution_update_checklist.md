@@ -58,6 +58,24 @@ When amending the constitution (`/memory/constitution.md`), ensure all dependent
 - [ ] Confirm API diff tooling docs up to date (API_CONTRACT_MANAGEMENT.md)
 - [ ] Add deprecation comment pattern to templates
 - [ ] Update PR checklist to require rationale for each new exported symbol
+- [ ] PR template: require explanation why Builder or Observer extension not sufficient for any interface / constructor change
+- [ ] Spec & plan templates: include section "API evolution path (Builder / Observer / Adapter) & justification"
+- [ ] Tasks template: add task types for "Add builder option" and "Add observer event" distinct from interface mutation
+- [ ] Ensure migration notes template references adapter pattern when interface change unavoidable
+
+#### Article XVI (Strategic Patterns: Builder, Observer, DDD):
+- [ ] Add Builder pattern checklist to `/templates/plan-template.md` (list new options + defaults + backward compatibility note)
+- [ ] Add Observer event addition checklist (event name, payload schema, emission timing test) to spec template
+- [ ] Update tasks template with tasks: define event contract, implement emission, add tests, doc update
+- [ ] Update `/.github/prompts/specify.prompt.md` to ask: "Could this change be delivered via Builder option or Observer event instead of interface modification?"
+- [ ] Update `/.github/prompts/plan.prompt.md` to require bounded context + ubiquitous language section
+- [ ] Update `/.github/prompts/tasks.prompt.md` to auto-generate builder/observer tasks
+- [ ] Update `/.github/copilot-instructions.md` with rule: prefer builder/observer over interface change
+- [ ] Ensure `API_CONTRACT_MANAGEMENT.md` references decision record for rejected pattern alternatives
+- [ ] Add DDD glossary section requirement to new module template / README pattern
+- [ ] Add GO_BEST_PRACTICES.md entries for Builder option ergonomics & Observer decoupling
+- [ ] Add rule: Interface widening forbidden; use new narrow interface or observer event
+- [ ] Add module README guidance: domain aggregate invariants & anti-corruption layer notes
 
 #### Article XIII (Documentation & Example Freshness):
 - [ ] Verify examples compile after changes
@@ -93,7 +111,7 @@ When amending the constitution (`/memory/constitution.md`), ensure all dependent
 ## Common Misses
 
 Watch for these often-forgotten updates:
-- Command documentation (`/commands/*.md`)
+- Command documentation (`/.github/prompts/*.md`)
 - Checklist items in templates
 - Example code/commands
 - Domain-specific variations (web vs mobile vs CLI)
@@ -101,9 +119,9 @@ Watch for these often-forgotten updates:
 
 ## Template Sync Status
 
-Last sync check: 2025-07-16
-- Constitution version: 2.1.1
-- Templates aligned: ❌ (missing versioning, observability details)
+Last sync check: 2025-09-07
+- Constitution version: 1.2.0
+- Templates aligned: ❌ (pending propagation of Article XII pattern evolution rules & new Article XVI pattern/DDD requirements)
 
 ---
 

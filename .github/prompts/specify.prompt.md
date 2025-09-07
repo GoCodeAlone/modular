@@ -15,7 +15,9 @@ Given the feature description provided as an argument, do this:
 	 - MODULE: belongs to a specific module directory (auth, cache, database, httpserver, httpclient, scheduler, eventbus, reverseproxy, letsencrypt, jsonschema, chimux, logging decorators, etc.)
 	 - For each MODULE item, include target module name.
 	 - If any functionality cannot be clearly classified, abort with ERROR "Unclassified functionality discovered".
- 5. Add a "Mis-Scope Guardrails" note listing at least three examples of incorrect placements (e.g., putting JWT parsing in core) and their corrections.
- 6. Report completion with branch name, spec file path, summary counts (#CORE, #MODULE), and readiness for the next phase.
+ 5. Add an "API Evolution & Patterns" subsection listing anticipated public API changes and, for each: Builder option feasibility, Observer event feasibility, justification if interface change; list new Builder options (name, default), Observer events (name, payload, timing), adapters & deprecations.
+ 6. Add a "Bounded Context Glossary" subsection if >2 domain entities; if omitted in that case → ERROR "Missing glossary".
+ 7. Add a "Mis-Scope Guardrails" note listing at least three examples of incorrect placements (e.g., putting JWT parsing in core) and their corrections.
+ 8. Report completion with branch name, spec file path, summary counts (#CORE, #MODULE), glossary present (Yes/No), API evolution candidates count, and readiness for the next phase.
 
 Note: The script creates and checks out the new branch and initializes the spec file before writing.

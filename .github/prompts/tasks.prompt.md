@@ -18,6 +18,7 @@ Given the context provided as an argument, do this:
        * CORE: lifecycle orchestration, configuration system, service registry, tenant/instance context, lifecycle events dispatcher, health aggregation.
        * MODULE: auth, cache, database drivers, http server/client adapters, reverse proxy, scheduler jobs, event bus implementations, certificate/ACME management, JSON schema validation, routing integrations, logging decorators.
        * If any functionality lacks classification → ERROR "Unclassified functionality: <item>".
+   - Collect pattern evolution inputs: from plan/spec gather Builder options (pending), Observer events (pending), interface mutation candidates (require adapter + deprecation tasks).
    
    Note: Not all projects have all documents. For example:
    - CLI tools might not have contracts/
@@ -32,6 +33,7 @@ Given the context provided as an argument, do this:
      * **Core tasks**: One per entity, service, CLI command, endpoint
      * **Integration tasks**: DB connections, middleware, logging
      * **Polish tasks [P]**: Unit tests, performance, docs
+     * **Pattern tasks**: Builder option tests/implementation, Observer event emission tests/implementation, adapter + deprecation tasks for interface changes
        * Each task MUST include a `[CORE]` or `[MODULE:<module-name>]` tag prefix before the description.
           - Example: `T012 [CORE][P] Implement service registry entry struct in service_registry_entry.go`
           - Example: `T039 [MODULE:auth] Implement JWT validator in modules/auth/jwt_validator.go`
@@ -41,6 +43,9 @@ Given the context provided as an argument, do this:
    - Each entity in data-model → model creation task marked [P]
    - Each endpoint → implementation task (not parallel if shared files)
    - Each user story → integration test marked [P]
+   - Each Builder option → failing test task [P] then implementation task
+   - Each Observer event → emission test task [P] then implementation + docs task
+   - Each interface change → adapter, deprecation annotation, migration docs tasks BEFORE implementation
    - Different files = can be parallel [P]
    - Same file = sequential (no [P])
    - CORE tasks may not introduce or modify files inside `modules/` (enforce separation) → if violation detected: ERROR "Core task mis-scoped: <task id>"
@@ -52,6 +57,7 @@ Given the context provided as an argument, do this:
    - Models before services
    - Services before endpoints
    - Core before integration
+   - Pattern tests before related implementation
    - Everything before polish
 
 6. Include parallel execution examples:
@@ -65,7 +71,7 @@ Given the context provided as an argument, do this:
    - Dependency notes
    - Parallel execution guidance
    - A classification summary table listing counts of CORE vs MODULE tasks
-   - A validation section stating: no mis-scoped tasks, all functionality classified
+   - A validation section stating: no mis-scoped tasks, all functionality classified, pattern-first evaluation applied (no unjustified interface changes)
 
 Context for task generation: $ARGUMENTS
 

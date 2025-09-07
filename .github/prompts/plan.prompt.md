@@ -17,6 +17,8 @@ Given the implementation details provided as an argument, do this:
 3. Read the constitution at `/memory/constitution.md` to understand constitutional requirements.
    - Validate the specification includes a Scope Classification section produced by the spec step; ERROR if missing.
    - Parse CORE vs MODULE counts; if any MODULE item overlaps a defined CORE area (lifecycle, registry, configuration, multi-tenancy context, lifecycle events, health, error taxonomy) → ERROR "Module encroaches on core: <item>".
+   - Extract proposed public API changes (new exported symbols, interface or constructor mutations). For each, evaluate Builder and Observer alternatives (Articles XII & XVI). If mutation lacks evaluation → ERROR "Missing pattern evaluation for API change: <symbol>".
+   - If >2 domain entities and no glossary/ bounded context section is present → WARN "Missing bounded context glossary".
 
 4. Execute the implementation plan template:
    - Load `/templates/plan-template.md` (already copied to IMPL_PLAN path)
@@ -34,6 +36,7 @@ Given the implementation details provided as an argument, do this:
        * List of MODULE components with their module directories
        * Any contested items resolved with rationale
     - During Phase 1 generation ensure contracts/data-model segregate CORE vs MODULE types (e.g., do not add auth-specific entities to core data-model). If violation detected during extraction → ERROR "Scope violation in design artifact: <file> <description>".
+   - During Phase 1 capture API evolution decisions (Builder option list, Observer events list, adapters needed). Persist in plan.
    - Update Progress Tracking as you complete each phase
 
 5. Verify execution completed:

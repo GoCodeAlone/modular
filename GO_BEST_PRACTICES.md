@@ -17,6 +17,13 @@ func NewClient(host string, port int, timeout int, retries int, secure bool, log
 ```
 Refactor when >5 positional primitives.
 
+### Builder / Functional Options Guidance (Articles XII & XVI)
+- Add capabilities via new option functions or fluent builder methods; NEVER add a required positional param to an existing exported constructor unless a deprecation + adapter path is provided.
+- Option naming: `WithX`, where X is a domain term (e.g., `WithRetryPolicy`, not `WithRetriesCfg`).
+- Defaults MUST preserve previous behavior (zero-change upgrade). Document default in option comment.
+- Side effects deferred until final `Build()` / module `Start` to keep construction deterministic & testable.
+- Validate options collectively; return aggregated error list when multiple invalid options supplied.
+
 ## 3. Zero-Cost Defaults
 Ensure `var m ModuleType` or `&ModuleType{}` is valid to configure minimally.
 Provide `DefaultConfig()` when non-zero values required.
@@ -63,6 +70,29 @@ Before exporting a new symbol:
 Deprecation pattern:
 ```go
 // Deprecated: use NewXWithOptions. Scheduled removal in v1.9.
+```
+
+### Interface Widening Avoidance
+- Adding a method to an existing interface forces all implementations to change (breaking). Prefer:
+   1. New narrow interface (e.g., `FooExporter`) and type assertion where needed.
+   2. Observer event to publish additional info.
+   3. Builder option injecting collaborator that adds behavior externally.
+- If unavoidable: mark old interface deprecated, provide adapter bridging old to new, document migration steps.
+
+### Observer Pattern Usage
+- Emit events for cross-cutting concerns (metrics, auditing, lifecycle, config provenance) instead of adding methods.
+- Event contract: name (`domain.action`), payload struct with stable fields, timing (pre/post), error handling (never panic; return error or log).
+- Tests MUST assert emission ordering & payload integrity.
+
+### Decision Record Template (commit or PR description)
+```
+Pattern Evaluation:
+Desired change: <summary>
+Builder option feasible? <yes/no + rationale>
+Observer event feasible? <yes/no + rationale>
+Interface change required? <yes/no + justification>
+Chosen path: <builder|observer|new interface|interface change with deprecation>
+Migration impact: <none|steps>
 ```
 
 ## 10. Boilerplate Reduction
@@ -163,3 +193,52 @@ Service registry benchmark harness lives in `service_registry_benchmark_test.go`
 - If a linter becomes noisy or blocks progress with low value, open a governance issue citing examples before disabling.
 ---
 Maintainers revisit this guide quarterly; propose updates via PR referencing constitution article alignment.
+
+## 18. DDD Boundaries & Glossary
+- Each module defines its bounded context; expose only stable service interfaces—keep aggregates/entities internal.
+- Maintain a glossary (central or module README) to align ubiquitous language across config fields, logs, and exported symbols.
+- Anti-corruption layer wraps external clients; never leak third-party DTOs beyond infrastructure boundary—translate to domain structs.
+- Domain services stay pure (no logging/IO); adapters handle side effects.
+
+## 19. Builder & Observer Testing Patterns
+Example builder option test skeleton:
+```go
+func TestClient_WithRetryPolicy(t *testing.T) {
+   t.Run("default behavior unchanged", func(t *testing.T) {
+      c1, _ := NewClient()
+      c2, _ := NewClient(WithRetryPolicy(DefaultRetryPolicy()))
+      // assert baseline equality for unaffected metrics / settings
+   })
+   t.Run("custom policy applied", func(t *testing.T) {
+      var called int
+      p := RetryPolicy{MaxAttempts: 3}
+      c, _ := NewClient(WithRetryPolicy(p))
+      _ = c.Do(func() error { called++; return errors.New("x") })
+      if called != 3 { t.Fatalf("expected 3 attempts, got %d", called) }
+   })
+}
+```
+Observer emission test skeleton:
+```go
+func TestScheduler_EmitsJobEvents(t *testing.T) {
+   var events []JobEvent
+   obs := ObserverFunc(func(e Event) { if je, ok := e.(JobEvent); ok { events = append(events, je) } })
+   s := NewScheduler(WithObserver(obs))
+   s.Schedule(Job{ID: "a"})
+   s.RunOnce(context.Background())
+   require.Len(t, events, 2) // job.start, job.complete
+   require.Equal(t, "a", events[0].ID)
+   require.Equal(t, "job.start", events[0].Name)
+}
+```
+
+## 20. Quick Reference: Pattern Selection
+| Goal | Prefer | Avoid |
+|------|--------|-------|
+| Add optional config | Builder option | New required constructor param |
+| Emit cross-cutting info | Observer event | Interface method just returning data |
+| Add behavior for subset of consumers | New narrow interface | Widen core interface |
+| Extend lifecycle hooks | Observer event | Hard-coded callbacks |
+| Provide alternate algorithm | Builder strategy option | Boolean flag explosion |
+
+Document selection in PR using decision record template.

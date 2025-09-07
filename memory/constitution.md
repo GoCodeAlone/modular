@@ -2,7 +2,7 @@
 
 **Scope**: Governs design, implementation, testing, and evolution of the Modular framework and bundled modules.
 
-**Version**: 1.1.0 | **Ratified**: 2025-09-06 | **Last Amended**: 2025-09-06
+**Version**: 1.2.0 | **Ratified**: 2025-09-06 | **Last Amended**: 2025-09-07
 
 ---
 
@@ -66,6 +66,9 @@ Any exported (non-internal) symbol constitutes public API. Changes gated by:
 - Adding exported symbols requires rationale & usage example in docs or examples.
 - Deprecations use `// Deprecated: <reason>. Removal in vX.Y (≥1 minor ahead).` comment form.
 - Removal only after at least one released minor version containing deprecation notice.
+ - Additive changes that alter constructor or interface method signatures (even if they compile for existing callers using type inference) are treated as potential breaking changes and MUST first be evaluated for delivery via the Builder pattern (additional fluent option) or Observer pattern (decoupled event/listener) to minimize disruption.
+ - Prefer evolving configuration and extensibility surfaces through: (1) new Builder option methods with sensible defaults, (2) optional functional options, or (3) observer hooks, before mutating existing interfaces.
+ - Interface widening (adding a method) is forbidden without a deprecation + adapter path; instead, introduce a new narrow interface and have existing types opt-in, or expose capability via an observer or builder-provided service.
 
 ### XIII. Documentation & Example Freshness
 Documentation is a living contract:
@@ -87,6 +90,34 @@ We continually measure and reduce ceremony:
 - Error messages start lowercase, no trailing punctuation, and include context noun first (e.g., `config: missing database host`).
 - Panics restricted to programmer errors (never for invalid user config) and documented.
 - All concurrency primitives (mutexes, channels) require a brief comment describing ownership & lifecycle.
+
+### XVI. Strategic Patterns (Builder, Observer, Domain-Driven Design)
+The project intentionally standardizes on these patterns to enable low-friction evolution and clear domain boundaries:
+
+1. Builder Pattern
+	- All complex module/application construction SHOULD expose a builder (or functional options) to allow additive evolution without breaking existing callers.
+	- New optional capabilities MUST prefer builder option methods (or functional options) over adding required constructor parameters.
+	- Required additions should be extremely rare; if needed, provide a transitional builder option that derives a sensible default while emitting a deprecation notice for future mandatory requirement.
+	- Builder options MUST be side-effect free until `.Build()` / finalization is invoked.
+
+2. Observer Pattern
+	- Cross-cutting concerns (metrics emission, auditing, tracing, lifecycle notifications) MUST prefer observers instead of embedding new dependencies into existing module interfaces.
+	- New event types require: clear naming (`lifecycle.*`, `config.*`, `tenant.*`), documented payload contract, and tests asserting emission timing & ordering.
+	- Avoid tight coupling: observers should depend only on stable event contracts, not concrete module internals.
+
+3. Domain-Driven Design (DDD)
+	- Modules map to bounded contexts; a module's exported services form its public domain API.
+	- Ubiquitous language: configuration field names, log keys, and service method names reflect domain terms consistently.
+	- Aggregates enforce invariants internally; external packages manipulate them only through exported behaviors (not by mutating internal state structs).
+	- Anti-corruption layers wrap external systems; never leak external DTOs beyond the boundary—translate to domain types.
+	- Domain logic remains decoupled from transport (HTTP, CLI, messaging). Adapters live in dedicated subpackages or modules.
+
+4. API Evolution via Patterns
+	- Before modifying an existing interface or constructor, authors MUST document (in PR description) why a Builder or Observer extension is insufficient.
+	- Event-based (Observer) extension is preferred for purely informational additions; Builder extension is preferred for configuration or capability toggles.
+	- When neither pattern suffices and an interface change is unavoidable, provide: (a) deprecation of old interface, (b) adapter implementation bridging old to new, (c) migration notes, (d) versioned removal plan per Article XII.
+
+Compliance with this article is part of API review; reviewers should request justification when direct interface mutation occurs.
 
 ---
 
@@ -153,5 +184,6 @@ We continually measure and reduce ceremony:
 ---
 
 ## Amendment Log
+- 1.2.0 (2025-09-07): Added Article XVI emphasizing Builder, Observer, and DDD patterns; strengthened Article XII with guidance on using patterns for API evolution.
 - 1.1.0 (2025-09-06): Added Articles XI–XV covering idiomatic Go, API stability, documentation freshness, boilerplate targets, and style enforcement.
 - 1.0.0 (2025-09-06): Initial project-specific constitution established.

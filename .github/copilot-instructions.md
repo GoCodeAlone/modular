@@ -99,6 +99,7 @@ Working example applications:
 4. **Multi-tenancy**: Maintain tenant isolation and proper context handling
 5. **Error Handling**: Use wrapped errors with clear messages and proper error types
 6. **Backwards Compatibility**: Maintain API compatibility when possible
+7. **Pattern-First Evolution**: Prefer adding Builder options (fluent or functional) and Observer events over modifying existing interfaces or constructors. Justify any interface change with: why Builder/Observer insufficient, deprecation plan, adapter strategy.
 
 ### Module Development
 1. **Interface Implementation**: Implement core `Module` interface and relevant optional interfaces
@@ -107,6 +108,9 @@ Working example applications:
 4. **Documentation**: Include complete README with usage examples and configuration reference
 5. **Testing**: Write comprehensive unit tests and integration tests where applicable
 6. **Dependencies**: Minimize external dependencies and document any that are required
+7. **Builder Options**: Add new capabilities via additive option methods (no required param increases); ensure defaults preserve prior behavior.
+8. **Observer Events**: Emit new cross-cutting concerns (metrics, auditing, lifecycle) through observer mechanisms instead of changing service interfaces.
+9. **DDD Boundaries**: Keep domain types internal; expose minimal service interfaces as public API; avoid leaking external DTOs.
 
 ### Example Development
 1. **Standalone Applications**: Each example should be a complete, runnable application
@@ -134,6 +138,7 @@ Working example applications:
 3. **Example Tests**: Ensure examples build and run correctly
 4. **Mock Application**: Use the provided mock application for testing modules
 5. **Interface Testing**: Verify modules implement interfaces correctly
+6. **Pattern Tests**: Failing tests must precede new builder options or observer events (event emission ordering, default option behavior).
 
 ### Multi-tenancy Guidelines
 1. **Context Propagation**: Always propagate tenant context through the call chain
@@ -147,6 +152,13 @@ Working example applications:
 3. **Context**: Include relevant context in error messages
 4. **Logging**: Log errors at appropriate levels with structured logging
 5. **Graceful Degradation**: Handle optional dependencies gracefully
+6. **Event Emission Errors**: Observer dispatch should never panic; errors wrapped and surfaced through lifecycle/logging.
+
+### Strategic Patterns (Constitution Articles XII & XVI)
+- Prefer Builder pattern for additive configuration/evolution.
+- Prefer Observer pattern for cross-cutting concerns; events documented with name, payload, timing.
+- Avoid interface widening; introduce new narrow interface or use pattern alternative.
+- Record justification in PR when deviating; include migration notes for any deprecation.
 
 ## Automated PR Code Review (GitHub Copilot Agent Guidance)
 

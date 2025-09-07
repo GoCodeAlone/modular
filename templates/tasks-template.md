@@ -18,6 +18,7 @@
    → Core: models, services, CLI commands
    → Integration: DB, middleware, logging
    → Polish: unit tests, performance, docs
+   → Pattern: builder option additions, observer event emission tests (ensure failing first)
 4. Apply task rules:
    → Different files = mark [P] for parallel
    → Same file = sequential (no [P])
@@ -60,6 +61,8 @@ Example placeholders to replace with concrete names when generating tasks:
 - T011 [P] Domain aggregate invariant tests in `internal/domain/<context>/aggregate_test.go`.
 - T012 [P] Application use case test in `internal/application/<feature>/usecase_test.go`.
 - T013 [P] Repository port behavior test (interface expectations) in `internal/domain/<context>/repository_test.go`.
+- T014 [P] Observer event emission test `<event_name>` in `internal/platform/observer/<event>_test.go`.
+- T015 [P] Builder option behavior test `<OptionName>` in `internal/<module>/builder_options_test.go`.
 
 ## Phase 3.3: Core Implementation (Only after failing tests present)
 Implement minimal code to satisfy tests in 3.2. Typical buckets:
@@ -67,12 +70,15 @@ Implement minimal code to satisfy tests in 3.2. Typical buckets:
 - Application use cases (orchestrating domain + ports).
 - Interface adapters (HTTP handlers, CLI commands) – thin.
 - Repository interfaces already defined; implementations deferred to Integration.
+- Builder options implemented minimally (no side effects until final Build/Start).
+- Observer event publishing code added only after emission tests exist.
 
 ## Phase 3.4: Integration / Adapters
 Add concrete infrastructure & cross-cutting concerns:
 - Persistence adapters (DB, migrations) in `internal/infrastructure/persistence/`.
 - External service clients, cache, messaging.
 - Observability wiring (logging, tracing, metrics) in `internal/platform/`.
+- Observer registration & lifecycle integration.
 - Config loading & validation.
 
 ## Phase 3.5: Hardening & Polish
@@ -81,6 +87,8 @@ Add concrete infrastructure & cross-cutting concerns:
 - Security review (timeouts, input validation, error wrapping).
 - Documentation updates & sample configs regeneration.
 - Refactor duplication (rule of three) & finalize public API surface.
+- Confirm no interface widening slipped in without adapter + deprecation.
+- Validate event schema stability (no late changes without test updates).
 
 ## Phase 3.6: Test Finalization (Placeholder / Skip Elimination)
 Purpose: Ensure no latent placeholders remain and all originally deferred scenarios now assert real behavior.
@@ -130,6 +138,8 @@ T013 Use case test (internal/application/feature/usecase_test.go)
 4. **Ordering (Template)**:
    - Setup → Contract & Domain Tests → Domain Impl → Use Case Tests → Use Case Impl → Interface Adapters → Infrastructure Adapters → Cross-Cutting → Hardening.
    - No implementation before failing test exists.
+   - Pattern tasks (builder option tests, observer event tests) precede related implementation.
+   - Any interface change triggers: deprecation task, adapter task, migration doc task.
 
 ## Validation Checklist
 *GATE: Checked by main() before returning*
@@ -142,3 +152,7 @@ T013 Use case test (internal/application/feature/usecase_test.go)
 - [ ] No task modifies same file as another [P] task
 - [ ] No remaining TODO/FIXME/placeholder/skip markers in tests (unless explicitly justified)
 - [ ] All tests fail first then pass after implementation (TDD evidence in VCS history)
+- [ ] All interface changes have adapter + deprecation + migration task
+- [ ] Builder options introduced via non-breaking additive methods
+- [ ] Observer events have emission + test + documentation task
+- [ ] No interface widening without recorded justification
