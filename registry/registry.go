@@ -4,6 +4,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ var (
 	ErrServiceNotFound                     = errors.New("service not found")
 	ErrNoServicesFoundForInterface         = errors.New("no services found implementing interface")
 	ErrAmbiguousInterfaceResolution        = errors.New("ambiguous interface resolution: multiple services implement interface")
+	ErrServiceRegistrationConflict         = errors.New("service registration conflict: service name already exists")
+	ErrUnknownConflictResolutionStrategy   = errors.New("unknown conflict resolution strategy")
+	ErrAmbiguousMultipleServices           = errors.New("ambiguous interface resolution: multiple services with equal priority and registration time")
 )
 
 // Registry implements the ServiceRegistry interface with basic map-based storage
@@ -62,7 +66,7 @@ func (r *Registry) Register(ctx context.Context, registration *ServiceRegistrati
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	
+
 	// Fill in registration metadata if not provided
 	if registration.RegisteredAt.IsZero() {
 		registration.RegisteredAt = now
@@ -210,7 +214,7 @@ func (r *Registry) ResolveAllByInterface(ctx context.Context, interfaceType refl
 	services := make([]interface{}, len(entries))
 	for i, entry := range entries {
 		services[i] = entry.Registration.Service
-		
+
 		// Update usage statistics if enabled
 		if r.config.EnableUsageTracking && entry.Usage != nil {
 			entry.Usage.AccessCount++
@@ -386,11 +390,11 @@ func (v *Validator) AddRule(rule func(*ServiceRegistration) error) {
 // resolveConflict handles service name conflicts according to the configured resolution strategy
 func (r *Registry) resolveConflict(existing *ServiceEntry, new *ServiceRegistration) (*ServiceEntry, error) {
 	now := time.Now()
-	
+
 	switch r.config.ConflictResolution {
 	case ConflictResolutionError:
-		return nil, errors.New("service registration conflict: service name already exists")
-		
+		return nil, ErrServiceRegistrationConflict
+
 	case ConflictResolutionOverwrite:
 		// Replace the existing service
 		entry := &ServiceEntry{
@@ -409,7 +413,7 @@ func (r *Registry) resolveConflict(existing *ServiceEntry, new *ServiceRegistrat
 			}
 		}
 		return entry, nil
-		
+
 	case ConflictResolutionRename:
 		// Auto-rename the new service
 		resolvedName := r.findAvailableName(new.Name)
@@ -431,7 +435,7 @@ func (r *Registry) resolveConflict(existing *ServiceEntry, new *ServiceRegistrat
 			}
 		}
 		return entry, nil
-		
+
 	case ConflictResolutionPriority:
 		// Use priority to decide (higher priority wins)
 		if new.Priority > existing.Registration.Priority {
@@ -455,13 +459,13 @@ func (r *Registry) resolveConflict(existing *ServiceEntry, new *ServiceRegistrat
 		}
 		// Existing service has higher or equal priority, ignore new registration
 		return existing, nil
-		
+
 	case ConflictResolutionIgnore:
 		// Keep existing service, ignore new registration
 		return existing, nil
-		
+
 	default:
-		return nil, errors.New("unknown conflict resolution strategy")
+		return nil, ErrUnknownConflictResolutionStrategy
 	}
 }
 
@@ -471,7 +475,7 @@ func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, erro
 	if len(entries) == 0 {
 		return nil, ErrNoServicesFoundForInterface
 	}
-	
+
 	if len(entries) == 1 {
 		return entries[0], nil
 	}
@@ -480,7 +484,7 @@ func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, erro
 	// For now, we'll use the concept that shorter names are more explicit
 	minNameLength := len(entries[0].ActualName)
 	explicitEntries := []*ServiceEntry{entries[0]}
-	
+
 	for i := 1; i < len(entries); i++ {
 		nameLen := len(entries[i].ActualName)
 		if nameLen < minNameLength {
@@ -490,7 +494,7 @@ func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, erro
 			explicitEntries = append(explicitEntries, entries[i])
 		}
 	}
-	
+
 	if len(explicitEntries) == 1 {
 		return explicitEntries[0], nil
 	}
@@ -498,7 +502,7 @@ func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, erro
 	// Step 2: Compare priorities (higher priority wins)
 	maxPriority := explicitEntries[0].Registration.Priority
 	priorityEntries := []*ServiceEntry{explicitEntries[0]}
-	
+
 	for i := 1; i < len(explicitEntries); i++ {
 		priority := explicitEntries[i].Registration.Priority
 		if priority > maxPriority {
@@ -508,7 +512,7 @@ func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, erro
 			priorityEntries = append(priorityEntries, explicitEntries[i])
 		}
 	}
-	
+
 	if len(priorityEntries) == 1 {
 		return priorityEntries[0], nil
 	}
@@ -527,8 +531,7 @@ func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, erro
 		for _, entry := range priorityEntries {
 			names = append(names, entry.ActualName)
 		}
-		return nil, errors.New("ambiguous interface resolution: multiple services with equal priority and registration time: " + 
-			"[" + joinStrings(names, ", ") + "]")
+		return nil, fmt.Errorf("%w: [%s]", ErrAmbiguousMultipleServices, joinStrings(names, ", "))
 	}
 
 	return earliest, nil
@@ -539,14 +542,14 @@ func (r *Registry) findAvailableName(baseName string) string {
 	if _, exists := r.services[baseName]; !exists {
 		return baseName
 	}
-	
+
 	for i := 1; i < 1000; i++ { // Reasonable limit to prevent infinite loop
 		candidate := baseName + "-" + intToString(i)
 		if _, exists := r.services[candidate]; !exists {
 			return candidate
 		}
 	}
-	
+
 	// Fallback to timestamp-based suffix
 	return baseName + "-" + intToString(int(time.Now().Unix()%1000))
 }
@@ -556,22 +559,22 @@ func intToString(i int) string {
 	if i == 0 {
 		return "0"
 	}
-	
+
 	negative := i < 0
 	if negative {
 		i = -i
 	}
-	
+
 	digits := []byte{}
 	for i > 0 {
-		digits = append([]byte{byte('0'+i%10)}, digits...)
+		digits = append([]byte{byte('0' + i%10)}, digits...)
 		i /= 10
 	}
-	
+
 	if negative {
 		digits = append([]byte{'-'}, digits...)
 	}
-	
+
 	return string(digits)
 }
 
@@ -583,7 +586,7 @@ func joinStrings(strs []string, separator string) string {
 	if len(strs) == 1 {
 		return strs[0]
 	}
-	
+
 	result := strs[0]
 	for i := 1; i < len(strs); i++ {
 		result += separator + strs[i]

@@ -4,27 +4,38 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // Static errors for configuration package
 var (
-	ErrLoadNotImplemented           = errors.New("load method not yet implemented")
-	ErrReloadNotImplemented         = errors.New("reload method not yet implemented")
-	ErrValidateNotImplemented       = errors.New("validate method not yet implemented")
-	ErrProvenanceNotImplemented     = errors.New("provenance method not yet implemented")
-	ErrStructValidateNotImplemented = errors.New("struct validation not yet implemented")
-	ErrFieldValidateNotImplemented  = errors.New("field validation not yet implemented")
-	ErrStartWatchNotImplemented     = errors.New("start watch method not yet implemented")
-	ErrStopWatchNotImplemented      = errors.New("stop watch method not yet implemented")
-	ErrConfigTypeNotFound           = errors.New("config type not found")
+	ErrLoadNotImplemented                = errors.New("load method not yet implemented")
+	ErrReloadNotImplemented              = errors.New("reload method not yet implemented")
+	ErrValidateNotImplemented            = errors.New("validate method not yet implemented")
+	ErrProvenanceNotImplemented          = errors.New("provenance method not yet implemented")
+	ErrStructValidateNotImplemented      = errors.New("struct validation not yet implemented")
+	ErrFieldValidateNotImplemented       = errors.New("field validation not yet implemented")
+	ErrStartWatchNotImplemented          = errors.New("start watch method not yet implemented")
+	ErrStopWatchNotImplemented           = errors.New("stop watch method not yet implemented")
+	ErrConfigTypeNotFound                = errors.New("config type not found")
+	ErrConfigCannotBeNil                 = errors.New("config cannot be nil")
+	ErrNoProvenanceInfo                  = errors.New("no provenance information found for field")
+	ErrRequiredFieldNotSet               = errors.New("required field is not set")
+	ErrUnsupportedFieldType              = errors.New("unsupported field type for default value")
+	ErrServiceRegistrationConflict       = errors.New("service registration conflict: service name already exists")
+	ErrUnknownConflictResolutionStrategy = errors.New("unknown conflict resolution strategy")
+	ErrAmbiguousMultipleServices         = errors.New("ambiguous interface resolution: multiple services with equal priority and registration time")
 )
 
 // Loader implements the ConfigLoader interface with basic stub functionality
 type Loader struct {
 	sources    []*ConfigSource
 	validators []ConfigValidator
+	provenance map[string]*FieldProvenance // Track provenance by field path
 }
 
 // NewLoader creates a new configuration loader
@@ -32,20 +43,21 @@ func NewLoader() *Loader {
 	return &Loader{
 		sources:    make([]*ConfigSource, 0),
 		validators: make([]ConfigValidator, 0),
+		provenance: make(map[string]*FieldProvenance),
 	}
 }
 
 // Load loads configuration from all configured sources and applies validation
 func (l *Loader) Load(ctx context.Context, config interface{}) error {
 	if config == nil {
-		return errors.New("config cannot be nil")
+		return ErrConfigCannotBeNil
 	}
-	
+
 	// Apply configuration loading from all sources in priority order
 	// Sort sources by priority (higher priority first)
 	sortedSources := make([]*ConfigSource, len(l.sources))
 	copy(sortedSources, l.sources)
-	
+
 	// Simple bubble sort by priority (higher first)
 	for i := 0; i < len(sortedSources)-1; i++ {
 		for j := 0; j < len(sortedSources)-i-1; j++ {
@@ -82,7 +94,7 @@ func (l *Loader) Validate(ctx context.Context, config interface{}) error {
 	for _, validator := range l.validators {
 		err := validator.ValidateStruct(ctx, config)
 		if err != nil {
-			return err
+			return fmt.Errorf("validation failed: %w", err)
 		}
 	}
 
@@ -97,8 +109,13 @@ func (l *Loader) Validate(ctx context.Context, config interface{}) error {
 
 // GetProvenance returns field-level provenance information for configuration
 func (l *Loader) GetProvenance(ctx context.Context, fieldPath string) (*FieldProvenance, error) {
-	// TODO: Implement provenance tracking
-	return nil, ErrProvenanceNotImplemented
+	// Look up provenance information for the field path
+	if provenance, exists := l.provenance[fieldPath]; exists {
+		return provenance, nil
+	}
+
+	// If no provenance tracked, return not found error
+	return nil, fmt.Errorf("%w: %s", ErrNoProvenanceInfo, fieldPath)
 }
 
 // GetSources returns information about all configured configuration sources
@@ -196,7 +213,7 @@ func (r *Reloader) IsWatching() bool {
 
 // applyDefaults applies default values to configuration struct using reflection
 func (l *Loader) applyDefaults(config interface{}) error {
-	return applyDefaultsRecursive(config, "")
+	return l.applyDefaultsRecursive(config, "")
 }
 
 // validateRequiredFields validates that all required fields are set
@@ -205,7 +222,7 @@ func (l *Loader) validateRequiredFields(config interface{}) error {
 }
 
 // applyDefaultsRecursive recursively applies defaults to struct fields
-func applyDefaultsRecursive(v interface{}, fieldPath string) error {
+func (l *Loader) applyDefaultsRecursive(v interface{}, fieldPath string) error {
 	if v == nil {
 		return nil
 	}
@@ -218,7 +235,7 @@ func applyDefaultsRecursive(v interface{}, fieldPath string) error {
 		}
 		rv = rv.Elem()
 	}
-	
+
 	if rv.Kind() != reflect.Struct {
 		return nil // Only process structs
 	}
@@ -227,7 +244,7 @@ func applyDefaultsRecursive(v interface{}, fieldPath string) error {
 	for i := 0; i < rv.NumField(); i++ {
 		field := rv.Field(i)
 		fieldType := rt.Field(i)
-		
+
 		// Skip unexported fields
 		if !field.CanSet() {
 			continue
@@ -247,17 +264,30 @@ func applyDefaultsRecursive(v interface{}, fieldPath string) error {
 			if err != nil {
 				return err
 			}
+
+			// Track provenance for this field
+			l.provenance[currentPath] = &FieldProvenance{
+				FieldPath:    currentPath,
+				Source:       "default",
+				SourceDetail: "struct-tag:" + fieldType.Name,
+				Value:        defaultValue,
+				Timestamp:    time.Now(),
+				Metadata: map[string]string{
+					"field_type": fieldType.Type.String(),
+					"tag_value":  defaultValue,
+				},
+			}
 		}
 
 		// Recursively process nested structs
 		if field.Kind() == reflect.Struct {
-			err := applyDefaultsRecursive(field.Addr().Interface(), currentPath)
+			err := l.applyDefaultsRecursive(field.Addr().Interface(), currentPath)
 			if err != nil {
 				return err
 			}
 		} else if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
 			if !field.IsNil() {
-				err := applyDefaultsRecursive(field.Interface(), currentPath)
+				err := l.applyDefaultsRecursive(field.Interface(), currentPath)
 				if err != nil {
 					return err
 				}
@@ -281,7 +311,7 @@ func validateRequiredRecursive(v interface{}, fieldPath string) error {
 		}
 		rv = rv.Elem()
 	}
-	
+
 	if rv.Kind() != reflect.Struct {
 		return nil
 	}
@@ -301,7 +331,7 @@ func validateRequiredRecursive(v interface{}, fieldPath string) error {
 		// Check for required tag
 		requiredTag := fieldType.Tag.Get("required")
 		if requiredTag == "true" && field.IsZero() {
-			return errors.New("required field " + currentPath + " is not set")
+			return fmt.Errorf("%w: %s", ErrRequiredFieldNotSet, currentPath)
 		}
 
 		// Recursively process nested structs
@@ -331,29 +361,90 @@ func setFieldValue(field reflect.Value, defaultValue string) error {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		val, err := strconv.ParseInt(defaultValue, 10, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing int value %q: %w", defaultValue, err)
 		}
 		field.SetInt(val)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		val, err := strconv.ParseUint(defaultValue, 10, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing uint value %q: %w", defaultValue, err)
 		}
 		field.SetUint(val)
 	case reflect.Float32, reflect.Float64:
 		val, err := strconv.ParseFloat(defaultValue, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing float value %q: %w", defaultValue, err)
 		}
 		field.SetFloat(val)
 	case reflect.Bool:
 		val, err := strconv.ParseBool(defaultValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing bool value %q: %w", defaultValue, err)
 		}
 		field.SetBool(val)
+	case reflect.Invalid, reflect.Uintptr, reflect.Complex64, reflect.Complex128,
+		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
+		reflect.Ptr, reflect.Slice, reflect.Struct, reflect.UnsafePointer:
+		// These types are not supported for default values
+		return fmt.Errorf("%w: %s", ErrUnsupportedFieldType, field.Kind().String())
 	default:
-		return errors.New("unsupported field type for default value: " + field.Kind().String())
+		// Fallback for any other types
+		return fmt.Errorf("%w: %s", ErrUnsupportedFieldType, field.Kind().String())
 	}
 	return nil
+}
+
+// RedactSecrets redacts sensitive field values in provenance information
+func (l *Loader) RedactSecrets(provenance *FieldProvenance) *FieldProvenance {
+	if provenance == nil {
+		return nil
+	}
+
+	// Create a copy to avoid modifying the original
+	redacted := &FieldProvenance{
+		FieldPath:    provenance.FieldPath,
+		Source:       provenance.Source,
+		SourceDetail: provenance.SourceDetail,
+		Value:        provenance.Value,
+		Timestamp:    provenance.Timestamp,
+		Metadata:     make(map[string]string),
+	}
+
+	// Copy metadata
+	for k, v := range provenance.Metadata {
+		redacted.Metadata[k] = v
+	}
+
+	// Check if field contains sensitive data
+	if isSecretField(provenance.FieldPath) {
+		redacted.Value = "[REDACTED]"
+		redacted.Metadata["redacted"] = "true"
+		redacted.Metadata["redaction_reason"] = "secret_field"
+	}
+
+	return redacted
+}
+
+// isSecretField determines if a field path contains sensitive information
+func isSecretField(fieldPath string) bool {
+	// Simple pattern matching for common secret field names
+	secretPatterns := []string{
+		"password", "secret", "key", "token", "credential",
+		"auth", "private", "cert", "ssl", "tls",
+	}
+
+	lowerPath := strings.ToLower(fieldPath)
+	for _, pattern := range secretPatterns {
+		if contains(lowerPath, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string contains a substring (simple implementation)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && (s[:len(substr)] == substr || contains(s[1:], substr))))
 }

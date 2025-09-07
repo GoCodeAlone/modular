@@ -165,10 +165,15 @@ type DispatchConfig struct {
 
 // EventMetrics represents metrics about event processing
 type EventMetrics struct {
-	TotalEvents      int64                 `json:"total_events"`
-	EventsByType     map[EventType]int64   `json:"events_by_type"`
-	EventsByStatus   map[EventStatus]int64 `json:"events_by_status"`
-	FailedDispatches int64                 `json:"failed_dispatches"`
-	AverageLatency   time.Duration         `json:"average_latency"`
-	LastEventTime    time.Time             `json:"last_event_time"`
+	TotalEvents          int64                 `json:"total_events"`
+	EventsByType         map[EventType]int64   `json:"events_by_type"`
+	EventsByStatus       map[EventStatus]int64 `json:"events_by_status"`
+	FailedDispatches     int64                 `json:"failed_dispatches"`
+	AverageLatency       time.Duration         `json:"average_latency"`
+	LastEventTime        time.Time             `json:"last_event_time"`
+	ActiveObservers      int64                 `json:"active_observers"`
+	BackpressureWarnings int64                 `json:"backpressure_warnings"`
+	DispatchErrors       int64                 `json:"dispatch_errors"`
+	ObserverErrors       int64                 `json:"observer_errors"`
+	ObserverPanics       int64                 `json:"observer_panics"`
 }
