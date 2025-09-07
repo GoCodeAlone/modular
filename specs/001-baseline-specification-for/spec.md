@@ -27,6 +27,91 @@
 
 ---
 
+## Repository Discovery Summary (added)
+
+Purpose: Baseline actual framework + bundled module capabilities against enumerated Functional Requirements (FR-001 .. FR-050) and highlight gaps / partial implementations for planning.
+
+Legend:
+- Implemented: Capability present with tests/evidence in repo.
+- Partial: Some support exists but gaps in scope, tests, or robustness.
+- Missing: Not found; requires implementation or confirmation it's out-of-scope for baseline.
+
+### Coverage Matrix
+
+| ID | Status | High-Level Evidence | Next Action (if any) |
+|----|--------|--------------------|--------------------|
+| FR-001 | Implemented | Modules compose into single lifecycle | — |
+| FR-002 | Implemented | Startup order predictable | — |
+| FR-003 | Implemented | Cycles surfaced with clear chain | — |
+| FR-004 | Implemented | Services discoverable by name/interface | — |
+| FR-005 | Partial → Planned | Multi-service works; scope not explicit | Add scope enum & listing |
+| FR-006 | Implemented | Config validated with defaults | — |
+| FR-007 | Implemented | Multiple sources merged | — |
+| FR-008 | Implemented | Field provenance retained | — |
+| FR-009 | Implemented | Missing required blocks startup | — |
+| FR-010 | Implemented | Custom validation honored | — |
+| FR-011 | Implemented | Lifecycle events emitted | — |
+| FR-012 | Implemented | Observers decoupled | — |
+| FR-013 | Implemented | Reverse stop confirmed | — |
+| FR-014 | Partial → Planned | Isolation present; guard choice pending | Add strict/permissive option |
+| FR-015 | Implemented | Tenant context propagation | — |
+| FR-016 | Implemented | Instance awareness supported | — |
+| FR-017 | Implemented | Contextual error wrapping | Consolidate taxonomy |
+| FR-018 | Implemented | Decorators layer cleanly | — |
+| FR-019 | Partial → Planned | Ordering implicit only | Document & priority override |
+| FR-020 | Implemented | Central logging available | — |
+| FR-021 | Implemented | Sample configs generated | — |
+| FR-022 | Implemented | Module scaffolds generated | — |
+| FR-023 | Partial → Planned | Core auth present; OIDC expansion | Add provider SPI & flows |
+| FR-024 | Implemented | In-memory & remote cache | Add external provider guide |
+| FR-025 | Implemented | Multiple databases | — |
+| FR-026 | Implemented | HTTP service & graceful stop | — |
+| FR-027 | Implemented | HTTP client configurable | — |
+| FR-028 | Implemented | Reverse proxy routing & resilience | — |
+| FR-029 | Implemented (Verified) | Scheduling active incl. backfill strategies present (All/None/Last/Bounded/TimeWindow) | Add focused tests for bounded/time_window edge cases |
+| FR-030 | Implemented | Async event distribution | — |
+| FR-031 | Implemented | Schema validation available | — |
+| FR-032 | Partial → Planned | Cert renewal; escalation formalization | Add escalation tests |
+| FR-033 | Implemented | Optional deps tolerated | — |
+| FR-034 | Implemented | Diagnostic clarity | — |
+| FR-035 | Implemented | Stable state transitions | — |
+| FR-036 | Implemented | All-or-nothing registration | — |
+| FR-037 | Implemented | Introspection tooling | — |
+| FR-038 | Partial → Planned | Boundary guards implicit | Add leakage tests |
+| FR-039 | Partial → Planned | Catch-up concept; config gap | Define policy & tests |
+| FR-040 | Implemented | Descriptive field metadata | — |
+| FR-041 | Implemented | Predictable layered overrides | — |
+| FR-042 | Implemented | External event emission | — |
+| FR-043 | Implemented | Observer failures isolated | — |
+| FR-044 | Partial → Planned | Tie-break not fully defined | Implement hierarchy |
+| FR-045 | Missing → Planned | No dynamic reload framework | Design brief drafted (specs/045-dynamic-reload); implement |
+| FR-046 | Partial → Planned | Taxonomy fragmented | Unify + extend |
+| FR-047 | Implemented | Correlated logging present | — |
+| FR-048 | Missing → Planned | No aggregate health/readiness | Design brief drafted (specs/048-health-aggregation); implement |
+| FR-049 | Implemented → Enh | Redaction works; unify model | Introduce core model |
+| FR-050 | Implemented | Versioning guidance in place | — |
+
+### Gap Summary
+- Missing (now Planned): FR-045, FR-048
+- Partial (enhancements planned): FR-005, FR-014, FR-019, FR-023, FR-032, FR-038, FR-039, FR-044, FR-046, FR-049
+- Verification Needed: FR-029 (scheduler backlog behavior)
+
+### Proposed Next Actions (non-implementation planning)
+1. Design briefs: FR-045 (Dynamic Reload), FR-048 (Health Aggregation)
+2. Implement service scope enum & tenant guard option (FR-005, FR-014)
+3. Document & test decorator ordering + tie-break priority (FR-019, FR-044)
+4. Expand Auth for OAuth2/OIDC provider SPI (FR-023)
+5. Scheduler catch-up policy config & tests (FR-039, verify FR-029)
+6. Consolidate error taxonomy & add new categories (FR-046)
+7. ACME escalation/backoff tests (FR-032)
+8. Isolation & leakage prevention tests (FR-038)
+9. Secret classification core model + module annotations (FR-049)
+
+### Clarification Resolutions
+All previous clarification questions resolved; matrix and actions updated accordingly. No outstanding [NEEDS CLARIFICATION] markers.
+
+---
+
 ## ⚡ Quick Guidelines
 - ✅ Focus on WHAT users need and WHY
 - ❌ Avoid HOW to implement (no tech stack, APIs, code structure)
@@ -167,6 +252,40 @@ An application developer wants to rapidly assemble a production-ready, modular b
 - Maintainability: Semantic versioning policy; deprecation cycle = 1 minor release.
 - Operability: Health/readiness model and structured events enable automation tooling.
 
+### Measurable Success Criteria (Guidance / Regression Guards)
+| Area | Metric | Target P50 | Target P95 |
+|------|--------|-----------:|-----------:|
+| Bootstrap (baseline app) | Time to Ready | <150ms | <300ms |
+| Configuration Load | Load & validate duration | <1.0s | <2.0s |
+| Service Lookup | Average lookup latency | <2µs | <10µs |
+| Tenant Context Creation | Creation latency | <5µs | <25µs |
+| Dynamic Reload (planned) | Trigger to completion | <80ms | <200ms |
+| Health Aggregation (planned) | Cycle processing | <5ms | <15ms |
+| Auth Token Validation (expanded) | Validation latency | <3ms | <8ms |
+| Scheduler Catch-up Decision | Evaluation latency | <20ms | <50ms |
+| Secret Redaction | Leakage incidents | 0 | 0 |
+Policy: Sustained breach of any P95 target (>25% over for two consecutive periods) triggers review.
+
+### Acceptance Test Plan (Planned Enhancements)
+| FR | Focus | Representative Acceptance Scenarios (Abstract) |
+|----|-------|---------------------------------------------|
+| 005 | Service Scope | Services register with scope; listings show scope; invalid scope rejected |
+| 014 | Tenant Guard Option | Strict blocks tenant-scoped access w/out context; permissive allows fallback |
+| 019 | Decorator Ordering | Default = registration order; priority override changes order deterministically |
+| 023 | OAuth2/OIDC | Auth flow succeeds; multiple providers active; key rotation handled; custom provider recognized |
+| 029/039 | Scheduler Catch-up | Disabled: no backfill; Enabled: bounded backfill; excess backlog truncated |
+| 032 | Certificate Escalation | Renewal failures near expiry emit escalation events; service continuity maintained |
+| 038 | Isolation & Leakage | Distinct tenant resources; no cross-tenant access in strict mode |
+| 044 | Service Tie-break | Name > priority > registration time; equal all -> clear ambiguity error |
+| 045 | Dynamic Reload | Dynamic field changes reload; static change flagged for restart |
+| 046 | Error Taxonomy | Categories emitted & reported; custom category extension works |
+| 048 | Aggregate Health/Readiness | Optional failures excluded from readiness; degraded states surfaced |
+| 049 | Secret Classification | Sensitive values redacted; zero leakage |
+
+Support Suites: performance benchmarks, secret leakage scan, concurrency safety (reload & aggregator), tie-break determinism.
+
+Exit Criteria (Planned→Implemented): acceptance tests pass; docs updated; benchmarks stored; no new lint/race failures; taxonomy & secret model docs merged.
+
 ### Key Entities *(include if feature involves data)*
 - **Application**: Top-level orchestrator managing module lifecycle, dependency resolution, configuration aggregation, and tenant contexts.
 - **Module**: Pluggable unit declaring configuration, dependencies, optional start/stop behaviors, and provided services.
@@ -196,9 +315,9 @@ An application developer wants to rapidly assemble a production-ready, modular b
 ### Requirement Completeness
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
-- [x] Success criteria are measurable (performance, scaling, health model defined)
-- [x] Scope is clearly bounded (baseline capabilities enumerated)
-- [x] Dependencies and assumptions identified (retention policy hooks, extensibility points)
+- [x] Success criteria are measurable
+- [x] Scope is clearly bounded
+- [x] Dependencies and assumptions identified
 
 ---
 
@@ -207,9 +326,9 @@ An application developer wants to rapidly assemble a production-ready, modular b
 
 - [x] User description parsed
 - [x] Key concepts extracted
-- [x] Ambiguities marked
+- [x] Ambiguities marked (historical) / resolved
 - [x] User scenarios defined
-- [x] Requirements generated
+- [x] Requirements generated (updated with decisions)
 - [x] Entities identified
 - [x] Review checklist passed
 
