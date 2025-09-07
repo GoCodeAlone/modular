@@ -58,44 +58,91 @@ func NewRegistry(config *RegistryConfig) *Registry {
 
 // Register registers a service with the registry
 func (r *Registry) Register(ctx context.Context, registration *ServiceRegistration) error {
-	// TODO: Implement full service registration with conflict resolution
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	now := time.Now()
+	
+	// Fill in registration metadata if not provided
+	if registration.RegisteredAt.IsZero() {
+		registration.RegisteredAt = now
+	}
+
+	// Check for existing service with the same name
+	if existing, exists := r.services[registration.Name]; exists {
+		// Handle conflict according to configuration
+		resolved, err := r.resolveConflict(existing, registration)
+		if err != nil {
+			return err
+		}
+		if resolved.ActualName != registration.Name {
+			// Service was renamed during conflict resolution
+			registration.Name = resolved.ActualName
+		}
+	}
+
 	entry := &ServiceEntry{
-		Registration:    registration,
-		Status:          ServiceStatusActive,
-		HealthStatus:    HealthStatusUnknown,
-		ActualName:      registration.Name,
-		ConflictedNames: nil,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-		AccessedAt:      time.Now(),
+		Registration: registration,
+		Status:       ServiceStatusActive,
+		HealthStatus: HealthStatusUnknown,
+		ActualName:   registration.Name,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		AccessedAt:   now,
+	}
+
+	// Initialize usage statistics if tracking is enabled
+	if r.config.EnableUsageTracking {
+		entry.Usage = &UsageStatistics{
+			AccessCount:    0,
+			LastAccessTime: now,
+		}
 	}
 
 	r.services[registration.Name] = entry
 
-	// TODO: Index by interface types
+	// Index by interface types for O(1) lookup
 	for _, interfaceType := range registration.InterfaceTypes {
 		r.byType[interfaceType] = append(r.byType[interfaceType], entry)
 	}
 
-	return ErrRegisterNotImplemented
+	return nil
 }
 
 // Unregister removes a service from the registry
 func (r *Registry) Unregister(ctx context.Context, name string) error {
-	// TODO: Implement service unregistration
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	entry, exists := r.services[name]
+	if !exists {
+		return ErrServiceNotFound
+	}
+
+	// Remove from name index
 	delete(r.services, name)
-	return ErrUnregisterNotImplemented
+
+	// Remove from interface type indexes
+	for _, interfaceType := range entry.Registration.InterfaceTypes {
+		entries := r.byType[interfaceType]
+		for i, e := range entries {
+			if e == entry {
+				// Remove this entry from the slice
+				r.byType[interfaceType] = append(entries[:i], entries[i+1:]...)
+				break
+			}
+		}
+		// Clean up empty slices
+		if len(r.byType[interfaceType]) == 0 {
+			delete(r.byType, interfaceType)
+		}
+	}
+
+	return nil
 }
 
 // ResolveByName resolves a service by its registered name
 func (r *Registry) ResolveByName(ctx context.Context, name string) (interface{}, error) {
-	// TODO: Implement name-based service resolution
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -105,17 +152,17 @@ func (r *Registry) ResolveByName(ctx context.Context, name string) (interface{},
 	}
 
 	// Update access time if usage tracking is enabled
-	if r.config.EnableUsageTracking {
-		// TODO: Update usage statistics
+	if r.config.EnableUsageTracking && entry.Usage != nil {
+		entry.Usage.AccessCount++
+		entry.Usage.LastAccessTime = time.Now()
 		entry.AccessedAt = time.Now()
 	}
 
-	return entry.Registration.Service, ErrResolveByNameNotImplemented
+	return entry.Registration.Service, nil
 }
 
 // ResolveByInterface resolves a service by its interface type
 func (r *Registry) ResolveByInterface(ctx context.Context, interfaceType reflect.Type) (interface{}, error) {
-	// TODO: Implement interface-based service resolution
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -124,16 +171,34 @@ func (r *Registry) ResolveByInterface(ctx context.Context, interfaceType reflect
 		return nil, ErrNoServicesFoundForInterface
 	}
 
-	if len(entries) > 1 {
-		return nil, ErrAmbiguousInterfaceResolution
+	if len(entries) == 1 {
+		// Single service, no ambiguity
+		entry := entries[0]
+		if r.config.EnableUsageTracking && entry.Usage != nil {
+			entry.Usage.AccessCount++
+			entry.Usage.LastAccessTime = time.Now()
+			entry.AccessedAt = time.Now()
+		}
+		return entry.Registration.Service, nil
 	}
 
-	return entries[0].Registration.Service, ErrResolveByInterfaceNotImplemented
+	// Multiple services - need tie-breaking
+	resolved, err := r.resolveTieBreak(entries)
+	if err != nil {
+		return nil, err
+	}
+
+	if r.config.EnableUsageTracking && resolved.Usage != nil {
+		resolved.Usage.AccessCount++
+		resolved.Usage.LastAccessTime = time.Now()
+		resolved.AccessedAt = time.Now()
+	}
+
+	return resolved.Registration.Service, nil
 }
 
 // ResolveAllByInterface resolves all services implementing an interface
 func (r *Registry) ResolveAllByInterface(ctx context.Context, interfaceType reflect.Type) ([]interface{}, error) {
-	// TODO: Implement multiple service resolution by interface
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -145,9 +210,16 @@ func (r *Registry) ResolveAllByInterface(ctx context.Context, interfaceType refl
 	services := make([]interface{}, len(entries))
 	for i, entry := range entries {
 		services[i] = entry.Registration.Service
+		
+		// Update usage statistics if enabled
+		if r.config.EnableUsageTracking && entry.Usage != nil {
+			entry.Usage.AccessCount++
+			entry.Usage.LastAccessTime = time.Now()
+			entry.AccessedAt = time.Now()
+		}
 	}
 
-	return services, ErrResolveAllByInterfaceNotImplemented
+	return services, nil
 }
 
 // List returns all registered services
@@ -309,4 +381,212 @@ func (v *Validator) ValidateDependencies(ctx context.Context, dependencies []str
 // AddRule adds a validation rule
 func (v *Validator) AddRule(rule func(*ServiceRegistration) error) {
 	v.rules = append(v.rules, rule)
+}
+
+// resolveConflict handles service name conflicts according to the configured resolution strategy
+func (r *Registry) resolveConflict(existing *ServiceEntry, new *ServiceRegistration) (*ServiceEntry, error) {
+	now := time.Now()
+	
+	switch r.config.ConflictResolution {
+	case ConflictResolutionError:
+		return nil, errors.New("service registration conflict: service name already exists")
+		
+	case ConflictResolutionOverwrite:
+		// Replace the existing service
+		entry := &ServiceEntry{
+			Registration: new,
+			Status:       ServiceStatusActive,
+			HealthStatus: HealthStatusUnknown,
+			ActualName:   new.Name,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			AccessedAt:   now,
+		}
+		if r.config.EnableUsageTracking {
+			entry.Usage = &UsageStatistics{
+				AccessCount:    0,
+				LastAccessTime: now,
+			}
+		}
+		return entry, nil
+		
+	case ConflictResolutionRename:
+		// Auto-rename the new service
+		resolvedName := r.findAvailableName(new.Name)
+		new.Name = resolvedName
+		entry := &ServiceEntry{
+			Registration:    new,
+			Status:          ServiceStatusActive,
+			HealthStatus:    HealthStatusUnknown,
+			ActualName:      resolvedName,
+			ConflictedNames: []string{new.Name}, // Original name that conflicted
+			CreatedAt:       now,
+			UpdatedAt:       now,
+			AccessedAt:      now,
+		}
+		if r.config.EnableUsageTracking {
+			entry.Usage = &UsageStatistics{
+				AccessCount:    0,
+				LastAccessTime: now,
+			}
+		}
+		return entry, nil
+		
+	case ConflictResolutionPriority:
+		// Use priority to decide (higher priority wins)
+		if new.Priority > existing.Registration.Priority {
+			// New service has higher priority, replace existing
+			entry := &ServiceEntry{
+				Registration: new,
+				Status:       ServiceStatusActive,
+				HealthStatus: HealthStatusUnknown,
+				ActualName:   new.Name,
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				AccessedAt:   now,
+			}
+			if r.config.EnableUsageTracking {
+				entry.Usage = &UsageStatistics{
+					AccessCount:    0,
+					LastAccessTime: now,
+				}
+			}
+			return entry, nil
+		}
+		// Existing service has higher or equal priority, ignore new registration
+		return existing, nil
+		
+	case ConflictResolutionIgnore:
+		// Keep existing service, ignore new registration
+		return existing, nil
+		
+	default:
+		return nil, errors.New("unknown conflict resolution strategy")
+	}
+}
+
+// resolveTieBreak resolves ambiguity when multiple services implement the same interface
+// Priority order: explicit name > priority > registration time (earliest wins)
+func (r *Registry) resolveTieBreak(entries []*ServiceEntry) (*ServiceEntry, error) {
+	if len(entries) == 0 {
+		return nil, ErrNoServicesFoundForInterface
+	}
+	
+	if len(entries) == 1 {
+		return entries[0], nil
+	}
+
+	// Step 1: Check for explicit name matches (services with most specific names)
+	// For now, we'll use the concept that shorter names are more explicit
+	minNameLength := len(entries[0].ActualName)
+	explicitEntries := []*ServiceEntry{entries[0]}
+	
+	for i := 1; i < len(entries); i++ {
+		nameLen := len(entries[i].ActualName)
+		if nameLen < minNameLength {
+			minNameLength = nameLen
+			explicitEntries = []*ServiceEntry{entries[i]}
+		} else if nameLen == minNameLength {
+			explicitEntries = append(explicitEntries, entries[i])
+		}
+	}
+	
+	if len(explicitEntries) == 1 {
+		return explicitEntries[0], nil
+	}
+
+	// Step 2: Compare priorities (higher priority wins)
+	maxPriority := explicitEntries[0].Registration.Priority
+	priorityEntries := []*ServiceEntry{explicitEntries[0]}
+	
+	for i := 1; i < len(explicitEntries); i++ {
+		priority := explicitEntries[i].Registration.Priority
+		if priority > maxPriority {
+			maxPriority = priority
+			priorityEntries = []*ServiceEntry{explicitEntries[i]}
+		} else if priority == maxPriority {
+			priorityEntries = append(priorityEntries, explicitEntries[i])
+		}
+	}
+	
+	if len(priorityEntries) == 1 {
+		return priorityEntries[0], nil
+	}
+
+	// Step 3: Use registration time (earliest wins)
+	earliest := priorityEntries[0]
+	for i := 1; i < len(priorityEntries); i++ {
+		if priorityEntries[i].Registration.RegisteredAt.Before(earliest.Registration.RegisteredAt) {
+			earliest = priorityEntries[i]
+		}
+	}
+
+	// If we still have ties, format an error with all conflicting services
+	if len(priorityEntries) > 1 {
+		names := make([]string, 0, len(priorityEntries))
+		for _, entry := range priorityEntries {
+			names = append(names, entry.ActualName)
+		}
+		return nil, errors.New("ambiguous interface resolution: multiple services with equal priority and registration time: " + 
+			"[" + joinStrings(names, ", ") + "]")
+	}
+
+	return earliest, nil
+}
+
+// findAvailableName finds an available name by appending a suffix
+func (r *Registry) findAvailableName(baseName string) string {
+	if _, exists := r.services[baseName]; !exists {
+		return baseName
+	}
+	
+	for i := 1; i < 1000; i++ { // Reasonable limit to prevent infinite loop
+		candidate := baseName + "-" + intToString(i)
+		if _, exists := r.services[candidate]; !exists {
+			return candidate
+		}
+	}
+	
+	// Fallback to timestamp-based suffix
+	return baseName + "-" + intToString(int(time.Now().Unix()%1000))
+}
+
+// intToString converts an integer to string (simple implementation)
+func intToString(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	
+	negative := i < 0
+	if negative {
+		i = -i
+	}
+	
+	digits := []byte{}
+	for i > 0 {
+		digits = append([]byte{byte('0'+i%10)}, digits...)
+		i /= 10
+	}
+	
+	if negative {
+		digits = append([]byte{'-'}, digits...)
+	}
+	
+	return string(digits)
+}
+
+// joinStrings joins a slice of strings with a separator (utility function)
+func joinStrings(strs []string, separator string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	if len(strs) == 1 {
+		return strs[0]
+	}
+	
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += separator + strs[i]
+	}
+	return result
 }

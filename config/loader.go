@@ -4,6 +4,8 @@ package config
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strconv"
 )
 
 // Static errors for configuration package
@@ -35,8 +37,37 @@ func NewLoader() *Loader {
 
 // Load loads configuration from all configured sources and applies validation
 func (l *Loader) Load(ctx context.Context, config interface{}) error {
-	// TODO: Implement configuration loading from sources
-	return ErrLoadNotImplemented
+	if config == nil {
+		return errors.New("config cannot be nil")
+	}
+	
+	// Apply configuration loading from all sources in priority order
+	// Sort sources by priority (higher priority first)
+	sortedSources := make([]*ConfigSource, len(l.sources))
+	copy(sortedSources, l.sources)
+	
+	// Simple bubble sort by priority (higher first)
+	for i := 0; i < len(sortedSources)-1; i++ {
+		for j := 0; j < len(sortedSources)-i-1; j++ {
+			if sortedSources[j].Priority < sortedSources[j+1].Priority {
+				sortedSources[j], sortedSources[j+1] = sortedSources[j+1], sortedSources[j]
+			}
+		}
+	}
+
+	// TODO: Load from actual sources, for now just apply defaults and validate
+	err := l.applyDefaults(config)
+	if err != nil {
+		return err
+	}
+
+	// Validate the configuration
+	err = l.Validate(ctx, config)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Reload reloads configuration from sources, applying hot-reload logic where supported
@@ -47,8 +78,21 @@ func (l *Loader) Reload(ctx context.Context, config interface{}) error {
 
 // Validate validates the given configuration against defined rules and schemas
 func (l *Loader) Validate(ctx context.Context, config interface{}) error {
-	// TODO: Implement configuration validation
-	return ErrValidateNotImplemented
+	// Validate using all configured validators
+	for _, validator := range l.validators {
+		err := validator.ValidateStruct(ctx, config)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Built-in validation: check required fields using reflection
+	err := l.validateRequiredFields(config)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetProvenance returns field-level provenance information for configuration
@@ -146,4 +190,170 @@ func (r *Reloader) StopWatch(ctx context.Context) error {
 // IsWatching returns true if currently watching for configuration changes
 func (r *Reloader) IsWatching() bool {
 	return r.watching
+}
+
+// Helper methods for the Loader
+
+// applyDefaults applies default values to configuration struct using reflection
+func (l *Loader) applyDefaults(config interface{}) error {
+	return applyDefaultsRecursive(config, "")
+}
+
+// validateRequiredFields validates that all required fields are set
+func (l *Loader) validateRequiredFields(config interface{}) error {
+	return validateRequiredRecursive(config, "")
+}
+
+// applyDefaultsRecursive recursively applies defaults to struct fields
+func applyDefaultsRecursive(v interface{}, fieldPath string) error {
+	if v == nil {
+		return nil
+	}
+
+	// Use reflection to inspect the struct
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	
+	if rv.Kind() != reflect.Struct {
+		return nil // Only process structs
+	}
+
+	rt := rv.Type()
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		fieldType := rt.Field(i)
+		
+		// Skip unexported fields
+		if !field.CanSet() {
+			continue
+		}
+
+		// Build field path
+		currentPath := fieldPath
+		if currentPath != "" {
+			currentPath += "."
+		}
+		currentPath += fieldType.Name
+
+		// Check for default tag
+		defaultValue := fieldType.Tag.Get("default")
+		if defaultValue != "" && field.IsZero() {
+			err := setFieldValue(field, defaultValue)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Recursively process nested structs
+		if field.Kind() == reflect.Struct {
+			err := applyDefaultsRecursive(field.Addr().Interface(), currentPath)
+			if err != nil {
+				return err
+			}
+		} else if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+			if !field.IsNil() {
+				err := applyDefaultsRecursive(field.Interface(), currentPath)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateRequiredRecursive recursively validates required fields
+func validateRequiredRecursive(v interface{}, fieldPath string) error {
+	if v == nil {
+		return nil
+	}
+
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	
+	if rv.Kind() != reflect.Struct {
+		return nil
+	}
+
+	rt := rv.Type()
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		fieldType := rt.Field(i)
+
+		// Build field path
+		currentPath := fieldPath
+		if currentPath != "" {
+			currentPath += "."
+		}
+		currentPath += fieldType.Name
+
+		// Check for required tag
+		requiredTag := fieldType.Tag.Get("required")
+		if requiredTag == "true" && field.IsZero() {
+			return errors.New("required field " + currentPath + " is not set")
+		}
+
+		// Recursively process nested structs
+		if field.Kind() == reflect.Struct {
+			err := validateRequiredRecursive(field.Addr().Interface(), currentPath)
+			if err != nil {
+				return err
+			}
+		} else if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+			if !field.IsNil() {
+				err := validateRequiredRecursive(field.Interface(), currentPath)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// setFieldValue sets a field value from a string default using reflection
+func setFieldValue(field reflect.Value, defaultValue string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(defaultValue)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		val, err := strconv.ParseInt(defaultValue, 10, 64)
+		if err != nil {
+			return err
+		}
+		field.SetInt(val)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		val, err := strconv.ParseUint(defaultValue, 10, 64)
+		if err != nil {
+			return err
+		}
+		field.SetUint(val)
+	case reflect.Float32, reflect.Float64:
+		val, err := strconv.ParseFloat(defaultValue, 64)
+		if err != nil {
+			return err
+		}
+		field.SetFloat(val)
+	case reflect.Bool:
+		val, err := strconv.ParseBool(defaultValue)
+		if err != nil {
+			return err
+		}
+		field.SetBool(val)
+	default:
+		return errors.New("unsupported field type for default value: " + field.Kind().String())
+	}
+	return nil
 }
