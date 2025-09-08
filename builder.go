@@ -25,6 +25,16 @@ type ApplicationBuilder struct {
 // ObserverFunc is a functional observer that can be registered with the application
 type ObserverFunc func(ctx context.Context, event cloudevents.Event) error
 
+// NewApplicationBuilder creates a new application builder that can be used to
+// configure and construct applications step by step.
+func NewApplicationBuilder() *ApplicationBuilder {
+	return &ApplicationBuilder{
+		modules:          make([]Module, 0),
+		configDecorators: make([]ConfigDecorator, 0),
+		observers:        make([]ObserverFunc, 0),
+	}
+}
+
 // NewApplication creates a new application with the provided options.
 // This is the main entry point for the new builder API.
 func NewApplication(opts ...Option) (Application, error) {
