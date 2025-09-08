@@ -163,3 +163,13 @@ func (d *BaseApplicationDecorator) GetObservers() []ObserverInfo {
 	}
 	return nil
 }
+
+// RequestReload forwards to the inner application's RequestReload method
+func (d *BaseApplicationDecorator) RequestReload(sections ...string) error {
+	return d.inner.RequestReload(sections...) //nolint:wrapcheck // Forwarding call
+}
+
+// RegisterHealthProvider forwards to the inner application's RegisterHealthProvider method
+func (d *BaseApplicationDecorator) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
+	return d.inner.RegisterHealthProvider(moduleName, provider, optional) //nolint:wrapcheck // Forwarding call
+}

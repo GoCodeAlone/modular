@@ -102,6 +102,9 @@ var (
 	ErrCreatedNilProvider         = errors.New("created nil provider for tenant section")
 	ErrIncompatibleFieldTypes     = errors.New("incompatible types for field assignment")
 	ErrIncompatibleInterfaceValue = errors.New("incompatible interface value for field")
+
+	// Dynamic reload errors
+	ErrReloadNotSupported = errors.New("dynamic reload not supported")
 )
 
 // Error checking helper functions

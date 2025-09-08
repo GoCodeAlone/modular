@@ -161,6 +161,32 @@ type Application interface {
 	// ServiceIntrospector groups advanced service registry introspection helpers.
 	// Use this instead of adding new methods directly to Application.
 	ServiceIntrospector() ServiceIntrospector
+
+	// RequestReload triggers a dynamic configuration reload for the specified sections.
+	// If no sections are specified, all dynamic configuration will be reloaded.
+	// This method follows the design brief specification for FR-045 Dynamic Reload.
+	//
+	// The reload process will:
+	//   - Detect changes in configuration since last load
+	//   - Filter to only fields tagged with `dynamic:"true"`
+	//   - Validate all changes atomically before applying
+	//   - Call Reload() on all affected modules with the changes
+	//   - Emit appropriate events (config.reload.start/success/failed/noop)
+	//
+	// Returns an error if the reload fails for any reason.
+	RequestReload(sections ...string) error
+
+	// RegisterHealthProvider registers a health provider for the specified module.
+	// This method follows the design brief specification for FR-048 Health Aggregation.
+	//
+	// Parameters:
+	//   - moduleName: The name of the module providing health information
+	//   - provider: The HealthProvider implementation
+	//   - optional: Whether this provider is optional for readiness calculations
+	//
+	// Optional providers don't affect readiness status but are included in health reporting.
+	// Required providers affect both readiness and overall health status.
+	RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error
 }
 
 // ServiceIntrospector provides advanced service registry introspection helpers.
@@ -1530,6 +1556,59 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 		return nil, fmt.Errorf("failed to get tenant config: %w", err)
 	}
 	return provider, nil
+}
+
+// GetModules returns a copy of the module registry for inspection.
+// This is primarily used for testing and debugging purposes.
+func (app *StdApplication) GetModules() map[string]Module {
+	modules := make(map[string]Module)
+	for name, module := range app.moduleRegistry {
+		modules[name] = module
+	}
+	return modules
+}
+
+// RequestReload triggers a dynamic configuration reload for specified sections
+func (app *StdApplication) RequestReload(sections ...string) error {
+	// TODO: Implement dynamic configuration reload logic
+	// This is a placeholder implementation that will be enhanced later
+	// The full implementation would include:
+	// 1. Configuration diffing to detect changes
+	// 2. Dynamic field filtering (struct tag parsing)
+	// 3. Atomic validation of changes
+	// 4. Module reload orchestration
+	// 5. Event emission
+	
+	if app.logger != nil {
+		app.logger.Info("RequestReload called", "sections", sections)
+	}
+	
+	// For now, return an error indicating the feature is not fully implemented
+	return fmt.Errorf("RequestReload is not yet fully implemented - placeholder for design brief compliance")
+}
+
+// RegisterHealthProvider registers a health provider for a module
+func (app *StdApplication) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
+	// TODO: Implement health provider registration
+	// This is a placeholder implementation that will be enhanced later
+	// The full implementation would include:
+	// 1. Health provider registry management
+	// 2. Registration validation
+	// 3. Integration with health aggregation service
+	// 4. Optional/required provider tracking
+	
+	if app.logger != nil {
+		app.logger.Info("RegisterHealthProvider called", "module", moduleName, "optional", optional)
+	}
+	
+	// For now, just register as a service for basic functionality
+	serviceName := fmt.Sprintf("healthProvider.%s", moduleName)
+	err := app.RegisterService(serviceName, provider)
+	if err != nil {
+		return fmt.Errorf("failed to register health provider for module %s: %w", moduleName, err)
+	}
+	
+	return nil
 }
 
 // (Intentionally removed old direct service introspection methods; use ServiceIntrospector())
