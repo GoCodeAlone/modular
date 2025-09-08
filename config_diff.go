@@ -480,10 +480,223 @@ func compareValues(a, b interface{}) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-// Additional types referenced in tests but not yet defined
+// ReloadTrigger represents what triggered a configuration reload
 type ReloadTrigger int
 
-// Basic trigger constants
+// Reload trigger constants
 const (
+	// ReloadTriggerManual indicates the reload was triggered manually
 	ReloadTriggerManual ReloadTrigger = iota
+	
+	// ReloadTriggerFileChange indicates the reload was triggered by file changes
+	ReloadTriggerFileChange
+	
+	// ReloadTriggerAPIRequest indicates the reload was triggered by API request
+	ReloadTriggerAPIRequest
+	
+	// ReloadTriggerScheduled indicates the reload was triggered by schedule
+	ReloadTriggerScheduled
 )
+
+// String returns the string representation of the reload trigger
+func (r ReloadTrigger) String() string {
+	switch r {
+	case ReloadTriggerManual:
+		return "manual"
+	case ReloadTriggerFileChange:
+		return "file_change"
+	case ReloadTriggerAPIRequest:
+		return "api_request"
+	case ReloadTriggerScheduled:
+		return "scheduled"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseReloadTrigger parses a string into a ReloadTrigger
+func ParseReloadTrigger(s string) (ReloadTrigger, error) {
+	switch s {
+	case "manual":
+		return ReloadTriggerManual, nil
+	case "file_change":
+		return ReloadTriggerFileChange, nil
+	case "api_request":
+		return ReloadTriggerAPIRequest, nil
+	case "scheduled":
+		return ReloadTriggerScheduled, nil
+	default:
+		return 0, fmt.Errorf("invalid reload trigger: %s", s)
+	}
+}
+
+// Reload event types
+
+// ConfigReloadStartedEvent represents an event emitted when a config reload starts
+type ConfigReloadStartedEvent struct {
+	// ReloadID is a unique identifier for this reload operation
+	ReloadID string
+	
+	// Timestamp indicates when the reload started
+	Timestamp time.Time
+	
+	// TriggerType indicates what triggered this reload
+	TriggerType ReloadTrigger
+	
+	// ConfigDiff contains the configuration changes that triggered this reload
+	ConfigDiff *ConfigDiff
+}
+
+// EventType returns the standardized event type for reload started events
+func (e *ConfigReloadStartedEvent) EventType() string {
+	return "config.reload.started"
+}
+
+// EventSource returns the standardized event source for reload started events  
+func (e *ConfigReloadStartedEvent) EventSource() string {
+	return "modular.core"
+}
+
+// GetEventType returns the type identifier for this event (implements ObserverEvent)
+func (e *ConfigReloadStartedEvent) GetEventType() string {
+	return e.EventType()
+}
+
+// GetEventSource returns the source that generated this event (implements ObserverEvent)
+func (e *ConfigReloadStartedEvent) GetEventSource() string {
+	return e.EventSource()
+}
+
+// GetTimestamp returns when this event occurred (implements ObserverEvent)
+func (e *ConfigReloadStartedEvent) GetTimestamp() time.Time {
+	return e.Timestamp
+}
+
+// ConfigReloadCompletedEvent represents an event emitted when a config reload completes
+type ConfigReloadCompletedEvent struct {
+	// ReloadID is a unique identifier for this reload operation
+	ReloadID string
+	
+	// Timestamp indicates when the reload completed
+	Timestamp time.Time
+	
+	// Success indicates whether the reload was successful
+	Success bool
+	
+	// Duration indicates how long the reload took
+	Duration time.Duration
+	
+	// AffectedModules lists the modules that were affected by this reload
+	AffectedModules []string
+	
+	// Error contains error details if Success is false
+	Error string
+	
+	// ChangesApplied contains the number of configuration changes that were applied
+	ChangesApplied int
+}
+
+// EventType returns the standardized event type for reload completed events
+func (e *ConfigReloadCompletedEvent) EventType() string {
+	return "config.reload.completed"
+}
+
+// EventSource returns the standardized event source for reload completed events  
+func (e *ConfigReloadCompletedEvent) EventSource() string {
+	return "modular.core"
+}
+
+// GetEventType returns the type identifier for this event (implements ObserverEvent)
+func (e *ConfigReloadCompletedEvent) GetEventType() string {
+	return e.EventType()
+}
+
+// GetEventSource returns the source that generated this event (implements ObserverEvent)
+func (e *ConfigReloadCompletedEvent) GetEventSource() string {
+	return e.EventSource()
+}
+
+// GetTimestamp returns when this event occurred (implements ObserverEvent)
+func (e *ConfigReloadCompletedEvent) GetTimestamp() time.Time {
+	return e.Timestamp
+}
+
+// ConfigReloadFailedEvent represents an event emitted when a config reload fails
+type ConfigReloadFailedEvent struct {
+	// ReloadID is a unique identifier for this reload operation
+	ReloadID string
+	
+	// Timestamp indicates when the reload failed
+	Timestamp time.Time
+	
+	// Error contains the error that caused the failure
+	Error string
+	
+	// FailedModule contains the name of the module that caused the failure (if applicable)
+	FailedModule string
+	
+	// Duration indicates how long the reload attempt took before failing
+	Duration time.Duration
+}
+
+// EventType returns the standardized event type for reload failed events
+func (e *ConfigReloadFailedEvent) EventType() string {
+	return "config.reload.failed"
+}
+
+// EventSource returns the standardized event source for reload failed events  
+func (e *ConfigReloadFailedEvent) EventSource() string {
+	return "modular.core"
+}
+
+// GetEventType returns the type identifier for this event (implements ObserverEvent)
+func (e *ConfigReloadFailedEvent) GetEventType() string {
+	return e.EventType()
+}
+
+// GetEventSource returns the source that generated this event (implements ObserverEvent)
+func (e *ConfigReloadFailedEvent) GetEventSource() string {
+	return e.EventSource()
+}
+
+// GetTimestamp returns when this event occurred (implements ObserverEvent)
+func (e *ConfigReloadFailedEvent) GetTimestamp() time.Time {
+	return e.Timestamp
+}
+
+// ConfigReloadNoopEvent represents an event emitted when a config reload is a no-op
+type ConfigReloadNoopEvent struct {
+	// ReloadID is a unique identifier for this reload operation
+	ReloadID string
+	
+	// Timestamp indicates when the no-op was determined
+	Timestamp time.Time
+	
+	// Reason indicates why this was a no-op (e.g., "no changes detected")
+	Reason string
+}
+
+// EventType returns the standardized event type for reload noop events
+func (e *ConfigReloadNoopEvent) EventType() string {
+	return "config.reload.noop"
+}
+
+// EventSource returns the standardized event source for reload noop events  
+func (e *ConfigReloadNoopEvent) EventSource() string {
+	return "modular.core"
+}
+
+// GetEventType returns the type identifier for this event (implements ObserverEvent)
+func (e *ConfigReloadNoopEvent) GetEventType() string {
+	return e.EventType()
+}
+
+// GetEventSource returns the source that generated this event (implements ObserverEvent)
+func (e *ConfigReloadNoopEvent) GetEventSource() string {
+	return e.EventSource()
+}
+
+// GetTimestamp returns when this event occurred (implements ObserverEvent)
+func (e *ConfigReloadNoopEvent) GetTimestamp() time.Time {
+	return e.Timestamp
+}
