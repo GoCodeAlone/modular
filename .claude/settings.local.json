@@ -5,7 +5,10 @@
       "Bash(scripts/check-task-prerequisites.sh:*)",
       "Bash(chmod:*)",
       "Bash(find:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(gh pr create:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
