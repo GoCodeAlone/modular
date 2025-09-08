@@ -15,8 +15,8 @@ import (
 
 // Static errors for application
 var (
-	ErrDynamicReloadNotAvailable = errors.New("dynamic reload not available - use WithDynamicReload() option when creating application")
-	ErrInvalidHealthAggregator   = errors.New("invalid health aggregator service")
+	ErrDynamicReloadNotAvailable    = errors.New("dynamic reload not available - use WithDynamicReload() option when creating application")
+	ErrInvalidHealthAggregator      = errors.New("invalid health aggregator service")
 	ErrHealthAggregatorNotAvailable = errors.New("health aggregator not available - use WithHealthAggregator() option when creating application")
 )
 
@@ -1611,7 +1611,10 @@ func (app *StdApplication) RequestReload(sections ...string) error {
 		if orchestrator, ok := service.(reloadable); ok {
 			// Use the registered orchestrator
 			ctx := context.Background()
-			return orchestrator.RequestReload(ctx, sections...)
+			if err := orchestrator.RequestReload(ctx, sections...); err != nil {
+				return fmt.Errorf("reload orchestrator request failed: %w", err)
+			}
+			return nil
 		}
 	}
 

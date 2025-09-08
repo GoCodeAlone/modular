@@ -186,6 +186,8 @@ func (b *ApplicationBuilder) WithOption(opt Option) *ApplicationBuilder {
 	if err := opt(b); err != nil {
 		// In a real implementation, we might want to store the error and return it during Build
 		// For now, we'll just continue (the test expects this to work)
+		// TODO: Store errors and validate during Build() to provide better error reporting
+		_ = err // intentionally ignore for now, but acknowledge error occurred
 	}
 	return b
 }

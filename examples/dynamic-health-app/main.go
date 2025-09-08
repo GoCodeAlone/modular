@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -99,16 +100,25 @@ func (m *DatabaseModule) Init(app modular.Application) error {
 	m.db = db
 
 	// Register as health provider (required component)
-	return app.RegisterHealthProvider("database", m, false)
+	if err := app.RegisterHealthProvider("database", m, false); err != nil {
+		return fmt.Errorf("failed to register database health provider: %w", err)
+	}
+	return nil
 }
 
 func (m *DatabaseModule) Start(ctx context.Context) error {
 	// Verify database connection
-	return m.db.PingContext(ctx)
+	if err := m.db.PingContext(ctx); err != nil {
+		return fmt.Errorf("database ping failed: %w", err)
+	}
+	return nil
 }
 
 func (m *DatabaseModule) Stop(ctx context.Context) error {
-	return m.db.Close()
+	if err := m.db.Close(); err != nil {
+		return fmt.Errorf("database close failed: %w", err)
+	}
+	return nil
 }
 
 // HealthCheck implements the HealthProvider interface
@@ -220,7 +230,7 @@ type CacheModule struct {
 }
 
 type cacheEntry struct {
-	value      interface{}
+	value      interface{} //nolint:unused // placeholder for future cache implementation
 	expiration time.Time
 }
 
@@ -239,7 +249,10 @@ func (m *CacheModule) Name() string {
 func (m *CacheModule) Init(app modular.Application) error {
 	m.app = app
 	// Register as optional health provider
-	return app.RegisterHealthProvider("cache", m, true)
+	if err := app.RegisterHealthProvider("cache", m, true); err != nil {
+		return fmt.Errorf("failed to register cache health provider: %w", err)
+	}
+	return nil
 }
 
 func (m *CacheModule) Start(ctx context.Context) error {
@@ -393,7 +406,7 @@ func (s *HTTPServer) Init(app modular.Application) error {
 func (s *HTTPServer) Start(ctx context.Context) error {
 	go func() {
 		log.Printf("HTTP server starting on port %d", s.config.Port)
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("HTTP server error: %v", err)
 		}
 	}()
@@ -401,7 +414,10 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 }
 
 func (s *HTTPServer) Stop(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
+	if err := s.server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("HTTP server shutdown failed: %w", err)
+	}
+	return nil
 }
 
 func (s *HTTPServer) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -425,7 +441,9 @@ func (s *HTTPServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(aggregated)
+	if err := json.NewEncoder(w).Encode(aggregated); err != nil {
+		log.Printf("Failed to encode health response: %v", err)
+	}
 }
 
 func (s *HTTPServer) readinessHandler(w http.ResponseWriter, r *http.Request) {
@@ -455,7 +473,9 @@ func (s *HTTPServer) readinessHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Failed to encode readiness response: %v", err)
+	}
 }
 
 func (s *HTTPServer) livenessHandler(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +485,9 @@ func (s *HTTPServer) livenessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Failed to encode liveness response: %v", err)
+	}
 }
 
 func (s *HTTPServer) reloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -481,23 +503,27 @@ func (s *HTTPServer) reloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
 		"message": "Configuration reload initiated",
-	})
+	}); err != nil {
+		log.Printf("Failed to encode reload response: %v", err)
+	}
 }
 
 func (s *HTTPServer) configHandler(w http.ResponseWriter, r *http.Request) {
 	// This would normally return the current configuration
 	// For demo purposes, return a simple status
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"server": map[string]interface{}{
 			"port":          s.config.Port,
 			"read_timeout":  s.config.ReadTimeout.String(),
 			"write_timeout": s.config.WriteTimeout.String(),
 		},
-	})
+	}); err != nil {
+		log.Printf("Failed to encode config response: %v", err)
+	}
 }
 
 func main() {

@@ -37,6 +37,8 @@ func (s HealthStatus) String() string {
 		return "degraded"
 	case HealthStatusUnhealthy:
 		return "unhealthy"
+	case HealthStatusUnknown:
+		return "unknown"
 	default:
 		return "unknown"
 	}
@@ -274,7 +276,7 @@ func ParseHealthTrigger(s string) (HealthTrigger, error) {
 	case "post_reload":
 		return HealthTriggerPostReload, nil
 	default:
-		return 0, fmt.Errorf("invalid health trigger: %s", s)
+		return 0, fmt.Errorf("%w: %s", ErrInvalidHealthTrigger, s)
 	}
 }
 

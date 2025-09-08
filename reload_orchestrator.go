@@ -27,7 +27,7 @@ type ReloadOrchestrator struct {
 	// Request queueing
 	requestQueue chan reloadRequest
 	processing   int32      // Use atomic operations: 0 = not processing, 1 = processing
-	processingMu sync.Mutex // Keep for compatibility with other fields
+	processingMu sync.Mutex //nolint:unused // Keep for compatibility with other fields
 
 	// Failure tracking for backoff
 	lastFailure  time.Time
@@ -119,10 +119,10 @@ func (o *ReloadOrchestrator) SetEventSubject(subject Subject) {
 // RegisterModule registers a reloadable module with the orchestrator
 func (o *ReloadOrchestrator) RegisterModule(name string, module Reloadable) error {
 	if name == "" {
-		return fmt.Errorf("reload orchestrator: module name cannot be empty")
+		return ErrReloadModuleNameEmpty
 	}
 	if module == nil {
-		return fmt.Errorf("reload orchestrator: module cannot be nil")
+		return ErrReloadModuleNil
 	}
 
 	o.mu.Lock()
@@ -130,7 +130,7 @@ func (o *ReloadOrchestrator) RegisterModule(name string, module Reloadable) erro
 
 	// Check for duplicate registration
 	if _, exists := o.modules[name]; exists {
-		return fmt.Errorf("reload orchestrator: module '%s' already registered", name)
+		return fmt.Errorf("%w: '%s'", ErrReloadModuleAlreadyExists, name)
 	}
 
 	o.modules[name] = reloadableModule{
@@ -148,7 +148,7 @@ func (o *ReloadOrchestrator) UnregisterModule(name string) error {
 	defer o.mu.Unlock()
 
 	if _, exists := o.modules[name]; !exists {
-		return fmt.Errorf("reload orchestrator: no module registered with name '%s'", name)
+		return fmt.Errorf("%w: with name '%s'", ErrReloadModuleNotFound, name)
 	}
 
 	delete(o.modules, name)
@@ -160,7 +160,7 @@ func (o *ReloadOrchestrator) UnregisterModule(name string) error {
 func (o *ReloadOrchestrator) RequestReload(ctx context.Context, sections ...string) error {
 	// Check if already processing using atomic operation
 	if !atomic.CompareAndSwapInt32(&o.processing, 0, 1) {
-		return fmt.Errorf("reload orchestrator: reload already in progress")
+		return ErrReloadInProgress
 	}
 
 	// Generate reload ID
@@ -185,16 +185,16 @@ func (o *ReloadOrchestrator) RequestReload(ctx context.Context, sections ...stri
 		case <-ctx.Done():
 			// Reset processing flag if we timeout
 			atomic.StoreInt32(&o.processing, 0)
-			return ctx.Err()
+			return fmt.Errorf("reload request timed out: %w", ctx.Err())
 		}
 	case <-ctx.Done():
 		// Reset processing flag if context is cancelled
 		atomic.StoreInt32(&o.processing, 0)
-		return ctx.Err()
+		return fmt.Errorf("reload request cancelled: %w", ctx.Err())
 	default:
 		// Reset processing flag if queue is full
 		atomic.StoreInt32(&o.processing, 0)
-		return fmt.Errorf("reload orchestrator: request queue is full")
+		return ErrReloadQueueFull
 	}
 }
 
@@ -218,7 +218,7 @@ func (o *ReloadOrchestrator) handleReloadRequest(request reloadRequest) {
 	// Check backoff
 	if o.shouldBackoff() {
 		backoffDuration := o.calculateBackoff()
-		request.response <- reloadResponse{err: fmt.Errorf("reload orchestrator: backing off for %v after recent failures", backoffDuration)}
+		request.response <- reloadResponse{err: fmt.Errorf("%w: for %v", ErrReloadBackoffActive, backoffDuration)}
 		return
 	}
 
@@ -399,7 +399,7 @@ func (o *ReloadOrchestrator) emitFailedEvent(reloadID, errorMsg, failedModule st
 	}()
 }
 
-func (o *ReloadOrchestrator) emitNoopEvent(reloadID, reason string) {
+func (o *ReloadOrchestrator) emitNoopEvent(reloadID, reason string) { //nolint:unused // reserved for future event emission logic
 	if o.eventSubject == nil {
 		return
 	}
@@ -427,7 +427,7 @@ func generateReloadID() string {
 }
 
 // parseDynamicFields parses struct fields tagged with dynamic:"true" using reflection
-func parseDynamicFields(config interface{}) ([]string, error) {
+func parseDynamicFields(config interface{}) ([]string, error) { //nolint:unused // helper function for future use
 	var dynamicFields []string
 
 	value := reflect.ValueOf(config)
@@ -481,9 +481,9 @@ func (o *ReloadOrchestrator) Stop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("wait for orchestrator stop cancelled: %w", ctx.Err())
 		case <-timeout.C:
-			return fmt.Errorf("reload orchestrator: timeout waiting for stop")
+			return ErrReloadStopTimeout
 		case <-ticker.C:
 			processing := atomic.LoadInt32(&o.processing)
 

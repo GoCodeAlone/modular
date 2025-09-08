@@ -83,7 +83,7 @@ func (p *InsecureSecretProvider) Store(value string, secretType SecretType) (Sec
 
 	// Check max secrets limit
 	if p.maxSecrets > 0 && len(p.secrets) >= p.maxSecrets {
-		return nil, fmt.Errorf("maximum number of secrets reached: %d", p.maxSecrets)
+		return nil, fmt.Errorf("%w: %d", ErrSecretLimitReached, p.maxSecrets)
 	}
 
 	// Generate unique ID
@@ -163,7 +163,7 @@ func (p *InsecureSecretProvider) Store(value string, secretType SecretType) (Sec
 
 func (p *InsecureSecretProvider) Retrieve(handle SecretHandle) (string, error) {
 	if handle == nil || !handle.IsValid() {
-		return "", fmt.Errorf("invalid secret handle")
+		return "", ErrInvalidSecretHandle
 	}
 
 	p.mu.RLock()
@@ -171,7 +171,7 @@ func (p *InsecureSecretProvider) Retrieve(handle SecretHandle) (string, error) {
 	p.mu.RUnlock()
 
 	if !exists {
-		return "", fmt.Errorf("secret not found")
+		return "", ErrSecretNotFound
 	}
 
 	if secret.metadata.IsEmpty {
@@ -256,7 +256,7 @@ func (p *InsecureSecretProvider) IsEmpty(handle SecretHandle) bool {
 
 func (p *InsecureSecretProvider) Clone(handle SecretHandle) (SecretHandle, error) {
 	if handle == nil || !handle.IsValid() {
-		return nil, fmt.Errorf("invalid secret handle")
+		return nil, ErrInvalidSecretHandle
 	}
 
 	p.mu.RLock()
@@ -264,7 +264,7 @@ func (p *InsecureSecretProvider) Clone(handle SecretHandle) (SecretHandle, error
 	p.mu.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("secret not found")
+		return nil, ErrSecretNotFound
 	}
 
 	// Clone by retrieving and storing again
@@ -287,7 +287,7 @@ func (p *InsecureSecretProvider) Clone(handle SecretHandle) (SecretHandle, error
 
 func (p *InsecureSecretProvider) GetMetadata(handle SecretHandle) (SecretMetadata, error) {
 	if handle == nil || !handle.IsValid() {
-		return SecretMetadata{}, fmt.Errorf("invalid secret handle")
+		return SecretMetadata{}, ErrInvalidSecretHandle
 	}
 
 	p.mu.RLock()
@@ -295,7 +295,7 @@ func (p *InsecureSecretProvider) GetMetadata(handle SecretHandle) (SecretMetadat
 	p.mu.RUnlock()
 
 	if !exists {
-		return SecretMetadata{}, fmt.Errorf("secret not found")
+		return SecretMetadata{}, ErrSecretNotFound
 	}
 
 	return secret.metadata, nil

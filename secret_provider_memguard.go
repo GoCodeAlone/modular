@@ -100,7 +100,7 @@ func (p *MemguardSecretProvider) initializeMemguard() error {
 	p.available = p.checkMemguardAvailability()
 
 	if !p.available {
-		return fmt.Errorf("memguard library is not available - ensure 'github.com/awnumar/memguard' is imported and CGO is enabled")
+		return ErrMemguardNotAvailable
 	}
 
 	return nil
@@ -117,7 +117,7 @@ func (p *MemguardSecretProvider) checkMemguardAvailability() bool {
 
 func (p *MemguardSecretProvider) Store(value string, secretType SecretType) (SecretHandle, error) {
 	if !p.available {
-		return nil, fmt.Errorf("memguard provider not available")
+		return nil, ErrMemguardProviderNotAvailable
 	}
 
 	p.mu.Lock()
@@ -125,7 +125,7 @@ func (p *MemguardSecretProvider) Store(value string, secretType SecretType) (Sec
 
 	// Check max secrets limit
 	if p.maxSecrets > 0 && len(p.secrets) >= p.maxSecrets {
-		return nil, fmt.Errorf("maximum number of secrets reached: %d", p.maxSecrets)
+		return nil, fmt.Errorf("%w: %d", ErrSecretLimitReached, p.maxSecrets)
 	}
 
 	// Generate unique ID
@@ -188,11 +188,11 @@ func (p *MemguardSecretProvider) Store(value string, secretType SecretType) (Sec
 
 func (p *MemguardSecretProvider) Retrieve(handle SecretHandle) (string, error) {
 	if !p.available {
-		return "", fmt.Errorf("memguard provider not available")
+		return "", ErrMemguardProviderNotAvailable
 	}
 
 	if handle == nil || !handle.IsValid() {
-		return "", fmt.Errorf("invalid secret handle")
+		return "", ErrInvalidSecretHandle
 	}
 
 	p.mu.RLock()
@@ -200,7 +200,7 @@ func (p *MemguardSecretProvider) Retrieve(handle SecretHandle) (string, error) {
 	p.mu.RUnlock()
 
 	if !exists {
-		return "", fmt.Errorf("secret not found")
+		return "", ErrSecretNotFound
 	}
 
 	if secret.metadata.IsEmpty {
@@ -241,7 +241,7 @@ func (p *MemguardSecretProvider) Destroy(handle SecretHandle) error {
 
 func (p *MemguardSecretProvider) Compare(handle SecretHandle, value string) (bool, error) {
 	if !p.available {
-		return false, fmt.Errorf("memguard provider not available")
+		return false, ErrMemguardProviderNotAvailable
 	}
 
 	if handle == nil || !handle.IsValid() {
@@ -253,7 +253,7 @@ func (p *MemguardSecretProvider) Compare(handle SecretHandle, value string) (boo
 	p.mu.RUnlock()
 
 	if !exists {
-		return false, fmt.Errorf("secret not found")
+		return false, ErrSecretNotFound
 	}
 
 	if secret.metadata.IsEmpty {
@@ -278,11 +278,11 @@ func (p *MemguardSecretProvider) IsEmpty(handle SecretHandle) bool {
 
 func (p *MemguardSecretProvider) Clone(handle SecretHandle) (SecretHandle, error) {
 	if !p.available {
-		return nil, fmt.Errorf("memguard provider not available")
+		return nil, ErrMemguardProviderNotAvailable
 	}
 
 	if handle == nil || !handle.IsValid() {
-		return nil, fmt.Errorf("invalid secret handle")
+		return nil, ErrInvalidSecretHandle
 	}
 
 	p.mu.RLock()
@@ -290,7 +290,7 @@ func (p *MemguardSecretProvider) Clone(handle SecretHandle) (SecretHandle, error
 	p.mu.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("secret not found")
+		return nil, ErrSecretNotFound
 	}
 
 	if secret.metadata.IsEmpty {
@@ -313,7 +313,7 @@ func (p *MemguardSecretProvider) Clone(handle SecretHandle) (SecretHandle, error
 
 func (p *MemguardSecretProvider) GetMetadata(handle SecretHandle) (SecretMetadata, error) {
 	if handle == nil || !handle.IsValid() {
-		return SecretMetadata{}, fmt.Errorf("invalid secret handle")
+		return SecretMetadata{}, ErrInvalidSecretHandle
 	}
 
 	p.mu.RLock()
@@ -321,7 +321,7 @@ func (p *MemguardSecretProvider) GetMetadata(handle SecretHandle) (SecretMetadat
 	p.mu.RUnlock()
 
 	if !exists {
-		return SecretMetadata{}, fmt.Errorf("secret not found")
+		return SecretMetadata{}, ErrSecretNotFound
 	}
 
 	return secret.metadata, nil
@@ -387,7 +387,7 @@ func (p *MemguardSecretProvider) retrieveFromSecureBuffer(buffer interface{}) (s
 	if buf, ok := buffer.(map[string]interface{}); ok && buf["secure"] == true {
 		return "[MEMGUARD_SECURED_CONTENT]", nil
 	}
-	return "", fmt.Errorf("invalid secure buffer")
+	return "", ErrInvalidSecureBuffer
 }
 
 func (p *MemguardSecretProvider) destroySecureBuffer(buffer interface{}) {

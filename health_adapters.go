@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -48,7 +49,7 @@ func (a *healthReporterAdapter) HealthCheck(ctx context.Context) ([]HealthReport
 
 	// Check for context cancellation
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("context cancelled during health check: %w", ctx.Err())
 	}
 
 	// Convert HealthResult to HealthReport
@@ -98,6 +99,8 @@ func (p *simpleHealthProvider) HealthCheck(ctx context.Context) ([]HealthReport,
 	if err != nil {
 		// If the check function returns an error, we still create a report
 		// but mark it as unhealthy with the error message
+		// Intentionally return nil error here since we want to return a health report
+		// rather than propagate the check error - this is the expected behavior
 		report := HealthReport{
 			Module:        p.moduleName,
 			Component:     p.componentName,
@@ -107,7 +110,7 @@ func (p *simpleHealthProvider) HealthCheck(ctx context.Context) ([]HealthReport,
 			ObservedSince: time.Now(),
 			Optional:      false,
 		}
-		return []HealthReport{report}, nil
+		return []HealthReport{report}, nil //nolint:nilerr // intentional: health check errors become unhealthy status
 	}
 
 	report := HealthReport{
@@ -182,7 +185,7 @@ func (p *compositeHealthProvider) HealthCheck(ctx context.Context) ([]HealthRepo
 	for _, provider := range p.providers {
 		reports, err := provider.HealthCheck(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("health check failed for provider: %w", err)
 		}
 		allReports = append(allReports, reports...)
 	}

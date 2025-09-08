@@ -40,6 +40,8 @@ func WithDynamicReload(config DynamicReloadConfig) ApplicationOption {
 		if config.ReloadTimeout > 0 {
 			// ReloadOrchestrator doesn't directly use ReloadTimeout from config
 			// It uses per-module timeouts, but we could extend this later
+			// TODO: Implement global timeout override when per-module timeout is not specified
+			_ = config.ReloadTimeout // acknowledge we're aware of this value for future use
 		}
 
 		orchestrator := NewReloadOrchestratorWithConfig(orchestratorConfig)

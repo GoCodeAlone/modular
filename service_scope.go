@@ -60,7 +60,7 @@ func (s ServiceScope) IsValid() bool {
 func ParseServiceScope(s string) (ServiceScope, error) {
 	scope := ServiceScope(s)
 	if !scope.IsValid() {
-		return "", fmt.Errorf("invalid service scope: %s", s)
+		return "", fmt.Errorf("%w: %s", ErrInvalidServiceScope, s)
 	}
 	return scope, nil
 }

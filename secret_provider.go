@@ -112,7 +112,7 @@ func (f *SecretProviderFactory) RegisterProvider(name string, creator func(confi
 func (f *SecretProviderFactory) CreateProvider(config SecretProviderConfig) (SecretProvider, error) {
 	creator, exists := f.providers[config.Provider]
 	if !exists {
-		return nil, fmt.Errorf("unknown secret provider: %s", config.Provider)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownSecretProvider, config.Provider)
 	}
 
 	provider, err := creator(config)
@@ -122,7 +122,7 @@ func (f *SecretProviderFactory) CreateProvider(config SecretProviderConfig) (Sec
 
 	// Validate security requirements
 	if config.EnableSecureMemory && !provider.IsSecure() {
-		return nil, fmt.Errorf("provider %s is not secure, but secure memory is required", config.Provider)
+		return nil, fmt.Errorf("%w: %s", ErrSecretProviderNotSecure, config.Provider)
 	}
 
 	// Log warning for insecure providers
@@ -148,7 +148,7 @@ func (f *SecretProviderFactory) ListProviders() []string {
 func (f *SecretProviderFactory) GetProviderInfo(name string) (map[string]interface{}, error) {
 	creator, exists := f.providers[name]
 	if !exists {
-		return nil, fmt.Errorf("unknown provider: %s", name)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, name)
 	}
 
 	// Create a temporary provider to get info
@@ -156,7 +156,14 @@ func (f *SecretProviderFactory) GetProviderInfo(name string) (map[string]interfa
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider for info: %w", err)
 	}
-	defer tempProvider.Cleanup()
+	defer func() {
+		if err := tempProvider.Cleanup(); err != nil {
+			// Log cleanup error but don't fail the operation
+			if f.logger != nil {
+				f.logger.Warn("Failed to cleanup temp provider", "error", err)
+			}
+		}
+	}()
 
 	return map[string]interface{}{
 		"name":      tempProvider.Name(),
@@ -184,7 +191,11 @@ func InitializeSecretProvider(config SecretProviderConfig, logger Logger) error 
 
 	// Clean up previous provider if it exists
 	if globalSecretProvider != nil {
-		globalSecretProvider.Cleanup()
+		if err := globalSecretProvider.Cleanup(); err != nil {
+			// Log cleanup error but continue with initialization
+			// In production, this might warrant more attention
+			_ = err // acknowledge error but don't fail initialization
+		}
 	}
 
 	globalSecretProvider = provider

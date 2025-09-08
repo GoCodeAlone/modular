@@ -2,7 +2,6 @@ package modular
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 )
@@ -51,7 +50,7 @@ func ParseTenantGuardMode(s string) (TenantGuardMode, error) {
 	case TenantGuardModeStrict, TenantGuardModeLenient, TenantGuardModeDisabled:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("invalid tenant guard mode: %s", s)
+		return "", fmt.Errorf("%w: %s", ErrInvalidTenantGuardMode, s)
 	}
 }
 
@@ -262,7 +261,7 @@ func WithTenantGuardMode(mode TenantGuardMode) Option {
 func WithTenantGuardModeConfig(config TenantGuardConfig) Option {
 	return func(builder *ApplicationBuilder) error {
 		if !config.IsValid() {
-			return errors.New("invalid tenant guard configuration")
+			return ErrInvalidTenantGuardConfiguration
 		}
 
 		// Create and register a tenant guard service
@@ -313,7 +312,7 @@ func (g *stdTenantGuard) ValidateAccess(ctx context.Context, violation *TenantVi
 		return true, nil
 
 	default:
-		return false, fmt.Errorf("unknown tenant guard mode: %s", g.config.Mode)
+		return false, fmt.Errorf("%w: %s", ErrUnknownTenantGuardMode, g.config.Mode)
 	}
 }
 
@@ -354,7 +353,7 @@ func (g *stdTenantGuard) logViolation(violation *TenantViolation) {
 // Extend ApplicationBuilder to support tenant guard
 type ApplicationBuilderExtension struct {
 	*ApplicationBuilder
-	tenantGuard TenantGuard
+	tenantGuard TenantGuard //nolint:unused // reserved for future tenant guard functionality
 }
 
 // GetTenantGuard returns the application's tenant guard if configured.

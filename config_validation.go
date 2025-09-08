@@ -16,9 +16,7 @@ import (
 
 // Static errors for config validation
 var (
-	ErrConfigNil     = errors.New("config cannot be nil")
-	ErrConfigsNil    = errors.New("configs cannot be nil")
-	ErrConfigNotStruct = errors.New("config must be a struct")
+	ErrConfigsNil = errors.New("configs cannot be nil")
 )
 
 const (
@@ -597,19 +595,19 @@ func NewDynamicFieldParser() DynamicFieldParser {
 // GetDynamicFields parses a config struct and returns dynamic field names
 func (p *StdDynamicFieldParser) GetDynamicFields(config interface{}) ([]string, error) {
 	if config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
+		return nil, ErrConfigNil
 	}
 
 	value := reflect.ValueOf(config)
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
-			return nil, fmt.Errorf("config cannot be nil")
+			return nil, ErrConfigNil
 		}
 		value = value.Elem()
 	}
 
 	if value.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("config must be a struct, got %v", value.Kind())
+		return nil, fmt.Errorf("%w: got %v", ErrConfigNotStruct, value.Kind())
 	}
 
 	var dynamicFields []string
@@ -655,7 +653,7 @@ func (p *StdDynamicFieldParser) parseDynamicFields(value reflect.Value, prefix s
 // ValidateDynamicReload compares configs and creates a diff with only dynamic changes
 func (p *StdDynamicFieldParser) ValidateDynamicReload(oldConfig, newConfig interface{}) (*ConfigDiff, error) {
 	if oldConfig == nil || newConfig == nil {
-		return nil, fmt.Errorf("configs cannot be nil")
+		return nil, ErrConfigsNil
 	}
 
 	// Get dynamic fields from the new config (should be the same for both)
@@ -728,7 +726,7 @@ func (p *StdDynamicFieldParser) getFieldValues(config interface{}) (map[string]i
 	}
 
 	if value.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("config must be a struct")
+		return nil, ErrConfigNotStruct
 	}
 
 	p.extractFieldValues(value, "", values)

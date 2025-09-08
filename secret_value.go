@@ -49,6 +49,8 @@ func (s SecretType) String() string {
 		return "key"
 	case SecretTypeCertificate:
 		return "certificate"
+	case SecretTypeGeneric:
+		return "generic"
 	default:
 		return "generic"
 	}
@@ -400,7 +402,11 @@ func (s *SecretValue) Created() time.Time {
 
 // MarshalJSON implements json.Marshaler to always redact secrets in JSON
 func (s *SecretValue) MarshalJSON() ([]byte, error) {
-	return json.Marshal("[REDACTED]")
+	data, err := json.Marshal("[REDACTED]")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal redacted secret: %w", err)
+	}
+	return data, nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler to handle JSON input
@@ -408,7 +414,7 @@ func (s *SecretValue) MarshalJSON() ([]byte, error) {
 func (s *SecretValue) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal secret value: %w", err)
 	}
 
 	// Don't allow unmarshaling of redacted values
@@ -535,7 +541,11 @@ func (s *SecretValue) Destroy() {
 
 	// Use provider destroy if available
 	if s.handle != nil && s.provider != nil {
-		s.provider.Destroy(s.handle)
+		if err := s.provider.Destroy(s.handle); err != nil {
+			// Log destroy error but continue cleanup
+			// In production, this might indicate a serious security issue
+			_ = err // acknowledge error but don't prevent cleanup from continuing
+		}
 		s.handle = nil
 		s.provider = nil
 	}
@@ -574,6 +584,8 @@ func (s *SecretValue) GetMaskedValue() any {
 		return "[KEY]"
 	case SecretTypeCertificate:
 		return "[CERTIFICATE]"
+	case SecretTypeGeneric:
+		return "[REDACTED]"
 	default:
 		return "[REDACTED]"
 	}

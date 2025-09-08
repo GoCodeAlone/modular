@@ -304,7 +304,7 @@ func (r *ScopedServiceRegistry) GetServiceScope(serviceName string) ServiceScope
 func (r *ScopedServiceRegistry) Register(name string, factory any) error {
 	// For now, just delegate to the enhanced registry
 	// In a full implementation, this would handle factory registration for scoped services
-	_, err := r.EnhancedServiceRegistry.RegisterService(name, factory)
+	_, err := r.RegisterService(name, factory)
 	return err
 }
 
@@ -317,6 +317,12 @@ func (r *ScopedServiceRegistry) Get(name string) (any, error) {
 		return r.getSingletonInstance(name)
 	case ServiceScopeTransient:
 		return r.getTransientInstance(name)
+	case ServiceScopeScoped:
+		// For scoped services without context, fall back to default behavior
+		return r.getDefaultInstance(name)
+	case ServiceScopeFactory:
+		// Factory scope not implemented yet, fall back to default
+		return r.getDefaultInstance(name)
 	default:
 		return r.getDefaultInstance(name)
 	}
@@ -346,7 +352,7 @@ func (r *ScopedServiceRegistry) getSingletonInstance(name string) (any, error) {
 	// Get the factory from the registry
 	factory, exists := r.services[name]
 	if !exists {
-		return nil, fmt.Errorf("service not found: %s", name)
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
 
 	// Create instance using factory
@@ -361,7 +367,7 @@ func (r *ScopedServiceRegistry) getTransientInstance(name string) (any, error) {
 	// Get the factory from the registry
 	factory, exists := r.services[name]
 	if !exists {
-		return nil, fmt.Errorf("service not found: %s", name)
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
 
 	// Always create a new instance for transient services
@@ -384,7 +390,7 @@ func (r *ScopedServiceRegistry) getScopedInstance(ctx context.Context, name stri
 	// Create new instance for this scope
 	factory, exists := r.services[name]
 	if !exists {
-		return nil, fmt.Errorf("service not found: %s", name)
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
 
 	instance := r.createInstanceFromFactory(factory.Service)
@@ -402,7 +408,7 @@ func (r *ScopedServiceRegistry) getScopedInstance(ctx context.Context, name stri
 func (r *ScopedServiceRegistry) getDefaultInstance(name string) (any, error) {
 	entry, exists := r.services[name]
 	if !exists {
-		return nil, fmt.Errorf("service not found: %s", name)
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
 
 	return r.createInstanceFromFactory(entry.Service), nil

@@ -10,8 +10,8 @@ import (
 
 // Static errors for health aggregation
 var (
-	ErrModuleNameEmpty      = errors.New("module name cannot be empty")
-	ErrProviderNil          = errors.New("provider cannot be nil")
+	ErrModuleNameEmpty       = errors.New("module name cannot be empty")
+	ErrProviderNil           = errors.New("provider cannot be nil")
 	ErrProviderAlreadyExists = errors.New("provider already registered")
 	ErrProviderNotRegistered = errors.New("no provider registered")
 )
@@ -157,10 +157,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 	s.mu.RLock()
 
 	// Check for forced refresh context value
-	forceRefresh := false
-	if ctx.Value("force_refresh") != nil {
-		forceRefresh = true
-	}
+	forceRefresh := ctx.Value("force_refresh") != nil
 
 	// Return cached result if available and not expired
 	if s.cacheEnabled && !forceRefresh && s.lastResult != nil {
@@ -195,10 +192,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 	duration := time.Since(start)
 
 	// Check for status changes
-	statusChanged := false
-	if previousStatus != HealthStatusUnknown && previousStatus != aggregated.Health {
-		statusChanged = true
-	}
+	statusChanged := previousStatus != HealthStatusUnknown && previousStatus != aggregated.Health
 
 	s.mu.Lock()
 	// Update cache
@@ -235,6 +229,8 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 				snapshot.Summary.DegradedCount++
 			case HealthStatusUnhealthy:
 				snapshot.Summary.UnhealthyCount++
+			case HealthStatusUnknown:
+				snapshot.Summary.UnhealthyCount++ // Treat unknown as unhealthy for counting
 			}
 
 			// Add to components map for compatibility
