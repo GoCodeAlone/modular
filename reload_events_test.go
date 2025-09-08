@@ -1,5 +1,3 @@
-//go:build failing_test
-
 package modular
 
 import (
@@ -174,10 +172,10 @@ func TestReloadTriggerType(t *testing.T) {
 			name: "should_define_reload_trigger_constants",
 			testFunc: func(t *testing.T) {
 				// Test that ReloadTrigger constants are defined
-				assert.Equal(t, "manual", string(ReloadTriggerManual), "ReloadTriggerManual should be 'manual'")
-				assert.Equal(t, "file_change", string(ReloadTriggerFileChange), "ReloadTriggerFileChange should be 'file_change'")
-				assert.Equal(t, "api_request", string(ReloadTriggerAPIRequest), "ReloadTriggerAPIRequest should be 'api_request'")
-				assert.Equal(t, "scheduled", string(ReloadTriggerScheduled), "ReloadTriggerScheduled should be 'scheduled'")
+				assert.Equal(t, "manual", ReloadTriggerManual.String(), "ReloadTriggerManual should be 'manual'")
+				assert.Equal(t, "file_change", ReloadTriggerFileChange.String(), "ReloadTriggerFileChange should be 'file_change'")
+				assert.Equal(t, "api_request", ReloadTriggerAPIRequest.String(), "ReloadTriggerAPIRequest should be 'api_request'")
+				assert.Equal(t, "scheduled", ReloadTriggerScheduled.String(), "ReloadTriggerScheduled should be 'scheduled'")
 			},
 		},
 		{

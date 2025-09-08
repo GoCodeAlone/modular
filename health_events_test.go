@@ -1,5 +1,3 @@
-//go:build failing_test
-
 package modular
 
 import (
@@ -100,11 +98,11 @@ func TestHealthTriggerType(t *testing.T) {
 			name: "should_define_health_trigger_constants",
 			testFunc: func(t *testing.T) {
 				// Test that HealthTrigger constants are defined
-				assert.Equal(t, "scheduled", string(HealthTriggerScheduled), "HealthTriggerScheduled should be 'scheduled'")
-				assert.Equal(t, "on_demand", string(HealthTriggerOnDemand), "HealthTriggerOnDemand should be 'on_demand'")
-				assert.Equal(t, "threshold", string(HealthTriggerThreshold), "HealthTriggerThreshold should be 'threshold'")
-				assert.Equal(t, "startup", string(HealthTriggerStartup), "HealthTriggerStartup should be 'startup'")
-				assert.Equal(t, "post_reload", string(HealthTriggerPostReload), "HealthTriggerPostReload should be 'post_reload'")
+				assert.Equal(t, "scheduled", HealthTriggerScheduled.String(), "HealthTriggerScheduled should be 'scheduled'")
+				assert.Equal(t, "on_demand", HealthTriggerOnDemand.String(), "HealthTriggerOnDemand should be 'on_demand'")
+				assert.Equal(t, "threshold", HealthTriggerThreshold.String(), "HealthTriggerThreshold should be 'threshold'")
+				assert.Equal(t, "startup", HealthTriggerStartup.String(), "HealthTriggerStartup should be 'startup'")
+				assert.Equal(t, "post_reload", HealthTriggerPostReload.String(), "HealthTriggerPostReload should be 'post_reload'")
 			},
 		},
 		{
@@ -223,9 +221,7 @@ func TestHealthEvaluatedEventEmission(t *testing.T) {
 				// Perform health evaluation
 				ctx := context.Background()
 				
-				start := time.Now()
 				_, err := healthService.EvaluateHealth(ctx, "health-eval-003", HealthTriggerOnDemand)
-				duration := time.Since(start)
 				assert.NoError(t, err, "EvaluateHealth should succeed")
 
 				// Verify that event includes performance metrics

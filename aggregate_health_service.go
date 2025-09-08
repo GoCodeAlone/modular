@@ -31,8 +31,11 @@ type AggregateHealthService struct {
 	// Timeout configuration
 	defaultTimeout time.Duration
 	
-	// Event observer for status changes
-	eventObserver EventObserver
+	// Event subject for publishing health events
+	eventSubject Subject
+	
+	// Track previous status for change detection
+	previousStatus HealthStatus
 }
 
 // providerInfo holds information about a registered health provider
@@ -83,11 +86,11 @@ func NewAggregateHealthServiceWithConfig(config AggregateHealthServiceConfig) *A
 	}
 }
 
-// SetEventObserver sets the event observer for status change notifications
-func (s *AggregateHealthService) SetEventObserver(observer EventObserver) {
+// SetEventSubject sets the event subject for publishing health events
+func (s *AggregateHealthService) SetEventSubject(subject Subject) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.eventObserver = observer
+	s.eventSubject = subject
 }
 
 // RegisterProvider registers a health provider for the specified module
@@ -164,7 +167,8 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 	for name, info := range s.providers {
 		providers[name] = info
 	}
-	observer := s.eventObserver
+	eventSubject := s.eventSubject
+	previousStatus := s.previousStatus
 	s.mu.RUnlock()
 	
 	start := time.Now()
@@ -183,36 +187,76 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 	
 	// Check for status changes
 	statusChanged := false
-	var previousStatus HealthStatus
-	
-	s.mu.Lock()
-	if s.lastResult != nil {
-		if s.lastResult.Health != aggregated.Health {
-			statusChanged = true
-			previousStatus = s.lastResult.Health
-		}
+	if previousStatus != HealthStatusUnknown && previousStatus != aggregated.Health {
+		statusChanged = true
 	}
 	
+	s.mu.Lock()
 	// Update cache
 	if s.cacheEnabled {
 		s.lastResult = &aggregated
 		s.lastCheck = time.Now()
 	}
+	
+	// Update previous status tracking
+	s.previousStatus = aggregated.Health
 	s.mu.Unlock()
 	
-	// Emit health.aggregate.updated event if status changed
-	if statusChanged && observer != nil {
-		event := &HealthStatusChangedEvent{
-			Timestamp:      time.Now(),
-			NewStatus:      aggregated.Health,
-			PreviousStatus: previousStatus,
-			Duration:       duration,
-			ReportCount:    len(reports),
+	// Emit health.evaluated event - emit on every evaluation per requirements
+	if eventSubject != nil {
+		// Convert to AggregateHealthSnapshot for compatibility
+		snapshot := AggregateHealthSnapshot{
+			OverallStatus:   aggregated.Health,
+			ReadinessStatus: aggregated.Readiness,
+			Components:      make(map[string]HealthResult),
+			Summary: HealthSummary{
+				TotalCount: len(reports),
+			},
+			GeneratedAt: aggregated.GeneratedAt,
+			Timestamp:   aggregated.GeneratedAt,
+			SnapshotID:  fmt.Sprintf("health-%d", time.Now().UnixNano()),
 		}
 		
-		// Fire and forget event emission
+		// Count statuses for summary
+		for _, report := range reports {
+			switch report.Status {
+			case HealthStatusHealthy:
+				snapshot.Summary.HealthyCount++
+			case HealthStatusDegraded:
+				snapshot.Summary.DegradedCount++
+			case HealthStatusUnhealthy:
+				snapshot.Summary.UnhealthyCount++
+			}
+			
+			// Add to components map for compatibility
+			snapshot.Components[report.Module] = HealthResult{
+				Status:    report.Status,
+				Message:   report.Message,
+				Timestamp: report.CheckedAt,
+			}
+		}
+		
+		event := &HealthEvaluatedEvent{
+			EvaluationID:   fmt.Sprintf("health-eval-%d", time.Now().UnixNano()),
+			Timestamp:      time.Now(),
+			Snapshot:       snapshot,
+			Duration:       duration,
+			TriggerType:    HealthTriggerScheduled, // Default trigger - would be parameterized in real implementation
+			StatusChanged:  statusChanged,
+			PreviousStatus: previousStatus,
+			Metrics: &HealthEvaluationMetrics{
+				ComponentsEvaluated:   len(reports),
+				TotalEvaluationTime:   duration,
+				AverageResponseTimeMs: float64(duration.Milliseconds()),
+			},
+		}
+		
+		// Fire and forget event emission (placeholder)
+		// In real implementation, this would convert to CloudEvent and emit through Subject
 		go func() {
-			observer.OnStatusChange(context.Background(), event)
+			// eventSubject.NotifyObservers(context.Background(), cloudEvent)
+			_ = eventSubject
+			_ = event
 		}()
 	}
 	

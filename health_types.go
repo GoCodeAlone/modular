@@ -250,11 +250,11 @@ func (h HealthTrigger) String() string {
 	case HealthTriggerScheduled:
 		return "scheduled"
 	case HealthTriggerOnDemand:
-		return "on-demand"
+		return "on_demand"
 	case HealthTriggerStartup:
 		return "startup"
 	case HealthTriggerPostReload:
-		return "post-reload"
+		return "post_reload"
 	default:
 		return "unknown"
 	}
@@ -267,11 +267,11 @@ func ParseHealthTrigger(s string) (HealthTrigger, error) {
 		return HealthTriggerThreshold, nil
 	case "scheduled":
 		return HealthTriggerScheduled, nil
-	case "on-demand":
+	case "on_demand":
 		return HealthTriggerOnDemand, nil
 	case "startup":
 		return HealthTriggerStartup, nil
-	case "post-reload":
+	case "post_reload":
 		return HealthTriggerPostReload, nil
 	default:
 		return 0, fmt.Errorf("invalid health trigger: %s", s)
@@ -333,16 +333,27 @@ func (e *HealthEvaluatedEvent) GetTimestamp() time.Time {
 // StructuredFields returns the structured field data for this event
 func (e *HealthEvaluatedEvent) StructuredFields() map[string]interface{} {
 	fields := map[string]interface{}{
-		"evaluation_id": e.EvaluationID,
-		"duration_ms":   e.Duration.Milliseconds(),
-		"trigger_type":  e.TriggerType.String(),
+		"module":         "core.health",
+		"phase":          "evaluation",
+		"event":          "evaluated",
+		"evaluation_id":  e.EvaluationID,
+		"duration_ms":    e.Duration.Milliseconds(),
+		"trigger_type":   e.TriggerType.String(),
 		"overall_status": e.Snapshot.OverallStatus.String(),
+		"healthy_count":  e.Snapshot.Summary.HealthyCount,
+		"total_count":    e.Snapshot.Summary.TotalCount,
 	}
 	
 	if e.StatusChanged {
 		fields["status_changed"] = true
 		fields["previous_status"] = e.PreviousStatus.String()
+	} else {
+		fields["status_changed"] = false
 	}
+	
+	// Add degraded and unhealthy counts
+	fields["degraded_count"] = e.Snapshot.Summary.DegradedCount
+	fields["unhealthy_count"] = e.Snapshot.Summary.UnhealthyCount
 	
 	// Add metrics if available
 	if e.Metrics != nil {
@@ -368,32 +379,29 @@ type HealthEvaluationMetrics struct {
 
 // CalculateEfficiency returns the efficiency percentage of the health evaluation
 func (h *HealthEvaluationMetrics) CalculateEfficiency() float64 {
-	if h.ComponentsEvaluated == 0 {
+	totalComponents := h.ComponentsEvaluated + h.ComponentsSkipped + h.ComponentsTimedOut
+	if totalComponents == 0 {
 		return 0.0
 	}
-	successful := h.ComponentsEvaluated - h.FailedEvaluations - h.ComponentsSkipped - h.ComponentsTimedOut
-	return (float64(successful) / float64(h.ComponentsEvaluated)) * 100.0
+	return (float64(h.ComponentsEvaluated) / float64(totalComponents))
 }
 
 // HasPerformanceBottleneck returns true if there are performance bottlenecks
 func (h *HealthEvaluationMetrics) HasPerformanceBottleneck() bool {
-	return h.SlowestComponentTime > 500*time.Millisecond || h.AverageResponseTimeMs > 200.0
+	// A bottleneck exists if the slowest component takes more than 50% of total evaluation time
+	if h.TotalEvaluationTime == 0 || h.SlowestComponentTime == 0 {
+		return false
+	}
+	percentage := (float64(h.SlowestComponentTime.Milliseconds()) / float64(h.TotalEvaluationTime.Milliseconds())) * 100.0
+	return percentage > 50.0
 }
 
-// BottleneckPercentage returns the percentage of components that are bottlenecks
+// BottleneckPercentage returns the percentage of total time consumed by the slowest component
 func (h *HealthEvaluationMetrics) BottleneckPercentage() float64 {
-	if h.ComponentsEvaluated == 0 {
+	if h.TotalEvaluationTime == 0 || h.SlowestComponentTime == 0 {
 		return 0.0
 	}
-	// For simplicity, consider a bottleneck if slowest component is more than 2x average
-	if h.AverageResponseTimeMs == 0 {
-		return 0.0
-	}
-	slowestMs := float64(h.SlowestComponentTime.Milliseconds())
-	if slowestMs > h.AverageResponseTimeMs*2 {
-		return 10.0 // Simplified: assume 10% are bottlenecks if there's a slow component
-	}
-	return 0.0
+	return (float64(h.SlowestComponentTime.Milliseconds()) / float64(h.TotalEvaluationTime.Milliseconds())) * 100.0
 }
 
 // Filter functions for health events

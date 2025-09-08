@@ -572,6 +572,27 @@ func (e *ConfigReloadStartedEvent) GetTimestamp() time.Time {
 	return e.Timestamp
 }
 
+// StructuredFields returns the structured field data for this event
+func (e *ConfigReloadStartedEvent) StructuredFields() map[string]interface{} {
+	fields := map[string]interface{}{
+		"module":       "core",
+		"phase":        "reload",
+		"event":        "started",
+		"reload_id":    e.ReloadID,
+		"trigger_type": e.TriggerType.String(),
+	}
+	
+	if e.ConfigDiff != nil {
+		summary := e.ConfigDiff.ChangeSummary()
+		fields["changes_count"] = summary.TotalChanges
+		fields["added_count"] = summary.AddedCount
+		fields["modified_count"] = summary.ModifiedCount
+		fields["removed_count"] = summary.RemovedCount
+	}
+	
+	return fields
+}
+
 // ConfigReloadCompletedEvent represents an event emitted when a config reload completes
 type ConfigReloadCompletedEvent struct {
 	// ReloadID is a unique identifier for this reload operation
@@ -619,6 +640,30 @@ func (e *ConfigReloadCompletedEvent) GetEventSource() string {
 // GetTimestamp returns when this event occurred (implements ObserverEvent)
 func (e *ConfigReloadCompletedEvent) GetTimestamp() time.Time {
 	return e.Timestamp
+}
+
+// StructuredFields returns the structured field data for this event
+func (e *ConfigReloadCompletedEvent) StructuredFields() map[string]interface{} {
+	fields := map[string]interface{}{
+		"module":           "core",
+		"phase":            "reload",
+		"event":            "completed",
+		"reload_id":        e.ReloadID,
+		"success":          e.Success,
+		"duration_ms":      e.Duration.Milliseconds(),
+		"changes_applied":  e.ChangesApplied,
+	}
+	
+	if len(e.AffectedModules) > 0 {
+		fields["affected_modules_count"] = len(e.AffectedModules)
+		fields["affected_modules"] = e.AffectedModules
+	}
+	
+	if !e.Success && e.Error != "" {
+		fields["error"] = e.Error
+	}
+	
+	return fields
 }
 
 // ConfigReloadFailedEvent represents an event emitted when a config reload fails
@@ -699,4 +744,32 @@ func (e *ConfigReloadNoopEvent) GetEventSource() string {
 // GetTimestamp returns when this event occurred (implements ObserverEvent)
 func (e *ConfigReloadNoopEvent) GetTimestamp() time.Time {
 	return e.Timestamp
+}
+
+// FilterEventsByReloadID filters a slice of observer events to include only reload events with the specified reload ID
+func FilterEventsByReloadID(events []ObserverEvent, reloadID string) []ObserverEvent {
+	var filtered []ObserverEvent
+	
+	for _, event := range events {
+		switch reloadEvent := event.(type) {
+		case *ConfigReloadStartedEvent:
+			if reloadEvent.ReloadID == reloadID {
+				filtered = append(filtered, event)
+			}
+		case *ConfigReloadCompletedEvent:
+			if reloadEvent.ReloadID == reloadID {
+				filtered = append(filtered, event)
+			}
+		case *ConfigReloadFailedEvent:
+			if reloadEvent.ReloadID == reloadID {
+				filtered = append(filtered, event)
+			}
+		case *ConfigReloadNoopEvent:
+			if reloadEvent.ReloadID == reloadID {
+				filtered = append(filtered, event)
+			}
+		}
+	}
+	
+	return filtered
 }
