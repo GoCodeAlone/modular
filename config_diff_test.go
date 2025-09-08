@@ -1,4 +1,3 @@
-
 package modular
 
 import (
@@ -28,8 +27,8 @@ func TestConfigDiff(t *testing.T) {
 				diff := ConfigDiff{
 					Changed: map[string]ConfigFieldChange{
 						"database.host": {
-							OldValue: "localhost",
-							NewValue: "db.example.com",
+							OldValue:  "localhost",
+							NewValue:  "db.example.com",
 							FieldPath: "database.host",
 						},
 					},
@@ -91,9 +90,9 @@ func TestConfigFieldChange(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test that ConfigFieldChange type exists with all fields
 				change := ConfigFieldChange{
-					FieldPath: "server.port",
-					OldValue:  8080,
-					NewValue:  9090,
+					FieldPath:  "server.port",
+					OldValue:   8080,
+					NewValue:   9090,
 					ChangeType: ChangeTypeModified,
 				}
 				assert.Equal(t, "server.port", change.FieldPath, "ConfigFieldChange should have FieldPath")
@@ -274,7 +273,7 @@ func TestConfigDiffGeneration(t *testing.T) {
 
 				newConfig := nestedTestConfig{
 					Server: serverConfig{
-						Port:    9090, // Changed
+						Port:    9090,      // Changed
 						Host:    "0.0.0.0", // Changed
 						Timeout: "30s",
 					},
@@ -288,7 +287,7 @@ func TestConfigDiffGeneration(t *testing.T) {
 				diff, err := GenerateConfigDiff(oldConfig, newConfig)
 				assert.NoError(t, err, "GenerateConfigDiff should succeed")
 				assert.Greater(t, len(diff.Changed), 0, "Should detect changes in nested structs")
-				
+
 				// Check specific field paths
 				assert.Contains(t, diff.Changed, "server.port", "Should detect server.port change")
 				assert.Contains(t, diff.Changed, "database.host", "Should detect database.host change")
@@ -300,14 +299,14 @@ func TestConfigDiffGeneration(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				oldConfig := sensitiveTestConfig{
 					DatabasePassword: "old_secret",
-					APIKey:          "old_api_key",
-					PublicConfig:    "public_value",
+					APIKey:           "old_api_key",
+					PublicConfig:     "public_value",
 				}
 
 				newConfig := sensitiveTestConfig{
 					DatabasePassword: "new_secret",
-					APIKey:          "new_api_key",
-					PublicConfig:    "new_public_value",
+					APIKey:           "new_api_key",
+					PublicConfig:     "new_public_value",
 				}
 
 				diff, err := GenerateConfigDiff(oldConfig, newConfig)
@@ -343,7 +342,7 @@ func TestConfigDiffGeneration(t *testing.T) {
 				}
 
 				options := ConfigDiffOptions{
-					IgnoreFields:      []string{"server_port"}, // Should ignore port changes
+					IgnoreFields:      []string{"server_port"},   // Should ignore port changes
 					SensitiveFields:   []string{"database_host"}, // Treat host as sensitive
 					IncludeValidation: true,
 				}
@@ -351,7 +350,7 @@ func TestConfigDiffGeneration(t *testing.T) {
 				diff, err := GenerateConfigDiffWithOptions(oldConfig, newConfig, options)
 				assert.NoError(t, err, "GenerateConfigDiffWithOptions should succeed")
 				assert.NotContains(t, diff.Changed, "server_port", "Should ignore specified fields")
-				
+
 				if hostChange, exists := diff.Changed["database_host"]; exists {
 					assert.True(t, hostChange.IsSensitive, "Should mark specified fields as sensitive")
 				}
@@ -411,9 +410,9 @@ func TestConfigDiffMethods(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				diff := ConfigDiff{
 					Changed: map[string]ConfigFieldChange{
-						"database.host":     {},
-						"database.port":     {},
-						"httpserver.port":   {},
+						"database.host":      {},
+						"database.port":      {},
+						"httpserver.port":    {},
 						"httpserver.timeout": {},
 					},
 				}
@@ -459,6 +458,6 @@ type nestedTestConfig struct {
 
 type sensitiveTestConfig struct {
 	DatabasePassword string `json:"database_password" sensitive:"true"`
-	APIKey          string `json:"api_key" sensitive:"true"`
-	PublicConfig    string `json:"public_config"`
+	APIKey           string `json:"api_key" sensitive:"true"`
+	PublicConfig     string `json:"public_config"`
 }

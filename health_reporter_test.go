@@ -1,4 +1,3 @@
-
 package modular
 
 import (
@@ -14,32 +13,32 @@ import (
 // TestHealthReporter_CheckHealth tests the actual behavior of health checking
 func TestHealthReporter_CheckHealth(t *testing.T) {
 	tests := []struct {
-		name     string
-		reporter HealthReporter
-		ctx      context.Context
+		name       string
+		reporter   HealthReporter
+		ctx        context.Context
 		wantStatus HealthStatus
-		wantErr  bool
+		wantErr    bool
 	}{
 		{
-			name:     "healthy service returns healthy status",
-			reporter: newTestHealthReporter("test-service", true, nil),
-			ctx:      context.Background(),
+			name:       "healthy service returns healthy status",
+			reporter:   newTestHealthReporter("test-service", true, nil),
+			ctx:        context.Background(),
 			wantStatus: HealthStatusHealthy,
-			wantErr:  false,
+			wantErr:    false,
 		},
 		{
-			name:     "unhealthy service returns unhealthy status",
-			reporter: newTestHealthReporter("failing-service", false, errors.New("connection failed")),
-			ctx:      context.Background(),
+			name:       "unhealthy service returns unhealthy status",
+			reporter:   newTestHealthReporter("failing-service", false, errors.New("connection failed")),
+			ctx:        context.Background(),
 			wantStatus: HealthStatusUnhealthy,
-			wantErr:  false,
+			wantErr:    false,
 		},
 		{
-			name:     "context cancellation returns unknown status",
-			reporter: newSlowHealthReporter("slow-service", 100*time.Millisecond),
-			ctx:      createCancelledContext(),
+			name:       "context cancellation returns unknown status",
+			reporter:   newSlowHealthReporter("slow-service", 100*time.Millisecond),
+			ctx:        createCancelledContext(),
 			wantStatus: HealthStatusUnknown,
-			wantErr:  false,
+			wantErr:    false,
 		},
 	}
 
@@ -119,7 +118,7 @@ func TestHealthResult(t *testing.T) {
 		timestamp := time.Now()
 		details := map[string]interface{}{
 			"connection_count": 42,
-			"uptime":          "5m30s",
+			"uptime":           "5m30s",
 		}
 
 		result := HealthResult{

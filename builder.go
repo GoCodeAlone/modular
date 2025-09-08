@@ -190,7 +190,6 @@ func (b *ApplicationBuilder) WithOption(opt Option) *ApplicationBuilder {
 	return b
 }
 
-
 // Convenience functions for creating common decorators
 
 // InstanceAwareConfig creates an instance-aware configuration decorator

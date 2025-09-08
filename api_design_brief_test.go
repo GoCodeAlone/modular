@@ -13,33 +13,33 @@ import (
 func TestRequestReloadAPI(t *testing.T) {
 	t.Run("RequestReload method exists and is callable", func(t *testing.T) {
 		app := NewStdApplication(NewStdConfigProvider(struct{}{}), &briefTestLogger{t})
-		
+
 		// Should be callable without sections
 		err := app.RequestReload()
-		assert.Error(t, err) // Expected since it's not fully implemented yet
-		assert.Contains(t, err.Error(), "not yet fully implemented")
-		
+		assert.Error(t, err) // Expected since dynamic reload is not enabled
+		assert.Contains(t, err.Error(), "dynamic reload not available")
+
 		// Should be callable with sections
 		err = app.RequestReload("section1", "section2")
-		assert.Error(t, err) // Expected since it's not fully implemented yet
-		assert.Contains(t, err.Error(), "not yet fully implemented")
+		assert.Error(t, err) // Expected since dynamic reload is not enabled
+		assert.Contains(t, err.Error(), "dynamic reload not available")
 	})
 }
 
 func TestRegisterHealthProviderAPI(t *testing.T) {
 	t.Run("RegisterHealthProvider method exists and is callable", func(t *testing.T) {
 		app := NewStdApplication(NewStdConfigProvider(struct{}{}), &briefTestLogger{t})
-		
+
 		provider := &testHealthProvider{
 			module:    "test-module",
 			component: "test-component",
 			status:    HealthStatusHealthy,
 		}
-		
+
 		// Should be callable with all parameters
 		err := app.RegisterHealthProvider("test-module", provider, false)
 		assert.NoError(t, err, "RegisterHealthProvider should succeed")
-		
+
 		// Should be callable with optional=true
 		err = app.RegisterHealthProvider("test-module-optional", provider, true)
 		assert.NoError(t, err, "RegisterHealthProvider with optional=true should succeed")
@@ -55,7 +55,7 @@ func TestNewConfigChangeStructure(t *testing.T) {
 			NewValue:  "new-host",
 			Source:    "file:/config/app.yaml",
 		}
-		
+
 		assert.Equal(t, "database", change.Section)
 		assert.Equal(t, "connection.host", change.FieldPath)
 		assert.Equal(t, "old-host", change.OldValue)
@@ -68,7 +68,7 @@ func TestNewHealthReportStructure(t *testing.T) {
 	t.Run("HealthReport struct has all required fields", func(t *testing.T) {
 		now := time.Now()
 		observedSince := now.Add(-5 * time.Minute)
-		
+
 		report := HealthReport{
 			Module:        "database",
 			Component:     "connection-pool",
@@ -82,7 +82,7 @@ func TestNewHealthReportStructure(t *testing.T) {
 				"max_connections":    100,
 			},
 		}
-		
+
 		assert.Equal(t, "database", report.Module)
 		assert.Equal(t, "connection-pool", report.Component)
 		assert.Equal(t, HealthStatusHealthy, report.Status)
@@ -98,7 +98,7 @@ func TestNewHealthReportStructure(t *testing.T) {
 func TestAggregatedHealthStructure(t *testing.T) {
 	t.Run("AggregatedHealth struct has distinct readiness and health status", func(t *testing.T) {
 		now := time.Now()
-		
+
 		reports := []HealthReport{
 			{
 				Module:        "database",
@@ -117,14 +117,14 @@ func TestAggregatedHealthStructure(t *testing.T) {
 				Optional:      true,
 			},
 		}
-		
+
 		aggregatedHealth := AggregatedHealth{
-			Readiness:   HealthStatusHealthy, // Should be healthy because degraded component is optional
+			Readiness:   HealthStatusHealthy,  // Should be healthy because degraded component is optional
 			Health:      HealthStatusDegraded, // Should reflect worst overall status
 			Reports:     reports,
 			GeneratedAt: now,
 		}
-		
+
 		assert.Equal(t, HealthStatusHealthy, aggregatedHealth.Readiness)
 		assert.Equal(t, HealthStatusDegraded, aggregatedHealth.Health)
 		assert.Len(t, aggregatedHealth.Reports, 2)
@@ -139,7 +139,7 @@ func TestEventNamesMatchDesignBrief(t *testing.T) {
 		assert.Equal(t, "config.reload.success", EventTypeConfigReloadSuccess)
 		assert.Equal(t, "config.reload.failed", EventTypeConfigReloadFailed)
 		assert.Equal(t, "config.reload.noop", EventTypeConfigReloadNoop)
-		
+
 		// FR-048 Health Aggregation events
 		assert.Equal(t, "health.aggregate.updated", EventTypeHealthAggregateUpdated)
 	})
@@ -152,7 +152,7 @@ func TestReloadableInterfaceUsesConfigChange(t *testing.T) {
 			canReload: true,
 			timeout:   30 * time.Second,
 		}
-		
+
 		changes := []ConfigChange{
 			{
 				Section:   "test",
@@ -162,7 +162,7 @@ func TestReloadableInterfaceUsesConfigChange(t *testing.T) {
 				Source:    "test",
 			},
 		}
-		
+
 		err := module.Reload(context.Background(), changes)
 		assert.NoError(t, err)
 		assert.True(t, module.lastReloadCalled)
@@ -179,7 +179,7 @@ func TestHealthProviderInterface(t *testing.T) {
 			component: "test-component",
 			status:    HealthStatusHealthy,
 		}
-		
+
 		reports, err := provider.HealthCheck(context.Background())
 		assert.NoError(t, err)
 		assert.Len(t, reports, 1)
@@ -213,11 +213,11 @@ func (p *testHealthProvider) HealthCheck(ctx context.Context) ([]HealthReport, e
 }
 
 type testReloadableModuleForBrief struct {
-	name              string
-	canReload         bool
-	timeout           time.Duration
-	lastReloadCalled  bool
-	lastChanges       []ConfigChange
+	name             string
+	canReload        bool
+	timeout          time.Duration
+	lastReloadCalled bool
+	lastChanges      []ConfigChange
 }
 
 func (m *testReloadableModuleForBrief) Reload(ctx context.Context, changes []ConfigChange) error {

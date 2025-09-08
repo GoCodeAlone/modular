@@ -16,32 +16,32 @@ import (
 // This test verifies that tenant data and operations remain isolated even under concurrent load.
 func TestMultiTenancyIsolationUnderLoad(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	
+
 	// Create application with tenant service
 	app := modular.NewStdApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
-	
+
 	// Register tenant service
 	tenantService := modular.NewStandardTenantService(logger)
 	if err := app.RegisterService("tenantService", tenantService); err != nil {
 		t.Fatalf("Failed to register tenant service: %v", err)
 	}
-	
+
 	// Register a simple tenant config loader
 	configLoader := &testTenantConfigLoader{}
 	if err := app.RegisterService("tenantConfigLoader", configLoader); err != nil {
 		t.Fatalf("Failed to register tenant config loader: %v", err)
 	}
-	
+
 	// Register tenant-aware module
 	tenantModule := &testTenantAwareModule{}
 	app.RegisterModule(tenantModule)
-	
+
 	// Initialize application
 	err := app.Init()
 	if err != nil {
 		t.Fatalf("Application initialization failed: %v", err)
 	}
-	
+
 	// Register multiple tenants
 	tenantIDs := []modular.TenantID{"tenant1", "tenant2", "tenant3", "tenant4"}
 	for _, tenantID := range tenantIDs {
@@ -54,29 +54,29 @@ func TestMultiTenancyIsolationUnderLoad(t *testing.T) {
 			t.Fatalf("Failed to register tenant %s: %v", tenantID, err)
 		}
 	}
-	
+
 	// Test concurrent operations to verify isolation
 	const numOperationsPerTenant = 100
 	const numWorkers = 10
-	
+
 	var wg sync.WaitGroup
 	results := make(map[string][]string)
 	resultsMutex := sync.Mutex{}
-	
+
 	// Start concurrent workers for each tenant
 	for _, tenantID := range tenantIDs {
 		for worker := 0; worker < numWorkers; worker++ {
 			wg.Add(1)
 			go func(tid modular.TenantID, workerID int) {
 				defer wg.Done()
-				
+
 				for op := 0; op < numOperationsPerTenant; op++ {
 					// Simulate tenant-specific operations
 					ctx := modular.NewTenantContext(context.Background(), tid)
-					
+
 					// Use tenant module with specific context
 					result := tenantModule.ProcessTenantData(ctx, fmt.Sprintf("worker%d_op%d", workerID, op))
-					
+
 					// Store results per tenant
 					resultsMutex.Lock()
 					tenantKey := string(tid)
@@ -89,24 +89,24 @@ func TestMultiTenancyIsolationUnderLoad(t *testing.T) {
 			}(tenantID, worker)
 		}
 	}
-	
+
 	// Wait for all operations to complete
 	done := make(chan bool)
 	go func() {
 		wg.Wait()
 		done <- true
 	}()
-	
+
 	select {
 	case <-done:
 		t.Log("✅ All concurrent operations completed")
 	case <-time.After(10 * time.Second):
 		t.Fatal("Test timed out waiting for concurrent operations")
 	}
-	
+
 	// Verify isolation: each tenant should have exactly the expected number of results
 	expectedResultsPerTenant := numWorkers * numOperationsPerTenant
-	
+
 	for _, tenantID := range tenantIDs {
 		tenantKey := string(tenantID)
 		tenantResults, exists := results[tenantKey]
@@ -114,11 +114,11 @@ func TestMultiTenancyIsolationUnderLoad(t *testing.T) {
 			t.Errorf("No results found for tenant %s", tenantID)
 			continue
 		}
-		
+
 		if len(tenantResults) != expectedResultsPerTenant {
 			t.Errorf("Tenant %s: expected %d results, got %d", tenantID, expectedResultsPerTenant, len(tenantResults))
 		}
-		
+
 		// Verify all results are properly prefixed with tenant ID (indicating isolation)
 		for _, result := range tenantResults {
 			expectedPrefix := fmt.Sprintf("[%s]", tenantID)
@@ -128,7 +128,7 @@ func TestMultiTenancyIsolationUnderLoad(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Verify no cross-tenant contamination
 	for _, tenantID := range tenantIDs {
 		tenantKey := string(tenantID)
@@ -144,7 +144,7 @@ func TestMultiTenancyIsolationUnderLoad(t *testing.T) {
 			}
 		}
 	}
-	
+
 	t.Logf("✅ Multi-tenancy isolation verified under load")
 	t.Logf("   - %d tenants", len(tenantIDs))
 	t.Logf("   - %d workers per tenant", numWorkers)
@@ -183,7 +183,7 @@ func (m *testTenantAwareModule) ProcessTenantData(ctx context.Context, data stri
 	if !ok {
 		tenantID = "unknown"
 	}
-	
+
 	// Return tenant-prefixed result to verify isolation
 	return fmt.Sprintf("[%s] processed: %s", tenantID, data)
 }

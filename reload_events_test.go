@@ -95,10 +95,10 @@ func TestConfigReloadCompletedEvent(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test that ConfigReloadCompletedEvent has required fields
 				event := ConfigReloadCompletedEvent{
-					ReloadID:     "reload-123",
-					Timestamp:    time.Now(),
-					Success:      true,
-					Duration:     50 * time.Millisecond,
+					ReloadID:        "reload-123",
+					Timestamp:       time.Now(),
+					Success:         true,
+					Duration:        50 * time.Millisecond,
 					AffectedModules: []string{"database", "httpserver"},
 				}
 				assert.Equal(t, "reload-123", event.ReloadID, "Event should have ReloadID field")
@@ -220,7 +220,7 @@ func TestReloadEventEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockEventObserver{}
-				
+
 				// Create reload orchestrator (mock)
 				orchestrator := &mockReloadOrchestrator{
 					observer: observer,
@@ -256,7 +256,7 @@ func TestReloadEventEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockEventObserver{}
-				
+
 				// Create reload orchestrator (mock)
 				orchestrator := &mockReloadOrchestrator{
 					observer: observer,
@@ -286,7 +286,7 @@ func TestReloadEventEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockEventObserver{}
-				
+
 				// Create reload orchestrator (mock)
 				orchestrator := &mockReloadOrchestrator{
 					observer: observer,

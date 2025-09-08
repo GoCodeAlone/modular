@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,20 +21,20 @@ import (
 //   - Exponential backoff for repeated failures
 //   - Concurrent request queueing
 type ReloadOrchestrator struct {
-	modules    map[string]reloadableModule
-	mu         sync.RWMutex
-	
+	modules map[string]reloadableModule
+	mu      sync.RWMutex
+
 	// Request queueing
 	requestQueue chan reloadRequest
-	processing   bool
-	processingMu sync.Mutex
-	
+	processing   int32      // Use atomic operations: 0 = not processing, 1 = processing
+	processingMu sync.Mutex // Keep for compatibility with other fields
+
 	// Failure tracking for backoff
-	lastFailure   time.Time
-	failureCount  int
-	backoffBase   time.Duration
-	backoffCap    time.Duration
-	
+	lastFailure  time.Time
+	failureCount int
+	backoffBase  time.Duration
+	backoffCap   time.Duration
+
 	// Event subject for publishing events
 	eventSubject Subject
 }
@@ -47,11 +48,11 @@ type reloadableModule struct {
 
 // reloadRequest represents a queued reload request
 type reloadRequest struct {
-	ctx       context.Context
-	sections  []string
-	trigger   ReloadTrigger
-	reloadID  string
-	response  chan reloadResponse
+	ctx      context.Context
+	sections []string
+	trigger  ReloadTrigger
+	reloadID string
+	response chan reloadResponse
 }
 
 // reloadResponse represents the response to a reload request
@@ -64,11 +65,11 @@ type ReloadOrchestratorConfig struct {
 	// BackoffBase is the base duration for exponential backoff
 	// Default: 2 seconds
 	BackoffBase time.Duration
-	
+
 	// BackoffCap is the maximum duration for exponential backoff
 	// Default: 2 minutes as specified in design brief
 	BackoffCap time.Duration
-	
+
 	// QueueSize is the size of the request queue
 	// Default: 100
 	QueueSize int
@@ -94,17 +95,17 @@ func NewReloadOrchestratorWithConfig(config ReloadOrchestratorConfig) *ReloadOrc
 	if config.QueueSize <= 0 {
 		config.QueueSize = 100
 	}
-	
+
 	orchestrator := &ReloadOrchestrator{
 		modules:      make(map[string]reloadableModule),
 		requestQueue: make(chan reloadRequest, config.QueueSize),
 		backoffBase:  config.BackoffBase,
 		backoffCap:   config.BackoffCap,
 	}
-	
+
 	// Start request processing goroutine
 	go orchestrator.processRequests()
-	
+
 	return orchestrator
 }
 
@@ -123,21 +124,21 @@ func (o *ReloadOrchestrator) RegisterModule(name string, module Reloadable) erro
 	if module == nil {
 		return fmt.Errorf("reload orchestrator: module cannot be nil")
 	}
-	
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	// Check for duplicate registration
 	if _, exists := o.modules[name]; exists {
 		return fmt.Errorf("reload orchestrator: module '%s' already registered", name)
 	}
-	
+
 	o.modules[name] = reloadableModule{
 		module:   module,
 		name:     name,
 		priority: len(o.modules), // Simple ordering by registration order
 	}
-	
+
 	return nil
 }
 
@@ -145,11 +146,11 @@ func (o *ReloadOrchestrator) RegisterModule(name string, module Reloadable) erro
 func (o *ReloadOrchestrator) UnregisterModule(name string) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	if _, exists := o.modules[name]; !exists {
 		return fmt.Errorf("reload orchestrator: no module registered with name '%s'", name)
 	}
-	
+
 	delete(o.modules, name)
 	return nil
 }
@@ -157,9 +158,14 @@ func (o *ReloadOrchestrator) UnregisterModule(name string) error {
 // RequestReload triggers a dynamic configuration reload for the specified sections.
 // If no sections are specified, all dynamic configuration will be reloaded.
 func (o *ReloadOrchestrator) RequestReload(ctx context.Context, sections ...string) error {
+	// Check if already processing using atomic operation
+	if !atomic.CompareAndSwapInt32(&o.processing, 0, 1) {
+		return fmt.Errorf("reload orchestrator: reload already in progress")
+	}
+
 	// Generate reload ID
 	reloadID := generateReloadID()
-	
+
 	// Create reload request
 	request := reloadRequest{
 		ctx:      ctx,
@@ -168,7 +174,7 @@ func (o *ReloadOrchestrator) RequestReload(ctx context.Context, sections ...stri
 		reloadID: reloadID,
 		response: make(chan reloadResponse, 1),
 	}
-	
+
 	// Queue the request
 	select {
 	case o.requestQueue <- request:
@@ -177,11 +183,17 @@ func (o *ReloadOrchestrator) RequestReload(ctx context.Context, sections ...stri
 		case response := <-request.response:
 			return response.err
 		case <-ctx.Done():
+			// Reset processing flag if we timeout
+			atomic.StoreInt32(&o.processing, 0)
 			return ctx.Err()
 		}
 	case <-ctx.Done():
+		// Reset processing flag if context is cancelled
+		atomic.StoreInt32(&o.processing, 0)
 		return ctx.Err()
 	default:
+		// Reset processing flag if queue is full
+		atomic.StoreInt32(&o.processing, 0)
 		return fmt.Errorf("reload orchestrator: request queue is full")
 	}
 }
@@ -195,48 +207,41 @@ func (o *ReloadOrchestrator) processRequests() {
 
 // handleReloadRequest handles a single reload request
 func (o *ReloadOrchestrator) handleReloadRequest(request reloadRequest) {
-	o.processingMu.Lock()
-	if o.processing {
-		o.processingMu.Unlock()
-		request.response <- reloadResponse{err: fmt.Errorf("reload orchestrator: reload already in progress")}
-		return
-	}
-	o.processing = true
-	o.processingMu.Unlock()
-	
+	// Processing flag is now managed in RequestReload()
+	// This method just handles the actual reload logic
+
 	defer func() {
-		o.processingMu.Lock()
-		o.processing = false
-		o.processingMu.Unlock()
+		// Reset processing flag when reload completes
+		atomic.StoreInt32(&o.processing, 0)
 	}()
-	
+
 	// Check backoff
 	if o.shouldBackoff() {
 		backoffDuration := o.calculateBackoff()
 		request.response <- reloadResponse{err: fmt.Errorf("reload orchestrator: backing off for %v after recent failures", backoffDuration)}
 		return
 	}
-	
+
 	start := time.Now()
-	
+
 	// Emit start event
 	o.emitStartEvent(request.reloadID, request.trigger, nil)
-	
+
 	// Perform the reload
 	err := o.performReload(request.ctx, request.reloadID, request.sections)
 	duration := time.Since(start)
-	
+
 	if err != nil {
 		// Update failure tracking
 		o.recordFailure()
-		
+
 		// Emit failure event
 		o.emitFailedEvent(request.reloadID, err.Error(), "", duration)
 		request.response <- reloadResponse{err: err}
 	} else {
 		// Reset failure tracking on success
 		o.resetFailures()
-		
+
 		// Emit success event
 		o.emitSuccessEvent(request.reloadID, duration, 0, []string{})
 		request.response <- reloadResponse{err: nil}
@@ -251,19 +256,19 @@ func (o *ReloadOrchestrator) performReload(ctx context.Context, reloadID string,
 		modules = append(modules, module)
 	}
 	o.mu.RUnlock()
-	
+
 	// Sort modules by priority (registration order)
 	// In a full implementation, this would be more sophisticated
-	
+
 	// For now, simulate reload by checking if modules can reload
 	for _, moduleInfo := range modules {
 		if !moduleInfo.module.CanReload() {
 			continue
 		}
-		
+
 		// Create timeout context
 		moduleCtx, cancel := context.WithTimeout(ctx, moduleInfo.module.ReloadTimeout())
-		
+
 		// For now, we'll just call Reload with empty changes
 		// In a full implementation, this would:
 		// 1. Parse dynamic fields from config
@@ -272,12 +277,12 @@ func (o *ReloadOrchestrator) performReload(ctx context.Context, reloadID string,
 		// 4. Apply changes sequentially
 		err := moduleInfo.module.Reload(moduleCtx, []ConfigChange{})
 		cancel()
-		
+
 		if err != nil {
 			return fmt.Errorf("reload orchestrator: module '%s' failed to reload: %w", moduleInfo.name, err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -286,7 +291,7 @@ func (o *ReloadOrchestrator) shouldBackoff() bool {
 	if o.failureCount == 0 {
 		return false
 	}
-	
+
 	backoffDuration := o.calculateBackoff()
 	return time.Since(o.lastFailure) < backoffDuration
 }
@@ -296,18 +301,18 @@ func (o *ReloadOrchestrator) calculateBackoff() time.Duration {
 	if o.failureCount == 0 {
 		return 0
 	}
-	
+
 	// Exponential backoff: base * 2^(failureCount-1)
 	factor := 1
 	for i := 1; i < o.failureCount; i++ {
 		factor *= 2
 	}
-	
+
 	duration := time.Duration(factor) * o.backoffBase
 	if duration > o.backoffCap {
 		duration = o.backoffCap
 	}
-	
+
 	return duration
 }
 
@@ -329,14 +334,14 @@ func (o *ReloadOrchestrator) emitStartEvent(reloadID string, trigger ReloadTrigg
 	if o.eventSubject == nil {
 		return
 	}
-	
+
 	event := &ConfigReloadStartedEvent{
 		ReloadID:    reloadID,
 		Timestamp:   time.Now(),
 		TriggerType: trigger,
 		ConfigDiff:  configDiff,
 	}
-	
+
 	// Convert to CloudEvent if needed, or use the existing observer pattern
 	// For now, we'll use a simple approach and directly notify if the subject supports it
 	// In practice, this would be implemented through the main application's event system
@@ -353,7 +358,7 @@ func (o *ReloadOrchestrator) emitSuccessEvent(reloadID string, duration time.Dur
 	if o.eventSubject == nil {
 		return
 	}
-	
+
 	event := &ConfigReloadCompletedEvent{
 		ReloadID:        reloadID,
 		Timestamp:       time.Now(),
@@ -362,7 +367,7 @@ func (o *ReloadOrchestrator) emitSuccessEvent(reloadID string, duration time.Dur
 		AffectedModules: modulesAffected,
 		ChangesApplied:  changesApplied,
 	}
-	
+
 	// Placeholder for CloudEvent integration
 	go func() {
 		ctx := context.Background()
@@ -376,7 +381,7 @@ func (o *ReloadOrchestrator) emitFailedEvent(reloadID, errorMsg, failedModule st
 	if o.eventSubject == nil {
 		return
 	}
-	
+
 	event := &ConfigReloadFailedEvent{
 		ReloadID:     reloadID,
 		Timestamp:    time.Now(),
@@ -384,7 +389,7 @@ func (o *ReloadOrchestrator) emitFailedEvent(reloadID, errorMsg, failedModule st
 		FailedModule: failedModule,
 		Duration:     duration,
 	}
-	
+
 	// Placeholder for CloudEvent integration
 	go func() {
 		ctx := context.Background()
@@ -398,13 +403,13 @@ func (o *ReloadOrchestrator) emitNoopEvent(reloadID, reason string) {
 	if o.eventSubject == nil {
 		return
 	}
-	
+
 	event := &ConfigReloadNoopEvent{
 		ReloadID:  reloadID,
 		Timestamp: time.Now(),
 		Reason:    reason,
 	}
-	
+
 	// Placeholder for CloudEvent integration
 	go func() {
 		ctx := context.Background()
@@ -424,25 +429,25 @@ func generateReloadID() string {
 // parseDynamicFields parses struct fields tagged with dynamic:"true" using reflection
 func parseDynamicFields(config interface{}) ([]string, error) {
 	var dynamicFields []string
-	
+
 	value := reflect.ValueOf(config)
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem()
 	}
-	
+
 	if value.Kind() != reflect.Struct {
 		return dynamicFields, nil
 	}
-	
+
 	structType := value.Type()
 	for i := 0; i < value.NumField(); i++ {
 		field := structType.Field(i)
-		
+
 		// Check for dynamic tag
 		if tag := field.Tag.Get("dynamic"); tag == "true" {
 			dynamicFields = append(dynamicFields, field.Name)
 		}
-		
+
 		// Recursively check nested structs
 		fieldValue := value.Field(i)
 		if fieldValue.Kind() == reflect.Struct || (fieldValue.Kind() == reflect.Ptr && fieldValue.Elem().Kind() == reflect.Struct) {
@@ -458,21 +463,21 @@ func parseDynamicFields(config interface{}) ([]string, error) {
 			}
 		}
 	}
-	
+
 	return dynamicFields, nil
 }
 
 // Stop gracefully stops the orchestrator
 func (o *ReloadOrchestrator) Stop(ctx context.Context) error {
 	close(o.requestQueue)
-	
+
 	// Wait for processing to complete
 	timeout := time.NewTimer(30 * time.Second)
 	defer timeout.Stop()
-	
+
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -480,11 +485,9 @@ func (o *ReloadOrchestrator) Stop(ctx context.Context) error {
 		case <-timeout.C:
 			return fmt.Errorf("reload orchestrator: timeout waiting for stop")
 		case <-ticker.C:
-			o.processingMu.Lock()
-			processing := o.processing
-			o.processingMu.Unlock()
-			
-			if !processing {
+			processing := atomic.LoadInt32(&o.processing)
+
+			if processing == 0 {
 				return nil
 			}
 		}

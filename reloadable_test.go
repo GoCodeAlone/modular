@@ -1,4 +1,3 @@
-
 package modular
 
 import (
@@ -175,9 +174,9 @@ func TestReloadable_ModuleIntegration(t *testing.T) {
 	t.Run("should integrate with module system", func(t *testing.T) {
 		// Create a module that implements both Module and Reloadable
 		module := &testReloadableModule{
-			name:        "integrated-module",
-			canReload:   true,
-			timeout:     20 * time.Second,
+			name:          "integrated-module",
+			canReload:     true,
+			timeout:       20 * time.Second,
 			currentConfig: map[string]interface{}{"initial": true},
 		}
 
@@ -223,9 +222,9 @@ func TestReloadable_ModuleIntegration(t *testing.T) {
 		}
 
 		reloadableModule := &testReloadableModule{
-			name:        "app-reloadable-module",
-			canReload:   true,
-			timeout:     10 * time.Second,
+			name:          "app-reloadable-module",
+			canReload:     true,
+			timeout:       10 * time.Second,
 			currentConfig: map[string]interface{}{"app_level": "initial"},
 		}
 
@@ -239,7 +238,7 @@ func TestReloadable_ModuleIntegration(t *testing.T) {
 		// Simulate application-level reload by checking if module is reloadable
 		if reloadable, ok := modules["app-reloadable-module"].(Reloadable); ok {
 			assert.True(t, reloadable.CanReload())
-			
+
 			changes := []ConfigChange{
 				{
 					Section:   "app",
@@ -346,9 +345,9 @@ func TestReloadable_ErrorHandling(t *testing.T) {
 
 	t.Run("should preserve existing config on reload failure", func(t *testing.T) {
 		module := &testReloadableModule{
-			name:        "preserve-config-service",
-			canReload:   true,
-			timeout:     30 * time.Second,
+			name:          "preserve-config-service",
+			canReload:     true,
+			timeout:       30 * time.Second,
 			currentConfig: map[string]interface{}{"original": "value"},
 		}
 
@@ -488,7 +487,7 @@ func newValidatingReloadableModule(name string) Reloadable {
 			if config == nil {
 				return errors.New("config cannot be nil")
 			}
-			
+
 			if configMap, ok := config.(map[string]interface{}); ok {
 				if port, exists := configMap["port"]; exists {
 					if portNum, ok := port.(int); ok && portNum < 0 {
@@ -539,4 +538,3 @@ func (m *slowReloadableModule) CanReload() bool {
 func (m *slowReloadableModule) ReloadTimeout() time.Duration {
 	return m.timeout
 }
-

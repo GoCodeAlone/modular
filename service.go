@@ -261,16 +261,16 @@ type ServiceRegistryOption func(*ScopedServiceRegistry) error
 // This extends the basic ServiceRegistry with scope-based instance management.
 type ScopedServiceRegistry struct {
 	*EnhancedServiceRegistry
-	
+
 	// serviceScopes maps service names to their configured scopes
 	serviceScopes map[string]ServiceScope
-	
+
 	// scopeConfigs maps service names to their detailed scope configurations
 	scopeConfigs map[string]ServiceScopeConfig
-	
+
 	// singletonInstances caches singleton service instances
 	singletonInstances map[string]any
-	
+
 	// scopedInstances caches scoped service instances by scope key
 	scopedInstances map[string]map[string]any // scope-key -> service-name -> instance
 }
@@ -280,10 +280,10 @@ type ScopedServiceRegistry struct {
 func NewServiceRegistry() *ScopedServiceRegistry {
 	return &ScopedServiceRegistry{
 		EnhancedServiceRegistry: NewEnhancedServiceRegistry(),
-		serviceScopes:          make(map[string]ServiceScope),
-		scopeConfigs:           make(map[string]ServiceScopeConfig),
-		singletonInstances:     make(map[string]any),
-		scopedInstances:        make(map[string]map[string]any),
+		serviceScopes:           make(map[string]ServiceScope),
+		scopeConfigs:            make(map[string]ServiceScopeConfig),
+		singletonInstances:      make(map[string]any),
+		scopedInstances:         make(map[string]map[string]any),
 	}
 }
 
@@ -311,7 +311,7 @@ func (r *ScopedServiceRegistry) Register(name string, factory any) error {
 // Get retrieves a service instance respecting the configured scope.
 func (r *ScopedServiceRegistry) Get(name string) (any, error) {
 	scope := r.GetServiceScope(name)
-	
+
 	switch scope {
 	case ServiceScopeSingleton:
 		return r.getSingletonInstance(name)
@@ -325,13 +325,13 @@ func (r *ScopedServiceRegistry) Get(name string) (any, error) {
 // GetWithContext retrieves a service instance with context for scoped services.
 func (r *ScopedServiceRegistry) GetWithContext(ctx context.Context, name string) (any, error) {
 	scope := r.GetServiceScope(name)
-	
+
 	// Note: Service scope detection works correctly
-	
+
 	if scope == ServiceScopeScoped {
 		return r.getScopedInstance(ctx, name)
 	}
-	
+
 	// For non-scoped services, context doesn't matter
 	return r.Get(name)
 }
@@ -342,17 +342,17 @@ func (r *ScopedServiceRegistry) getSingletonInstance(name string) (any, error) {
 	if instance, exists := r.singletonInstances[name]; exists {
 		return instance, nil
 	}
-	
+
 	// Get the factory from the registry
 	factory, exists := r.services[name]
 	if !exists {
 		return nil, fmt.Errorf("service not found: %s", name)
 	}
-	
+
 	// Create instance using factory
 	instance := r.createInstanceFromFactory(factory.Service)
 	r.singletonInstances[name] = instance
-	
+
 	return instance, nil
 }
 
@@ -363,7 +363,7 @@ func (r *ScopedServiceRegistry) getTransientInstance(name string) (any, error) {
 	if !exists {
 		return nil, fmt.Errorf("service not found: %s", name)
 	}
-	
+
 	// Always create a new instance for transient services
 	return r.createInstanceFromFactory(factory.Service), nil
 }
@@ -373,28 +373,28 @@ func (r *ScopedServiceRegistry) getScopedInstance(ctx context.Context, name stri
 	// Extract scope key from context
 	config := r.scopeConfigs[name]
 	scopeKey := r.extractScopeKey(ctx, config.ScopeKey)
-	
+
 	// Check if instance exists in scope
 	if scopeInstances, exists := r.scopedInstances[scopeKey]; exists {
 		if instance, exists := scopeInstances[name]; exists {
 			return instance, nil
 		}
 	}
-	
+
 	// Create new instance for this scope
 	factory, exists := r.services[name]
 	if !exists {
 		return nil, fmt.Errorf("service not found: %s", name)
 	}
-	
+
 	instance := r.createInstanceFromFactory(factory.Service)
-	
+
 	// Store in scope cache
 	if r.scopedInstances[scopeKey] == nil {
 		r.scopedInstances[scopeKey] = make(map[string]any)
 	}
 	r.scopedInstances[scopeKey][name] = instance
-	
+
 	return instance, nil
 }
 
@@ -404,7 +404,7 @@ func (r *ScopedServiceRegistry) getDefaultInstance(name string) (any, error) {
 	if !exists {
 		return nil, fmt.Errorf("service not found: %s", name)
 	}
-	
+
 	return r.createInstanceFromFactory(entry.Service), nil
 }
 
@@ -419,7 +419,7 @@ func (r *ScopedServiceRegistry) createInstanceFromFactory(factory any) any {
 			return results[0].Interface()
 		}
 	}
-	
+
 	// Return the service directly if not a factory
 	return factory
 }
@@ -428,13 +428,13 @@ func (r *ScopedServiceRegistry) createInstanceFromFactory(factory any) any {
 func (r *ScopedServiceRegistry) extractScopeKey(ctx context.Context, scopeKeyName string) string {
 	// Use the same key type as WithScopeContext
 	key := scopeContextKeyType(scopeKeyName)
-	
+
 	if value := ctx.Value(key); value != nil {
 		if strValue, ok := value.(string); ok {
 			return strValue
 		}
 	}
-	
+
 	return "default-scope"
 }
 

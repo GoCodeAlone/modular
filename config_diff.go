@@ -1,10 +1,16 @@
 package modular
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
+)
+
+// Static errors for config diff
+var (
+	ErrInvalidReloadTrigger = errors.New("invalid reload trigger")
 )
 
 // ConfigDiff represents the differences between two configuration states.
@@ -44,11 +50,11 @@ type ChangeType string
 const (
 	// ChangeTypeAdded indicates a field was added to the configuration
 	ChangeTypeAdded ChangeType = "added"
-	
+
 	// ChangeTypeModified indicates a field value was changed
 	ChangeTypeModified ChangeType = "modified"
-	
-	// ChangeTypeRemoved indicates a field was removed from the configuration  
+
+	// ChangeTypeRemoved indicates a field was removed from the configuration
 	ChangeTypeRemoved ChangeType = "removed"
 )
 
@@ -61,10 +67,10 @@ func (c ChangeType) String() string {
 type ValidationResult struct {
 	// IsValid indicates whether the configuration change is valid
 	IsValid bool
-	
+
 	// Message provides details about the validation result
 	Message string
-	
+
 	// Warnings contains any validation warnings (non-fatal issues)
 	Warnings []string
 }
@@ -94,7 +100,7 @@ type ConfigChange struct {
 // FieldChange represents a change in a specific configuration field.
 // It captures both the previous and new values, along with metadata
 // about the field and whether it contains sensitive information.
-// 
+//
 // Deprecated: Use ConfigChange instead for new reload implementations.
 // This type is maintained for backward compatibility.
 type FieldChange struct {
@@ -114,7 +120,7 @@ type FieldChange struct {
 	// IsSensitive indicates whether this field contains sensitive information
 	// that should be redacted from logs or audit trails
 	IsSensitive bool
-	
+
 	// ValidationResult contains the result of validating this field change
 	ValidationResult *ValidationResult
 }
@@ -206,16 +212,16 @@ func (d *ConfigDiff) RedactSensitiveFields() *ConfigDiff {
 type ChangeSummary struct {
 	// TotalChanges is the total number of changes (added + modified + removed)
 	TotalChanges int
-	
+
 	// AddedCount is the number of fields that were added
 	AddedCount int
-	
+
 	// ModifiedCount is the number of fields that were modified
 	ModifiedCount int
-	
+
 	// RemovedCount is the number of fields that were removed
 	RemovedCount int
-	
+
 	// SensitiveChanges is the number of sensitive fields that were changed
 	SensitiveChanges int
 }
@@ -227,16 +233,16 @@ func (d *ConfigDiff) ChangeSummary() ChangeSummary {
 		ModifiedCount: len(d.Changed),
 		RemovedCount:  len(d.Removed),
 	}
-	
+
 	summary.TotalChanges = summary.AddedCount + summary.ModifiedCount + summary.RemovedCount
-	
+
 	// Count sensitive changes
 	for _, change := range d.Changed {
 		if change.IsSensitive {
 			summary.SensitiveChanges++
 		}
 	}
-	
+
 	return summary
 }
 
@@ -249,28 +255,28 @@ func (d *ConfigDiff) FilterByPrefix(prefix string) *ConfigDiff {
 		Timestamp: d.Timestamp,
 		DiffID:    d.DiffID + "-filtered",
 	}
-	
+
 	// Filter changed fields
 	for path, change := range d.Changed {
 		if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
 			filtered.Changed[path] = change
 		}
 	}
-	
+
 	// Filter added fields
 	for path, value := range d.Added {
 		if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
 			filtered.Added[path] = value
 		}
 	}
-	
+
 	// Filter removed fields
 	for path, value := range d.Removed {
 		if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
 			filtered.Removed[path] = value
 		}
 	}
-	
+
 	return filtered
 }
 
@@ -278,16 +284,16 @@ func (d *ConfigDiff) FilterByPrefix(prefix string) *ConfigDiff {
 type ConfigDiffOptions struct {
 	// IgnoreFields is a list of field paths to ignore when generating the diff
 	IgnoreFields []string
-	
+
 	// SensitiveFields is a list of field paths that should be marked as sensitive
 	SensitiveFields []string
-	
+
 	// ValidateChanges indicates whether to validate changes during diff generation
 	ValidateChanges bool
-	
+
 	// IncludeValidation indicates whether to include validation results in the diff
 	IncludeValidation bool
-	
+
 	// MaxDepth limits how deep to recurse into nested structures
 	MaxDepth int
 }
@@ -306,36 +312,36 @@ func GenerateConfigDiffWithOptions(oldConfig, newConfig interface{}, options Con
 		Timestamp: time.Now(),
 		DiffID:    generateDiffID(),
 	}
-	
+
 	// Convert configs to maps for easier comparison
 	oldMap, err := configToMap(oldConfig, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert old config: %w", err)
 	}
-	
+
 	newMap, err := configToMap(newConfig, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert new config: %w", err)
 	}
-	
+
 	// Check for ignored fields
 	ignoredFields := make(map[string]bool)
 	for _, field := range options.IgnoreFields {
 		ignoredFields[field] = true
 	}
-	
+
 	// Check for sensitive fields
 	sensitiveFields := make(map[string]bool)
 	for _, field := range options.SensitiveFields {
 		sensitiveFields[field] = true
 	}
-	
+
 	// Find changed and removed fields
 	for path, oldValue := range oldMap {
 		if ignoredFields[path] {
 			continue
 		}
-		
+
 		if newValue, exists := newMap[path]; exists {
 			// Field exists in both - check if changed
 			if !compareValues(oldValue, newValue) {
@@ -352,19 +358,19 @@ func GenerateConfigDiffWithOptions(oldConfig, newConfig interface{}, options Con
 			diff.Removed[path] = oldValue
 		}
 	}
-	
+
 	// Find added fields
 	for path, newValue := range newMap {
 		if ignoredFields[path] {
 			continue
 		}
-		
+
 		if _, exists := oldMap[path]; !exists {
 			// Field was added
 			diff.Added[path] = newValue
 		}
 	}
-	
+
 	return diff, nil
 }
 
@@ -376,13 +382,13 @@ func generateDiffID() string {
 // configToMap converts a configuration object to a flattened map with dotted keys
 func configToMap(config interface{}, prefix string) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
-	
+
 	if config == nil {
 		return result, nil
 	}
-	
+
 	value := reflect.ValueOf(config)
-	
+
 	// Handle pointers
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
@@ -390,7 +396,7 @@ func configToMap(config interface{}, prefix string) (map[string]interface{}, err
 		}
 		value = value.Elem()
 	}
-	
+
 	switch value.Kind() {
 	case reflect.Map:
 		return mapToFlattened(config, prefix), nil
@@ -408,21 +414,21 @@ func configToMap(config interface{}, prefix string) (map[string]interface{}, err
 // mapToFlattened converts a map to a flattened map with dotted keys
 func mapToFlattened(config interface{}, prefix string) map[string]interface{} {
 	result := make(map[string]interface{})
-	
+
 	value := reflect.ValueOf(config)
 	if value.Kind() != reflect.Map {
 		return result
 	}
-	
+
 	for _, key := range value.MapKeys() {
 		keyStr := fmt.Sprintf("%v", key.Interface())
 		fullKey := keyStr
 		if prefix != "" {
 			fullKey = prefix + "." + keyStr
 		}
-		
+
 		mapValue := value.MapIndex(key).Interface()
-		
+
 		// Recursively flatten nested maps and structs
 		if subMap, err := configToMap(mapValue, fullKey); err == nil {
 			for subKey, subValue := range subMap {
@@ -432,36 +438,36 @@ func mapToFlattened(config interface{}, prefix string) map[string]interface{} {
 			result[fullKey] = mapValue
 		}
 	}
-	
+
 	return result
 }
 
 // structToFlattened converts a struct to a flattened map with dotted keys
 func structToFlattened(value reflect.Value, prefix string) map[string]interface{} {
 	result := make(map[string]interface{})
-	
+
 	if value.Kind() != reflect.Struct {
 		return result
 	}
-	
+
 	valueType := value.Type()
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
 		fieldType := valueType.Field(i)
-		
+
 		// Skip unexported fields
 		if !field.CanInterface() {
 			continue
 		}
-		
+
 		fieldName := strings.ToLower(fieldType.Name)
 		fullKey := fieldName
 		if prefix != "" {
 			fullKey = prefix + "." + fieldName
 		}
-		
+
 		fieldValue := field.Interface()
-		
+
 		// Recursively flatten nested structures
 		if subMap, err := configToMap(fieldValue, fullKey); err == nil {
 			for subKey, subValue := range subMap {
@@ -471,7 +477,7 @@ func structToFlattened(value reflect.Value, prefix string) map[string]interface{
 			result[fullKey] = fieldValue
 		}
 	}
-	
+
 	return result
 }
 
@@ -487,13 +493,13 @@ type ReloadTrigger int
 const (
 	// ReloadTriggerManual indicates the reload was triggered manually
 	ReloadTriggerManual ReloadTrigger = iota
-	
+
 	// ReloadTriggerFileChange indicates the reload was triggered by file changes
 	ReloadTriggerFileChange
-	
+
 	// ReloadTriggerAPIRequest indicates the reload was triggered by API request
 	ReloadTriggerAPIRequest
-	
+
 	// ReloadTriggerScheduled indicates the reload was triggered by schedule
 	ReloadTriggerScheduled
 )
@@ -526,7 +532,7 @@ func ParseReloadTrigger(s string) (ReloadTrigger, error) {
 	case "scheduled":
 		return ReloadTriggerScheduled, nil
 	default:
-		return 0, fmt.Errorf("invalid reload trigger: %s", s)
+		return 0, fmt.Errorf("%s: %w", s, ErrInvalidReloadTrigger)
 	}
 }
 
@@ -536,13 +542,13 @@ func ParseReloadTrigger(s string) (ReloadTrigger, error) {
 type ConfigReloadStartedEvent struct {
 	// ReloadID is a unique identifier for this reload operation
 	ReloadID string
-	
+
 	// Timestamp indicates when the reload started
 	Timestamp time.Time
-	
+
 	// TriggerType indicates what triggered this reload
 	TriggerType ReloadTrigger
-	
+
 	// ConfigDiff contains the configuration changes that triggered this reload
 	ConfigDiff *ConfigDiff
 }
@@ -552,7 +558,7 @@ func (e *ConfigReloadStartedEvent) EventType() string {
 	return "config.reload.started"
 }
 
-// EventSource returns the standardized event source for reload started events  
+// EventSource returns the standardized event source for reload started events
 func (e *ConfigReloadStartedEvent) EventSource() string {
 	return "modular.core"
 }
@@ -581,7 +587,7 @@ func (e *ConfigReloadStartedEvent) StructuredFields() map[string]interface{} {
 		"reload_id":    e.ReloadID,
 		"trigger_type": e.TriggerType.String(),
 	}
-	
+
 	if e.ConfigDiff != nil {
 		summary := e.ConfigDiff.ChangeSummary()
 		fields["changes_count"] = summary.TotalChanges
@@ -589,7 +595,7 @@ func (e *ConfigReloadStartedEvent) StructuredFields() map[string]interface{} {
 		fields["modified_count"] = summary.ModifiedCount
 		fields["removed_count"] = summary.RemovedCount
 	}
-	
+
 	return fields
 }
 
@@ -597,22 +603,22 @@ func (e *ConfigReloadStartedEvent) StructuredFields() map[string]interface{} {
 type ConfigReloadCompletedEvent struct {
 	// ReloadID is a unique identifier for this reload operation
 	ReloadID string
-	
+
 	// Timestamp indicates when the reload completed
 	Timestamp time.Time
-	
+
 	// Success indicates whether the reload was successful
 	Success bool
-	
+
 	// Duration indicates how long the reload took
 	Duration time.Duration
-	
+
 	// AffectedModules lists the modules that were affected by this reload
 	AffectedModules []string
-	
+
 	// Error contains error details if Success is false
 	Error string
-	
+
 	// ChangesApplied contains the number of configuration changes that were applied
 	ChangesApplied int
 }
@@ -622,7 +628,7 @@ func (e *ConfigReloadCompletedEvent) EventType() string {
 	return "config.reload.completed"
 }
 
-// EventSource returns the standardized event source for reload completed events  
+// EventSource returns the standardized event source for reload completed events
 func (e *ConfigReloadCompletedEvent) EventSource() string {
 	return "modular.core"
 }
@@ -645,24 +651,24 @@ func (e *ConfigReloadCompletedEvent) GetTimestamp() time.Time {
 // StructuredFields returns the structured field data for this event
 func (e *ConfigReloadCompletedEvent) StructuredFields() map[string]interface{} {
 	fields := map[string]interface{}{
-		"module":           "core",
-		"phase":            "reload",
-		"event":            "completed",
-		"reload_id":        e.ReloadID,
-		"success":          e.Success,
-		"duration_ms":      e.Duration.Milliseconds(),
-		"changes_applied":  e.ChangesApplied,
+		"module":          "core",
+		"phase":           "reload",
+		"event":           "completed",
+		"reload_id":       e.ReloadID,
+		"success":         e.Success,
+		"duration_ms":     e.Duration.Milliseconds(),
+		"changes_applied": e.ChangesApplied,
 	}
-	
+
 	if len(e.AffectedModules) > 0 {
 		fields["affected_modules_count"] = len(e.AffectedModules)
 		fields["affected_modules"] = e.AffectedModules
 	}
-	
+
 	if !e.Success && e.Error != "" {
 		fields["error"] = e.Error
 	}
-	
+
 	return fields
 }
 
@@ -670,16 +676,16 @@ func (e *ConfigReloadCompletedEvent) StructuredFields() map[string]interface{} {
 type ConfigReloadFailedEvent struct {
 	// ReloadID is a unique identifier for this reload operation
 	ReloadID string
-	
+
 	// Timestamp indicates when the reload failed
 	Timestamp time.Time
-	
+
 	// Error contains the error that caused the failure
 	Error string
-	
+
 	// FailedModule contains the name of the module that caused the failure (if applicable)
 	FailedModule string
-	
+
 	// Duration indicates how long the reload attempt took before failing
 	Duration time.Duration
 }
@@ -689,7 +695,7 @@ func (e *ConfigReloadFailedEvent) EventType() string {
 	return "config.reload.failed"
 }
 
-// EventSource returns the standardized event source for reload failed events  
+// EventSource returns the standardized event source for reload failed events
 func (e *ConfigReloadFailedEvent) EventSource() string {
 	return "modular.core"
 }
@@ -713,10 +719,10 @@ func (e *ConfigReloadFailedEvent) GetTimestamp() time.Time {
 type ConfigReloadNoopEvent struct {
 	// ReloadID is a unique identifier for this reload operation
 	ReloadID string
-	
+
 	// Timestamp indicates when the no-op was determined
 	Timestamp time.Time
-	
+
 	// Reason indicates why this was a no-op (e.g., "no changes detected")
 	Reason string
 }
@@ -726,7 +732,7 @@ func (e *ConfigReloadNoopEvent) EventType() string {
 	return "config.reload.noop"
 }
 
-// EventSource returns the standardized event source for reload noop events  
+// EventSource returns the standardized event source for reload noop events
 func (e *ConfigReloadNoopEvent) EventSource() string {
 	return "modular.core"
 }
@@ -749,7 +755,7 @@ func (e *ConfigReloadNoopEvent) GetTimestamp() time.Time {
 // FilterEventsByReloadID filters a slice of observer events to include only reload events with the specified reload ID
 func FilterEventsByReloadID(events []ObserverEvent, reloadID string) []ObserverEvent {
 	var filtered []ObserverEvent
-	
+
 	for _, event := range events {
 		switch reloadEvent := event.(type) {
 		case *ConfigReloadStartedEvent:
@@ -770,6 +776,6 @@ func FilterEventsByReloadID(events []ObserverEvent, reloadID string) []ObserverE
 			}
 		}
 	}
-	
+
 	return filtered
 }

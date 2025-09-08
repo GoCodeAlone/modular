@@ -61,7 +61,7 @@ func TestProvenanceSecretClassification(t *testing.T) {
 
 	t.Run("should auto-detect secret fields by name patterns", func(t *testing.T) {
 		// Expected: should automatically identify secret fields
-		secretFieldPatterns := []string{
+		_ = []string{
 			"*.password",
 			"*.secret",
 			"*.token",
@@ -113,7 +113,7 @@ func TestProvenanceRedactionMethods(t *testing.T) {
 func TestProvenanceSecretSources(t *testing.T) {
 	t.Run("should track secret sources safely", func(t *testing.T) {
 		// Expected: should track where secrets came from without exposing them
-		secretSources := []string{
+		_ = []string{
 			"environment_variable",
 			"config_file",
 			"vault",
@@ -196,7 +196,7 @@ func TestProvenanceSecretExport(t *testing.T) {
 
 	t.Run("should support different export formats", func(t *testing.T) {
 		// Expected: should support JSON, YAML, CSV with redaction
-		exportFormats := []string{"json", "yaml", "csv", "xml"}
+		_ = []string{"json", "yaml", "csv", "xml"}
 
 		// All formats should support secret redaction
 		assert.Fail(t, "Multi-format redacted export not implemented")

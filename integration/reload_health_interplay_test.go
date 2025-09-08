@@ -20,49 +20,49 @@ import (
 // so this test shows the expected interface and behavior.
 func TestDynamicReloadHealthInterplay(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	
+
 	// Create application
 	app := modular.NewStdApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
-	
+
 	// Register modules that support dynamic reload and health checks
 	reloadableModule := &testReloadableModule{
 		name:   "reloadableModule",
 		config: &testReloadableConfig{Enabled: true, Timeout: 5},
 		health: &testHealthStatus{status: "healthy", lastCheck: time.Now()},
 	}
-	
+
 	healthAggregator := &testHealthAggregatorModule{
 		name:    "healthAggregator",
 		modules: make(map[string]*testHealthStatus),
 	}
-	
+
 	app.RegisterModule(reloadableModule)
 	app.RegisterModule(healthAggregator)
-	
+
 	// Initialize application
 	err := app.Init()
 	if err != nil {
 		t.Fatalf("Application initialization failed: %v", err)
 	}
-	
+
 	// Start application
 	err = app.Start()
 	if err != nil {
 		t.Fatalf("Application start failed: %v", err)
 	}
 	defer app.Stop()
-	
+
 	// Register module with health aggregator
 	healthAggregator.registerModule("reloadableModule", reloadableModule.health)
-	
+
 	// Verify initial health status
 	initialHealth := healthAggregator.getAggregatedHealth()
 	if initialHealth.overallStatus != "healthy" {
 		t.Errorf("Expected initial health to be 'healthy', got: %s", initialHealth.overallStatus)
 	}
-	
+
 	t.Log("✅ Initial health status verified as healthy")
-	
+
 	// Test case 1: Valid configuration reload
 	t.Run("ValidConfigReload", func(t *testing.T) {
 		// Prepare new valid configuration
@@ -70,24 +70,24 @@ func TestDynamicReloadHealthInterplay(t *testing.T) {
 			Enabled: true,
 			Timeout: 10, // Increased timeout
 		}
-		
+
 		// Perform dynamic reload
 		reloadResult := reloadableModule.reloadConfig(newConfig)
 		if !reloadResult.success {
 			t.Errorf("Valid config reload failed: %s", reloadResult.error)
 		}
-		
+
 		// Verify health status remains healthy after valid reload
 		time.Sleep(100 * time.Millisecond) // Allow health check to update
 		healthAfterReload := healthAggregator.getAggregatedHealth()
-		
+
 		if healthAfterReload.overallStatus != "healthy" {
 			t.Errorf("Expected health to remain 'healthy' after valid reload, got: %s", healthAfterReload.overallStatus)
 		}
-		
+
 		t.Log("✅ Health remains healthy after valid configuration reload")
 	})
-	
+
 	// Test case 2: Invalid configuration reload triggers health degradation
 	t.Run("InvalidConfigReloadHealthDegradation", func(t *testing.T) {
 		// Prepare invalid configuration
@@ -95,24 +95,24 @@ func TestDynamicReloadHealthInterplay(t *testing.T) {
 			Enabled: true,
 			Timeout: -1, // Invalid negative timeout
 		}
-		
+
 		// Perform dynamic reload
 		reloadResult := reloadableModule.reloadConfig(invalidConfig)
 		if reloadResult.success {
 			t.Error("Invalid config reload should have failed but succeeded")
 		}
-		
+
 		// Verify health status degrades after invalid reload
 		time.Sleep(100 * time.Millisecond) // Allow health check to update
 		healthAfterBadReload := healthAggregator.getAggregatedHealth()
-		
+
 		if healthAfterBadReload.overallStatus == "healthy" {
 			t.Error("Expected health to degrade after invalid config reload")
 		}
-		
+
 		t.Logf("✅ Health properly degraded after invalid reload: %s", healthAfterBadReload.overallStatus)
 	})
-	
+
 	// Test case 3: Health recovery after fixing configuration
 	t.Run("HealthRecoveryAfterFix", func(t *testing.T) {
 		// Fix configuration
@@ -120,43 +120,43 @@ func TestDynamicReloadHealthInterplay(t *testing.T) {
 			Enabled: true,
 			Timeout: 30,
 		}
-		
+
 		// Perform reload with fixed config
 		reloadResult := reloadableModule.reloadConfig(fixedConfig)
 		if !reloadResult.success {
 			t.Errorf("Fixed config reload failed: %s", reloadResult.error)
 		}
-		
+
 		// Verify health recovery
 		time.Sleep(200 * time.Millisecond) // Allow health check to update
 		healthAfterFix := healthAggregator.getAggregatedHealth()
-		
+
 		if healthAfterFix.overallStatus != "healthy" {
 			t.Errorf("Expected health to recover after config fix, got: %s", healthAfterFix.overallStatus)
 		}
-		
+
 		t.Log("✅ Health properly recovered after configuration fix")
 	})
-	
+
 	// Test case 4: Concurrent reload and health check operations
 	t.Run("ConcurrentReloadAndHealthCheck", func(t *testing.T) {
 		var wg sync.WaitGroup
 		results := make([]string, 0)
 		resultsMutex := sync.Mutex{}
-		
+
 		// Start multiple concurrent reloads
 		for i := 0; i < 5; i++ {
 			wg.Add(1)
 			go func(iteration int) {
 				defer wg.Done()
-				
+
 				config := &testReloadableConfig{
 					Enabled: true,
 					Timeout: 5 + iteration,
 				}
-				
+
 				result := reloadableModule.reloadConfig(config)
-				
+
 				resultsMutex.Lock()
 				if result.success {
 					results = append(results, "reload-success")
@@ -166,40 +166,40 @@ func TestDynamicReloadHealthInterplay(t *testing.T) {
 				resultsMutex.Unlock()
 			}(i)
 		}
-		
+
 		// Start concurrent health checks
 		for i := 0; i < 3; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				
+
 				health := healthAggregator.getAggregatedHealth()
-				
+
 				resultsMutex.Lock()
 				results = append(results, "health-check:"+health.overallStatus)
 				resultsMutex.Unlock()
 			}()
 		}
-		
+
 		// Wait for all operations to complete
 		done := make(chan bool)
 		go func() {
 			wg.Wait()
 			done <- true
 		}()
-		
+
 		select {
 		case <-done:
 			t.Log("✅ All concurrent operations completed")
 		case <-time.After(5 * time.Second):
 			t.Fatal("Test timed out waiting for concurrent operations")
 		}
-		
+
 		// Verify no race conditions or deadlocks occurred
 		if len(results) != 8 { // 5 reloads + 3 health checks
 			t.Errorf("Expected 8 operation results, got %d", len(results))
 		}
-		
+
 		t.Logf("✅ Concurrent reload and health check operations: %v", results)
 	})
 }
@@ -258,7 +258,7 @@ func (m *testReloadableModule) Stop(ctx context.Context) error {
 func (m *testReloadableModule) reloadConfig(newConfig *testReloadableConfig) testReloadResult {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	// Validate new configuration
 	if newConfig.Timeout < 0 {
 		// Invalid config - update health status
@@ -266,22 +266,22 @@ func (m *testReloadableModule) reloadConfig(newConfig *testReloadableConfig) tes
 		m.health.status = "unhealthy"
 		m.health.lastCheck = time.Now()
 		m.health.mutex.Unlock()
-		
+
 		return testReloadResult{
 			success: false,
 			error:   "invalid timeout value",
 		}
 	}
-	
+
 	// Apply new configuration
 	m.config = newConfig
-	
+
 	// Update health status to healthy
 	m.health.mutex.Lock()
 	m.health.status = "healthy"
 	m.health.lastCheck = time.Now()
 	m.health.mutex.Unlock()
-	
+
 	return testReloadResult{
 		success: true,
 		error:   "",
@@ -322,10 +322,10 @@ func (m *testHealthAggregatorModule) registerModule(moduleName string, health *t
 func (m *testHealthAggregatorModule) getAggregatedHealth() testAggregatedHealth {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	overallStatus := "healthy"
 	moduleCount := len(m.modules)
-	
+
 	// Check health of all registered modules
 	for _, health := range m.modules {
 		health.mutex.RLock()
@@ -334,7 +334,7 @@ func (m *testHealthAggregatorModule) getAggregatedHealth() testAggregatedHealth 
 		}
 		health.mutex.RUnlock()
 	}
-	
+
 	return testAggregatedHealth{
 		overallStatus: overallStatus,
 		moduleCount:   moduleCount,

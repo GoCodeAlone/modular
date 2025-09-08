@@ -1,9 +1,6 @@
-//go:build failing_test
-
 package scheduler
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -37,7 +34,8 @@ func TestWithSchedulerCatchUpOption(t *testing.T) {
 					CatchUpWindow:   12 * time.Hour,
 				}
 				
-				scheduler := NewScheduler()
+				jobStore := NewMemoryJobStore(24 * time.Hour)
+				scheduler := NewScheduler(jobStore)
 				err := scheduler.ApplyOption(WithSchedulerCatchUp(config))
 				assert.NoError(t, err, "Should apply catchup option")
 				

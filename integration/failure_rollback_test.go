@@ -19,51 +19,51 @@ import (
 // written to show what SHOULD happen (RED phase).
 func TestFailureRollbackAndReverseStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	
+
 	// Track lifecycle events
 	var events []string
-	
+
 	// Create modules where the third one fails during initialization
 	moduleA := &testLifecycleModule{name: "moduleA", events: &events, shouldFail: false}
 	moduleB := &testLifecycleModule{name: "moduleB", events: &events, shouldFail: false}
 	moduleC := &testLifecycleModule{name: "moduleC", events: &events, shouldFail: true} // This will fail
 	moduleD := &testLifecycleModule{name: "moduleD", events: &events, shouldFail: false}
-	
+
 	// Create application
 	app := modular.NewStdApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
-	
+
 	// Register modules
 	app.RegisterModule(moduleA)
 	app.RegisterModule(moduleB)
 	app.RegisterModule(moduleC) // This will fail
 	app.RegisterModule(moduleD) // Should not be initialized due to C's failure
-	
+
 	// Initialize application - should fail at moduleC
 	err := app.Init()
 	if err == nil {
 		t.Fatal("Expected initialization to fail due to moduleC, but it succeeded")
 	}
-	
+
 	// Verify the error contains expected failure
 	if !errors.Is(err, errTestModuleInitFailed) {
 		t.Errorf("Expected error to contain test module init failure, got: %v", err)
 	}
-	
+
 	// Current behavior: framework continues after failure and collects errors
 	// The framework currently doesn't implement rollback, so we expect:
 	// 1. moduleA.Init() succeeds
-	// 2. moduleB.Init() succeeds  
+	// 2. moduleB.Init() succeeds
 	// 3. moduleC.Init() fails
 	// 4. moduleD.Init() succeeds (framework continues)
 	// 5. No automatic Stop() calls on previously initialized modules
-	
+
 	currentBehaviorEvents := []string{
 		"moduleA.Init",
-		"moduleB.Init", 
+		"moduleB.Init",
 		"moduleC.Init", // This fails but framework continues
 		"moduleD.Init", // Framework continues after failure
 	}
-	
+
 	// Verify current (non-ideal) behavior
 	if len(events) == len(currentBehaviorEvents) {
 		for i, expected := range currentBehaviorEvents {
@@ -76,16 +76,16 @@ func TestFailureRollbackAndReverseStop(t *testing.T) {
 	} else {
 		// If behavior changes, this might indicate rollback has been implemented
 		t.Logf("🔍 Behavior changed - got %d events: %v", len(events), events)
-		
+
 		// Check if this might be the desired rollback behavior
 		desiredEvents := []string{
 			"moduleA.Init",
-			"moduleB.Init", 
+			"moduleB.Init",
 			"moduleC.Init", // This fails, triggering rollback
 			"moduleB.Stop", // Reverse order cleanup
 			"moduleA.Stop", // Reverse order cleanup
 		}
-		
+
 		if len(events) == len(desiredEvents) {
 			allMatch := true
 			for i, expected := range desiredEvents {
@@ -101,7 +101,7 @@ func TestFailureRollbackAndReverseStop(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Verify moduleD was initialized (current behavior) or not (desired behavior)
 	moduleD_initialized := false
 	for _, event := range events {
@@ -110,15 +110,13 @@ func TestFailureRollbackAndReverseStop(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if moduleD_initialized {
 		t.Log("⚠️  Current behavior: modules after failure point continue to be initialized")
 	} else {
 		t.Log("✅ Desired behavior: modules after failure point are correctly skipped")
 	}
 }
-
-
 
 var errTestModuleInitFailed = errors.New("test module initialization failed")
 
@@ -136,11 +134,11 @@ func (m *testLifecycleModule) Name() string {
 
 func (m *testLifecycleModule) Init(app modular.Application) error {
 	*m.events = append(*m.events, m.name+".Init")
-	
+
 	if m.shouldFail {
 		return errTestModuleInitFailed
 	}
-	
+
 	return nil
 }
 

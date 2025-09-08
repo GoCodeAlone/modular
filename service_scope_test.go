@@ -1,4 +1,3 @@
-
 package modular
 
 import (
@@ -132,23 +131,23 @@ func TestServiceScopeDescription(t *testing.T) {
 		expectedDetail string
 	}{
 		{
-			scope:        ServiceScopeSingleton,
-			expectedDesc: "Single instance shared across the application",
+			scope:          ServiceScopeSingleton,
+			expectedDesc:   "Single instance shared across the application",
 			expectedDetail: "One instance is created and reused for all requests",
 		},
 		{
-			scope:        ServiceScopeTransient,
-			expectedDesc: "New instance created for each request",
+			scope:          ServiceScopeTransient,
+			expectedDesc:   "New instance created for each request",
 			expectedDetail: "A new instance is created every time the service is requested",
 		},
 		{
-			scope:        ServiceScopeScoped,
-			expectedDesc: "Single instance per scope (e.g., request, session)",
+			scope:          ServiceScopeScoped,
+			expectedDesc:   "Single instance per scope (e.g., request, session)",
 			expectedDetail: "One instance per defined scope boundary",
 		},
 		{
-			scope:        ServiceScopeFactory,
-			expectedDesc: "Factory method called for each request",
+			scope:          ServiceScopeFactory,
+			expectedDesc:   "Factory method called for each request",
 			expectedDetail: "A factory function is invoked to create instances",
 		},
 	}
@@ -192,7 +191,7 @@ func TestServiceScopeComparison(t *testing.T) {
 				// Test scope ordering by lifetime (longest to shortest)
 				scopes := []ServiceScope{ServiceScopeTransient, ServiceScopeSingleton, ServiceScopeScoped, ServiceScopeFactory}
 				ordered := OrderScopesByLifetime(scopes)
-				
+
 				assert.Equal(t, ServiceScopeSingleton, ordered[0], "Singleton should have longest lifetime")
 				assert.Equal(t, ServiceScopeScoped, ordered[1], "Scoped should be second longest")
 				// Transient and Factory should be shorter-lived

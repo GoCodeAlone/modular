@@ -1,3 +1,12 @@
+// Package modular provides SecretValue for basic secret protection.
+//
+// SECURITY NOTICE: The SecretValue type in this package provides protection
+// against accidental exposure but has significant security limitations due to
+// Go's memory model. It cannot guarantee secure memory handling and should NOT
+// be used for highly sensitive secrets like private keys or critical passwords.
+//
+// For maximum security, use dedicated secure memory libraries or OS-level
+// secret storage mechanisms.
 package modular
 
 import (
@@ -15,16 +24,16 @@ type SecretType int
 const (
 	// SecretTypeGeneric represents a generic secret
 	SecretTypeGeneric SecretType = iota
-	
+
 	// SecretTypePassword represents a password secret
 	SecretTypePassword
-	
+
 	// SecretTypeToken represents a token or API key secret
 	SecretTypeToken
-	
+
 	// SecretTypeKey represents a cryptographic key secret
 	SecretTypeKey
-	
+
 	// SecretTypeCertificate represents a certificate secret
 	SecretTypeCertificate
 )
@@ -45,36 +54,101 @@ func (s SecretType) String() string {
 	}
 }
 
-// SecretValue is a secure wrapper for sensitive configuration values.
-// It ensures secrets are properly redacted in string output, JSON marshaling,
-// and logging, while providing controlled access through the Reveal() method.
+// SecretValue is a wrapper for sensitive configuration values that helps prevent
+// accidental exposure in logs, JSON output, and debugging. It provides basic
+// protection against accidental disclosure but has important security limitations.
 //
-// Key features:
+// Security features:
 //   - Automatic redaction in String(), fmt output, and JSON marshaling
 //   - Controlled access via Reveal() method
 //   - Classification system for different secret types
-//   - Memory safety with value zeroing on finalization
-//   - Safe comparison methods that don't leak timing information
+//   - Basic encryption of stored values (XOR-based, not cryptographically secure)
+//   - Constant-time comparison methods to prevent timing attacks
 //   - Integration with structured logging to prevent accidental exposure
+//
+// IMPORTANT SECURITY LIMITATIONS:
+//   - Cannot zero string memory due to Go's immutable strings
+//   - Garbage collector may leave copies of secrets in memory
+//   - XOR encryption provides obfuscation, not cryptographic security
+//   - Memory dumps may contain plaintext secrets
+//   - Not suitable for highly sensitive secrets (e.g., private keys, passwords for critical systems)
+//
+// For maximum security, consider dedicated libraries like:
+//   - github.com/awnumar/memguard (secure memory handling)
+//   - Operating system secure storage (Keychain, Credential Manager, etc.)
+//   - Hardware Security Modules (HSMs) for critical secrets
+//
+// Use this type for:
+//   - Preventing accidental logging of API keys, tokens
+//   - Basic protection against casual inspection
+//   - Configuration values where convenience outweighs maximum security
 type SecretValue struct {
+	// Legacy fields (for backward compatibility)
 	// encryptedValue stores the secret in encrypted form
 	encryptedValue []byte
-	
+
 	// key stores the encryption key
 	key []byte
-	
+
+	// Provider-based fields (new)
+	// handle references the stored secret in the provider
+	handle SecretHandle
+
+	// provider is the secret provider managing this secret
+	provider SecretProvider
+
+	// Common fields
 	// secretType classifies the type of secret
 	secretType SecretType
-	
+
 	// isEmpty tracks if the secret is empty
 	isEmpty bool
-	
+
 	// created tracks when the secret was created
 	created time.Time
 }
 
 // NewSecretValue creates a new SecretValue with the given value and type
+// This function now uses the global secret provider by default
 func NewSecretValue(value string, secretType SecretType) *SecretValue {
+	// Try to use the provider system first
+	provider := GetGlobalSecretProvider()
+	if provider != nil {
+		return NewSecretValueWithProvider(value, secretType, provider)
+	}
+
+	// Fallback to legacy implementation if no provider is available
+	return newLegacySecretValue(value, secretType)
+}
+
+// NewSecretValueWithProvider creates a new SecretValue using a specific provider
+func NewSecretValueWithProvider(value string, secretType SecretType, provider SecretProvider) *SecretValue {
+	if value == "" {
+		return &SecretValue{
+			secretType: secretType,
+			isEmpty:    true,
+			created:    time.Now(),
+			provider:   provider,
+		}
+	}
+
+	handle, err := provider.Store(value, secretType)
+	if err != nil {
+		// Fallback to legacy implementation if provider fails
+		return newLegacySecretValue(value, secretType)
+	}
+
+	return &SecretValue{
+		handle:     handle,
+		provider:   provider,
+		secretType: secretType,
+		isEmpty:    false,
+		created:    time.Now(),
+	}
+}
+
+// newLegacySecretValue creates a SecretValue using the original XOR implementation
+func newLegacySecretValue(value string, secretType SecretType) *SecretValue {
 	if value == "" {
 		return &SecretValue{
 			secretType: secretType,
@@ -82,7 +156,7 @@ func NewSecretValue(value string, secretType SecretType) *SecretValue {
 			created:    time.Now(),
 		}
 	}
-	
+
 	// Generate a random key for encryption
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
@@ -92,14 +166,14 @@ func NewSecretValue(value string, secretType SecretType) *SecretValue {
 			key[i] = byte(i * 7) // Simple but deterministic fallback
 		}
 	}
-	
+
 	// Simple XOR encryption (not cryptographically secure, but adds a layer)
 	valueBytes := []byte(value)
 	encrypted := make([]byte, len(valueBytes))
 	for i, b := range valueBytes {
 		encrypted[i] = b ^ key[i%len(key)]
 	}
-	
+
 	secret := &SecretValue{
 		encryptedValue: encrypted,
 		key:            key,
@@ -107,10 +181,10 @@ func NewSecretValue(value string, secretType SecretType) *SecretValue {
 		isEmpty:        false,
 		created:        time.Now(),
 	}
-	
+
 	// Set finalizer to zero out memory when garbage collected
 	runtime.SetFinalizer(secret, (*SecretValue).zeroMemory)
-	
+
 	return secret
 }
 
@@ -144,11 +218,11 @@ func (s *SecretValue) String() string {
 	if s == nil {
 		return "[REDACTED]"
 	}
-	
+
 	if s.isEmpty {
 		return "[EMPTY]"
 	}
-	
+
 	return "[REDACTED]"
 }
 
@@ -157,7 +231,7 @@ func (s *SecretValue) GoString() string {
 	if s == nil {
 		return "SecretValue{[REDACTED]}"
 	}
-	
+
 	return fmt.Sprintf("SecretValue{type:%s, [REDACTED]}", s.secretType.String())
 }
 
@@ -167,20 +241,43 @@ func (s *SecretValue) Reveal() string {
 	if s == nil || s.isEmpty {
 		return ""
 	}
-	
+
+	// Check if using provider system
+	if s.handle != nil && s.provider != nil {
+		value, err := s.provider.Retrieve(s.handle)
+		if err != nil {
+			// If provider fails, fallback to legacy if available
+			if s.encryptedValue != nil && s.key != nil {
+				return s.revealLegacy()
+			}
+			return ""
+		}
+		return value
+	}
+
+	// Use legacy implementation
+	return s.revealLegacy()
+}
+
+// revealLegacy uses the original XOR decryption method
+func (s *SecretValue) revealLegacy() string {
+	if s == nil || s.isEmpty || s.encryptedValue == nil || s.key == nil {
+		return ""
+	}
+
 	// Decrypt the value
 	decrypted := make([]byte, len(s.encryptedValue))
 	for i, b := range s.encryptedValue {
 		decrypted[i] = b ^ s.key[i%len(s.key)]
 	}
-	
+
 	result := string(decrypted)
-	
+
 	// Zero out the decrypted bytes immediately
 	for i := range decrypted {
 		decrypted[i] = 0
 	}
-	
+
 	return result
 }
 
@@ -198,33 +295,57 @@ func (s *SecretValue) Equals(other *SecretValue) bool {
 	if s == nil && other == nil {
 		return true
 	}
-	
+
 	if s == nil || other == nil {
 		return false
 	}
-	
+
 	// Compare empty status
 	if s.isEmpty != other.isEmpty {
 		return false
 	}
-	
+
 	if s.isEmpty {
 		return true
 	}
-	
+
+	// If both use provider system, use provider comparison for better security
+	if s.handle != nil && s.provider != nil && other.handle != nil && other.provider != nil {
+		// Get other's value for comparison
+		otherValue, err := other.provider.Retrieve(other.handle)
+		if err != nil {
+			// Fallback to revealing both values
+			return s.equalsLegacy(other)
+		}
+
+		result, err := s.provider.Compare(s.handle, otherValue)
+		if err != nil {
+			// Fallback to revealing both values
+			return s.equalsLegacy(other)
+		}
+
+		// Zero out the retrieved value
+		zeroString(&otherValue)
+		return result
+	}
+
+	// Use legacy comparison
+	return s.equalsLegacy(other)
+}
+
+// equalsLegacy performs the original comparison method
+func (s *SecretValue) equalsLegacy(other *SecretValue) bool {
 	// For non-empty secrets, compare the revealed values
-	// Note: This could be optimized to compare encrypted values directly
-	// but that would require matching encryption keys
 	val1 := s.Reveal()
 	val2 := other.Reveal()
-	
+
 	// Constant-time comparison
 	result := constantTimeEquals(val1, val2)
-	
+
 	// Zero out revealed values
 	zeroString(&val1)
 	zeroString(&val2)
-	
+
 	return result
 }
 
@@ -233,17 +354,31 @@ func (s *SecretValue) EqualsString(value string) bool {
 	if s == nil {
 		return value == ""
 	}
-	
+
 	if s.isEmpty {
 		return value == ""
 	}
-	
+
+	// Use provider comparison if available
+	if s.handle != nil && s.provider != nil {
+		result, err := s.provider.Compare(s.handle, value)
+		if err != nil {
+			// Fallback to revealing and comparing
+			revealed := s.Reveal()
+			result := constantTimeEquals(revealed, value)
+			zeroString(&revealed)
+			return result
+		}
+		return result
+	}
+
+	// Use legacy comparison
 	revealed := s.Reveal()
 	result := constantTimeEquals(revealed, value)
-	
+
 	// Zero out revealed value
 	zeroString(&revealed)
-	
+
 	return result
 }
 
@@ -275,7 +410,7 @@ func (s *SecretValue) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	
+
 	// Don't allow unmarshaling of redacted values
 	if value == "[REDACTED]" || value == "[EMPTY]" {
 		*s = SecretValue{
@@ -285,11 +420,11 @@ func (s *SecretValue) UnmarshalJSON(data []byte) error {
 		}
 		return nil
 	}
-	
+
 	// Create a new secret
 	newSecret := NewSecretValue(value, SecretTypeGeneric)
 	*s = *newSecret
-	
+
 	return nil
 }
 
@@ -298,10 +433,10 @@ func (s *SecretValue) MarshalText() ([]byte, error) {
 	return []byte("[REDACTED]"), nil
 }
 
-// UnmarshalText implements encoding.TextUnmarshaler 
+// UnmarshalText implements encoding.TextUnmarshaler
 func (s *SecretValue) UnmarshalText(text []byte) error {
 	value := string(text)
-	
+
 	// Don't allow unmarshaling of redacted values
 	if value == "[REDACTED]" || value == "[EMPTY]" {
 		*s = SecretValue{
@@ -311,11 +446,11 @@ func (s *SecretValue) UnmarshalText(text []byte) error {
 		}
 		return nil
 	}
-	
+
 	// Create a new secret
 	newSecret := NewSecretValue(value, SecretTypeGeneric)
 	*s = *newSecret
-	
+
 	return nil
 }
 
@@ -324,22 +459,50 @@ func (s *SecretValue) Clone() *SecretValue {
 	if s == nil {
 		return nil
 	}
-	
+
 	if s.isEmpty {
-		return &SecretValue{
+		cloned := &SecretValue{
 			secretType: s.secretType,
 			isEmpty:    true,
 			created:    time.Now(),
 		}
+		// If original has a provider, use the same provider for empty clone
+		if s.provider != nil {
+			cloned.provider = s.provider
+		}
+		return cloned
 	}
-	
+
+	// Use provider clone if available
+	if s.handle != nil && s.provider != nil {
+		newHandle, err := s.provider.Clone(s.handle)
+		if err != nil {
+			// Fallback to revealing and re-creating
+			return s.cloneLegacy()
+		}
+
+		return &SecretValue{
+			handle:     newHandle,
+			provider:   s.provider,
+			secretType: s.secretType,
+			isEmpty:    false,
+			created:    time.Now(),
+		}
+	}
+
+	// Use legacy clone
+	return s.cloneLegacy()
+}
+
+// cloneLegacy creates a copy using the original method
+func (s *SecretValue) cloneLegacy() *SecretValue {
 	// Clone by revealing and re-encrypting
 	value := s.Reveal()
 	result := NewSecretValue(value, s.secretType)
-	
+
 	// Zero out the revealed value
 	zeroString(&value)
-	
+
 	return result
 }
 
@@ -348,17 +511,17 @@ func (s *SecretValue) zeroMemory() {
 	if s == nil {
 		return
 	}
-	
+
 	// Zero out encrypted value
 	for i := range s.encryptedValue {
 		s.encryptedValue[i] = 0
 	}
-	
+
 	// Zero out key
 	for i := range s.key {
 		s.key[i] = 0
 	}
-	
+
 	// Clear slices
 	s.encryptedValue = nil
 	s.key = nil
@@ -369,9 +532,57 @@ func (s *SecretValue) Destroy() {
 	if s == nil {
 		return
 	}
-	
+
+	// Use provider destroy if available
+	if s.handle != nil && s.provider != nil {
+		s.provider.Destroy(s.handle)
+		s.handle = nil
+		s.provider = nil
+	}
+
+	// Also clean up legacy fields
 	s.zeroMemory()
 	s.isEmpty = true
+}
+
+// MaskableValue interface implementation for logmasker compatibility
+// These methods allow SecretValue to be detected by logmasker without explicit coupling
+
+// ShouldMask returns true indicating this value should be masked in logs
+func (s *SecretValue) ShouldMask() bool {
+	// Always mask secrets in logs
+	return true
+}
+
+// GetMaskedValue returns a masked representation of this secret
+func (s *SecretValue) GetMaskedValue() any {
+	if s == nil {
+		return "[REDACTED]"
+	}
+
+	if s.isEmpty {
+		return "[EMPTY]"
+	}
+
+	// Return type-specific redaction
+	switch s.secretType {
+	case SecretTypePassword:
+		return "[PASSWORD]"
+	case SecretTypeToken:
+		return "[TOKEN]"
+	case SecretTypeKey:
+		return "[KEY]"
+	case SecretTypeCertificate:
+		return "[CERTIFICATE]"
+	default:
+		return "[REDACTED]"
+	}
+}
+
+// GetMaskStrategy returns the preferred masking strategy for this secret
+func (s *SecretValue) GetMaskStrategy() string {
+	// Always use redaction strategy for secrets
+	return "redact"
 }
 
 // Helper functions
@@ -381,30 +592,38 @@ func constantTimeEquals(a, b string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	
+
 	result := 0
 	for i := 0; i < len(a); i++ {
 		result |= int(a[i]) ^ int(b[i])
 	}
-	
+
 	return result == 0
 }
 
-// zeroString attempts to zero out a string's underlying memory
-// Note: This is a best-effort approach that may not work in all Go implementations
-// due to string immutability. In production, consider using dedicated secret management libraries.
+// zeroString attempts to clear a string reference but CANNOT actually zero
+// the underlying string memory due to Go's string immutability.
+//
+// SECURITY WARNING: This function provides NO memory security guarantees.
+// The original string data remains in memory until garbage collected, and
+// even then may persist in memory dumps or swap files.
+//
+// This function only:
+//   - Sets the string reference to empty (for API cleanliness)
+//   - Provides a consistent interface for memory clearing attempts
+//
+// For actual secure memory handling, use dedicated libraries like:
+//   - github.com/awnumar/memguard
+//   - github.com/secure-systems-lab/go-securesocketlayer
 func zeroString(s *string) {
 	if s == nil || len(*s) == 0 {
 		return
 	}
-	
-	// Due to Go's string immutability and safety checks, we cannot safely
-	// zero out string memory without potentially causing crashes.
-	// Instead, we'll just set the string to empty.
-	// For true secure memory handling, use specialized libraries.
+
+	// This only clears the reference, not the underlying memory
+	// The original string data remains accessible until garbage collected
 	*s = ""
 }
-
 
 // SecretRedactor provides utility functions for secret redaction in logs and output
 type SecretRedactor struct {
@@ -425,7 +644,7 @@ func (r *SecretRedactor) AddSecret(secret *SecretValue) {
 	if secret == nil || secret.IsEmpty() {
 		return
 	}
-	
+
 	r.secrets = append(r.secrets, secret)
 }
 
@@ -434,14 +653,14 @@ func (r *SecretRedactor) AddPattern(pattern string) {
 	if pattern == "" {
 		return
 	}
-	
+
 	r.patterns = append(r.patterns, pattern)
 }
 
 // Redact redacts secrets and patterns from the input text
 func (r *SecretRedactor) Redact(text string) string {
 	result := text
-	
+
 	// Redact secret values
 	for _, secret := range r.secrets {
 		if !secret.IsEmpty() {
@@ -452,19 +671,19 @@ func (r *SecretRedactor) Redact(text string) string {
 			zeroString(&value)
 		}
 	}
-	
+
 	// Redact patterns
 	for _, pattern := range r.patterns {
 		result = strings.ReplaceAll(result, pattern, "[REDACTED]")
 	}
-	
+
 	return result
 }
 
 // RedactStructuredLog redacts secrets from structured log fields
 func (r *SecretRedactor) RedactStructuredLog(fields map[string]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
-	
+
 	for key, value := range fields {
 		switch v := value.(type) {
 		case *SecretValue:
@@ -477,7 +696,7 @@ func (r *SecretRedactor) RedactStructuredLog(fields map[string]interface{}) map[
 			result[key] = value
 		}
 	}
-	
+
 	return result
 }
 

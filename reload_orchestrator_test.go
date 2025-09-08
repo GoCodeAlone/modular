@@ -14,15 +14,15 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 	t.Run("should_create_orchestrator_with_default_config", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		assert.NotNil(t, orchestrator)
-		
+
 		// Should be able to stop gracefully
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
-		
+
 		err := orchestrator.Stop(ctx)
 		assert.NoError(t, err)
 	})
-	
+
 	t.Run("should_register_and_unregister_modules", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		defer func() {
@@ -30,29 +30,29 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 			defer cancel()
 			orchestrator.Stop(ctx)
 		}()
-		
+
 		module := &testReloadModule{
-			name: "test-module",
+			name:      "test-module",
 			canReload: true,
 		}
-		
+
 		err := orchestrator.RegisterModule("test", module)
 		assert.NoError(t, err)
-		
+
 		// Should reject duplicate registration
 		err = orchestrator.RegisterModule("test", module)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "already registered")
-		
+
 		// Should unregister successfully
 		err = orchestrator.UnregisterModule("test")
 		assert.NoError(t, err)
-		
+
 		// Should reject unregistering non-existent module
 		err = orchestrator.UnregisterModule("nonexistent")
 		assert.Error(t, err)
 	})
-	
+
 	t.Run("should_handle_empty_reload", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		defer func() {
@@ -60,13 +60,13 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 			defer cancel()
 			orchestrator.Stop(ctx)
 		}()
-		
+
 		// Should handle reload with no modules
 		ctx := context.Background()
 		err := orchestrator.RequestReload(ctx)
 		assert.NoError(t, err)
 	})
-	
+
 	t.Run("should_reload_registered_modules", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		defer func() {
@@ -74,29 +74,29 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 			defer cancel()
 			orchestrator.Stop(ctx)
 		}()
-		
+
 		reloadCalled := false
 		module := &testReloadModule{
-			name: "test-module",
+			name:      "test-module",
 			canReload: true,
 			onReload: func(ctx context.Context, changes []ConfigChange) error {
 				reloadCalled = true
 				return nil
 			},
 		}
-		
+
 		err := orchestrator.RegisterModule("test", module)
 		assert.NoError(t, err)
-		
+
 		// Trigger reload
 		ctx := context.Background()
 		err = orchestrator.RequestReload(ctx)
 		assert.NoError(t, err)
-		
+
 		// Should have called reload on the module
 		assert.True(t, reloadCalled)
 	})
-	
+
 	t.Run("should_handle_module_reload_failure", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		defer func() {
@@ -104,25 +104,25 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 			defer cancel()
 			orchestrator.Stop(ctx)
 		}()
-		
+
 		module := &testReloadModule{
-			name: "failing-module",
+			name:      "failing-module",
 			canReload: true,
 			onReload: func(ctx context.Context, changes []ConfigChange) error {
 				return assert.AnError
 			},
 		}
-		
+
 		err := orchestrator.RegisterModule("test", module)
 		assert.NoError(t, err)
-		
+
 		// Trigger reload - should fail
 		ctx := context.Background()
 		err = orchestrator.RequestReload(ctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to reload")
 	})
-	
+
 	t.Run("should_handle_non_reloadable_modules", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		defer func() {
@@ -130,29 +130,29 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 			defer cancel()
 			orchestrator.Stop(ctx)
 		}()
-		
+
 		reloadCalled := false
 		module := &testReloadModule{
-			name: "non-reloadable-module",
+			name:      "non-reloadable-module",
 			canReload: false, // Not reloadable
 			onReload: func(ctx context.Context, changes []ConfigChange) error {
 				reloadCalled = true
 				return nil
 			},
 		}
-		
+
 		err := orchestrator.RegisterModule("test", module)
 		assert.NoError(t, err)
-		
+
 		// Trigger reload
 		ctx := context.Background()
 		err = orchestrator.RequestReload(ctx)
 		assert.NoError(t, err)
-		
+
 		// Should not have called reload on non-reloadable module
 		assert.False(t, reloadCalled)
 	})
-	
+
 	t.Run("should_emit_events", func(t *testing.T) {
 		orchestrator := NewReloadOrchestrator()
 		defer func() {
@@ -160,26 +160,26 @@ func TestReloadOrchestratorBasic(t *testing.T) {
 			defer cancel()
 			orchestrator.Stop(ctx)
 		}()
-		
+
 		// observer := &testReloadEventObserver{} // Would be integrated via application
 		// orchestrator.SetEventSubject(eventSubject) // Would be set via application
-		
+
 		module := &testReloadModule{
-			name: "test-module",
+			name:      "test-module",
 			canReload: true,
 		}
-		
+
 		err := orchestrator.RegisterModule("test", module)
 		assert.NoError(t, err)
-		
+
 		// Trigger reload
 		ctx := context.Background()
 		err = orchestrator.RequestReload(ctx)
 		assert.NoError(t, err)
-		
+
 		// Give events time to be emitted
 		time.Sleep(50 * time.Millisecond)
-		
+
 		// Should have emitted start and completion events
 		// assert.True(t, observer.IsStartedCalled()) // Would be tested via event integration
 		// assert.True(t, observer.IsCompletedCalled()) // Would be tested via event integration
@@ -196,16 +196,16 @@ func TestReloadTriggerTypes(t *testing.T) {
 		assert.Equal(t, "api_request", ReloadTriggerAPIRequest.String())
 		assert.Equal(t, "scheduled", ReloadTriggerScheduled.String())
 	})
-	
+
 	t.Run("should_parse_from_string", func(t *testing.T) {
 		trigger, err := ParseReloadTrigger("manual")
 		assert.NoError(t, err)
 		assert.Equal(t, ReloadTriggerManual, trigger)
-		
+
 		trigger, err = ParseReloadTrigger("file_change")
 		assert.NoError(t, err)
 		assert.Equal(t, ReloadTriggerFileChange, trigger)
-		
+
 		_, err = ParseReloadTrigger("invalid")
 		assert.Error(t, err)
 	})

@@ -23,7 +23,7 @@ type Reloadable interface {
 	// The changes parameter contains a slice of ConfigChange objects that
 	// describe exactly what configuration fields have changed, along with
 	// their old and new values.
-	// 
+	//
 	// Implementations should:
 	//   - Check context cancellation/timeout regularly
 	//   - Validate all configuration changes before applying any
@@ -37,7 +37,7 @@ type Reloadable interface {
 
 	// CanReload returns true if this module supports dynamic reloading.
 	// This allows for compile-time or runtime determination of reload capability.
-	// 
+	//
 	// Modules may return false if:
 	//   - They require restart for configuration changes
 	//   - They are in a state where reloading is temporarily unsafe
@@ -49,7 +49,7 @@ type Reloadable interface {
 	//
 	// Typical values:
 	//   - Simple config changes: 1-5 seconds
-	//   - Database reconnections: 10-30 seconds  
+	//   - Database reconnections: 10-30 seconds
 	//   - Complex reconfigurations: 30-60 seconds
 	//
 	// A zero duration indicates the module will use a reasonable default.
@@ -72,12 +72,11 @@ type ReloadableLegacy interface {
 	ReloadTimeout() time.Duration
 }
 
-
 // Additional errors for reload operations
 var (
 	// ErrReloadInProgress indicates that a reload operation is already in progress
 	ErrReloadInProgress = errors.New("reload operation already in progress")
-	
+
 	// ErrReloadTimeout indicates that the reload operation exceeded its timeout
 	ErrReloadTimeout = errors.New("reload operation timed out")
 )

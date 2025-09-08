@@ -17,34 +17,34 @@ func TestCoreServicesIntegration(t *testing.T) {
 	t.Run("should_integrate_health_aggregation_with_secrets", func(t *testing.T) {
 		// Create health aggregation service
 		healthService := NewAggregateHealthService()
-		
+
 		// Create a provider that uses secrets
 		secretConfig := &testModuleWithSecrets{
 			DatabasePassword: NewPasswordSecret("super-secret-db-password"),
-			APIKey:          NewTokenSecret("sk-1234567890"),
-			Endpoint:        "https://api.example.com",
+			APIKey:           NewTokenSecret("sk-1234567890"),
+			Endpoint:         "https://api.example.com",
 		}
-		
+
 		provider := &healthProviderWithSecrets{
 			config: secretConfig,
 		}
-		
+
 		// Register the provider
 		err := healthService.RegisterProvider("secure-module", provider, false)
 		assert.NoError(t, err)
-		
+
 		// Collect health - should work without leaking secrets
 		ctx := context.Background()
 		result, err := healthService.Collect(ctx)
 		assert.NoError(t, err)
-		
+
 		assert.Equal(t, HealthStatusHealthy, result.Health)
 		assert.Len(t, result.Reports, 1)
-		
+
 		report := result.Reports[0]
 		assert.Equal(t, "secure-module", report.Module)
 		assert.Equal(t, HealthStatusHealthy, report.Status)
-		
+
 		// Verify secrets are not leaked in the health report
 		reportJSON, err := json.Marshal(report)
 		assert.NoError(t, err)
@@ -52,63 +52,63 @@ func TestCoreServicesIntegration(t *testing.T) {
 		assert.NotContains(t, string(reportJSON), "sk-1234567890")
 		assert.Contains(t, string(reportJSON), "[REDACTED]") // Should contain redacted marker
 	})
-	
+
 	t.Run("should_integrate_reload_orchestrator_with_health", func(t *testing.T) {
 		// Create both services
 		healthService := NewAggregateHealthService()
 		reloadOrchestrator := NewReloadOrchestrator()
-		
+
 		// Create a module that's both reloadable and provides health
 		module := &reloadableHealthModule{
 			name:          "integrated-module",
 			currentStatus: HealthStatusHealthy,
 		}
-		
+
 		// Register with both services
 		err := healthService.RegisterProvider("integrated-module", module, false)
 		assert.NoError(t, err)
-		
+
 		err = reloadOrchestrator.RegisterModule("integrated-module", module)
 		assert.NoError(t, err)
-		
+
 		// Check initial health
 		ctx := context.Background()
 		healthResult, err := healthService.Collect(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, HealthStatusHealthy, healthResult.Health)
-		
+
 		// Trigger a reload
 		err = reloadOrchestrator.RequestReload(ctx)
 		assert.NoError(t, err)
-		
+
 		// Verify module was reloaded
 		assert.True(t, module.wasReloaded)
-		
+
 		// Health should still be good
 		healthResult, err = healthService.Collect(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, HealthStatusHealthy, healthResult.Health)
-		
+
 		// Cleanup
 		reloadOrchestrator.Stop(ctx)
 	})
-	
+
 	t.Run("should_integrate_all_three_services", func(t *testing.T) {
 		// Create all three core services
 		healthService := NewAggregateHealthService()
 		reloadOrchestrator := NewReloadOrchestrator()
-		
+
 		// Create observers to track events (commented for now - would be integrated via application)
 		// healthObserver := &integrationHealthObserver{}
 		// reloadObserver := &integrationReloadObserver{}
-		
+
 		// healthService.SetEventSubject(eventSubject) // Would be set via application
 		// reloadOrchestrator.SetEventSubject(eventSubject) // Would be set via application
-		
+
 		// Create a comprehensive module with secrets, health, and reload capability
 		secretAPIKey := NewTokenSecret("integration-test-key-123")
 		secretDBPassword := NewPasswordSecret("integration-db-pass-456")
-		
+
 		module := &comprehensiveTestModule{
 			name:       "comprehensive-module",
 			apiKey:     secretAPIKey,
@@ -117,47 +117,47 @@ func TestCoreServicesIntegration(t *testing.T) {
 			healthy:    true,
 			reloadable: true,
 		}
-		
+
 		// Register with all services
 		err := healthService.RegisterProvider("comprehensive-module", module, false)
 		assert.NoError(t, err)
-		
+
 		err = reloadOrchestrator.RegisterModule("comprehensive-module", module)
 		assert.NoError(t, err)
-		
+
 		// Register secrets globally for redaction
 		RegisterGlobalSecret(secretAPIKey)
 		RegisterGlobalSecret(secretDBPassword)
-		
+
 		// Perform health check
 		ctx := context.Background()
 		healthResult, err := healthService.Collect(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, HealthStatusHealthy, healthResult.Health)
-		
+
 		// Perform reload
 		err = reloadOrchestrator.RequestReload(ctx)
 		assert.NoError(t, err)
 		assert.True(t, module.reloaded)
-		
+
 		// Test secret redaction in various outputs
 		moduleStr := fmt.Sprintf("Module: %v", module)
 		assert.NotContains(t, moduleStr, "integration-test-key-123")
 		assert.NotContains(t, moduleStr, "integration-db-pass-456")
-		
+
 		// Test global redaction
 		testText := "API key is integration-test-key-123 and password is integration-db-pass-456"
 		redactedText := RedactGlobally(testText)
 		assert.Equal(t, "API key is [REDACTED] and password is [REDACTED]", redactedText)
-		
+
 		// Verify events were emitted
 		// Note: Events are emitted asynchronously, so we need to wait
 		time.Sleep(100 * time.Millisecond)
-		
+
 		// Health status changes might not have occurred, but reload should have events
 		// assert.True(t, reloadObserver.IsStartedReceived()) // Would be tested via event integration
 		// assert.True(t, reloadObserver.IsCompletedReceived()) // Would be tested via event integration
-		
+
 		// Cleanup
 		reloadOrchestrator.Stop(ctx)
 	})
@@ -167,8 +167,8 @@ func TestCoreServicesIntegration(t *testing.T) {
 
 type testModuleWithSecrets struct {
 	DatabasePassword *SecretValue `json:"database_password"`
-	APIKey          *SecretValue `json:"api_key"`
-	Endpoint        string       `json:"endpoint"`
+	APIKey           *SecretValue `json:"api_key"`
+	Endpoint         string       `json:"endpoint"`
 }
 
 type healthProviderWithSecrets struct {
@@ -179,7 +179,7 @@ func (h *healthProviderWithSecrets) HealthCheck(ctx context.Context) ([]HealthRe
 	// Simulate a health check that might accidentally try to log sensitive info
 	message := fmt.Sprintf("Connected to %s", h.config.Endpoint)
 	// Note: We don't include secrets in the message due to SecretValue redaction
-	
+
 	return []HealthReport{
 		{
 			Module:    "secure-module",
@@ -187,9 +187,9 @@ func (h *healthProviderWithSecrets) HealthCheck(ctx context.Context) ([]HealthRe
 			Message:   message,
 			CheckedAt: time.Now(),
 			Details: map[string]any{
-				"endpoint":         h.config.Endpoint,
+				"endpoint":          h.config.Endpoint,
 				"database_password": h.config.DatabasePassword, // This should be redacted
-				"api_key":          h.config.APIKey,           // This should be redacted
+				"api_key":           h.config.APIKey,           // This should be redacted
 				"has_credentials":   !h.config.DatabasePassword.IsEmpty() && !h.config.APIKey.IsEmpty(),
 			},
 		},
@@ -237,7 +237,7 @@ type comprehensiveTestModule struct {
 }
 
 func (m *comprehensiveTestModule) String() string {
-	return fmt.Sprintf("Module{name: %s, apiKey: %s, dbPassword: %s, endpoint: %s}", 
+	return fmt.Sprintf("Module{name: %s, apiKey: %s, dbPassword: %s, endpoint: %s}",
 		m.name, m.apiKey, m.dbPassword, m.endpoint)
 }
 
@@ -246,7 +246,7 @@ func (m *comprehensiveTestModule) HealthCheck(ctx context.Context) ([]HealthRepo
 	if !m.healthy {
 		status = HealthStatusUnhealthy
 	}
-	
+
 	return []HealthReport{
 		{
 			Module:    m.name,
@@ -254,8 +254,8 @@ func (m *comprehensiveTestModule) HealthCheck(ctx context.Context) ([]HealthRepo
 			Message:   "Comprehensive module health check",
 			CheckedAt: time.Now(),
 			Details: map[string]any{
-				"api_key_configured":  !m.apiKey.IsEmpty(),
-				"db_password_set":     !m.dbPassword.IsEmpty(),
+				"api_key_configured": !m.apiKey.IsEmpty(),
+				"db_password_set":    !m.dbPassword.IsEmpty(),
 				"endpoint":           m.endpoint,
 				"can_reload":         m.reloadable,
 			},
@@ -267,7 +267,7 @@ func (m *comprehensiveTestModule) Reload(ctx context.Context, changes []ConfigCh
 	if !m.reloadable {
 		return fmt.Errorf("module is not reloadable")
 	}
-	
+
 	m.reloaded = true
 	return nil
 }

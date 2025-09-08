@@ -151,7 +151,7 @@ func TestHealthEvaluatedEventEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockHealthEventObserver{}
-				
+
 				// Create health aggregation service (mock)
 				healthService := &mockAggregateHealthService{
 					observer: observer,
@@ -180,16 +180,16 @@ func TestHealthEvaluatedEventEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockHealthEventObserver{}
-				
+
 				// Create health aggregation service (mock)
 				healthService := &mockAggregateHealthService{
-					observer: observer,
+					observer:       observer,
 					previousStatus: HealthStatusHealthy,
 				}
 
 				// Perform health evaluation that results in status change
 				ctx := context.Background()
-				
+
 				// Simulate status change from healthy to degraded
 				snapshot, err := healthService.EvaluateHealthWithStatusChange(ctx, "health-eval-002", HealthTriggerThreshold, HealthStatusDegraded)
 				assert.NoError(t, err, "EvaluateHealth should succeed")
@@ -211,16 +211,16 @@ func TestHealthEvaluatedEventEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockHealthEventObserver{}
-				
+
 				// Create health aggregation service (mock)
 				healthService := &mockAggregateHealthService{
-					observer: observer,
+					observer:          observer,
 					simulatedDuration: 150 * time.Millisecond,
 				}
 
 				// Perform health evaluation
 				ctx := context.Background()
-				
+
 				_, err := healthService.EvaluateHealth(ctx, "health-eval-003", HealthTriggerOnDemand)
 				assert.NoError(t, err, "EvaluateHealth should succeed")
 
@@ -228,7 +228,7 @@ func TestHealthEvaluatedEventEmission(t *testing.T) {
 				require.Len(t, observer.events, 1, "Should emit exactly one event")
 				event, ok := observer.events[0].(*HealthEvaluatedEvent)
 				require.True(t, ok, "Event should be HealthEvaluatedEvent")
-				
+
 				assert.Greater(t, event.Duration, time.Duration(0), "Event should include duration")
 				assert.GreaterOrEqual(t, event.Duration, 100*time.Millisecond, "Duration should reflect actual execution time")
 				assert.NotNil(t, event.Metrics, "Event should include metrics")

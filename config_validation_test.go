@@ -537,3 +537,98 @@ timeout: 10s
 		assert.Equal(t, 60*time.Second, cfg.RecentRequestThreshold)
 	})
 }
+
+// Test config structs for dynamic field parsing
+type DynamicFieldsTestConfig struct {
+	StaticField   string `yaml:"static_field" default:"static"`
+	DynamicField1 string `yaml:"dynamic_field1" default:"dynamic1" dynamic:"true"`
+	DynamicField2 int    `yaml:"dynamic_field2" default:"42" dynamic:"true"`
+	NotDynamic    bool   `yaml:"not_dynamic" default:"false"`
+
+	Nested *DynamicNestedConfig `yaml:"nested"`
+}
+
+type DynamicNestedConfig struct {
+	StaticNested  string `yaml:"static_nested" default:"nested_static"`
+	DynamicNested string `yaml:"dynamic_nested" default:"nested_dynamic" dynamic:"true"`
+	RequiredField string `yaml:"required_field" required:"true" dynamic:"true"`
+}
+
+func TestDynamicFieldTagParsing(t *testing.T) {
+	t.Run("parse dynamic fields from flat struct", func(t *testing.T) {
+		cfg := &DynamicFieldsTestConfig{}
+
+		// This should fail initially because DynamicFieldParser doesn't exist yet
+		parser := NewDynamicFieldParser()
+		dynamicFields, err := parser.GetDynamicFields(cfg)
+
+		require.NoError(t, err)
+		assert.Contains(t, dynamicFields, "DynamicField1")
+		assert.Contains(t, dynamicFields, "DynamicField2")
+		assert.NotContains(t, dynamicFields, "StaticField")
+		assert.NotContains(t, dynamicFields, "NotDynamic")
+	})
+
+	t.Run("parse dynamic fields from nested struct", func(t *testing.T) {
+		cfg := &DynamicFieldsTestConfig{
+			Nested: &DynamicNestedConfig{},
+		}
+
+		parser := NewDynamicFieldParser()
+		dynamicFields, err := parser.GetDynamicFields(cfg)
+
+		require.NoError(t, err)
+		assert.Contains(t, dynamicFields, "DynamicField1")
+		assert.Contains(t, dynamicFields, "DynamicField2")
+		assert.Contains(t, dynamicFields, "Nested.DynamicNested")
+		assert.Contains(t, dynamicFields, "Nested.RequiredField")
+		assert.NotContains(t, dynamicFields, "Nested.StaticNested")
+	})
+
+	t.Run("validate dynamic reload config diff", func(t *testing.T) {
+		oldConfig := &DynamicFieldsTestConfig{
+			StaticField:   "static",
+			DynamicField1: "old_value",
+			DynamicField2: 100,
+			NotDynamic:    false,
+		}
+
+		newConfig := &DynamicFieldsTestConfig{
+			StaticField:   "changed_static", // Should be ignored in reload
+			DynamicField1: "new_value",      // Should be included
+			DynamicField2: 200,              // Should be included
+			NotDynamic:    true,             // Should be ignored in reload
+		}
+
+		parser := NewDynamicFieldParser()
+		diff, err := parser.ValidateDynamicReload(oldConfig, newConfig)
+
+		require.NoError(t, err)
+		assert.NotNil(t, diff)
+
+		// Should only include changes to dynamic fields
+		assert.True(t, diff.HasChanges())
+		assert.Contains(t, diff.GetChangedFields(), "DynamicField1")
+		assert.Contains(t, diff.GetChangedFields(), "DynamicField2")
+		assert.NotContains(t, diff.GetChangedFields(), "StaticField")
+		assert.NotContains(t, diff.GetChangedFields(), "NotDynamic")
+	})
+
+	t.Run("handle nil config gracefully", func(t *testing.T) {
+		parser := NewDynamicFieldParser()
+		_, err := parser.GetDynamicFields(nil)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "config cannot be nil")
+	})
+
+	t.Run("handle non-struct config gracefully", func(t *testing.T) {
+		parser := NewDynamicFieldParser()
+		nonStruct := "not a struct"
+
+		_, err := parser.GetDynamicFields(nonStruct)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "config must be a struct")
+	})
+}

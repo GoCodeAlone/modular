@@ -16,10 +16,10 @@ import (
 // TestAggregateHealthService tests health aggregation behavior
 func TestAggregateHealthService_AggregateHealth(t *testing.T) {
 	tests := []struct {
-		name              string
-		reporters         []HealthReporter
-		expectedStatus    HealthStatus
-		expectedReports   int
+		name            string
+		reporters       []HealthReporter
+		expectedStatus  HealthStatus
+		expectedReports int
 	}{
 		{
 			name: "all healthy services return healthy overall",
@@ -28,7 +28,7 @@ func TestAggregateHealthService_AggregateHealth(t *testing.T) {
 				newTestHealthReporter("service-2", true, nil),
 				newTestHealthReporter("service-3", true, nil),
 			},
-			expectedStatus: HealthStatusHealthy,
+			expectedStatus:  HealthStatusHealthy,
 			expectedReports: 3,
 		},
 		{
@@ -38,13 +38,13 @@ func TestAggregateHealthService_AggregateHealth(t *testing.T) {
 				newTestHealthReporter("unhealthy-service", false, nil),
 				newTestHealthReporter("another-healthy-service", true, nil),
 			},
-			expectedStatus: HealthStatusUnhealthy,
+			expectedStatus:  HealthStatusUnhealthy,
 			expectedReports: 3,
 		},
 		{
-			name: "no reporters return healthy by default",
-			reporters: []HealthReporter{},
-			expectedStatus: HealthStatusHealthy,
+			name:            "no reporters return healthy by default",
+			reporters:       []HealthReporter{},
+			expectedStatus:  HealthStatusHealthy,
 			expectedReports: 0,
 		},
 		{
@@ -52,7 +52,7 @@ func TestAggregateHealthService_AggregateHealth(t *testing.T) {
 			reporters: []HealthReporter{
 				newTestHealthReporter("failing-service", false, nil),
 			},
-			expectedStatus: HealthStatusUnhealthy,
+			expectedStatus:  HealthStatusUnhealthy,
 			expectedReports: 1,
 		},
 	}
@@ -61,7 +61,7 @@ func TestAggregateHealthService_AggregateHealth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create aggregate health service
 			aggregator := NewTestAggregateHealthService()
-			
+
 			// Register all reporters
 			for _, reporter := range tt.reporters {
 				aggregator.RegisterReporter(reporter)
@@ -83,7 +83,7 @@ func TestAggregateHealthService_AggregateHealth(t *testing.T) {
 func TestAggregateHealthService_ConcurrentAccess(t *testing.T) {
 	t.Run("should handle concurrent health checks safely", func(t *testing.T) {
 		aggregator := NewTestAggregateHealthService()
-		
+
 		// Register multiple reporters
 		for i := 0; i < 5; i++ {
 			reporter := newTestHealthReporter(fmt.Sprintf("service-%d", i), i%2 == 0, nil)
@@ -115,7 +115,7 @@ func TestAggregateHealthService_ConcurrentAccess(t *testing.T) {
 		}
 
 		assert.Len(t, resultList, concurrency, "All concurrent checks should complete")
-		
+
 		// All results should be consistent
 		for _, result := range resultList {
 			assert.Len(t, result.ServiceHealth, 5, "Each result should have all services")
@@ -128,11 +128,11 @@ func TestAggregateHealthService_ConcurrentAccess(t *testing.T) {
 func TestAggregateHealthService_TimeoutHandling(t *testing.T) {
 	t.Run("should handle reporter timeouts gracefully", func(t *testing.T) {
 		aggregator := NewTestAggregateHealthService()
-		
+
 		// Register fast and slow reporters
 		fastReporter := newTestHealthReporter("fast-service", true, nil)
 		slowReporter := newSlowHealthReporter("slow-service", 200*time.Millisecond)
-		
+
 		aggregator.RegisterReporter(fastReporter)
 		aggregator.RegisterReporter(slowReporter)
 
@@ -164,7 +164,7 @@ func TestAggregateHealthService_TimeoutHandling(t *testing.T) {
 func TestAggregateHealthService_ReporterManagement(t *testing.T) {
 	t.Run("should support dynamic reporter registration", func(t *testing.T) {
 		aggregator := NewTestAggregateHealthService()
-		
+
 		// Initial health check - no reporters
 		ctx := context.Background()
 		result := aggregator.CheckOverallHealth(ctx)
@@ -173,7 +173,7 @@ func TestAggregateHealthService_ReporterManagement(t *testing.T) {
 		// Add first reporter
 		reporter1 := newTestHealthReporter("service-1", true, nil)
 		aggregator.RegisterReporter(reporter1)
-		
+
 		result = aggregator.CheckOverallHealth(ctx)
 		assert.Len(t, result.ServiceHealth, 1, "Should have one service report")
 		assert.Equal(t, HealthStatusHealthy, result.OverallStatus)
@@ -181,14 +181,14 @@ func TestAggregateHealthService_ReporterManagement(t *testing.T) {
 		// Add second reporter
 		reporter2 := newTestHealthReporter("service-2", false, nil)
 		aggregator.RegisterReporter(reporter2)
-		
+
 		result = aggregator.CheckOverallHealth(ctx)
 		assert.Len(t, result.ServiceHealth, 2, "Should have two service reports")
 		assert.Equal(t, HealthStatusUnhealthy, result.OverallStatus)
 
 		// Remove unhealthy reporter
 		aggregator.RemoveReporter("service-2")
-		
+
 		result = aggregator.CheckOverallHealth(ctx)
 		assert.Len(t, result.ServiceHealth, 1, "Should have one service report after removal")
 		assert.Equal(t, HealthStatusHealthy, result.OverallStatus)
@@ -231,7 +231,7 @@ func (s *TestAggregateHealthService) RemoveReporter(name string) {
 
 func (s *TestAggregateHealthService) CheckOverallHealth(ctx context.Context) *AggregateHealthResult {
 	start := time.Now()
-	
+
 	s.mutex.RLock()
 	reporters := make(map[string]HealthReporter)
 	for name, reporter := range s.reporters {
@@ -240,33 +240,33 @@ func (s *TestAggregateHealthService) CheckOverallHealth(ctx context.Context) *Ag
 	s.mutex.RUnlock()
 
 	serviceHealth := make(map[string]HealthResult)
-	
+
 	// Check health of each service concurrently
 	var wg sync.WaitGroup
 	resultsChan := make(chan serviceHealthResult, len(reporters))
-	
+
 	for name, reporter := range reporters {
 		wg.Add(1)
 		go func(serviceName string, r HealthReporter) {
 			defer wg.Done()
-			
+
 			// Create timeout context for individual service
 			serviceCtx, cancel := context.WithTimeout(ctx, r.HealthCheckTimeout())
 			defer cancel()
-			
+
 			result := r.CheckHealth(serviceCtx)
 			resultsChan <- serviceHealthResult{name: serviceName, result: result}
 		}(name, reporter)
 	}
-	
+
 	wg.Wait()
 	close(resultsChan)
-	
+
 	// Collect results
 	for result := range resultsChan {
 		serviceHealth[result.name] = result.result
 	}
-	
+
 	// Determine overall status
 	overallStatus := HealthStatusHealthy
 	if len(serviceHealth) == 0 {
@@ -279,7 +279,7 @@ func (s *TestAggregateHealthService) CheckOverallHealth(ctx context.Context) *Ag
 			}
 		}
 	}
-	
+
 	return &AggregateHealthResult{
 		OverallStatus: overallStatus,
 		ServiceHealth: serviceHealth,

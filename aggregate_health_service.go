@@ -2,9 +2,18 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
+)
+
+// Static errors for health aggregation
+var (
+	ErrModuleNameEmpty      = errors.New("module name cannot be empty")
+	ErrProviderNil          = errors.New("provider cannot be nil")
+	ErrProviderAlreadyExists = errors.New("provider already registered")
+	ErrProviderNotRegistered = errors.New("no provider registered")
 )
 
 // AggregateHealthService implements the HealthAggregator interface to collect
@@ -21,19 +30,19 @@ import (
 type AggregateHealthService struct {
 	providers map[string]providerInfo
 	mu        sync.RWMutex
-	
+
 	// Caching configuration
 	cacheEnabled bool
 	cacheTTL     time.Duration
 	lastResult   *AggregatedHealth
 	lastCheck    time.Time
-	
+
 	// Timeout configuration
 	defaultTimeout time.Duration
-	
+
 	// Event subject for publishing health events
 	eventSubject Subject
-	
+
 	// Track previous status for change detection
 	previousStatus HealthStatus
 }
@@ -50,11 +59,11 @@ type AggregateHealthServiceConfig struct {
 	// CacheTTL is the time-to-live for cached health results
 	// Default: 250ms as specified in design brief
 	CacheTTL time.Duration
-	
+
 	// DefaultTimeout is the default timeout for individual provider calls
 	// Default: 200ms as specified in design brief
 	DefaultTimeout time.Duration
-	
+
 	// CacheEnabled controls whether result caching is active
 	// Default: true
 	CacheEnabled bool
@@ -77,7 +86,7 @@ func NewAggregateHealthServiceWithConfig(config AggregateHealthServiceConfig) *A
 	if config.DefaultTimeout <= 0 {
 		config.DefaultTimeout = 200 * time.Millisecond
 	}
-	
+
 	return &AggregateHealthService{
 		providers:      make(map[string]providerInfo),
 		cacheEnabled:   config.CacheEnabled,
@@ -96,26 +105,26 @@ func (s *AggregateHealthService) SetEventSubject(subject Subject) {
 // RegisterProvider registers a health provider for the specified module
 func (s *AggregateHealthService) RegisterProvider(moduleName string, provider HealthProvider, optional bool) error {
 	if moduleName == "" {
-		return fmt.Errorf("health aggregation: module name cannot be empty")
+		return fmt.Errorf("health aggregation: %w", ErrModuleNameEmpty)
 	}
 	if provider == nil {
-		return fmt.Errorf("health aggregation: provider cannot be nil")
+		return fmt.Errorf("health aggregation: %w", ErrProviderNil)
 	}
-	
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check for duplicate registration
 	if _, exists := s.providers[moduleName]; exists {
-		return fmt.Errorf("health aggregation: provider for module '%s' already registered", moduleName)
+		return fmt.Errorf("health aggregation: provider for module '%s': %w", moduleName, ErrProviderAlreadyExists)
 	}
-	
+
 	s.providers[moduleName] = providerInfo{
 		provider: provider,
 		optional: optional,
 		module:   moduleName,
 	}
-	
+
 	return nil
 }
 
@@ -123,17 +132,17 @@ func (s *AggregateHealthService) RegisterProvider(moduleName string, provider He
 func (s *AggregateHealthService) UnregisterProvider(moduleName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.providers[moduleName]; !exists {
-		return fmt.Errorf("health aggregation: no provider registered for module '%s'", moduleName)
+		return fmt.Errorf("health aggregation: module '%s': %w", moduleName, ErrProviderNotRegistered)
 	}
-	
+
 	delete(s.providers, moduleName)
-	
+
 	// Clear cache when provider is removed
 	s.lastResult = nil
 	s.lastCheck = time.Time{}
-	
+
 	return nil
 }
 
@@ -146,13 +155,13 @@ func (s *AggregateHealthService) UnregisterProvider(moduleName string) error {
 //   - Status hierarchy: healthy < degraded < unhealthy
 func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth, error) {
 	s.mu.RLock()
-	
+
 	// Check for forced refresh context value
 	forceRefresh := false
 	if ctx.Value("force_refresh") != nil {
 		forceRefresh = true
 	}
-	
+
 	// Return cached result if available and not expired
 	if s.cacheEnabled && !forceRefresh && s.lastResult != nil {
 		if time.Since(s.lastCheck) < s.cacheTTL {
@@ -161,7 +170,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 			return result, nil
 		}
 	}
-	
+
 	// Copy providers for concurrent access
 	providers := make(map[string]providerInfo)
 	for name, info := range s.providers {
@@ -170,38 +179,38 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 	eventSubject := s.eventSubject
 	previousStatus := s.previousStatus
 	s.mu.RUnlock()
-	
+
 	start := time.Now()
-	
+
 	// Collect health reports concurrently
 	reports, err := s.collectReports(ctx, providers)
 	if err != nil {
 		return AggregatedHealth{}, fmt.Errorf("health aggregation: failed to collect reports: %w", err)
 	}
-	
+
 	// Aggregate the health status
 	aggregated := s.aggregateHealth(reports)
 	aggregated.GeneratedAt = time.Now()
-	
+
 	duration := time.Since(start)
-	
+
 	// Check for status changes
 	statusChanged := false
 	if previousStatus != HealthStatusUnknown && previousStatus != aggregated.Health {
 		statusChanged = true
 	}
-	
+
 	s.mu.Lock()
 	// Update cache
 	if s.cacheEnabled {
 		s.lastResult = &aggregated
 		s.lastCheck = time.Now()
 	}
-	
+
 	// Update previous status tracking
 	s.previousStatus = aggregated.Health
 	s.mu.Unlock()
-	
+
 	// Emit health.evaluated event - emit on every evaluation per requirements
 	if eventSubject != nil {
 		// Convert to AggregateHealthSnapshot for compatibility
@@ -216,7 +225,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 			Timestamp:   aggregated.GeneratedAt,
 			SnapshotID:  fmt.Sprintf("health-%d", time.Now().UnixNano()),
 		}
-		
+
 		// Count statuses for summary
 		for _, report := range reports {
 			switch report.Status {
@@ -227,7 +236,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 			case HealthStatusUnhealthy:
 				snapshot.Summary.UnhealthyCount++
 			}
-			
+
 			// Add to components map for compatibility
 			snapshot.Components[report.Module] = HealthResult{
 				Status:    report.Status,
@@ -235,7 +244,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 				Timestamp: report.CheckedAt,
 			}
 		}
-		
+
 		event := &HealthEvaluatedEvent{
 			EvaluationID:   fmt.Sprintf("health-eval-%d", time.Now().UnixNano()),
 			Timestamp:      time.Now(),
@@ -250,7 +259,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 				AverageResponseTimeMs: float64(duration.Milliseconds()),
 			},
 		}
-		
+
 		// Fire and forget event emission (placeholder)
 		// In real implementation, this would convert to CloudEvent and emit through Subject
 		go func() {
@@ -259,7 +268,7 @@ func (s *AggregateHealthService) Collect(ctx context.Context) (AggregatedHealth,
 			_ = event
 		}()
 	}
-	
+
 	return aggregated, nil
 }
 
@@ -268,21 +277,21 @@ func (s *AggregateHealthService) collectReports(ctx context.Context, providers m
 	if len(providers) == 0 {
 		return []HealthReport{}, nil
 	}
-	
+
 	results := make(chan providerResult, len(providers))
-	
+
 	// Launch goroutines for each provider
 	for moduleName, info := range providers {
 		go s.collectFromProvider(ctx, moduleName, info, results)
 	}
-	
+
 	// Collect results
 	reports := make([]HealthReport, 0, len(providers))
 	for i := 0; i < len(providers); i++ {
 		result := <-results
 		reports = append(reports, result.reports...)
 	}
-	
+
 	return reports, nil
 }
 
@@ -310,7 +319,7 @@ func (s *AggregateHealthService) collectFromProvider(ctx context.Context, module
 					"stackTrace": "panic recovery in health check",
 				},
 			}
-			
+
 			results <- providerResult{
 				reports: []HealthReport{report},
 				err:     nil,
@@ -318,21 +327,21 @@ func (s *AggregateHealthService) collectFromProvider(ctx context.Context, module
 			}
 		}
 	}()
-	
+
 	// Create timeout context for the provider
 	providerCtx, cancel := context.WithTimeout(ctx, s.defaultTimeout)
 	defer cancel()
-	
+
 	reports, err := info.provider.HealthCheck(providerCtx)
 	if err != nil {
 		// Provider error handling
 		status := HealthStatusUnhealthy
-		
+
 		// Check if error is temporary
 		if temp, ok := err.(interface{ Temporary() bool }); ok && temp.Temporary() {
 			status = HealthStatusDegraded
 		}
-		
+
 		// Create error report
 		report := HealthReport{
 			Module:        moduleName,
@@ -345,7 +354,7 @@ func (s *AggregateHealthService) collectFromProvider(ctx context.Context, module
 				"error": err.Error(),
 			},
 		}
-		
+
 		results <- providerResult{
 			reports: []HealthReport{report},
 			err:     nil,
@@ -353,7 +362,7 @@ func (s *AggregateHealthService) collectFromProvider(ctx context.Context, module
 		}
 		return
 	}
-	
+
 	// Set module and optional flag on reports
 	for i := range reports {
 		reports[i].Module = moduleName
@@ -365,7 +374,7 @@ func (s *AggregateHealthService) collectFromProvider(ctx context.Context, module
 			reports[i].ObservedSince = time.Now()
 		}
 	}
-	
+
 	results <- providerResult{
 		reports: reports,
 		err:     nil,
@@ -383,22 +392,22 @@ func (s *AggregateHealthService) aggregateHealth(reports []HealthReport) Aggrega
 			Reports:   []HealthReport{},
 		}
 	}
-	
+
 	// Initialize status as healthy
 	readiness := HealthStatusHealthy
 	health := HealthStatusHealthy
-	
+
 	// Apply aggregation rules
 	for _, report := range reports {
 		// Health includes all providers (required and optional)
 		health = worstStatus(health, report.Status)
-		
+
 		// Readiness only considers required (non-optional) providers
 		if !report.Optional {
 			readiness = worstStatus(readiness, report.Status)
 		}
 	}
-	
+
 	return AggregatedHealth{
 		Readiness: readiness,
 		Health:    health,
@@ -415,10 +424,10 @@ func worstStatus(a, b HealthStatus) HealthStatus {
 		HealthStatusUnhealthy: 2,
 		HealthStatusUnknown:   3,
 	}
-	
+
 	priorityA := statusPriority[a]
 	priorityB := statusPriority[b]
-	
+
 	if priorityA >= priorityB {
 		return a
 	}
@@ -429,7 +438,7 @@ func worstStatus(a, b HealthStatus) HealthStatus {
 func (s *AggregateHealthService) GetProviders() map[string]ProviderInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make(map[string]ProviderInfo)
 	for name, info := range s.providers {
 		result[name] = ProviderInfo{
@@ -474,4 +483,3 @@ func (e *HealthStatusChangedEvent) GetTimestamp() time.Time {
 type EventObserver interface {
 	OnStatusChange(ctx context.Context, event *HealthStatusChangedEvent)
 }
-

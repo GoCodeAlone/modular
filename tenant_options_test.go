@@ -30,10 +30,10 @@ func TestWithTenantGuardModeOption(t *testing.T) {
 				// Test that WithTenantGuardMode accepts different guard modes
 				strictOption := WithTenantGuardMode(TenantGuardModeStrict)
 				assert.NotNil(t, strictOption, "Should create option with strict mode")
-				
+
 				lenientOption := WithTenantGuardMode(TenantGuardModeLenient)
 				assert.NotNil(t, lenientOption, "Should create option with lenient mode")
-				
+
 				disabledOption := WithTenantGuardMode(TenantGuardModeDisabled)
 				assert.NotNil(t, disabledOption, "Should create option with disabled mode")
 			},
@@ -43,14 +43,14 @@ func TestWithTenantGuardModeOption(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test that WithTenantGuardMode accepts detailed configuration
 				config := TenantGuardConfig{
-					Mode:                TenantGuardModeStrict,
-					EnforceIsolation:    true,
-					AllowCrossTenant:    false,
-					ValidationTimeout:   5 * time.Second,
-					MaxTenantCacheSize:  1000,
+					Mode:               TenantGuardModeStrict,
+					EnforceIsolation:   true,
+					AllowCrossTenant:   false,
+					ValidationTimeout:  5 * time.Second,
+					MaxTenantCacheSize: 1000,
 					TenantTTL:          10 * time.Minute,
 				}
-				
+
 				option := WithTenantGuardModeConfig(config)
 				assert.NotNil(t, option, "WithTenantGuardModeConfig should accept detailed configuration")
 			},
@@ -61,7 +61,7 @@ func TestWithTenantGuardModeOption(t *testing.T) {
 				// Test that WithTenantGuardMode option can be applied to application builder
 				builder := NewApplicationBuilder()
 				option := WithTenantGuardMode(TenantGuardModeStrict)
-				
+
 				err := builder.WithOption(option)
 				assert.NoError(t, err, "Should apply WithTenantGuardMode option to builder")
 			},
@@ -71,12 +71,12 @@ func TestWithTenantGuardModeOption(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test that application built with WithTenantGuardMode enforces tenant isolation
 				builder := NewApplicationBuilder()
-				
+
 				app, err := builder.
 					WithOption(WithTenantGuardMode(TenantGuardModeStrict)).
 					Build(context.Background())
 				assert.NoError(t, err, "Should build application with tenant guard mode")
-				
+
 				// Check that application has tenant guard capability
 				tenantGuard := app.GetTenantGuard()
 				assert.NotNil(t, tenantGuard, "Application should have tenant guard")
@@ -142,7 +142,7 @@ func TestTenantGuardMode(t *testing.T) {
 				assert.True(t, TenantGuardModeStrict.IsEnforcing(), "Strict mode should be enforcing")
 				assert.True(t, TenantGuardModeLenient.IsEnforcing(), "Lenient mode should be enforcing")
 				assert.False(t, TenantGuardModeDisabled.IsEnforcing(), "Disabled mode should not be enforcing")
-				
+
 				assert.True(t, TenantGuardModeStrict.IsStrict(), "Strict mode should be strict")
 				assert.False(t, TenantGuardModeLenient.IsStrict(), "Lenient mode should not be strict")
 				assert.False(t, TenantGuardModeDisabled.IsStrict(), "Disabled mode should not be strict")
@@ -167,16 +167,16 @@ func TestTenantGuardConfig(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test that TenantGuardConfig type exists with all required fields
 				config := TenantGuardConfig{
-					Mode:                TenantGuardModeStrict,
-					EnforceIsolation:    true,
-					AllowCrossTenant:    false,
-					ValidationTimeout:   5 * time.Second,
-					MaxTenantCacheSize:  1000,
+					Mode:               TenantGuardModeStrict,
+					EnforceIsolation:   true,
+					AllowCrossTenant:   false,
+					ValidationTimeout:  5 * time.Second,
+					MaxTenantCacheSize: 1000,
 					TenantTTL:          10 * time.Minute,
 					LogViolations:      true,
 					BlockViolations:    true,
 				}
-				
+
 				assert.Equal(t, TenantGuardModeStrict, config.Mode, "TenantGuardConfig should have Mode field")
 				assert.True(t, config.EnforceIsolation, "TenantGuardConfig should have EnforceIsolation field")
 				assert.False(t, config.AllowCrossTenant, "TenantGuardConfig should have AllowCrossTenant field")
@@ -192,18 +192,18 @@ func TestTenantGuardConfig(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test config validation
 				validConfig := TenantGuardConfig{
-					Mode:                TenantGuardModeStrict,
-					ValidationTimeout:   5 * time.Second,
-					MaxTenantCacheSize:  1000,
+					Mode:               TenantGuardModeStrict,
+					ValidationTimeout:  5 * time.Second,
+					MaxTenantCacheSize: 1000,
 					TenantTTL:          10 * time.Minute,
 				}
 				assert.True(t, validConfig.IsValid(), "Valid config should pass validation")
-				
+
 				invalidConfig := TenantGuardConfig{
-					Mode:                TenantGuardModeStrict,
-					ValidationTimeout:   -1 * time.Second, // Invalid timeout
-					MaxTenantCacheSize:  -1, // Invalid cache size
-					TenantTTL:          0, // Invalid TTL
+					Mode:               TenantGuardModeStrict,
+					ValidationTimeout:  -1 * time.Second, // Invalid timeout
+					MaxTenantCacheSize: -1,               // Invalid cache size
+					TenantTTL:          0,                // Invalid TTL
 				}
 				assert.False(t, invalidConfig.IsValid(), "Invalid config should fail validation")
 			},
@@ -217,12 +217,12 @@ func TestTenantGuardConfig(t *testing.T) {
 				assert.True(t, strictDefault.EnforceIsolation, "Strict mode should enforce isolation by default")
 				assert.False(t, strictDefault.AllowCrossTenant, "Strict mode should not allow cross-tenant by default")
 				assert.True(t, strictDefault.BlockViolations, "Strict mode should block violations by default")
-				
+
 				lenientDefault := NewDefaultTenantGuardConfig(TenantGuardModeLenient)
 				assert.Equal(t, TenantGuardModeLenient, lenientDefault.Mode)
 				assert.True(t, lenientDefault.LogViolations, "Lenient mode should log violations by default")
 				assert.False(t, lenientDefault.BlockViolations, "Lenient mode should not block violations by default")
-				
+
 				disabledDefault := NewDefaultTenantGuardConfig(TenantGuardModeDisabled)
 				assert.Equal(t, TenantGuardModeDisabled, disabledDefault.Mode)
 				assert.False(t, disabledDefault.EnforceIsolation, "Disabled mode should not enforce isolation")
@@ -254,25 +254,25 @@ func TestTenantGuardBehavior(t *testing.T) {
 					AllowCrossTenant: false,
 					BlockViolations:  true,
 				}
-				
+
 				app, err := builder.
 					WithOption(WithTenantGuardModeConfig(config)).
 					Build(context.Background())
 				require.NoError(t, err, "Should build application with strict tenant guard")
-				
+
 				tenantGuard := app.GetTenantGuard()
 				require.NotNil(t, tenantGuard, "Should have tenant guard")
-				
+
 				// Test that cross-tenant access is blocked
 				ctx := context.Background()
 				ctx = WithTenantContext(ctx, "tenant-a")
-				
+
 				violation := &TenantViolation{
 					RequestingTenant: "tenant-a",
 					AccessedResource: "tenant-b/resource",
 					ViolationType:    TenantViolationCrossTenantAccess,
 				}
-				
+
 				allowed, err := tenantGuard.ValidateAccess(ctx, violation)
 				assert.NoError(t, err, "Validation should succeed")
 				assert.False(t, allowed, "Cross-tenant access should be blocked in strict mode")
@@ -288,29 +288,29 @@ func TestTenantGuardBehavior(t *testing.T) {
 					LogViolations:   true,
 					BlockViolations: false,
 				}
-				
+
 				app, err := builder.
 					WithOption(WithTenantGuardModeConfig(config)).
 					Build(context.Background())
 				require.NoError(t, err, "Should build application with lenient tenant guard")
-				
+
 				tenantGuard := app.GetTenantGuard()
 				require.NotNil(t, tenantGuard, "Should have tenant guard")
-				
+
 				// Test that cross-tenant access is allowed but logged
 				ctx := context.Background()
 				ctx = WithTenantContext(ctx, "tenant-a")
-				
+
 				violation := &TenantViolation{
 					RequestingTenant: "tenant-a",
 					AccessedResource: "tenant-b/resource",
 					ViolationType:    TenantViolationCrossTenantAccess,
 				}
-				
+
 				allowed, err := tenantGuard.ValidateAccess(ctx, violation)
 				assert.NoError(t, err, "Validation should succeed")
 				assert.True(t, allowed, "Cross-tenant access should be allowed in lenient mode")
-				
+
 				// Verify violation was logged (would check logs in real implementation)
 				violations := tenantGuard.GetRecentViolations()
 				assert.Len(t, violations, 1, "Should have recorded the violation")
@@ -321,18 +321,18 @@ func TestTenantGuardBehavior(t *testing.T) {
 			description: "Disabled tenant guard mode should not enforce any tenant isolation",
 			testFunc: func(t *testing.T) {
 				builder := NewApplicationBuilder()
-				
+
 				app, err := builder.
 					WithOption(WithTenantGuardMode(TenantGuardModeDisabled)).
 					Build(context.Background())
 				require.NoError(t, err, "Should build application with disabled tenant guard")
-				
+
 				tenantGuard := app.GetTenantGuard()
-				
+
 				// In disabled mode, tenant guard might not exist or be a no-op
 				if tenantGuard != nil {
 					assert.False(t, tenantGuard.GetMode().IsEnforcing(), "Disabled mode should not be enforcing")
-					
+
 					// All access should be allowed without logging
 					ctx := context.Background()
 					violation := &TenantViolation{
@@ -340,7 +340,7 @@ func TestTenantGuardBehavior(t *testing.T) {
 						AccessedResource: "tenant-b/resource",
 						ViolationType:    TenantViolationCrossTenantAccess,
 					}
-					
+
 					allowed, err := tenantGuard.ValidateAccess(ctx, violation)
 					assert.NoError(t, err, "Validation should succeed")
 					assert.True(t, allowed, "All access should be allowed in disabled mode")
@@ -356,19 +356,19 @@ func TestTenantGuardBehavior(t *testing.T) {
 					AllowCrossTenant: false,
 					CrossTenantWhitelist: map[string][]string{
 						"tenant-a": {"tenant-b", "tenant-c"}, // tenant-a can access tenant-b and tenant-c
-						"tenant-b": {"tenant-a"}, // tenant-b can access tenant-a
+						"tenant-b": {"tenant-a"},             // tenant-b can access tenant-a
 					},
 				}
-				
+
 				builder := NewApplicationBuilder()
 				app, err := builder.
 					WithOption(WithTenantGuardModeConfig(config)).
 					Build(context.Background())
 				require.NoError(t, err, "Should build application with whitelisted cross-tenant access")
-				
+
 				tenantGuard := app.GetTenantGuard()
 				require.NotNil(t, tenantGuard, "Should have tenant guard")
-				
+
 				// Test whitelisted access
 				ctx := WithTenantContext(context.Background(), "tenant-a")
 				violation := &TenantViolation{
@@ -376,11 +376,11 @@ func TestTenantGuardBehavior(t *testing.T) {
 					AccessedResource: "tenant-b/resource", // whitelisted
 					ViolationType:    TenantViolationCrossTenantAccess,
 				}
-				
+
 				allowed, err := tenantGuard.ValidateAccess(ctx, violation)
 				assert.NoError(t, err, "Validation should succeed")
 				assert.True(t, allowed, "Whitelisted cross-tenant access should be allowed")
-				
+
 				// Test non-whitelisted access
 				violation.AccessedResource = "tenant-d/resource" // not whitelisted
 				allowed, err = tenantGuard.ValidateAccess(ctx, violation)
@@ -414,7 +414,7 @@ func TestTenantViolation(t *testing.T) {
 					Severity:         TenantViolationSeverityHigh,
 					Context:          map[string]interface{}{"user_id": "user-123"},
 				}
-				
+
 				assert.Equal(t, "tenant-a", violation.RequestingTenant, "TenantViolation should have RequestingTenant field")
 				assert.Equal(t, "tenant-b/sensitive-data", violation.AccessedResource, "TenantViolation should have AccessedResource field")
 				assert.Equal(t, TenantViolationCrossTenantAccess, violation.ViolationType, "TenantViolation should have ViolationType field")

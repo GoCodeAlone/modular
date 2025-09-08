@@ -57,7 +57,7 @@ func TestSecretDetection(t *testing.T) {
 
 		assert.NotNil(t, detector, "SecretDetector interface should be defined")
 
-		secretFields := []string{
+		_ = []string{
 			"password",
 			"secret",
 			"token",
@@ -73,7 +73,7 @@ func TestSecretDetection(t *testing.T) {
 
 	t.Run("should detect secret values by pattern", func(t *testing.T) {
 		// Expected: should detect secret values by content patterns
-		secretPatterns := []string{
+		_ = []string{
 			"Bearer .*",
 			"sk_.*",   // Stripe keys
 			"AKIA.*",  // AWS access keys

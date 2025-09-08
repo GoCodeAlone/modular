@@ -25,7 +25,7 @@ func TestReloadNoOp(t *testing.T) {
 
 		// Expected behavior: no-op reload should return nil error
 		// This assertion will also fail since we don't have implementation
-		mockConfig := map[string]interface{}{"key": "value"}
+		_ = map[string]interface{}{"key": "value"}
 
 		// The reload method should exist and handle no-op scenarios
 		// err := reloadable.Reload(mockConfig)

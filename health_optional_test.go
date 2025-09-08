@@ -24,7 +24,7 @@ func TestHealthWithOptionalModules(t *testing.T) {
 					WithOption(WithHealthAggregator()).
 					Build(context.Background())
 				assert.NoError(t, err, "Should build application")
-				
+
 				healthService := app.GetHealthService()
 				result := healthService.CheckHealth(context.Background())
 				assert.NotNil(t, result, "Should return health result even with no modules")

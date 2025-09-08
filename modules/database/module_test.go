@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -77,6 +78,21 @@ func (a *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 
 // ServiceIntrospector returns nil (not used in database module tests)
 func (a *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
+// Health returns nil with error for test mock
+func (a *MockApplication) Health() (modular.HealthAggregator, error) {
+	return nil, fmt.Errorf("health aggregator not available in test mock")
+}
+
+// RequestReload returns error for test mock
+func (a *MockApplication) RequestReload(sections ...string) error {
+	return fmt.Errorf("reload not supported in test mock")
+}
+
+// RegisterHealthProvider returns error for test mock
+func (a *MockApplication) RegisterHealthProvider(moduleName string, provider modular.HealthProvider, optional bool) error {
+	return fmt.Errorf("health provider registration not supported in test mock")
+}
 
 type MockConfigProvider struct {
 	config interface{}

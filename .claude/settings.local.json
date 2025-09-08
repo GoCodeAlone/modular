@@ -9,7 +9,10 @@
       "Bash(gh pr create:*)",
       "Bash(git push:*)",
       "Bash(git commit:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cat:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(scripts/run-module-bdd-parallel.sh:*)"
     ],
     "deny": [],
     "ask": []

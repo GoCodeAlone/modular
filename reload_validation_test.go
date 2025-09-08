@@ -24,12 +24,12 @@ func TestReloadWithValidationErrors(t *testing.T) {
 					WithOption(WithDynamicReload()).
 					Build(context.Background())
 				assert.NoError(t, err, "Should build application")
-				
+
 				// Create invalid config
 				invalidConfig := map[string]interface{}{
 					"invalid_field": "invalid_value",
 				}
-				
+
 				// Attempt reload with invalid config
 				err = app.TriggerReload(context.Background(), "validation-test", invalidConfig, ReloadTriggerManual)
 				assert.Error(t, err, "Should fail with validation error")

@@ -14,61 +14,61 @@ import (
 // and that dependency resolution works correctly during application startup.
 func TestStartupDependencyResolution(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	
+
 	// Track initialization order
 	var initOrder []string
-	
+
 	// Create modules with clear dependency chain: A -> B -> C
 	moduleA := &testOrderModule{name: "moduleA", deps: []string{}, initOrder: &initOrder}
 	moduleB := &testOrderModule{name: "moduleB", deps: []string{"moduleA"}, initOrder: &initOrder}
 	moduleC := &testOrderModule{name: "moduleC", deps: []string{"moduleB"}, initOrder: &initOrder}
-	
+
 	// Create application
 	app := modular.NewStdApplication(modular.NewStdConfigProvider(&struct{}{}), logger)
-	
+
 	// Register modules in intentionally wrong order to test dependency resolution
 	app.RegisterModule(moduleC) // Should init last
 	app.RegisterModule(moduleA) // Should init first
 	app.RegisterModule(moduleB) // Should init second
-	
+
 	// Initialize application - dependency resolver should order correctly
 	err := app.Init()
 	if err != nil {
 		t.Fatalf("Application initialization failed: %v", err)
 	}
-	
+
 	// Verify correct initialization order
 	expectedOrder := []string{"moduleA", "moduleB", "moduleC"}
 	if len(initOrder) != len(expectedOrder) {
 		t.Fatalf("Expected %d modules initialized, got %d", len(expectedOrder), len(initOrder))
 	}
-	
+
 	for i, expected := range expectedOrder {
 		if initOrder[i] != expected {
 			t.Errorf("Expected module %s at position %d, got %s", expected, i, initOrder[i])
 		}
 	}
-	
+
 	t.Logf("✅ Modules initialized in correct dependency order: %s", strings.Join(initOrder, " -> "))
-	
+
 	// Test service dependency resolution
 	var serviceA *testOrderService
 	err = app.GetService("serviceA", &serviceA)
 	if err != nil {
 		t.Errorf("Failed to resolve serviceA: %v", err)
 	}
-	
+
 	var serviceB *testOrderService
 	err = app.GetService("serviceB", &serviceB)
 	if err != nil {
 		t.Errorf("Failed to resolve serviceB: %v", err)
 	}
-	
+
 	// Verify services are properly resolved
 	if serviceA == nil || serviceB == nil {
 		t.Error("Service resolution failed - nil services returned")
 	}
-	
+
 	t.Log("✅ Service dependency resolution completed successfully")
 }
 
@@ -86,7 +86,7 @@ func (m *testOrderModule) Name() string {
 func (m *testOrderModule) Init(app modular.Application) error {
 	// Record initialization order
 	*m.initOrder = append(*m.initOrder, m.name)
-	
+
 	// Register a service for this module
 	service := &testOrderService{moduleName: m.name}
 	return app.RegisterService("service"+strings.TrimPrefix(m.name, "module"), service)

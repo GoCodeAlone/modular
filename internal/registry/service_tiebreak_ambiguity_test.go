@@ -36,7 +36,7 @@ func TestServiceTiebreakAmbiguity(t *testing.T) {
 		// service2 implements DatabaseConnection
 		// GetServiceByInterface(DatabaseConnection) should return descriptive error
 
-		expectedErrorTypes := []string{
+		_ = []string{
 			"AmbiguousServiceError",
 			"MultipleMatchError",
 			"TiebreakRequiredError",

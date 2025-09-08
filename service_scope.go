@@ -170,19 +170,19 @@ func (s ServiceScope) IsCompatibleWith(other ServiceScope) bool {
 type ServiceScopeConfig struct {
 	// Scope defines the service scope type
 	Scope ServiceScope
-	
+
 	// ScopeKey is the key used to identify the scope boundary (for scoped services)
 	ScopeKey string
-	
+
 	// MaxInstances limits the number of instances that can be created
 	MaxInstances int
-	
+
 	// InstanceTimeout specifies how long instances should be cached
 	InstanceTimeout string
-	
+
 	// EnableCaching determines if caching is enabled for cacheable scopes
 	EnableCaching bool
-	
+
 	// EnableMetrics determines if scope-related metrics should be collected
 	EnableMetrics bool
 }
@@ -193,15 +193,15 @@ func (c ServiceScopeConfig) IsValid() bool {
 	if !c.Scope.IsValid() {
 		return false
 	}
-	
+
 	if c.MaxInstances < 0 {
 		return false
 	}
-	
+
 	if c.Scope == ServiceScopeScoped && c.ScopeKey == "" {
 		return false // Scoped services need a scope key
 	}
-	
+
 	return true
 }
 
@@ -211,7 +211,7 @@ func OrderScopesByLifetime(scopes []ServiceScope) []ServiceScope {
 	// Create a copy to avoid modifying the original slice
 	ordered := make([]ServiceScope, len(scopes))
 	copy(ordered, scopes)
-	
+
 	// Define lifetime ordering (longer lifetime = lower number)
 	lifetimeOrder := map[ServiceScope]int{
 		ServiceScopeSingleton: 0, // Longest lifetime
@@ -219,7 +219,7 @@ func OrderScopesByLifetime(scopes []ServiceScope) []ServiceScope {
 		ServiceScopeTransient: 2, // Short lifetime
 		ServiceScopeFactory:   2, // Short lifetime (same as transient)
 	}
-	
+
 	// Sort by lifetime order
 	for i := 0; i < len(ordered)-1; i++ {
 		for j := i + 1; j < len(ordered); j++ {
@@ -230,7 +230,7 @@ func OrderScopesByLifetime(scopes []ServiceScope) []ServiceScope {
 			}
 		}
 	}
-	
+
 	return ordered
 }
 
@@ -241,14 +241,14 @@ func GetDefaultScopeConfig(scope ServiceScope) ServiceScopeConfig {
 		EnableCaching: true,
 		EnableMetrics: false,
 	}
-	
+
 	switch scope {
 	case ServiceScopeSingleton:
 		config.MaxInstances = 1
 		config.InstanceTimeout = "0" // Never expires
 		config.ScopeKey = ""
 	case ServiceScopeTransient:
-		config.MaxInstances = 1000 // Allow many instances
+		config.MaxInstances = 1000   // Allow many instances
 		config.InstanceTimeout = "0" // No caching
 		config.ScopeKey = ""
 	case ServiceScopeScoped:
@@ -264,7 +264,7 @@ func GetDefaultScopeConfig(scope ServiceScope) ServiceScopeConfig {
 		config.InstanceTimeout = "0"
 		config.ScopeKey = ""
 	}
-	
+
 	return config
 }
 

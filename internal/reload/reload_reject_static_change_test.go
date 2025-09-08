@@ -29,13 +29,13 @@ func TestReloadRejectStaticChanges(t *testing.T) {
 
 	t.Run("server port change should be rejected", func(t *testing.T) {
 		// Expected: server.port is typically a static field that requires restart
-		oldConfig := map[string]interface{}{
+		_ = map[string]interface{}{
 			"server": map[string]interface{}{
 				"port": 8080,
 				"host": "localhost",
 			},
 		}
-		newConfig := map[string]interface{}{
+		_ = map[string]interface{}{
 			"server": map[string]interface{}{
 				"port": 9090, // This change should be rejected
 				"host": "localhost",
@@ -62,7 +62,7 @@ func TestReloadRejectStaticChanges(t *testing.T) {
 func TestReloadStaticFieldDetection(t *testing.T) {
 	t.Run("should correctly classify common static fields", func(t *testing.T) {
 		// Expected static fields: server.port, server.host, db.driver, etc.
-		expectedStaticFields := []string{
+		_ = []string{
 			"server.port",
 			"server.host",
 			"database.driver",
@@ -75,7 +75,7 @@ func TestReloadStaticFieldDetection(t *testing.T) {
 
 	t.Run("should correctly classify common dynamic fields", func(t *testing.T) {
 		// Expected dynamic fields: log.level, cache.ttl, timeouts, etc.
-		expectedDynamicFields := []string{
+		_ = []string{
 			"log.level",
 			"cache.ttl",
 			"http.timeout",
@@ -91,7 +91,7 @@ func TestReloadStaticFieldDetection(t *testing.T) {
 func TestReloadMixedChanges(t *testing.T) {
 	t.Run("mixed changes should reject entire request", func(t *testing.T) {
 		// Expected: if request contains both static and dynamic changes, reject all
-		mixedConfig := map[string]interface{}{
+		_ = map[string]interface{}{
 			"server.port": 9090,    // static change
 			"log.level":   "debug", // dynamic change
 		}

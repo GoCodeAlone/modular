@@ -13,6 +13,13 @@ import (
 	"time"
 )
 
+// Static errors for application
+var (
+	ErrDynamicReloadNotAvailable = errors.New("dynamic reload not available - use WithDynamicReload() option when creating application")
+	ErrInvalidHealthAggregator   = errors.New("invalid health aggregator service")
+	ErrHealthAggregatorNotAvailable = errors.New("health aggregator not available - use WithHealthAggregator() option when creating application")
+)
+
 // AppRegistry provides registry functionality for applications.
 // This interface provides access to the application's service registry,
 // allowing modules and components to access registered services.
@@ -187,6 +194,25 @@ type Application interface {
 	// Optional providers don't affect readiness status but are included in health reporting.
 	// Required providers affect both readiness and overall health status.
 	RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error
+
+	// Health returns the health aggregator service if available.
+	// This method follows the design brief specification for FR-048 Health Aggregation.
+	//
+	// The health aggregator provides system-wide health monitoring by collecting
+	// health reports from all registered providers and aggregating them according
+	// to readiness and health rules.
+	//
+	// Returns an error if the health aggregator service is not available.
+	// Use WithHealthAggregator() option when creating the application to register
+	// the health aggregation service.
+	//
+	// Example:
+	//   healthAgg, err := app.Health()
+	//   if err != nil {
+	//       return fmt.Errorf("health aggregation not available: %w", err)
+	//   }
+	//   status, err := healthAgg.Collect(ctx)
+	Health() (HealthAggregator, error)
 }
 
 // ServiceIntrospector provides advanced service registry introspection helpers.
@@ -1570,21 +1596,27 @@ func (app *StdApplication) GetModules() map[string]Module {
 
 // RequestReload triggers a dynamic configuration reload for specified sections
 func (app *StdApplication) RequestReload(sections ...string) error {
-	// TODO: Implement dynamic configuration reload logic
-	// This is a placeholder implementation that will be enhanced later
-	// The full implementation would include:
-	// 1. Configuration diffing to detect changes
-	// 2. Dynamic field filtering (struct tag parsing)
-	// 3. Atomic validation of changes
-	// 4. Module reload orchestration
-	// 5. Event emission
-	
 	if app.logger != nil {
 		app.logger.Info("RequestReload called", "sections", sections)
 	}
-	
-	// For now, return an error indicating the feature is not fully implemented
-	return fmt.Errorf("RequestReload is not yet fully implemented - placeholder for design brief compliance")
+
+	// Try to use the registered ReloadOrchestrator service if available
+	service, exists := app.svcRegistry["reloadOrchestrator"]
+	if exists {
+		// Check if service implements the reload interface
+		type reloadable interface {
+			RequestReload(ctx context.Context, sections ...string) error
+		}
+
+		if orchestrator, ok := service.(reloadable); ok {
+			// Use the registered orchestrator
+			ctx := context.Background()
+			return orchestrator.RequestReload(ctx, sections...)
+		}
+	}
+
+	// Fallback: No orchestrator registered, provide a helpful error
+	return ErrDynamicReloadNotAvailable
 }
 
 // RegisterHealthProvider registers a health provider for a module
@@ -1596,19 +1628,36 @@ func (app *StdApplication) RegisterHealthProvider(moduleName string, provider He
 	// 2. Registration validation
 	// 3. Integration with health aggregation service
 	// 4. Optional/required provider tracking
-	
+
 	if app.logger != nil {
 		app.logger.Info("RegisterHealthProvider called", "module", moduleName, "optional", optional)
 	}
-	
+
 	// For now, just register as a service for basic functionality
 	serviceName := fmt.Sprintf("healthProvider.%s", moduleName)
 	err := app.RegisterService(serviceName, provider)
 	if err != nil {
 		return fmt.Errorf("failed to register health provider for module %s: %w", moduleName, err)
 	}
-	
+
 	return nil
+}
+
+// Health returns the health aggregator service if available
+func (app *StdApplication) Health() (HealthAggregator, error) {
+	// Try to get the registered health aggregator service
+	service, exists := app.svcRegistry["healthAggregator"]
+	if exists {
+		// Check if service implements the health aggregator interface
+		if aggregator, ok := service.(HealthAggregator); ok {
+			return aggregator, nil
+		}
+		// Service exists but is wrong type
+		return nil, ErrInvalidHealthAggregator
+	}
+
+	// No health aggregator service registered
+	return nil, ErrHealthAggregatorNotAvailable
 }
 
 // (Intentionally removed old direct service introspection methods; use ServiceIntrospector())

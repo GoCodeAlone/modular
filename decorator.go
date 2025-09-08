@@ -173,3 +173,8 @@ func (d *BaseApplicationDecorator) RequestReload(sections ...string) error {
 func (d *BaseApplicationDecorator) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
 	return d.inner.RegisterHealthProvider(moduleName, provider, optional) //nolint:wrapcheck // Forwarding call
 }
+
+// Health forwards to the inner application's Health method
+func (d *BaseApplicationDecorator) Health() (HealthAggregator, error) {
+	return d.inner.Health() //nolint:wrapcheck // Forwarding call
+}

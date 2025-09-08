@@ -29,12 +29,12 @@ func TestApplicationWithDynamicReload(t *testing.T) {
 
 		// Register a reloadable module
 		reloadableModule := &testReloadableModule{
-			name:        "reloadable-service",
-			canReload:   true,
-			timeout:     30 * time.Second,
+			name:      "reloadable-service",
+			canReload: true,
+			timeout:   30 * time.Second,
 			currentConfig: map[string]interface{}{
-				"version":    "1.0",
-				"enabled":    true,
+				"version":         "1.0",
+				"enabled":         true,
 				"max_connections": 100,
 			},
 		}
@@ -64,23 +64,23 @@ func TestApplicationWithDynamicReload(t *testing.T) {
 
 		// Register multiple reloadable modules with dependencies
 		dbModule := &testReloadableModule{
-			name:        "database",
-			canReload:   true,
-			timeout:     15 * time.Second,
+			name:          "database",
+			canReload:     true,
+			timeout:       15 * time.Second,
 			currentConfig: map[string]interface{}{"host": "localhost", "port": 5432},
 		}
 
 		cacheModule := &testReloadableModule{
-			name:        "cache",
-			canReload:   true,
-			timeout:     10 * time.Second,
+			name:          "cache",
+			canReload:     true,
+			timeout:       10 * time.Second,
 			currentConfig: map[string]interface{}{"size": 1000, "ttl": "1h"},
 		}
 
 		apiModule := &testReloadableModule{
-			name:        "api",
-			canReload:   true,
-			timeout:     20 * time.Second,
+			name:          "api",
+			canReload:     true,
+			timeout:       20 * time.Second,
 			currentConfig: map[string]interface{}{"port": 8080, "workers": 4},
 		}
 
@@ -140,7 +140,7 @@ func TestApplicationHealthAggregation(t *testing.T) {
 		}
 
 		degradedModule := &testHealthModule{
-			name:      "degraded-service", 
+			name:      "degraded-service",
 			isHealthy: false,
 			timeout:   5 * time.Second,
 			details:   map[string]interface{}{"errors": 3, "performance": "reduced"},
@@ -177,7 +177,7 @@ func TestApplicationHealthAggregation(t *testing.T) {
 		assert.Equal(t, HealthStatusHealthy, healthyResult.Status)
 		assert.Contains(t, healthyResult.Details, "connections")
 
-		degradedResult := healthResults["degraded-service"] 
+		degradedResult := healthResults["degraded-service"]
 		assert.Equal(t, HealthStatusUnhealthy, degradedResult.Status) // testHealthModule returns unhealthy when not healthy
 		assert.Contains(t, degradedResult.Details, "errors")
 
@@ -216,7 +216,7 @@ func TestApplicationHealthAggregation(t *testing.T) {
 		app.RegisterModule(slowModule)
 
 		modules := app.GetModules()
-		
+
 		// Test with short timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		defer cancel()
@@ -248,10 +248,10 @@ func TestApplicationConfigurationFlow(t *testing.T) {
 				timeout:   30 * time.Second,
 			},
 			configSchema: map[string]interface{}{
-				"host":       "string",
-				"port":       "int",
-				"enabled":    "bool",
-				"timeout":    "duration",
+				"host":    "string",
+				"port":    "int",
+				"enabled": "bool",
+				"timeout": "duration",
 			},
 		}
 
@@ -327,7 +327,7 @@ func TestApplicationConfigurationFlow(t *testing.T) {
 		// Simulate ordered reload based on dependencies
 		reloadOrder := []string{"database", "cache", "api"}
 		modules := app.GetModules()
-		
+
 		for _, moduleName := range reloadOrder {
 			module := modules[moduleName]
 			if reloadable, ok := module.(Reloadable); ok {
@@ -335,7 +335,7 @@ func TestApplicationConfigurationFlow(t *testing.T) {
 					"module":  moduleName,
 					"version": "updated",
 				}
-				
+
 				err := reloadable.Reload(context.Background(), config)
 				assert.NoError(t, err, "Module %s should reload successfully", moduleName)
 			}
@@ -367,7 +367,7 @@ func (m *configAwareReloadableModule) Reload(ctx context.Context, newConfig inte
 	if err := m.validateConfigSchema(newConfig); err != nil {
 		return err
 	}
-	
+
 	return m.testReloadableModule.Reload(ctx, newConfig)
 }
 
@@ -381,7 +381,7 @@ func (m *configAwareReloadableModule) validateConfigSchema(config interface{}) e
 	if host, ok := configMap["host"].(string); ok && host == "" {
 		return errors.New("host cannot be empty")
 	}
-	
+
 	if port, ok := configMap["port"].(int); ok && port <= 0 {
 		return errors.New("port must be positive")
 	}

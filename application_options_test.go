@@ -79,7 +79,7 @@ func TestApplicationOptions_DynamicReload(t *testing.T) {
 	}
 }
 
-// TestApplicationOptions_HealthAggregation tests health aggregation option behavior  
+// TestApplicationOptions_HealthAggregation tests health aggregation option behavior
 func TestApplicationOptions_HealthAggregation(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -227,8 +227,8 @@ func TestApplicationOptions_OptionOverriding(t *testing.T) {
 
 // ApplicationConfig represents application configuration
 type ApplicationConfig struct {
-	DynamicReload     *DynamicReloadConfig     `json:"dynamic_reload,omitempty"`
-	HealthAggregator  *HealthAggregatorConfig  `json:"health_aggregator,omitempty"`
+	DynamicReload    *DynamicReloadConfig    `json:"dynamic_reload,omitempty"`
+	HealthAggregator *HealthAggregatorConfig `json:"health_aggregator,omitempty"`
 }
 
 // DynamicReloadConfig configures dynamic reload behavior

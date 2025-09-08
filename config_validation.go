@@ -2,6 +2,7 @@ package modular
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -13,12 +14,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Static errors for config validation
+var (
+	ErrConfigNil     = errors.New("config cannot be nil")
+	ErrConfigsNil    = errors.New("configs cannot be nil")
+	ErrConfigNotStruct = errors.New("config must be a struct")
+)
+
 const (
 	// Struct tag keys
 	tagDefault  = "default"
 	tagRequired = "required"
 	tagValidate = "validate"
-	tagDesc     = "desc" // Used for generating sample config and documentation
+	tagDesc     = "desc"    // Used for generating sample config and documentation
+	tagDynamic  = "dynamic" // Used for dynamic reload functionality
 )
 
 // ConfigValidator is an interface for configuration validation.
@@ -563,4 +572,198 @@ func ValidateConfig(cfg interface{}) error {
 	}
 
 	return nil
+}
+
+// DynamicFieldParser interface defines how dynamic field detection works
+// for configuration reload functionality according to T044 requirements
+type DynamicFieldParser interface {
+	// GetDynamicFields analyzes a configuration struct and returns a slice
+	// of field names that are tagged with `dynamic:"true"`
+	GetDynamicFields(config interface{}) ([]string, error)
+
+	// ValidateDynamicReload compares two configurations and generates a ConfigDiff
+	// that only includes changes to fields marked as dynamic
+	ValidateDynamicReload(oldConfig, newConfig interface{}) (*ConfigDiff, error)
+}
+
+// StdDynamicFieldParser implements DynamicFieldParser using reflection
+type StdDynamicFieldParser struct{}
+
+// NewDynamicFieldParser creates a new standard dynamic field parser
+func NewDynamicFieldParser() DynamicFieldParser {
+	return &StdDynamicFieldParser{}
+}
+
+// GetDynamicFields parses a config struct and returns dynamic field names
+func (p *StdDynamicFieldParser) GetDynamicFields(config interface{}) ([]string, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
+	value := reflect.ValueOf(config)
+	if value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return nil, fmt.Errorf("config cannot be nil")
+		}
+		value = value.Elem()
+	}
+
+	if value.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("config must be a struct, got %v", value.Kind())
+	}
+
+	var dynamicFields []string
+	p.parseDynamicFields(value, "", &dynamicFields)
+
+	return dynamicFields, nil
+}
+
+// parseDynamicFields recursively traverses struct fields to find dynamic tags
+func (p *StdDynamicFieldParser) parseDynamicFields(value reflect.Value, prefix string, fields *[]string) {
+	structType := value.Type()
+
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		fieldValue := value.Field(i)
+
+		// Skip unexported fields
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		fieldPath := field.Name
+		if prefix != "" {
+			fieldPath = prefix + "." + field.Name
+		}
+
+		// Check for dynamic tag
+		if dynamicTag := field.Tag.Get(tagDynamic); dynamicTag == "true" {
+			*fields = append(*fields, fieldPath)
+		}
+
+		// Recursively handle nested structs
+		if fieldValue.Kind() == reflect.Struct {
+			p.parseDynamicFields(fieldValue, fieldPath, fields)
+		} else if fieldValue.Kind() == reflect.Ptr && !fieldValue.IsNil() {
+			if fieldValue.Elem().Kind() == reflect.Struct {
+				p.parseDynamicFields(fieldValue.Elem(), fieldPath, fields)
+			}
+		}
+	}
+}
+
+// ValidateDynamicReload compares configs and creates a diff with only dynamic changes
+func (p *StdDynamicFieldParser) ValidateDynamicReload(oldConfig, newConfig interface{}) (*ConfigDiff, error) {
+	if oldConfig == nil || newConfig == nil {
+		return nil, fmt.Errorf("configs cannot be nil")
+	}
+
+	// Get dynamic fields from the new config (should be the same for both)
+	dynamicFields, err := p.GetDynamicFields(newConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dynamic fields: %w", err)
+	}
+
+	// Create a set for faster lookup
+	dynamicFieldsSet := make(map[string]bool)
+	for _, field := range dynamicFields {
+		dynamicFieldsSet[field] = true
+	}
+
+	// Get all field values from both configs
+	oldValues, err := p.getFieldValues(oldConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get old config values: %w", err)
+	}
+
+	newValues, err := p.getFieldValues(newConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get new config values: %w", err)
+	}
+
+	// Create diff with only dynamic field changes
+	diff := &ConfigDiff{
+		Changed:   make(map[string]FieldChange),
+		Added:     make(map[string]interface{}),
+		Removed:   make(map[string]interface{}),
+		Timestamp: time.Now(),
+		DiffID:    fmt.Sprintf("dynamic-reload-%d", time.Now().UnixNano()),
+	}
+
+	// Check for changes in dynamic fields only
+	for fieldPath := range dynamicFieldsSet {
+		oldVal, oldExists := oldValues[fieldPath]
+		newVal, newExists := newValues[fieldPath]
+
+		if !oldExists && newExists {
+			// Field added
+			diff.Added[fieldPath] = newVal
+		} else if oldExists && !newExists {
+			// Field removed
+			diff.Removed[fieldPath] = oldVal
+		} else if oldExists && newExists {
+			// Check if value changed
+			if !reflect.DeepEqual(oldVal, newVal) {
+				diff.Changed[fieldPath] = FieldChange{
+					FieldPath:   fieldPath,
+					OldValue:    oldVal,
+					NewValue:    newVal,
+					ChangeType:  ChangeTypeModified,
+					IsSensitive: false, // Could be enhanced to detect sensitive fields
+				}
+			}
+		}
+	}
+
+	return diff, nil
+}
+
+// getFieldValues extracts all field values from a config struct as a flat map
+func (p *StdDynamicFieldParser) getFieldValues(config interface{}) (map[string]interface{}, error) {
+	values := make(map[string]interface{})
+
+	value := reflect.ValueOf(config)
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+
+	if value.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("config must be a struct")
+	}
+
+	p.extractFieldValues(value, "", values)
+	return values, nil
+}
+
+// extractFieldValues recursively extracts field values into a flat map
+func (p *StdDynamicFieldParser) extractFieldValues(value reflect.Value, prefix string, values map[string]interface{}) {
+	structType := value.Type()
+
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		fieldValue := value.Field(i)
+
+		// Skip unexported fields
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		fieldPath := field.Name
+		if prefix != "" {
+			fieldPath = prefix + "." + field.Name
+		}
+
+		// Handle different field types
+		if fieldValue.Kind() == reflect.Struct {
+			p.extractFieldValues(fieldValue, fieldPath, values)
+		} else if fieldValue.Kind() == reflect.Ptr && !fieldValue.IsNil() {
+			if fieldValue.Elem().Kind() == reflect.Struct {
+				p.extractFieldValues(fieldValue.Elem(), fieldPath, values)
+			} else {
+				values[fieldPath] = fieldValue.Interface()
+			}
+		} else {
+			values[fieldPath] = fieldValue.Interface()
+		}
+	}
 }

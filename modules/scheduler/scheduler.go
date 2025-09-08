@@ -129,6 +129,9 @@ type Scheduler struct {
 	// T045: Concurrency tracking for maxConcurrency enforcement
 	runningJobs  map[string]int // jobID -> current execution count
 	runningMutex sync.RWMutex   // protects runningJobs map
+
+	// Catch-up configuration for T037
+	catchUpConfig *CatchUpConfig
 }
 
 // debugEnabled returns true when SCHEDULER_DEBUG env var is set to a non-empty value
@@ -938,4 +941,18 @@ func (s *Scheduler) ResumeRecurringJob(job Job) (string, error) {
 	}
 
 	return job.ID, nil
+}
+
+// ApplyOption applies a scheduler option to the scheduler
+func (s *Scheduler) ApplyOption(option SchedulerOption) error {
+	option(s)
+	return nil
+}
+
+// IsCatchUpEnabled returns whether catch-up is enabled for this scheduler
+func (s *Scheduler) IsCatchUpEnabled() bool {
+	if s.catchUpConfig == nil {
+		return false
+	}
+	return s.catchUpConfig.Enabled
 }

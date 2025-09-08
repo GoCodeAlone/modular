@@ -1,10 +1,7 @@
-//go:build failing_test
-
 package letsencrypt
 
 import (
 	"context"
-	"crypto/x509"
 	"testing"
 	"time"
 

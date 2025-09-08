@@ -35,8 +35,43 @@ type HealthProvider interface {
 // HealthReporter defines the legacy interface for backward compatibility.
 // New implementations should use HealthProvider instead.
 //
-// Deprecated: Use HealthProvider interface instead. This interface is maintained
-// for backward compatibility but will be removed in a future version.
+// MIGRATION GUIDE:
+//
+// To migrate from HealthReporter to HealthProvider:
+//
+//  1. For existing implementations, use the adapter:
+//     ```go
+//     oldReporter := &MyHealthReporter{}
+//     newProvider := NewHealthReporterAdapter(oldReporter, "my-module")
+//     ```
+//
+//  2. For new implementations, implement HealthProvider directly:
+//     ```go
+//     func (m *MyModule) HealthCheck(ctx context.Context) ([]HealthReport, error) {
+//     return []HealthReport{{
+//     Module:    "my-module",
+//     Component: "my-component",
+//     Status:    HealthStatusHealthy,
+//     Message:   "All good",
+//     CheckedAt: time.Now(),
+//     }}, nil
+//     }
+//     ```
+//
+//  3. For simple cases, use utility functions:
+//     ```go
+//     provider := NewSimpleHealthProvider("module", "component",
+//     func(ctx context.Context) (HealthStatus, string, error) {
+//     return HealthStatusHealthy, "OK", nil
+//     })
+//     ```
+//
+// DEPRECATION TIMELINE:
+// - v1.x: Interface available with deprecation warnings
+// - v2.0: Interface removed (breaking change)
+//
+// Deprecated: Use HealthProvider interface instead. This interface will be
+// removed in v2.0.0. See migration guide above for transition strategies.
 type HealthReporter interface {
 	// CheckHealth performs a health check and returns the current status.
 	// The context can be used to timeout long-running health checks.
@@ -81,10 +116,10 @@ type HealthAggregator interface {
 type ObserverEvent interface {
 	// GetEventType returns the type identifier for this event
 	GetEventType() string
-	
+
 	// GetEventSource returns the source that generated this event
 	GetEventSource() string
-	
+
 	// GetTimestamp returns when this event occurred
 	GetTimestamp() time.Time
 }

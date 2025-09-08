@@ -118,6 +118,21 @@ func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.
 // ServiceIntrospector returns nil for tests
 func (a *mockApp) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
+// Health returns nil with error for test mock
+func (a *mockApp) Health() (modular.HealthAggregator, error) {
+	return nil, fmt.Errorf("health aggregator not available in test mock")
+}
+
+// RequestReload returns error for test mock
+func (a *mockApp) RequestReload(sections ...string) error {
+	return fmt.Errorf("reload not supported in test mock")
+}
+
+// RegisterHealthProvider returns error for test mock
+func (a *mockApp) RegisterHealthProvider(moduleName string, provider modular.HealthProvider, optional bool) error {
+	return fmt.Errorf("health provider registration not supported in test mock")
+}
+
 type mockConfigProvider struct{}
 
 func (m *mockConfigProvider) GetConfig() interface{} {

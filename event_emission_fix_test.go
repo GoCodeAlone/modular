@@ -211,3 +211,6 @@ func (m *mockApplicationForNilSubjectTest) RequestReload(sections ...string) err
 func (m *mockApplicationForNilSubjectTest) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
 	return fmt.Errorf("RegisterHealthProvider not implemented in mock")
 }
+func (m *mockApplicationForNilSubjectTest) Health() (HealthAggregator, error) {
+	return nil, fmt.Errorf("Health not implemented in mock")
+}

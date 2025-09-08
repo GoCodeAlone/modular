@@ -67,14 +67,14 @@ func TestHealthAggregationRealApplication(t *testing.T) {
 
 		// Simulate health aggregation service
 		healthAggregator := NewHealthAggregator(app)
-		
+
 		// Collect health from all registered modules
 		ctx := context.Background()
 		healthSnapshot := healthAggregator.AggregateHealth(ctx)
 
 		// Verify aggregated health results
 		require.NotNil(t, healthSnapshot, "Health snapshot should not be nil")
-		
+
 		// Should have health results for all 3 modules
 		assert.Len(t, healthSnapshot.ModuleHealth, 3, "Should have health results for all modules")
 
@@ -317,10 +317,10 @@ func TestHealthEventEmission(t *testing.T) {
 
 // HealthSnapshot represents aggregated health information
 type HealthSnapshot struct {
-	OverallStatus  HealthStatus                `json:"overall_status"`
-	ModuleHealth   map[string]HealthResult     `json:"module_health"`
-	Timestamp      time.Time                   `json:"timestamp"`
-	CheckDuration  time.Duration               `json:"check_duration"`
+	OverallStatus HealthStatus            `json:"overall_status"`
+	ModuleHealth  map[string]HealthResult `json:"module_health"`
+	Timestamp     time.Time               `json:"timestamp"`
+	CheckDuration time.Duration           `json:"check_duration"`
 }
 
 // HealthAggregator aggregates health from multiple modules
@@ -334,10 +334,10 @@ func NewHealthAggregator(app Application) *HealthAggregator {
 
 func (ha *HealthAggregator) AggregateHealth(ctx context.Context) *HealthSnapshot {
 	start := time.Now()
-	
+
 	modules := ha.app.GetModules()
 	moduleHealth := make(map[string]HealthResult)
-	
+
 	// Check health for each module that implements HealthReporter
 	for moduleName, module := range modules {
 		if healthReporter, ok := module.(HealthReporter); ok {
@@ -345,7 +345,7 @@ func (ha *HealthAggregator) AggregateHealth(ctx context.Context) *HealthSnapshot
 			moduleHealth[moduleName] = result
 		}
 	}
-	
+
 	// Determine overall status
 	overallStatus := HealthStatusHealthy
 	for _, health := range moduleHealth {
@@ -354,7 +354,7 @@ func (ha *HealthAggregator) AggregateHealth(ctx context.Context) *HealthSnapshot
 			break
 		}
 	}
-	
+
 	return &HealthSnapshot{
 		OverallStatus: overallStatus,
 		ModuleHealth:  moduleHealth,
@@ -386,10 +386,10 @@ func (m *dependentHealthModule) Dependencies() []string {
 
 // HealthEvent represents a health-related event
 type HealthEvent struct {
-	ModuleName string        `json:"module_name"`
-	Status     HealthStatus  `json:"status"`
-	Message    string        `json:"message"`
-	Timestamp  time.Time     `json:"timestamp"`
+	ModuleName string                 `json:"module_name"`
+	Status     HealthStatus           `json:"status"`
+	Message    string                 `json:"message"`
+	Timestamp  time.Time              `json:"timestamp"`
 	Details    map[string]interface{} `json:"details,omitempty"`
 }
 
@@ -426,16 +426,16 @@ func NewHealthAggregatorWithEvents(app Application, tracker *healthEventTracker)
 
 func (ha *HealthAggregatorWithEvents) AggregateHealth(ctx context.Context) *HealthSnapshot {
 	start := time.Now()
-	
+
 	modules := ha.app.GetModules()
 	moduleHealth := make(map[string]HealthResult)
-	
+
 	// Check health and emit events for each module
 	for moduleName, module := range modules {
 		if healthReporter, ok := module.(HealthReporter); ok {
 			result := healthReporter.CheckHealth(ctx)
 			moduleHealth[moduleName] = result
-			
+
 			// Emit health event
 			ha.eventTracker.EmitHealthEvent(HealthEvent{
 				ModuleName: moduleName,
@@ -446,7 +446,7 @@ func (ha *HealthAggregatorWithEvents) AggregateHealth(ctx context.Context) *Heal
 			})
 		}
 	}
-	
+
 	// Determine overall status
 	overallStatus := HealthStatusHealthy
 	for _, health := range moduleHealth {
@@ -455,7 +455,7 @@ func (ha *HealthAggregatorWithEvents) AggregateHealth(ctx context.Context) *Heal
 			break
 		}
 	}
-	
+
 	return &HealthSnapshot{
 		OverallStatus: overallStatus,
 		ModuleHealth:  moduleHealth,

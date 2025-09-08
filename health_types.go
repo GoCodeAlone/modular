@@ -136,13 +136,13 @@ type HealthComponent struct {
 type HealthSummary struct {
 	// HealthyCount is the number of healthy components
 	HealthyCount int
-	
+
 	// TotalCount is the total number of components checked
 	TotalCount int
-	
+
 	// DegradedCount is the number of degraded components
 	DegradedCount int
-	
+
 	// UnhealthyCount is the number of unhealthy components
 	UnhealthyCount int
 }
@@ -228,16 +228,16 @@ type HealthTrigger int
 const (
 	// HealthTriggerThreshold indicates the health check was triggered by a threshold
 	HealthTriggerThreshold HealthTrigger = iota
-	
+
 	// HealthTriggerScheduled indicates the health check was triggered by a schedule
 	HealthTriggerScheduled
-	
+
 	// HealthTriggerOnDemand indicates the health check was triggered manually/on-demand
 	HealthTriggerOnDemand
-	
+
 	// HealthTriggerStartup indicates the health check was triggered at startup
 	HealthTriggerStartup
-	
+
 	// HealthTriggerPostReload indicates the health check was triggered after a config reload
 	HealthTriggerPostReload
 )
@@ -282,25 +282,25 @@ func ParseHealthTrigger(s string) (HealthTrigger, error) {
 type HealthEvaluatedEvent struct {
 	// EvaluationID is a unique identifier for this health evaluation
 	EvaluationID string
-	
+
 	// Timestamp indicates when the evaluation was performed
 	Timestamp time.Time
-	
+
 	// Snapshot contains the health snapshot result
 	Snapshot AggregateHealthSnapshot
-	
+
 	// Duration indicates how long the evaluation took
 	Duration time.Duration
-	
+
 	// TriggerType indicates what triggered this health evaluation
 	TriggerType HealthTrigger
-	
+
 	// StatusChanged indicates whether the health status changed from the previous evaluation
 	StatusChanged bool
-	
+
 	// PreviousStatus contains the previous health status if it changed
 	PreviousStatus HealthStatus
-	
+
 	// Metrics contains additional metrics about the health evaluation
 	Metrics *HealthEvaluationMetrics
 }
@@ -343,25 +343,25 @@ func (e *HealthEvaluatedEvent) StructuredFields() map[string]interface{} {
 		"healthy_count":  e.Snapshot.Summary.HealthyCount,
 		"total_count":    e.Snapshot.Summary.TotalCount,
 	}
-	
+
 	if e.StatusChanged {
 		fields["status_changed"] = true
 		fields["previous_status"] = e.PreviousStatus.String()
 	} else {
 		fields["status_changed"] = false
 	}
-	
+
 	// Add degraded and unhealthy counts
 	fields["degraded_count"] = e.Snapshot.Summary.DegradedCount
 	fields["unhealthy_count"] = e.Snapshot.Summary.UnhealthyCount
-	
+
 	// Add metrics if available
 	if e.Metrics != nil {
 		fields["components_evaluated"] = e.Metrics.ComponentsEvaluated
 		fields["failed_evaluations"] = e.Metrics.FailedEvaluations
 		fields["average_response_time_ms"] = e.Metrics.AverageResponseTimeMs
 	}
-	
+
 	return fields
 }
 
