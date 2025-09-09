@@ -56,3 +56,6 @@ coverage.txt
 
 # Local AI assistant settings (kept locally only)
 .claude/settings.local.json
+
+# Ignore accidentally added secondary worktree directory
+main-worktree/
