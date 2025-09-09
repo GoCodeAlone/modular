@@ -31,12 +31,14 @@ func (m *mockReloadable) Reload(ctx context.Context, changes []modular.ConfigCha
 	}
 	return nil
 }
-func (m *mockReloadable) CanReload() bool          { return true }
+func (m *mockReloadable) CanReload() bool              { return true }
 func (m *mockReloadable) ReloadTimeout() time.Duration { return time.Second }
 
 // helper to build ConfigChange slice from diff
 func diffToChanges(section string, diff *modular.ConfigDiff) []modular.ConfigChange {
-	if diff == nil || diff.IsEmpty() { return nil }
+	if diff == nil || diff.IsEmpty() {
+		return nil
+	}
 	changes := make([]modular.ConfigChange, 0, len(diff.Changed)+len(diff.Added)+len(diff.Removed))
 	for _, ch := range diff.Changed {
 		changes = append(changes, modular.ConfigChange{Section: section, FieldPath: ch.FieldPath, OldValue: ch.OldValue, NewValue: ch.NewValue, Source: "test"})

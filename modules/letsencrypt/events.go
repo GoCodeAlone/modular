@@ -38,6 +38,6 @@ const (
 	EventTypeWarning = "com.modular.letsencrypt.warning"
 
 	// Escalation events
-	EventTypeCertificateRenewalEscalated = "com.modular.letsencrypt.certificate.renewal.escalated"
+	EventTypeCertificateRenewalEscalated           = "com.modular.letsencrypt.certificate.renewal.escalated"
 	EventTypeCertificateRenewalEscalationRecovered = "com.modular.letsencrypt.certificate.renewal.escalation.recovered"
 )

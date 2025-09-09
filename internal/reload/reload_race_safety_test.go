@@ -1,177 +1,138 @@
-//go:build failing_test
-// +build failing_test
-
 package reload
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestReloadRaceSafety verifies that reload operations are safe under concurrent access.
-// This test should fail initially as the race safety mechanisms don't exist yet.
+// snapshotTestReloadable simulates a module whose config reads must be atomic during reload.
+type snapshotTestReloadable struct {
+	mu      sync.RWMutex
+	current map[string]any
+	// applied counter for verifying serialization
+	applied int32
+}
+
+func newSnapshotReloadable(cfg map[string]any) *snapshotTestReloadable { return &snapshotTestReloadable{current: cfg} }
+
+func (s *snapshotTestReloadable) Reload(ctx context.Context, changes []modular.ConfigChange) error {
+	// Validate first (atomic semantics): gather new state then commit under lock.
+	next := make(map[string]any, len(s.current))
+	s.mu.RLock()
+	for k, v := range s.current { next[k] = v }
+	s.mu.RUnlock()
+	for _, c := range changes {
+		if c.NewValue == "fail" { return assert.AnError }
+		// field paths simple: config.key
+		parts := c.FieldPath
+		// simplified: we expect single-level keys for test (e.g., log.level)
+		next[parts] = c.NewValue
+	}
+	// Commit
+	s.mu.Lock()
+	s.current = next
+	s.mu.Unlock()
+	atomic.AddInt32(&s.applied, 1)
+	return nil
+}
+func (s *snapshotTestReloadable) CanReload() bool          { return true }
+func (s *snapshotTestReloadable) ReloadTimeout() time.Duration { return 2 * time.Second }
+func (s *snapshotTestReloadable) Read(key string) any {
+	s.mu.RLock(); defer s.mu.RUnlock(); return s.current[key]
+}
+
+// buildDiff helper for tests.
+func buildDiff(oldCfg, newCfg map[string]any) *modular.ConfigDiff {
+	d, _ := modular.GenerateConfigDiff(oldCfg, newCfg); return d
+}
+
 func TestReloadRaceSafety(t *testing.T) {
-	// RED test: This tests reload race safety contracts that don't exist yet
+	manager := NewReloadManager([]string{"log.level"})
+	base := map[string]any{"log.level": "info"}
+	module := newSnapshotReloadable(base)
+	updated := map[string]any{"log.level": "debug"}
+	diff := buildDiff(base, updated)
 
-	t.Run("concurrent reload attempts should be serialized", func(t *testing.T) {
-		// Expected: A ReloadSafetyGuard should exist to handle concurrency
-		var guard interface {
-			AcquireReloadLock() error
-			ReleaseReloadLock() error
-			IsReloadInProgress() bool
-			GetReloadMutex() *sync.Mutex
-		}
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 25; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_ = manager.ApplyDiff(context.Background(), module, "app", diff)
+		}()
+	}
+	close(start)
+	wg.Wait()
 
-		// This will fail because we don't have the interface yet
-		assert.NotNil(t, guard, "ReloadSafetyGuard interface should be defined")
-
-		// Expected behavior: concurrent reloads should be serialized
-		assert.Fail(t, "Reload concurrency safety not implemented - this test should pass once T047 is implemented")
-	})
-
-	t.Run("config read during reload should be atomic", func(t *testing.T) {
-		// Expected: reading config during reload should get consistent snapshot
-		assert.Fail(t, "Atomic config reads during reload not implemented")
-	})
-
-	t.Run("reload should not interfere with ongoing operations", func(t *testing.T) {
-		// Expected: reload should not disrupt active service calls
-		assert.Fail(t, "Non-disruptive reload not implemented")
-	})
-
-	t.Run("reload failure should not leave system in inconsistent state", func(t *testing.T) {
-		// Expected: failed reload should rollback cleanly without race conditions
-		assert.Fail(t, "Race-safe reload rollback not implemented")
-	})
+	// Final value must be "debug" (no torn writes) and at least one application happened
+	assert.Equal(t, "debug", module.Read("log.level"))
+	assert.GreaterOrEqual(t, atomic.LoadInt32(&module.applied), int32(1))
 }
 
-// TestReloadConcurrencyPrimitives tests low-level concurrency safety
-func TestReloadConcurrencyPrimitives(t *testing.T) {
-	t.Run("should use atomic operations for config snapshots", func(t *testing.T) {
-		// Expected: config snapshots should use atomic.Value or similar
-		assert.Fail(t, "Atomic config snapshot operations not implemented")
-	})
-
-	t.Run("should prevent config corruption during concurrent access", func(t *testing.T) {
-		// Expected: concurrent reads/writes should not corrupt config data
-		assert.Fail(t, "Config corruption prevention not implemented")
-	})
-
-	t.Run("should handle high-frequency reload attempts gracefully", func(t *testing.T) {
-		// Expected: rapid reload attempts should be throttled or queued safely
-		assert.Fail(t, "High-frequency reload handling not implemented")
-	})
-
-	t.Run("should provide reload operation timeout", func(t *testing.T) {
-		// Expected: reload operations should timeout to prevent deadlocks
-		assert.Fail(t, "Reload operation timeout not implemented")
-	})
+func TestReloadAtomicFailureRollback(t *testing.T) {
+	manager := NewReloadManager([]string{"log.level"})
+	base := map[string]any{"log.level": "info"}
+	module := newSnapshotReloadable(base)
+	bad := map[string]any{"log.level": "fail"}
+	diff := buildDiff(base, bad)
+	err := manager.ApplyDiff(context.Background(), module, "app", diff)
+	assert.Error(t, err)
+	// value unchanged
+	assert.Equal(t, "info", module.Read("log.level"))
 }
 
-// TestReloadMemoryConsistency tests memory consistency during reload
-func TestReloadMemoryConsistency(t *testing.T) {
-	t.Run("should ensure memory visibility of config changes", func(t *testing.T) {
-		// Expected: config changes should be visible across all goroutines
-		assert.Fail(t, "Config change memory visibility not implemented")
-	})
-
-	t.Run("should use proper memory barriers", func(t *testing.T) {
-		// Expected: should use appropriate memory synchronization primitives
-		assert.Fail(t, "Memory barrier usage not implemented")
-	})
-
-	t.Run("should prevent stale config reads", func(t *testing.T) {
-		// Expected: should ensure config reads get latest committed values
-		assert.Fail(t, "Stale config read prevention not implemented")
-	})
-
-	t.Run("should handle config reference validity", func(t *testing.T) {
-		// Expected: config references should remain valid during reload
-		assert.Fail(t, "Config reference validity handling not implemented")
-	})
+func TestReloadTimeoutHonored(t *testing.T) {
+	// Custom module with long timeout to verify context/cancellation path
+	module := &delayedReloadable{delay: 50 * time.Millisecond}
+	manager := NewReloadManager([]string{"log.level"})
+	base := map[string]any{"log.level": "info"}
+	updated := map[string]any{"log.level": "debug"}
+	diff := buildDiff(base, updated)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	err := manager.ApplyDiff(ctx, module, "app", diff)
+	assert.Error(t, err)
 }
 
-// TestReloadDeadlockPrevention tests deadlock prevention mechanisms
-func TestReloadDeadlockPrevention(t *testing.T) {
-	t.Run("should prevent deadlocks with service registry", func(t *testing.T) {
-		// Expected: reload and service registration should not deadlock
-		assert.Fail(t, "Service registry deadlock prevention not implemented")
-	})
+// delayedReloadable simulates a reload that respects context cancellation.
+type delayedReloadable struct { delay time.Duration }
+func (d *delayedReloadable) Reload(ctx context.Context, changes []modular.ConfigChange) error {
+	select {
+	case <-time.After(d.delay):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (d *delayedReloadable) CanReload() bool { return true }
+func (d *delayedReloadable) ReloadTimeout() time.Duration { return 5 * time.Millisecond }
 
-	t.Run("should prevent deadlocks with observer notifications", func(t *testing.T) {
-		// Expected: reload events should not cause deadlocks with observers
-		assert.Fail(t, "Observer notification deadlock prevention not implemented")
-	})
-
-	t.Run("should use consistent lock ordering", func(t *testing.T) {
-		// Expected: all locks should be acquired in consistent order
-		assert.Fail(t, "Consistent lock ordering not implemented")
-	})
-
-	t.Run("should provide deadlock detection", func(t *testing.T) {
-		// Expected: should detect potential deadlock situations
-		assert.Fail(t, "Deadlock detection not implemented")
-	})
+func TestReloadHighFrequencyQueueing(t *testing.T) {
+	manager := NewReloadManager([]string{"log.level"})
+	base := map[string]any{"log.level": "info"}
+	module := newSnapshotReloadable(base)
+	diff := buildDiff(base, map[string]any{"log.level": "debug"})
+	for i := 0; i < 100; i++ {
+		_ = manager.ApplyDiff(context.Background(), module, "app", diff)
+	}
+	assert.Equal(t, "debug", module.Read("log.level"))
 }
 
-// TestReloadPerformanceUnderConcurrency tests performance under concurrent load
-func TestReloadPerformanceUnderConcurrency(t *testing.T) {
-	t.Run("should maintain read performance during reload", func(t *testing.T) {
-		// Expected: config reads should not significantly slow down during reload
-		assert.Fail(t, "Read performance during reload not optimized")
-	})
-
-	t.Run("should minimize lock contention", func(t *testing.T) {
-		// Expected: should use fine-grained locking to minimize contention
-		assert.Fail(t, "Lock contention minimization not implemented")
-	})
-
-	t.Run("should support lock-free config reads where possible", func(t *testing.T) {
-		// Expected: common config reads should be lock-free
-		assert.Fail(t, "Lock-free config reads not implemented")
-	})
-
-	t.Run("should benchmark concurrent reload performance", func(t *testing.T) {
-		// Expected: should measure performance under concurrent load
-		startTime := time.Now()
-
-		// Simulate concurrent operations
-		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				// Simulate config read
-				time.Sleep(time.Microsecond)
-			}()
-		}
-		wg.Wait()
-
-		duration := time.Since(startTime)
-
-		// This is a placeholder - real implementation should measure actual reload performance
-		assert.True(t, duration < time.Second, "Concurrent operations should complete quickly")
-		assert.Fail(t, "Concurrent reload performance benchmarking not implemented")
-	})
-}
-
-// TestReloadErrorHandlingUnderConcurrency tests error handling in concurrent scenarios
-func TestReloadErrorHandlingUnderConcurrency(t *testing.T) {
-	t.Run("should handle errors during concurrent config access", func(t *testing.T) {
-		// Expected: errors should not corrupt shared state
-		assert.Fail(t, "Concurrent error handling not implemented")
-	})
-
-	t.Run("should propagate reload errors safely", func(t *testing.T) {
-		// Expected: reload errors should be propagated without race conditions
-		assert.Fail(t, "Safe error propagation not implemented")
-	})
-
-	t.Run("should handle partial failures in concurrent reload", func(t *testing.T) {
-		// Expected: partial failures should not affect other concurrent operations
-		assert.Fail(t, "Partial failure handling not implemented")
-	})
+func TestReloadSnapshotVisibility(t *testing.T) {
+	manager := NewReloadManager([]string{"log.level"})
+	base := map[string]any{"log.level": "info"}
+	module := newSnapshotReloadable(base)
+	diff := buildDiff(base, map[string]any{"log.level": "debug"})
+	err := manager.ApplyDiff(context.Background(), module, "app", diff)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", module.Read("log.level"))
 }

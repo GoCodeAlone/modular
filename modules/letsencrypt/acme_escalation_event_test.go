@@ -10,12 +10,22 @@ import (
 )
 
 // mockChannel records notifications for assertions.
-type mockChannel struct { events []*CertificateRenewalEscalatedEvent }
-func (m *mockChannel) Notify(ctx context.Context, evt *CertificateRenewalEscalatedEvent) error { m.events = append(m.events, evt); return nil }
+type mockChannel struct {
+	events []*CertificateRenewalEscalatedEvent
+}
+
+func (m *mockChannel) Notify(ctx context.Context, evt *CertificateRenewalEscalatedEvent) error {
+	m.events = append(m.events, evt)
+	return nil
+}
 
 // mockEmitter captures emitted events (both escalation & recovery) without coupling to framework observer.
-type mockEmitter struct { events []interface{} }
-func (m *mockEmitter) emit(ctx context.Context, evt interface{}) error { m.events = append(m.events, evt); return nil }
+type mockEmitter struct{ events []interface{} }
+
+func (m *mockEmitter) emit(ctx context.Context, evt interface{}) error {
+	m.events = append(m.events, evt)
+	return nil
+}
 
 func TestEscalation_OnRepeatedFailures(t *testing.T) {
 	em := &mockEmitter{}
@@ -71,7 +81,7 @@ func TestEscalation_NotificationCooldownAndAck(t *testing.T) {
 	ch := &mockChannel{}
 	now := time.Now()
 	fakeNow := now
-	mgr := NewEscalationManager(EscalationConfig{FailureThreshold:1, NotificationCooldown: 10 * time.Minute}, em.emit, WithNotificationChannels(ch), WithNow(func() time.Time { return fakeNow }))
+	mgr := NewEscalationManager(EscalationConfig{FailureThreshold: 1, NotificationCooldown: 10 * time.Minute}, em.emit, WithNotificationChannels(ch), WithNow(func() time.Time { return fakeNow }))
 	ctx := context.Background()
 	// trigger first escalation
 	evt, _ := mgr.RecordFailure(ctx, "cool.example", "error")
@@ -94,7 +104,7 @@ func TestEscalation_NotificationCooldownAndAck(t *testing.T) {
 
 func TestEscalation_Recovery(t *testing.T) {
 	em := &mockEmitter{}
-	cfg := EscalationConfig{FailureThreshold:1}
+	cfg := EscalationConfig{FailureThreshold: 1}
 	mgr := NewEscalationManager(cfg, em.emit)
 	ctx := context.Background()
 	evt, _ := mgr.RecordFailure(ctx, "recover.example", "boom")
@@ -102,7 +112,12 @@ func TestEscalation_Recovery(t *testing.T) {
 	mgr.Clear(ctx, "recover.example")
 	// Expect a recovery event emitted after escalation
 	var foundRecovery bool
-	for _, e := range em.events { if _, ok := e.(*CertificateRenewalEscalationRecoveredEvent); ok { foundRecovery = true; break } }
+	for _, e := range em.events {
+		if _, ok := e.(*CertificateRenewalEscalationRecoveredEvent); ok {
+			foundRecovery = true
+			break
+		}
+	}
 	assert.True(t, foundRecovery, "expected recovery event")
 	stats := mgr.Stats()
 	assert.Equal(t, 1, stats.Resolutions)
@@ -110,7 +125,7 @@ func TestEscalation_Recovery(t *testing.T) {
 
 func TestEscalation_MetricsReasonTracking(t *testing.T) {
 	em := &mockEmitter{}
-	mgr := NewEscalationManager(EscalationConfig{FailureThreshold:1}, em.emit)
+	mgr := NewEscalationManager(EscalationConfig{FailureThreshold: 1}, em.emit)
 	ctx := context.Background()
 	mgr.RecordFailure(ctx, "r1.example", "a")
 	mgr.HandleACMEError(ctx, "r2.example", "acme error")

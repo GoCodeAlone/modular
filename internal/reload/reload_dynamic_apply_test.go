@@ -23,14 +23,15 @@ func (d *dynamicTestReloadable) Reload(ctx context.Context, changes []modular.Co
 	if d.failAt >= 0 && d.failAt < len(changes) {
 		return assert.AnError
 	}
-	d.mu.Lock(); defer d.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	// Append deep copy for safety
 	batch := make([]modular.ConfigChange, len(changes))
 	copy(batch, changes)
 	d.applied = append(d.applied, batch)
 	return nil
 }
-func (d *dynamicTestReloadable) CanReload() bool          { return true }
+func (d *dynamicTestReloadable) CanReload() bool              { return true }
 func (d *dynamicTestReloadable) ReloadTimeout() time.Duration { return time.Second }
 
 func TestReloadDynamicApply(t *testing.T) {
@@ -112,4 +113,3 @@ func TestReloadConcurrency(t *testing.T) {
 	assert.GreaterOrEqual(t, len(batches), 1)
 	assert.LessOrEqual(t, len(batches), 11) // initial prime + goroutines
 }
-

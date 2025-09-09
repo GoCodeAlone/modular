@@ -34,14 +34,14 @@ func TestCertificateRenewalEscalatedEvent(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Test that CertificateRenewalEscalatedEvent has required fields
 				event := CertificateRenewalEscalatedEvent{
-					Domain:           "example.com",
-					EscalationID:     "escalation-123",
-					Timestamp:        time.Now(),
-					FailureCount:     3,
-					LastFailureTime:  time.Now().Add(-1 * time.Hour),
-					NextRetryTime:    time.Now().Add(2 * time.Hour),
-					EscalationType:   EscalationTypeRetryExhausted,
-					CurrentCertInfo:  &CertificateInfo{},
+					Domain:          "example.com",
+					EscalationID:    "escalation-123",
+					Timestamp:       time.Now(),
+					FailureCount:    3,
+					LastFailureTime: time.Now().Add(-1 * time.Hour),
+					NextRetryTime:   time.Now().Add(2 * time.Hour),
+					EscalationType:  EscalationTypeRetryExhausted,
+					CurrentCertInfo: &CertificateInfo{},
 				}
 
 				assert.Equal(t, "example.com", event.Domain, "Event should have Domain field")
@@ -63,7 +63,7 @@ func TestCertificateRenewalEscalatedEvent(t *testing.T) {
 					EscalationID: "escalation-123",
 					Timestamp:    time.Now(),
 				}
-				
+
 				// This should compile when the event implements the interface
 				var observerEvent ObserverEvent = &event
 				assert.NotNil(t, observerEvent, "CertificateRenewalEscalatedEvent should implement ObserverEvent")
@@ -225,7 +225,7 @@ func TestCertificateRenewalEscalationEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockCertificateEventObserver{}
-				
+
 				// Create certificate manager (mock)
 				certManager := &mockCertificateManager{
 					observer: observer,
@@ -253,7 +253,7 @@ func TestCertificateRenewalEscalationEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockCertificateEventObserver{}
-				
+
 				// Create certificate manager (mock)
 				certManager := &mockCertificateManager{
 					observer: observer,
@@ -282,7 +282,7 @@ func TestCertificateRenewalEscalationEmission(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				// Create a mock event observer
 				observer := &mockCertificateEventObserver{}
-				
+
 				// Create certificate manager (mock)
 				certManager := &mockCertificateManager{
 					observer: observer,
@@ -412,7 +412,7 @@ func (m *mockCertificateManager) HandleRenewalFailure(ctx context.Context, domai
 
 func (m *mockCertificateManager) CheckCertificateExpiration(ctx context.Context, domain string, expiration time.Time, thresholdDays int) error {
 	daysRemaining := int(time.Until(expiration).Hours() / 24)
-	
+
 	if daysRemaining <= thresholdDays {
 		event := &CertificateRenewalEscalatedEvent{
 			Domain:         domain,
@@ -456,8 +456,8 @@ type mockX509Certificate struct {
 	expiration time.Time
 }
 
-func (m *mockX509Certificate) Subject() string    { return m.subject }
-func (m *mockX509Certificate) Issuer() string     { return m.issuer }
+func (m *mockX509Certificate) Subject() string      { return m.subject }
+func (m *mockX509Certificate) Issuer() string       { return m.issuer }
 func (m *mockX509Certificate) SerialNumber() string { return m.serialNum }
 func (m *mockX509Certificate) NotAfter() time.Time  { return m.expiration }
 
