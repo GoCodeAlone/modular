@@ -135,10 +135,10 @@ func (m *CacheModule) collectMemoryCacheStats(memCache *MemoryCache, report *mod
 	memCache.mutex.RLock()
 	itemCount := len(memCache.items)
 	memCache.mutex.RUnlock()
-	
+
 	report.Details["item_count"] = itemCount
 	report.Details["max_items"] = m.config.MaxItems
-	
+
 	// Calculate usage percentage
 	if m.config.MaxItems > 0 {
 		usagePercent := float64(itemCount) / float64(m.config.MaxItems) * 100.0
@@ -150,7 +150,7 @@ func (m *CacheModule) collectMemoryCacheStats(memCache *MemoryCache, report *mod
 func (m *CacheModule) collectRedisCacheStats(redisCache *RedisCache, report *modular.HealthReport) {
 	report.Details["redis_url"] = m.config.RedisURL
 	report.Details["redis_db"] = m.config.RedisDB
-	
+
 	// Basic Redis configuration information - stats methods may not be available yet
 	report.Details["connection_type"] = "redis"
 }
@@ -159,33 +159,33 @@ func (m *CacheModule) collectRedisCacheStats(redisCache *RedisCache, report *mod
 func (m *CacheModule) evaluateHealthStatus(report *modular.HealthReport) {
 	// Start with healthy status
 	report.Status = modular.HealthStatusHealthy
-	
+
 	// Check if cache is full
 	if isFull, ok := report.Details["cache_full"].(bool); ok && isFull {
 		report.Status = modular.HealthStatusDegraded
 		report.Message = "cache full: unable to accept new items"
 		return
 	}
-	
+
 	// Check for memory cache capacity issues
 	if m.config.Engine == "memory" && m.config.MaxItems > 0 {
 		if itemCount, ok := report.Details["item_count"].(int); ok {
 			usagePercent := float64(itemCount) / float64(m.config.MaxItems) * 100.0
-			
+
 			if usagePercent >= 95.0 {
 				report.Status = modular.HealthStatusDegraded
-				report.Message = fmt.Sprintf("cache usage high: %d/%d items (%.1f%%)", 
+				report.Message = fmt.Sprintf("cache usage high: %d/%d items (%.1f%%)",
 					itemCount, m.config.MaxItems, usagePercent)
 				return
 			} else if usagePercent >= 90.0 {
 				report.Status = modular.HealthStatusDegraded
-				report.Message = fmt.Sprintf("cache usage high: %d/%d items (%.1f%%)", 
+				report.Message = fmt.Sprintf("cache usage high: %d/%d items (%.1f%%)",
 					itemCount, m.config.MaxItems, usagePercent)
 				return
 			}
 		}
 	}
-	
+
 	// Check performance metrics
 	if duration, ok := report.Details["set_get_duration_ms"].(int64); ok {
 		if duration > 1000 { // More than 1 second for basic operations
@@ -194,7 +194,7 @@ func (m *CacheModule) evaluateHealthStatus(report *modular.HealthReport) {
 			return
 		}
 	}
-	
+
 	// If we get here, cache is healthy
 	report.Message = fmt.Sprintf("cache healthy: %s engine operational", m.config.Engine)
 }
@@ -204,12 +204,12 @@ func (m *CacheModule) evaluateHealthStatus(report *modular.HealthReport) {
 func (m *CacheModule) GetHealthTimeout() time.Duration {
 	// Base timeout for cache operations
 	baseTimeout := 3 * time.Second
-	
+
 	// Redis might need slightly more time for network operations
 	if m.config.Engine == "redis" {
 		return baseTimeout + 2*time.Second
 	}
-	
+
 	return baseTimeout
 }
 
@@ -220,12 +220,12 @@ func (m *CacheModule) IsHealthy(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	for _, report := range reports {
 		if report.Status != modular.HealthStatusHealthy {
 			return false
 		}
 	}
-	
+
 	return true
 }

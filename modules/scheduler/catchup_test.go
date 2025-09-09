@@ -20,7 +20,7 @@ func TestWithSchedulerCatchUpOption(t *testing.T) {
 					MaxCatchUpTasks: 100,
 					CatchUpWindow:   24 * time.Hour,
 				}
-				
+
 				option := WithSchedulerCatchUp(config)
 				assert.NotNil(t, option, "WithSchedulerCatchUp should return option")
 			},
@@ -33,12 +33,12 @@ func TestWithSchedulerCatchUpOption(t *testing.T) {
 					MaxCatchUpTasks: 50,
 					CatchUpWindow:   12 * time.Hour,
 				}
-				
+
 				jobStore := NewMemoryJobStore(24 * time.Hour)
 				scheduler := NewScheduler(jobStore)
 				err := scheduler.ApplyOption(WithSchedulerCatchUp(config))
 				assert.NoError(t, err, "Should apply catchup option")
-				
+
 				catchUpEnabled := scheduler.IsCatchUpEnabled()
 				assert.True(t, catchUpEnabled, "Catchup should be enabled")
 			},

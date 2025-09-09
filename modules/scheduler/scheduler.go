@@ -556,6 +556,11 @@ func (s *Scheduler) calculateBackfillJobs(job Job) []time.Time {
 
 	// Apply backfill strategy
 	switch job.BackfillPolicy.Strategy {
+	case BackfillStrategyAll:
+		// All missed executions already collected
+		return missedTimes
+	case BackfillStrategyNone:
+		return nil
 	case BackfillStrategyLast:
 		if len(missedTimes) > 0 {
 			return missedTimes[len(missedTimes)-1:]

@@ -26,12 +26,12 @@ type OIDCProviderRegistry interface {
 
 // ProviderMetadata contains OIDC provider discovery information
 type ProviderMetadata struct {
-	Issuer                string   `json:"issuer"`
-	AuthorizationEndpoint string   `json:"authorization_endpoint"`
-	TokenEndpoint         string   `json:"token_endpoint"`
-	UserInfoEndpoint      string   `json:"userinfo_endpoint"`
-	JWKsURI               string   `json:"jwks_uri"`
-	ScopesSupported       []string `json:"scopes_supported"`
+	Issuer                 string   `json:"issuer"`
+	AuthorizationEndpoint  string   `json:"authorization_endpoint"`
+	TokenEndpoint          string   `json:"token_endpoint"`
+	UserInfoEndpoint       string   `json:"userinfo_endpoint"`
+	JWKsURI                string   `json:"jwks_uri"`
+	ScopesSupported        []string `json:"scopes_supported"`
 	ResponseTypesSupported []string `json:"response_types_supported"`
 }
 
@@ -150,7 +150,7 @@ func (p *BasicOIDCProvider) ValidateToken(token string) (interface{}, error) {
 	if token == "" {
 		return nil, fmt.Errorf("token cannot be empty")
 	}
-	
+
 	return map[string]interface{}{
 		"valid": true,
 		"sub":   "user123",
@@ -164,7 +164,7 @@ func (p *BasicOIDCProvider) GetUserInfo(token string) (interface{}, error) {
 	if token == "" {
 		return nil, fmt.Errorf("token cannot be empty")
 	}
-	
+
 	return map[string]interface{}{
 		"sub":   "user123",
 		"name":  "Test User",
@@ -177,11 +177,11 @@ func (p *BasicOIDCProvider) GetAuthURL(state string, scopes []string) (string, e
 	if p.metadata == nil {
 		return "", fmt.Errorf("provider metadata not available")
 	}
-	
+
 	// Basic implementation - real implementation would build proper OAuth2/OIDC auth URL
-	authURL := fmt.Sprintf("%s?client_id=%s&response_type=code&state=%s", 
+	authURL := fmt.Sprintf("%s?client_id=%s&response_type=code&state=%s",
 		p.metadata.AuthorizationEndpoint, p.clientID, state)
-	
+
 	if len(scopes) > 0 {
 		// Add scopes to URL
 		authURL += "&scope=openid"
@@ -189,7 +189,7 @@ func (p *BasicOIDCProvider) GetAuthURL(state string, scopes []string) (string, e
 			authURL += "+" + scope
 		}
 	}
-	
+
 	return authURL, nil
 }
 
@@ -198,7 +198,7 @@ func (p *BasicOIDCProvider) ExchangeCode(code string, state string) (interface{}
 	if code == "" {
 		return nil, fmt.Errorf("authorization code cannot be empty")
 	}
-	
+
 	// Basic implementation - real implementation would make HTTP request to token endpoint
 	return &TokenSet{
 		AccessToken:  "access_token_" + code,
@@ -213,15 +213,15 @@ func (p *BasicOIDCProvider) ExchangeCode(code string, state string) (interface{}
 func (p *BasicOIDCProvider) Discover() (*ProviderMetadata, error) {
 	// Basic implementation - real implementation would fetch .well-known/openid_configuration
 	p.metadata = &ProviderMetadata{
-		Issuer:                p.issuerURL,
-		AuthorizationEndpoint: p.issuerURL + "/auth",
-		TokenEndpoint:         p.issuerURL + "/token",
-		UserInfoEndpoint:      p.issuerURL + "/userinfo",
-		JWKsURI:               p.issuerURL + "/jwks",
-		ScopesSupported:       []string{"openid", "profile", "email"},
+		Issuer:                 p.issuerURL,
+		AuthorizationEndpoint:  p.issuerURL + "/auth",
+		TokenEndpoint:          p.issuerURL + "/token",
+		UserInfoEndpoint:       p.issuerURL + "/userinfo",
+		JWKsURI:                p.issuerURL + "/jwks",
+		ScopesSupported:        []string{"openid", "profile", "email"},
 		ResponseTypesSupported: []string{"code", "id_token", "code id_token"},
 	}
-	
+
 	return p.metadata, nil
 }
 

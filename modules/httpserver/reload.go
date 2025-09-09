@@ -55,7 +55,7 @@ func (m *HTTPServerModule) Reload(ctx context.Context, changes []modular.ConfigC
 func (m *HTTPServerModule) CanReload() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	// Can reload if the module is started and has a valid configuration
 	return m.started && m.config != nil && m.server != nil
 }
@@ -224,7 +224,7 @@ func (m *HTTPServerModule) reloadTLSConfiguration(ctx context.Context) error {
 
 	// Update server TLS configuration
 	if m.server.TLSConfig == nil {
-		m.server.TLSConfig = &tls.Config{}
+		m.server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 
 	m.server.TLSConfig.Certificates = []tls.Certificate{cert}
@@ -241,7 +241,11 @@ func (m *HTTPServerModule) reloadTLSConfiguration(ctx context.Context) error {
 
 // loadTLSCertificate loads a TLS certificate from the specified files
 func (m *HTTPServerModule) loadTLSCertificate(certFile, keyFile string) (tls.Certificate, error) {
-	return tls.LoadX509KeyPair(certFile, keyFile)
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("load x509 key pair: %w", err)
+	}
+	return cert, nil
 }
 
 // emitConfigReloadedEvent emits an event indicating successful configuration reload
@@ -257,13 +261,13 @@ func (m *HTTPServerModule) emitConfigReloadedEvent(changes []modular.ConfigChang
 	event.SetSubject(ModuleName)
 	event.SetTime(time.Now())
 	event.SetID(fmt.Sprintf("config-reload-%d", time.Now().UnixNano()))
-	
+
 	eventData := HTTPServerConfigReloadedEvent{
 		ModuleName: ModuleName,
 		Timestamp:  time.Now(),
 		Changes:    changes,
 	}
-	
+
 	if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
 		if m.logger != nil {
 			m.logger.Error("Failed to set event data", "error", err)
@@ -281,7 +285,7 @@ func (m *HTTPServerModule) emitConfigReloadedEvent(changes []modular.ConfigChang
 
 // HTTPServerConfigReloadedEvent represents a configuration reload event
 type HTTPServerConfigReloadedEvent struct {
-	ModuleName string                   `json:"module_name"`
-	Timestamp  time.Time                `json:"timestamp"`
-	Changes    []modular.ConfigChange   `json:"changes"`
+	ModuleName string                 `json:"module_name"`
+	Timestamp  time.Time              `json:"timestamp"`
+	Changes    []modular.ConfigChange `json:"changes"`
 }

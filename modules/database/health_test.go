@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/GoCodeAlone/modular"
 	_ "modernc.org/sqlite" // SQLite driver for tests
 )
 
 func TestModule_HealthCheck_WithHealthyDatabase(t *testing.T) {
 	// RED PHASE: Write failing test first
-	
+
 	// Create a module with a healthy database connection
 	module := &Module{
 		config: &Config{
@@ -43,7 +43,7 @@ func TestModule_HealthCheck_WithHealthyDatabase(t *testing.T) {
 	// Assert: Should return healthy status
 	assert.NoError(t, err)
 	assert.NotEmpty(t, reports)
-	
+
 	// Find the database connection report
 	var dbReport *modular.HealthReport
 	for i, report := range reports {
@@ -52,7 +52,7 @@ func TestModule_HealthCheck_WithHealthyDatabase(t *testing.T) {
 			break
 		}
 	}
-	
+
 	require.NotNil(t, dbReport, "Expected database health report")
 	assert.Equal(t, "database", dbReport.Module)
 	assert.Equal(t, modular.HealthStatusHealthy, dbReport.Status)
@@ -63,7 +63,7 @@ func TestModule_HealthCheck_WithHealthyDatabase(t *testing.T) {
 
 func TestModule_HealthCheck_WithUnhealthyDatabase(t *testing.T) {
 	// RED PHASE: Test unhealthy database scenario
-	
+
 	// Create a module with no connections (simulating unhealthy state)
 	module := &Module{
 		config: &Config{
@@ -83,7 +83,7 @@ func TestModule_HealthCheck_WithUnhealthyDatabase(t *testing.T) {
 	// Assert: Should return unhealthy status
 	assert.NoError(t, err)
 	assert.NotEmpty(t, reports)
-	
+
 	// Find the database connection report
 	var dbReport *modular.HealthReport
 	for i, report := range reports {
@@ -92,7 +92,7 @@ func TestModule_HealthCheck_WithUnhealthyDatabase(t *testing.T) {
 			break
 		}
 	}
-	
+
 	require.NotNil(t, dbReport, "Expected database health report")
 	assert.Equal(t, "database", dbReport.Module)
 	assert.Equal(t, modular.HealthStatusUnhealthy, dbReport.Status)
@@ -103,7 +103,7 @@ func TestModule_HealthCheck_WithUnhealthyDatabase(t *testing.T) {
 
 func TestModule_HealthCheck_MultipleConnections(t *testing.T) {
 	// RED PHASE: Test multiple database connections
-	
+
 	// Create a module with multiple connections
 	module := &Module{
 		config: &Config{
@@ -114,7 +114,7 @@ func TestModule_HealthCheck_MultipleConnections(t *testing.T) {
 					DSN:    ":memory:",
 				},
 				"secondary": {
-					Driver: "sqlite", 
+					Driver: "sqlite",
 					DSN:    ":memory:",
 				},
 			},
@@ -136,7 +136,7 @@ func TestModule_HealthCheck_MultipleConnections(t *testing.T) {
 	// Assert: Should return separate reports for each connection
 	assert.NoError(t, err)
 	assert.Len(t, reports, 2)
-	
+
 	// Verify each connection has a health report
 	connectionNames := make(map[string]bool)
 	for _, report := range reports {
@@ -145,14 +145,14 @@ func TestModule_HealthCheck_MultipleConnections(t *testing.T) {
 		assert.False(t, report.Optional)
 		connectionNames[report.Component] = true
 	}
-	
+
 	assert.True(t, connectionNames["primary"])
 	assert.True(t, connectionNames["secondary"])
 }
 
 func TestModule_HealthCheck_WithContext(t *testing.T) {
 	// RED PHASE: Test context cancellation handling
-	
+
 	// Create a module with connections
 	module := &Module{
 		config: &Config{
@@ -195,14 +195,14 @@ func TestModule_ImplementsHealthProvider(t *testing.T) {
 		connections: make(map[string]*sql.DB),
 		services:    make(map[string]DatabaseService),
 	}
-	
+
 	// This should compile without errors if the interface is properly implemented
 	var _ modular.HealthProvider = module
-	
+
 	// Also verify method signatures exist (will fail to compile if missing)
 	ctx := context.Background()
 	reports, err := module.HealthCheck(ctx)
-	
+
 	// No error expected with an initialized module, even if empty
 	assert.NoError(t, err)
 	assert.NotNil(t, reports)

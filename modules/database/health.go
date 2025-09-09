@@ -91,7 +91,7 @@ func (m *Module) checkConnectionHealth(ctx context.Context, name string, db *sql
 	} else if stats.MaxOpenConnections > 0 && float64(stats.OpenConnections)/float64(stats.MaxOpenConnections) > 0.9 {
 		// If we're using more than 90% of max connections, consider it degraded
 		report.Status = modular.HealthStatusDegraded
-		report.Message = fmt.Sprintf("connection pool usage high: %d/%d connections", 
+		report.Message = fmt.Sprintf("connection pool usage high: %d/%d connections",
 			stats.OpenConnections, stats.MaxOpenConnections)
 	} else {
 		report.Status = modular.HealthStatusHealthy
@@ -115,13 +115,13 @@ func (m *Module) checkConnectionHealth(ctx context.Context, name string, db *sql
 func (m *Module) GetHealthTimeout() time.Duration {
 	// Base timeout for ping operations plus buffer for multiple connections
 	baseTimeout := 5 * time.Second
-	
+
 	// Add additional time for each connection beyond the first
 	if len(m.connections) > 1 {
 		additionalTime := time.Duration(len(m.connections)-1) * 2 * time.Second
 		return baseTimeout + additionalTime
 	}
-	
+
 	return baseTimeout
 }
 
@@ -132,12 +132,12 @@ func (m *Module) IsHealthy(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	for _, report := range reports {
 		if report.Status != modular.HealthStatusHealthy {
 			return false
 		}
 	}
-	
+
 	return true
 }

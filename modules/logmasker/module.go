@@ -403,7 +403,7 @@ func (l *MaskingLogger) maskArgs(args ...any) []any {
 				}
 				continue
 			}
-			
+
 			// Check for secret interface pattern using reflection (avoids coupling)
 			if l.isSecretLikeValue(value) {
 				result[i+1] = l.maskSecretLikeValue(value)
@@ -521,28 +521,27 @@ func (l *MaskingLogger) isSecretLikeValue(value any) bool {
 	if value == nil {
 		return false
 	}
-	
-	valueType := reflect.TypeOf(value)
-	
-	// Check if it's a pointer and get the element type
-	if valueType.Kind() == reflect.Ptr {
-		if valueType.Elem() == nil {
+
+	// We intentionally avoid storing intermediate type after pointer dereference since
+	// static analysis flagged prior unused variable pattern (SA4006). Only need reflection
+	// on value itself for method presence checks.
+	if reflect.TypeOf(value).Kind() == reflect.Ptr {
+		if reflect.TypeOf(value).Elem() == nil {
 			return false
 		}
-		valueType = valueType.Elem()
 	}
-	
+
 	// Look for secret interface pattern: ShouldMask() bool, GetMaskedValue() any, GetMaskStrategy() string
 	hasShouldMask := false
 	hasGetMaskedValue := false
 	hasGetMaskStrategy := false
-	
+
 	// Check methods on the value
 	valueReflect := reflect.ValueOf(value)
 	if !valueReflect.IsValid() {
 		return false
 	}
-	
+
 	// Look for ShouldMask method
 	shouldMaskMethod := valueReflect.MethodByName("ShouldMask")
 	if shouldMaskMethod.IsValid() {
@@ -551,7 +550,7 @@ func (l *MaskingLogger) isSecretLikeValue(value any) bool {
 			hasShouldMask = true
 		}
 	}
-	
+
 	// Look for GetMaskedValue method
 	getMaskedValueMethod := valueReflect.MethodByName("GetMaskedValue")
 	if getMaskedValueMethod.IsValid() {
@@ -560,7 +559,7 @@ func (l *MaskingLogger) isSecretLikeValue(value any) bool {
 			hasGetMaskedValue = true
 		}
 	}
-	
+
 	// Look for GetMaskStrategy method
 	getMaskStrategyMethod := valueReflect.MethodByName("GetMaskStrategy")
 	if getMaskStrategyMethod.IsValid() {
@@ -569,7 +568,7 @@ func (l *MaskingLogger) isSecretLikeValue(value any) bool {
 			hasGetMaskStrategy = true
 		}
 	}
-	
+
 	// All three methods must be present to be considered secret-like
 	return hasShouldMask && hasGetMaskedValue && hasGetMaskStrategy
 }
@@ -579,38 +578,38 @@ func (l *MaskingLogger) maskSecretLikeValue(value any) any {
 	if value == nil {
 		return "[REDACTED]"
 	}
-	
+
 	valueReflect := reflect.ValueOf(value)
 	if !valueReflect.IsValid() {
 		return "[REDACTED]"
 	}
-	
+
 	// Call ShouldMask method
 	shouldMaskMethod := valueReflect.MethodByName("ShouldMask")
 	if !shouldMaskMethod.IsValid() {
 		return "[REDACTED]"
 	}
-	
+
 	shouldMaskResult := shouldMaskMethod.Call(nil)
 	if len(shouldMaskResult) != 1 || shouldMaskResult[0].Kind() != reflect.Bool {
 		return "[REDACTED]"
 	}
-	
+
 	// If shouldn't mask, return original value
 	if !shouldMaskResult[0].Bool() {
 		return value
 	}
-	
+
 	// Call GetMaskedValue method
 	getMaskedValueMethod := valueReflect.MethodByName("GetMaskedValue")
 	if !getMaskedValueMethod.IsValid() {
 		return "[REDACTED]"
 	}
-	
+
 	maskedResult := getMaskedValueMethod.Call(nil)
 	if len(maskedResult) != 1 {
 		return "[REDACTED]"
 	}
-	
+
 	return maskedResult[0].Interface()
 }

@@ -8,11 +8,11 @@ import (
 type EscalationType string
 
 const (
-	EscalationTypeRetryExhausted    EscalationType = "retry_exhausted"
-	EscalationTypeExpiringSoon      EscalationType = "expiring_soon"
-	EscalationTypeValidationFailed  EscalationType = "validation_failed"
-	EscalationTypeRateLimited       EscalationType = "rate_limited"
-	EscalationTypeACMEError         EscalationType = "acme_error"
+	EscalationTypeRetryExhausted   EscalationType = "retry_exhausted"
+	EscalationTypeExpiringSoon     EscalationType = "expiring_soon"
+	EscalationTypeValidationFailed EscalationType = "validation_failed"
+	EscalationTypeRateLimited      EscalationType = "rate_limited"
+	EscalationTypeACMEError        EscalationType = "acme_error"
 )
 
 // String returns the string representation of EscalationType
@@ -67,15 +67,15 @@ func (ci *CertificateInfo) IsExpiringSoon(thresholdDays int) bool {
 
 // CertificateRenewalEscalatedEvent represents an escalated certificate renewal event
 type CertificateRenewalEscalatedEvent struct {
-	Domain           string
-	EscalationID     string
-	Timestamp        time.Time
-	FailureCount     int
-	LastFailureTime  time.Time
-	NextRetryTime    time.Time
-	EscalationType   EscalationType
-	CurrentCertInfo  *CertificateInfo
-	LastError        string
+	Domain          string
+	EscalationID    string
+	Timestamp       time.Time
+	FailureCount    int
+	LastFailureTime time.Time
+	NextRetryTime   time.Time
+	EscalationType  EscalationType
+	CurrentCertInfo *CertificateInfo
+	LastError       string
 }
 
 // EventType returns the event type
@@ -91,14 +91,14 @@ func (e *CertificateRenewalEscalatedEvent) EventSource() string {
 // StructuredFields returns structured logging fields for the event
 func (e *CertificateRenewalEscalatedEvent) StructuredFields() map[string]interface{} {
 	fields := map[string]interface{}{
-		"module":         "letsencrypt",
-		"phase":          "renewal.escalation",
-		"event":          e.EventType(),
-		"domain":         e.Domain,
-		"escalation_id":  e.EscalationID,
+		"module":          "letsencrypt",
+		"phase":           "renewal.escalation",
+		"event":           e.EventType(),
+		"domain":          e.Domain,
+		"escalation_id":   e.EscalationID,
 		"escalation_type": string(e.EscalationType),
-		"failure_count":  e.FailureCount,
-		"severity":       string(e.EscalationType.Severity()),
+		"failure_count":   e.FailureCount,
+		"severity":        string(e.EscalationType.Severity()),
 	}
 
 	if e.CurrentCertInfo != nil {
@@ -119,7 +119,7 @@ type X509CertificateInterface interface {
 // NewCertificateInfoFromX509 creates CertificateInfo from an x509 certificate
 func NewCertificateInfoFromX509(cert X509CertificateInterface, domain string) (*CertificateInfo, error) {
 	daysRemaining := int(time.Until(cert.NotAfter()).Hours() / 24)
-	
+
 	return &CertificateInfo{
 		Domain:         domain,
 		SerialNumber:   cert.SerialNumber(),
@@ -135,7 +135,7 @@ func NewCertificateInfoFromX509(cert X509CertificateInterface, domain string) (*
 func OrderSeveritiesByPriority(severities []EscalationSeverity) []EscalationSeverity {
 	// Simple implementation - in real scenario would use proper sorting
 	ordered := make([]EscalationSeverity, 0, len(severities))
-	
+
 	// Add in priority order
 	for _, s := range severities {
 		if s == EscalationSeverityCritical {
@@ -162,6 +162,6 @@ func OrderSeveritiesByPriority(severities []EscalationSeverity) []EscalationSeve
 			ordered = append(ordered, s)
 		}
 	}
-	
+
 	return ordered
 }
