@@ -53,3 +53,6 @@ coverage.txt
 *.backup
 *.bak
 *~
+
+# Local AI assistant settings (kept locally only)
+.claude/settings.local.json
