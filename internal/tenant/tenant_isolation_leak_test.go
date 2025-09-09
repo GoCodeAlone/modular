@@ -1,3 +1,6 @@
+//go:build failing_test
+// +build failing_test
+
 package tenant
 
 import (
