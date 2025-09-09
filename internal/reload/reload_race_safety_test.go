@@ -20,16 +20,22 @@ type snapshotTestReloadable struct {
 	applied int32
 }
 
-func newSnapshotReloadable(cfg map[string]any) *snapshotTestReloadable { return &snapshotTestReloadable{current: cfg} }
+func newSnapshotReloadable(cfg map[string]any) *snapshotTestReloadable {
+	return &snapshotTestReloadable{current: cfg}
+}
 
 func (s *snapshotTestReloadable) Reload(ctx context.Context, changes []modular.ConfigChange) error {
 	// Validate first (atomic semantics): gather new state then commit under lock.
 	next := make(map[string]any, len(s.current))
 	s.mu.RLock()
-	for k, v := range s.current { next[k] = v }
+	for k, v := range s.current {
+		next[k] = v
+	}
 	s.mu.RUnlock()
 	for _, c := range changes {
-		if c.NewValue == "fail" { return assert.AnError }
+		if c.NewValue == "fail" {
+			return assert.AnError
+		}
 		// field paths simple: config.key
 		parts := c.FieldPath
 		// simplified: we expect single-level keys for test (e.g., log.level)
@@ -42,15 +48,18 @@ func (s *snapshotTestReloadable) Reload(ctx context.Context, changes []modular.C
 	atomic.AddInt32(&s.applied, 1)
 	return nil
 }
-func (s *snapshotTestReloadable) CanReload() bool          { return true }
+func (s *snapshotTestReloadable) CanReload() bool              { return true }
 func (s *snapshotTestReloadable) ReloadTimeout() time.Duration { return 2 * time.Second }
 func (s *snapshotTestReloadable) Read(key string) any {
-	s.mu.RLock(); defer s.mu.RUnlock(); return s.current[key]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.current[key]
 }
 
 // buildDiff helper for tests.
 func buildDiff(oldCfg, newCfg map[string]any) *modular.ConfigDiff {
-	d, _ := modular.GenerateConfigDiff(oldCfg, newCfg); return d
+	d, _ := modular.GenerateConfigDiff(oldCfg, newCfg)
+	return d
 }
 
 func TestReloadRaceSafety(t *testing.T) {
@@ -104,7 +113,8 @@ func TestReloadTimeoutHonored(t *testing.T) {
 }
 
 // delayedReloadable simulates a reload that respects context cancellation.
-type delayedReloadable struct { delay time.Duration }
+type delayedReloadable struct{ delay time.Duration }
+
 func (d *delayedReloadable) Reload(ctx context.Context, changes []modular.ConfigChange) error {
 	select {
 	case <-time.After(d.delay):
@@ -113,7 +123,7 @@ func (d *delayedReloadable) Reload(ctx context.Context, changes []modular.Config
 		return ctx.Err()
 	}
 }
-func (d *delayedReloadable) CanReload() bool { return true }
+func (d *delayedReloadable) CanReload() bool              { return true }
 func (d *delayedReloadable) ReloadTimeout() time.Duration { return 5 * time.Millisecond }
 
 func TestReloadHighFrequencyQueueing(t *testing.T) {

@@ -44,4 +44,3 @@ func TestReloadMixedStaticDynamicRejected(t *testing.T) {
 	assert.ErrorIs(t, err, ErrStaticFieldChange)
 	assert.Len(t, r.applied, 0)
 }
-

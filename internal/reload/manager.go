@@ -81,7 +81,7 @@ func (m *ReloadManager) ApplyDiff(ctx context.Context, module modular.Reloadable
 	ctx2, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := module.Reload(ctx2, changes); err != nil {
-		return err
+		return fmt.Errorf("reload apply: %w", err)
 	}
 	// Compute fingerprint (cheap concatenation of field paths + values lengths)
 	fp := fingerprint(changes)

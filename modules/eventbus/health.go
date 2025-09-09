@@ -74,7 +74,7 @@ func (m *EventBusModule) testEventBusConnectivity(ctx context.Context, report *m
 	// Test topic for health check
 	healthTopic := "health_check_" + fmt.Sprintf("%d", time.Now().Unix())
 	healthPayload := map[string]interface{}{
-		"test": true,
+		"test":      true,
 		"timestamp": time.Now().Unix(),
 	}
 
@@ -133,7 +133,7 @@ func (m *EventBusModule) collectRedisEngineStats(report *modular.HealthReport) {
 	// Redis engine specific metrics
 	report.Details["broker_type"] = "redis"
 	report.Details["broker_url"] = m.config.ExternalBrokerURL
-	
+
 	// Additional Redis-specific configuration
 	if m.config.ExternalBrokerUser != "" {
 		report.Details["auth_configured"] = true
@@ -152,7 +152,7 @@ func (m *EventBusModule) collectKafkaEngineStats(report *modular.HealthReport) {
 func (m *EventBusModule) collectRouterStatistics(report *modular.HealthReport) {
 	// Try to get router statistics - this depends on router implementation
 	report.Details["router_active"] = true
-	
+
 	// If router has a Stats() method or similar, we could use it here
 	// For now, just indicate that the router is active
 }
@@ -161,7 +161,7 @@ func (m *EventBusModule) collectRouterStatistics(report *modular.HealthReport) {
 func (m *EventBusModule) evaluateEventBusHealthStatus(report *modular.HealthReport) {
 	// Start with healthy status
 	report.Status = modular.HealthStatusHealthy
-	
+
 	// Check performance metrics
 	if duration, ok := report.Details["publish_duration_ms"].(int64); ok {
 		if duration > 5000 { // More than 5 seconds for publish operations
@@ -174,7 +174,7 @@ func (m *EventBusModule) evaluateEventBusHealthStatus(report *modular.HealthRepo
 			return
 		}
 	}
-	
+
 	// Check worker configuration
 	if workerCount, ok := report.Details["worker_count"].(int); ok {
 		if workerCount == 0 {
@@ -183,7 +183,7 @@ func (m *EventBusModule) evaluateEventBusHealthStatus(report *modular.HealthRepo
 			return
 		}
 	}
-	
+
 	// Check for external broker connectivity issues
 	if brokerType, ok := report.Details["broker_type"].(string); ok && brokerType != "in-memory" {
 		// External brokers could have connectivity issues
@@ -201,7 +201,7 @@ func (m *EventBusModule) evaluateEventBusHealthStatus(report *modular.HealthRepo
 func (m *EventBusModule) GetHealthTimeout() time.Duration {
 	// Base timeout for event operations
 	baseTimeout := 5 * time.Second
-	
+
 	// External brokers might need more time for network operations
 	switch m.config.Engine {
 	case "redis", "kafka":
@@ -218,12 +218,12 @@ func (m *EventBusModule) IsHealthy(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	for _, report := range reports {
 		if report.Status != modular.HealthStatusHealthy {
 			return false
 		}
 	}
-	
+
 	return true
 }
