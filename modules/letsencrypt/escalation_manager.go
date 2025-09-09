@@ -2,9 +2,14 @@ package letsencrypt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
+)
+
+var (
+	ErrNilCertInfo = errors.New("letsencrypt: nil certInfo")
 )
 
 // EscalationConfig controls when escalation events are emitted.
@@ -160,7 +165,7 @@ func (m *EscalationManager) HandleACMEError(ctx context.Context, domain, acmeErr
 // CheckExpiration escalates if certificate is expiring soon.
 func (m *EscalationManager) CheckExpiration(ctx context.Context, domain string, certInfo *CertificateInfo) (*CertificateRenewalEscalatedEvent, error) {
 	if certInfo == nil {
-		return nil, fmt.Errorf("nil certInfo")
+		return nil, ErrNilCertInfo
 	}
 	if !certInfo.IsExpiringSoon(m.cfg.ExpiringSoonDays) {
 		return nil, nil

@@ -1,8 +1,19 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"sync"
+)
+
+// Static errors for OIDC provider registry operations (avoid dynamic errors per err113).
+// Reuse existing ErrProviderNotFound from errors.go for consistency with rest of auth package.
+var (
+	ErrProviderNameEmpty      = errors.New("oidc: provider name cannot be empty")
+	ErrProviderNil            = errors.New("oidc: provider cannot be nil")
+	ErrTokenEmpty             = errors.New("oidc: token cannot be empty")
+	ErrProviderMetadataAbsent = errors.New("oidc: provider metadata not available")
+	ErrAuthorizationCodeEmpty = errors.New("oidc: authorization code cannot be empty")
 )
 
 // OIDCProvider defines the interface for OIDC provider implementations
@@ -60,10 +71,10 @@ func NewOIDCProviderRegistry() OIDCProviderRegistry {
 // RegisterProvider registers a new OIDC provider
 func (r *defaultOIDCProviderRegistry) RegisterProvider(name string, provider OIDCProvider) error {
 	if name == "" {
-		return fmt.Errorf("provider name cannot be empty")
+		return ErrProviderNameEmpty
 	}
 	if provider == nil {
-		return fmt.Errorf("provider cannot be nil")
+		return ErrProviderNil
 	}
 
 	r.mutex.Lock()
@@ -80,7 +91,7 @@ func (r *defaultOIDCProviderRegistry) GetProvider(name string) (OIDCProvider, er
 
 	provider, exists := r.providers[name]
 	if !exists {
-		return nil, fmt.Errorf("provider '%s' not found", name)
+		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, name)
 	}
 
 	return provider, nil
@@ -105,7 +116,7 @@ func (r *defaultOIDCProviderRegistry) RemoveProvider(name string) error {
 	defer r.mutex.Unlock()
 
 	if _, exists := r.providers[name]; !exists {
-		return fmt.Errorf("provider '%s' not found", name)
+		return fmt.Errorf("%w: %s", ErrProviderNotFound, name)
 	}
 
 	delete(r.providers, name)
@@ -148,7 +159,7 @@ func (p *BasicOIDCProvider) GetIssuerURL() string {
 func (p *BasicOIDCProvider) ValidateToken(token string) (interface{}, error) {
 	// Basic implementation - real implementation would validate JWT signature and claims
 	if token == "" {
-		return nil, fmt.Errorf("token cannot be empty")
+		return nil, ErrTokenEmpty
 	}
 
 	return map[string]interface{}{
@@ -162,7 +173,7 @@ func (p *BasicOIDCProvider) ValidateToken(token string) (interface{}, error) {
 func (p *BasicOIDCProvider) GetUserInfo(token string) (interface{}, error) {
 	// Basic implementation - real implementation would make HTTP request to userinfo endpoint
 	if token == "" {
-		return nil, fmt.Errorf("token cannot be empty")
+		return nil, ErrTokenEmpty
 	}
 
 	return map[string]interface{}{
@@ -175,7 +186,7 @@ func (p *BasicOIDCProvider) GetUserInfo(token string) (interface{}, error) {
 // GetAuthURL generates an authorization URL for the provider
 func (p *BasicOIDCProvider) GetAuthURL(state string, scopes []string) (string, error) {
 	if p.metadata == nil {
-		return "", fmt.Errorf("provider metadata not available")
+		return "", ErrProviderMetadataAbsent
 	}
 
 	// Basic implementation - real implementation would build proper OAuth2/OIDC auth URL
@@ -196,7 +207,7 @@ func (p *BasicOIDCProvider) GetAuthURL(state string, scopes []string) (string, e
 // ExchangeCode exchanges an authorization code for tokens
 func (p *BasicOIDCProvider) ExchangeCode(code string, state string) (interface{}, error) {
 	if code == "" {
-		return nil, fmt.Errorf("authorization code cannot be empty")
+		return nil, ErrAuthorizationCodeEmpty
 	}
 
 	// Basic implementation - real implementation would make HTTP request to token endpoint

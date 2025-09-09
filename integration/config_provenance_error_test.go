@@ -171,12 +171,15 @@ func TestConfigurationErrorAccumulation(t *testing.T) {
 
 	// Current behavior: framework stops at first configuration error
 	// Verify first error module is mentioned
-	if !strings.Contains(errorStr, "errorModule1") {
-		t.Errorf("Error should contain 'errorModule1', got: %s", errorStr)
+	// Current behavior: framework stops at the first configuration error encountered.
+	// Validation order may change (e.g., iteration over an internal map) so accept either failing module.
+	if !(strings.Contains(errorStr, "errorModule1") || strings.Contains(errorStr, "errorModule2")) {
+		// Ensure at least one known failing module is referenced
+		t.Errorf("Error should reference either 'errorModule1' or 'errorModule2', got: %s", errorStr)
 	}
 
-	// Check if this is current behavior (stops at first error) or improved behavior (collects all)
-	if strings.Contains(errorStr, "errorModule2") {
+	// Check if multiple errors are accumulated (both module names present)
+	if strings.Contains(errorStr, "errorModule1") && strings.Contains(errorStr, "errorModule2") {
 		t.Log("✅ Enhanced behavior: Multiple configuration errors accumulated and reported")
 	} else {
 		t.Log("⚠️  Current behavior: Framework stops at first configuration error")

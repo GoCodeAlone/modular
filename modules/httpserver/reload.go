@@ -3,11 +3,27 @@ package httpserver
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+)
+
+// Static errors for reload validation (avoid dynamic construction for err113)
+var (
+	ErrHTTPServerNotReloadable        = errors.New("httpserver: module not in a reloadable state")
+	ErrHTTPServerReadTimeoutNegative  = errors.New("httpserver: read_timeout cannot be negative")
+	ErrHTTPServerWriteTimeoutNegative = errors.New("httpserver: write_timeout cannot be negative")
+	ErrHTTPServerIdleTimeoutNegative  = errors.New("httpserver: idle_timeout cannot be negative")
+	ErrHTTPServerReadTimeoutType      = errors.New("httpserver: read_timeout must be time.Duration")
+	ErrHTTPServerWriteTimeoutType     = errors.New("httpserver: write_timeout must be time.Duration")
+	ErrHTTPServerIdleTimeoutType      = errors.New("httpserver: idle_timeout must be time.Duration")
+	ErrHTTPServerTLSEnabledType       = errors.New("httpserver: tls.enabled must be boolean")
+	ErrHTTPServerTLSFieldType         = errors.New("httpserver: tls cert/key fields must be string")
+	ErrHTTPServerFieldNotReloadable   = errors.New("httpserver: field requires restart and cannot be reloaded dynamically")
+	ErrHTTPServerNotInitialized       = errors.New("httpserver: server is not initialized")
 )
 
 // Ensure HTTPServerModule implements the Reloadable interface
@@ -20,7 +36,7 @@ func (m *HTTPServerModule) Reload(ctx context.Context, changes []modular.ConfigC
 	defer m.mu.Unlock()
 
 	if !m.CanReload() {
-		return fmt.Errorf("httpserver module is not in a reloadable state")
+		return ErrHTTPServerNotReloadable
 	}
 
 	// Track changes by field for efficient processing
@@ -72,43 +88,43 @@ func (m *HTTPServerModule) validateReloadChanges(changes map[string]modular.Conf
 		case "httpserver.read_timeout":
 			if duration, ok := change.NewValue.(time.Duration); ok {
 				if duration < 0 {
-					return fmt.Errorf("read_timeout cannot be negative: %v", duration)
+					return ErrHTTPServerReadTimeoutNegative
 				}
 			} else {
-				return fmt.Errorf("read_timeout must be a time.Duration, got %T", change.NewValue)
+				return ErrHTTPServerReadTimeoutType
 			}
 
 		case "httpserver.write_timeout":
 			if duration, ok := change.NewValue.(time.Duration); ok {
 				if duration < 0 {
-					return fmt.Errorf("write_timeout cannot be negative: %v", duration)
+					return ErrHTTPServerWriteTimeoutNegative
 				}
 			} else {
-				return fmt.Errorf("write_timeout must be a time.Duration, got %T", change.NewValue)
+				return ErrHTTPServerWriteTimeoutType
 			}
 
 		case "httpserver.idle_timeout":
 			if duration, ok := change.NewValue.(time.Duration); ok {
 				if duration < 0 {
-					return fmt.Errorf("idle_timeout cannot be negative: %v", duration)
+					return ErrHTTPServerIdleTimeoutNegative
 				}
 			} else {
-				return fmt.Errorf("idle_timeout must be a time.Duration, got %T", change.NewValue)
+				return ErrHTTPServerIdleTimeoutType
 			}
 
 		case "httpserver.tls.enabled":
 			if _, ok := change.NewValue.(bool); !ok {
-				return fmt.Errorf("tls.enabled must be a boolean, got %T", change.NewValue)
+				return ErrHTTPServerTLSEnabledType
 			}
 
 		case "httpserver.tls.cert_file", "httpserver.tls.key_file":
 			if _, ok := change.NewValue.(string); !ok {
-				return fmt.Errorf("%s must be a string, got %T", fieldPath, change.NewValue)
+				return ErrHTTPServerTLSFieldType
 			}
 
 		case "httpserver.address", "httpserver.port":
 			// These require server restart and cannot be reloaded dynamically
-			return fmt.Errorf("field %s requires server restart and cannot be reloaded dynamically", fieldPath)
+			return ErrHTTPServerFieldNotReloadable
 
 		default:
 			// Allow unknown fields to be processed - they might be added in the future
@@ -183,7 +199,7 @@ func (m *HTTPServerModule) applyReloadChanges(ctx context.Context, changes map[s
 // updateServerConfiguration applies the new configuration to the running server
 func (m *HTTPServerModule) updateServerConfiguration(ctx context.Context) error {
 	if m.server == nil {
-		return fmt.Errorf("server is not initialized")
+		return ErrHTTPServerNotInitialized
 	}
 
 	// Update timeouts

@@ -2,10 +2,18 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
+)
+
+// Static errors for cache health checks
+var (
+	ErrCacheSetTestFailed      = errors.New("cache: failed to set test value")
+	ErrCacheRetrieveTestFailed = errors.New("cache: failed to retrieve test value")
+	ErrCacheTestValueMismatch  = errors.New("cache: retrieved value does not match set value")
 )
 
 // HealthCheck implements the HealthProvider interface for the cache module.
@@ -82,7 +90,7 @@ func (m *CacheModule) testCacheConnectivity(ctx context.Context, report *modular
 			return nil // Not a failure, just full
 		}
 		report.Details["operation_failed"] = "set"
-		return fmt.Errorf("failed to set test value: %w", err)
+		return fmt.Errorf("%w", ErrCacheSetTestFailed)
 	}
 
 	// Try to get the value back
@@ -91,12 +99,12 @@ func (m *CacheModule) testCacheConnectivity(ctx context.Context, report *modular
 
 	if !found {
 		report.Details["operation_failed"] = "get"
-		return fmt.Errorf("failed to retrieve test value")
+		return ErrCacheRetrieveTestFailed
 	}
 
 	if retrievedValue != healthValue {
 		report.Details["operation_failed"] = "value_mismatch"
-		return fmt.Errorf("retrieved value doesn't match set value")
+		return ErrCacheTestValueMismatch
 	}
 
 	// Clean up test key
