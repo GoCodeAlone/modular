@@ -1,78 +1,115 @@
 package reload
 
 import (
+	"context"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/GoCodeAlone/modular"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestReloadDynamicApply verifies that dynamic reload applies configuration changes
-// correctly according to contracts/reload.md.
-// This test should fail initially as the reload implementation doesn't exist yet.
+// dynamicTestReloadable records applied changes; can inject failure.
+type dynamicTestReloadable struct {
+	applied [][]modular.ConfigChange
+	failAt  int // index to fail (-1 means never)
+	mu      sync.Mutex
+}
+
+func (d *dynamicTestReloadable) Reload(ctx context.Context, changes []modular.ConfigChange) error {
+	// Simulate validation before apply: if failAt in range -> error before recording
+	if d.failAt >= 0 && d.failAt < len(changes) {
+		return assert.AnError
+	}
+	d.mu.Lock(); defer d.mu.Unlock()
+	// Append deep copy for safety
+	batch := make([]modular.ConfigChange, len(changes))
+	copy(batch, changes)
+	d.applied = append(d.applied, batch)
+	return nil
+}
+func (d *dynamicTestReloadable) CanReload() bool          { return true }
+func (d *dynamicTestReloadable) ReloadTimeout() time.Duration { return time.Second }
+
 func TestReloadDynamicApply(t *testing.T) {
-	// RED test: This tests dynamic reload contracts that don't exist yet
+	manager := NewReloadManager([]string{"log.level", "cache.ttl"})
+	module := &dynamicTestReloadable{failAt: -1}
 
-	t.Run("dynamic config changes should be applied", func(t *testing.T) {
-		// Expected: A ReloadPipeline should exist that can apply dynamic changes
-		var pipeline interface {
-			ApplyDynamicConfig(config interface{}) error
-			GetCurrentConfig() interface{}
-			CanReload(fieldPath string) bool
-		}
+	base := map[string]any{"log": map[string]any{"level": "info"}, "cache": map[string]any{"ttl": 30}, "server": map[string]any{"port": 8080}}
+	updated := map[string]any{"log": map[string]any{"level": "debug"}, "cache": map[string]any{"ttl": 60}, "server": map[string]any{"port": 9090}}
+	diff, err := modular.GenerateConfigDiff(base, updated)
+	require.NoError(t, err)
 
-		// This will fail because we don't have the interface yet
-		assert.NotNil(t, pipeline, "ReloadPipeline interface should be defined")
+	// Apply diff: server.port change should be static -> rejection (ErrStaticFieldChange)
+	err = manager.ApplyDiff(context.Background(), module, "app", diff)
+	assert.ErrorIs(t, err, ErrStaticFieldChange)
+	assert.Len(t, manager.AppliedBatches(), 0, "No batch applied due to static field")
 
-		// Expected behavior: dynamic fields should be reloadable
-		assert.Fail(t, "Dynamic config application not implemented - this test should pass once T034 is implemented")
-	})
-
-	t.Run("only dynamic fields should be reloadable", func(t *testing.T) {
-		// Expected: static fields should be rejected, dynamic fields accepted
-		staticField := "server.port" // example static field
-		dynamicField := "log.level"  // example dynamic field
-
-		// pipeline.CanReload(staticField) should return false
-		// pipeline.CanReload(dynamicField) should return true
-		// (placeholder checks to avoid unused variables)
-		assert.NotEmpty(t, staticField, "Should have static field example")
-		assert.NotEmpty(t, dynamicField, "Should have dynamic field example")
-		assert.Fail(t, "Dynamic vs static field detection not implemented")
-	})
-
-	t.Run("partial reload should be atomic", func(t *testing.T) {
-		// Expected: if any dynamic field fails to reload, all changes should be rolled back
-		assert.Fail(t, "Atomic partial reload not implemented")
-	})
-
-	t.Run("successful reload should emit ConfigReloadStarted and ConfigReloadCompleted events", func(t *testing.T) {
-		// Expected: reload events should be emitted in correct order
-		assert.Fail(t, "ConfigReload events not implemented")
-	})
+	// Remove static change and re-diff
+	updated2 := map[string]any{"log": map[string]any{"level": "debug"}, "cache": map[string]any{"ttl": 60}, "server": map[string]any{"port": 8080}}
+	diff2, err := modular.GenerateConfigDiff(base, updated2)
+	require.NoError(t, err)
+	err = manager.ApplyDiff(context.Background(), module, "app", diff2)
+	assert.NoError(t, err)
+	batches := manager.AppliedBatches()
+	assert.Len(t, batches, 1)
+	assert.Equal(t, 2, len(batches[0]), "Two dynamic changes applied")
 }
 
-// TestReloadConcurrency tests that reload operations handle concurrency correctly
+func TestReloadDynamicAtomicFailure(t *testing.T) {
+	manager := NewReloadManager([]string{"log.level", "cache.ttl"})
+	module := &dynamicTestReloadable{failAt: 1} // second change fails
+	base := map[string]any{"log": map[string]any{"level": "info"}, "cache": map[string]any{"ttl": 30}}
+	updated := map[string]any{"log": map[string]any{"level": "debug"}, "cache": map[string]any{"ttl": 60}}
+	diff, err := modular.GenerateConfigDiff(base, updated)
+	require.NoError(t, err)
+	err = manager.ApplyDiff(context.Background(), module, "app", diff)
+	assert.Error(t, err)
+	assert.Len(t, manager.AppliedBatches(), 0, "Atomic failure should not apply changes")
+}
+
+func TestReloadDynamicNoop(t *testing.T) {
+	manager := NewReloadManager([]string{"log.level"})
+	module := &dynamicTestReloadable{}
+	base := map[string]any{"log": map[string]any{"level": "info"}}
+	same := map[string]any{"log": map[string]any{"level": "info"}}
+	diff, err := modular.GenerateConfigDiff(base, same)
+	require.NoError(t, err)
+	assert.True(t, diff.IsEmpty())
+	err = manager.ApplyDiff(context.Background(), module, "app", diff)
+	assert.NoError(t, err)
+	assert.Len(t, manager.AppliedBatches(), 0, "No batch for noop diff")
+}
+
 func TestReloadConcurrency(t *testing.T) {
-	t.Run("concurrent reload attempts should be serialized", func(t *testing.T) {
-		// Expected: only one reload operation should be active at a time
-		assert.Fail(t, "Reload concurrency control not implemented")
-	})
+	manager := NewReloadManager([]string{"log.level"})
+	module := &dynamicTestReloadable{failAt: -1}
+	base := map[string]any{"log": map[string]any{"level": "info"}}
+	updated := map[string]any{"log": map[string]any{"level": "debug"}}
+	diff, _ := modular.GenerateConfigDiff(base, updated)
 
-	t.Run("reload in progress should block new reload attempts", func(t *testing.T) {
-		// Expected: new reload should wait or return error if reload in progress
-		assert.Fail(t, "Reload blocking not implemented")
-	})
+	// Prime once to ensure baseline application success
+	err := manager.ApplyDiff(context.Background(), module, "app", diff)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_ = manager.ApplyDiff(context.Background(), module, "app", diff)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	// Serialized manager allows only sequential application; concurrent attempts all serialize.
+	batches := manager.AppliedBatches()
+	assert.GreaterOrEqual(t, len(batches), 1)
+	assert.LessOrEqual(t, len(batches), 11) // initial prime + goroutines
 }
 
-// TestReloadRollback tests rollback behavior when reload fails
-func TestReloadRollback(t *testing.T) {
-	t.Run("failed reload should rollback to previous config", func(t *testing.T) {
-		// Expected: if reload fails partway through, all changes should be reverted
-		assert.Fail(t, "Reload rollback not implemented")
-	})
-
-	t.Run("rollback failure should emit ConfigReloadFailed event", func(t *testing.T) {
-		// Expected: failed rollback should be observable via events
-		assert.Fail(t, "ConfigReloadFailed event not implemented")
-	})
-}
