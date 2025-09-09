@@ -15,7 +15,11 @@
       "Bash(scripts/run-module-bdd-parallel.sh:*)",
       "Bash(sed:*)",
       "Bash(claude mcp:*)",
-      "Bash(timeout 30 go test:*)"
+      "Bash(timeout 30 go test:*)",
+      "mcp__github__list_workflows",
+      "Bash(git merge:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)"
     ],
     "deny": [],
     "ask": []
