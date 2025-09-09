@@ -56,7 +56,7 @@ func TestReloadOrchestratorRaceCondition(t *testing.T) {
 
 				err := orchestrator.RequestReload(ctx)
 				if err != nil {
-					if err.Error() == "reload orchestrator: reload already in progress" {
+					if err.Error() == "reload operation already in progress" {
 						atomic.AddInt64(&alreadyProcessingCount, 1)
 					}
 				} else {
@@ -128,7 +128,7 @@ func TestReloadOrchestratorRaceCondition(t *testing.T) {
 				err := orchestrator.RequestReload(ctx)
 				if err == nil {
 					atomic.AddInt64(&successCount, 1)
-				} else if err.Error() == "reload orchestrator: reload already in progress" {
+				} else if err.Error() == "reload operation already in progress" {
 					atomic.AddInt64(&alreadyProcessingCount, 1)
 				}
 			}()

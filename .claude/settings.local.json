@@ -14,7 +14,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(scripts/run-module-bdd-parallel.sh:*)",
       "Bash(sed:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Bash(timeout 30 go test:*)"
     ],
     "deny": [],
     "ask": []

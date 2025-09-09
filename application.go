@@ -727,12 +727,12 @@ func (app *StdApplication) Stop() error {
 func (app *StdApplication) Run() error {
 	// Initialize
 	if err := app.Init(); err != nil {
-		return err
+		return fmt.Errorf("application initialization failed: %w", err)
 	}
 
 	// Start all modules
 	if err := app.Start(); err != nil {
-		return err
+		return fmt.Errorf("application startup failed: %w", err)
 	}
 
 	// Setup signal handling
@@ -744,7 +744,10 @@ func (app *StdApplication) Run() error {
 	app.logger.Info("Received signal, shutting down", "signal", sig)
 
 	// Stop all modules
-	return app.Stop()
+	if err := app.Stop(); err != nil {
+		return fmt.Errorf("application shutdown failed: %w", err)
+	}
+	return nil
 }
 
 // injectServices injects required services into a module

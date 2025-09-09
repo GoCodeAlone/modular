@@ -56,7 +56,7 @@ func TestDebugRaceCondition(t *testing.T) {
 				t.Logf("Request %d completed in %v with error: %v", id, duration, err)
 
 				if err != nil {
-					if err.Error() == "reload orchestrator: reload already in progress" {
+					if err.Error() == "reload operation already in progress" {
 						atomic.AddInt64(&alreadyProcessingCount, 1)
 					} else if err.Error() == "reload orchestrator: request queue is full" {
 						atomic.AddInt64(&queueFullCount, 1)

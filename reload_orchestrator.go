@@ -175,24 +175,25 @@ func (o *ReloadOrchestrator) RequestReload(ctx context.Context, sections ...stri
 		response: make(chan reloadResponse, 1),
 	}
 
-	// Queue the request
+	// Queue the request - if this fails, reset the processing flag
 	select {
 	case o.requestQueue <- request:
-		// Wait for response
+		// Request successfully queued, wait for response
+		// Processing flag will be reset by the handler goroutine
 		select {
 		case response := <-request.response:
 			return response.err
 		case <-ctx.Done():
-			// Reset processing flag if we timeout
-			atomic.StoreInt32(&o.processing, 0)
+			// Context timeout/cancellation - processing may still be happening
+			// Don't reset the flag here as the handler will complete and reset it
 			return fmt.Errorf("reload request timed out: %w", ctx.Err())
 		}
 	case <-ctx.Done():
-		// Reset processing flag if context is cancelled
+		// Context was cancelled before we could queue - reset flag
 		atomic.StoreInt32(&o.processing, 0)
 		return fmt.Errorf("reload request cancelled: %w", ctx.Err())
 	default:
-		// Reset processing flag if queue is full
+		// Queue is full - reset flag since no processing will happen
 		atomic.StoreInt32(&o.processing, 0)
 		return ErrReloadQueueFull
 	}
