@@ -619,7 +619,7 @@ func TestDynamicFieldTagParsing(t *testing.T) {
 		_, err := parser.GetDynamicFields(nil)
 
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "config cannot be nil")
+		assert.Contains(t, err.Error(), "config is nil")
 	})
 
 	t.Run("handle non-struct config gracefully", func(t *testing.T) {

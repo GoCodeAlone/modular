@@ -19,7 +19,10 @@
       "mcp__github__list_workflows",
       "Bash(git merge:*)",
       "Bash(git fetch:*)",
-      "Bash(git rebase:*)"
+      "Bash(git rebase:*)",
+      "Bash(gh pr checkout:*)",
+      "mcp__github__get_pull_request",
+      "mcp__github__get_pull_request_files"
     ],
     "deny": [],
     "ask": []

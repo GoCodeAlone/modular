@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -110,7 +111,7 @@ func TestHealthInterfaceStandardization(t *testing.T) {
 
 		// Should respect context cancellation
 		assert.Error(t, err)
-		assert.Equal(t, context.DeadlineExceeded, err)
+		assert.True(t, errors.Is(err, context.DeadlineExceeded))
 	})
 }
 
