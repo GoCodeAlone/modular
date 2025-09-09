@@ -462,15 +462,4 @@ func (m *mockX509Certificate) SerialNumber() string { return m.serialNum }
 func (m *mockX509Certificate) NotAfter() time.Time  { return m.expiration }
 
 // Helper function
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[len(s)-len(substr):] == substr || 
-		   len(s) > len(substr) && s[:len(substr)] == substr ||
-		   (len(s) > len(substr) && func() bool {
-			   for i := 0; i <= len(s)-len(substr); i++ {
-				   if s[i:i+len(substr)] == substr {
-					   return true
-				   }
-			   }
-			   return false
-		   }())
-}
+// (helper contains removed - unified implementation in escalation_manager.go)

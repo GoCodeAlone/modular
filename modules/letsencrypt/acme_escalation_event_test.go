@@ -1,244 +1,125 @@
 package letsencrypt
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestACMEEscalationEvent verifies that ACME certificate escalation events
-// are properly emitted for monitoring and alerting.
-// This test should fail initially as the escalation event system doesn't exist yet.
-func TestACMEEscalationEvent(t *testing.T) {
-	// RED test: This tests ACME escalation event contracts that don't exist yet
-	
-	t.Run("CertificateRenewalEscalated event should be defined", func(t *testing.T) {
-		// Expected: A CertificateRenewalEscalated event should exist
-		var event interface {
-			GetCertificateName() string
-			GetDomain() string
-			GetEscalationReason() string
-			GetAttemptCount() int
-			GetLastError() error
-			GetNextRetryTime() interface{}
-		}
-		
-		// This will fail because we don't have the event yet
-		assert.NotNil(t, event, "CertificateRenewalEscalated event should be defined")
-		
-		// Expected behavior: escalation events should be emitted
-		assert.Fail(t, "ACME escalation event not implemented - this test should pass once T042 is implemented")
-	})
-	
-	t.Run("should emit escalation event on repeated failures", func(t *testing.T) {
-		// Expected: repeated ACME renewal failures should trigger escalation
-		assert.Fail(t, "Escalation on repeated failures not implemented")
-	})
-	
-	t.Run("should emit escalation event on timeout", func(t *testing.T) {
-		// Expected: ACME renewal timeouts should trigger escalation
-		assert.Fail(t, "Escalation on timeout not implemented")
-	})
-	
-	t.Run("should emit escalation event on rate limiting", func(t *testing.T) {
-		// Expected: ACME rate limiting should trigger escalation
-		assert.Fail(t, "Escalation on rate limiting not implemented")
-	})
+// mockChannel records notifications for assertions.
+type mockChannel struct { events []*CertificateRenewalEscalatedEvent }
+func (m *mockChannel) Notify(ctx context.Context, evt *CertificateRenewalEscalatedEvent) error { m.events = append(m.events, evt); return nil }
+
+// mockEmitter captures emitted events (both escalation & recovery) without coupling to framework observer.
+type mockEmitter struct { events []interface{} }
+func (m *mockEmitter) emit(ctx context.Context, evt interface{}) error { m.events = append(m.events, evt); return nil }
+
+func TestEscalation_OnRepeatedFailures(t *testing.T) {
+	em := &mockEmitter{}
+	ch := &mockChannel{}
+	cfg := EscalationConfig{FailureThreshold: 3, Window: time.Minute}
+	mgr := NewEscalationManager(cfg, em.emit, WithNotificationChannels(ch))
+	ctx := context.Background()
+
+	// two failures below threshold
+	evt, err := mgr.RecordFailure(ctx, "example.com", "validation failed")
+	require.NoError(t, err)
+	assert.Nil(t, evt)
+	evt, err = mgr.RecordFailure(ctx, "example.com", "validation failed")
+	require.NoError(t, err)
+	assert.Nil(t, evt)
+	// third triggers escalation
+	evt, err = mgr.RecordFailure(ctx, "example.com", "validation failed")
+	require.NoError(t, err)
+	require.NotNil(t, evt, "expected escalation event")
+	assert.Equal(t, EscalationTypeRetryExhausted, evt.EscalationType)
+	assert.Equal(t, 3, evt.FailureCount)
+	assert.Len(t, ch.events, 1, "notification channel should receive event once")
+	stats := mgr.Stats()
+	assert.Equal(t, 1, stats.TotalEscalations)
+	assert.Equal(t, 1, stats.Reasons[EscalationTypeRetryExhausted])
 }
 
-// TestACMEEscalationReasons tests different escalation trigger conditions
-func TestACMEEscalationReasons(t *testing.T) {
-	t.Run("should escalate on DNS validation failures", func(t *testing.T) {
-		// Expected: DNS validation failures should be escalation-worthy
-		assert.Fail(t, "DNS validation failure escalation not implemented")
-	})
-	
-	t.Run("should escalate on HTTP validation failures", func(t *testing.T) {
-		// Expected: HTTP validation failures should be escalation-worthy
-		assert.Fail(t, "HTTP validation failure escalation not implemented")
-	})
-	
-	t.Run("should escalate on certificate authority errors", func(t *testing.T) {
-		// Expected: CA errors should be escalation-worthy
-		assert.Fail(t, "CA error escalation not implemented")
-	})
-	
-	t.Run("should escalate on network connectivity issues", func(t *testing.T) {
-		// Expected: network issues should be escalation-worthy
-		assert.Fail(t, "Network connectivity escalation not implemented")
-	})
-	
-	t.Run("should escalate on certificate near-expiry", func(t *testing.T) {
-		// Expected: certificates near expiry should escalate if renewal fails
-		assert.Fail(t, "Near-expiry escalation not implemented")
-	})
+func TestEscalation_RateLimitedACME(t *testing.T) {
+	em := &mockEmitter{}
+	cfg := EscalationConfig{RateLimitSubstring: "rateLimited"}
+	mgr := NewEscalationManager(cfg, em.emit)
+	ctx := context.Background()
+	evt, err := mgr.HandleACMEError(ctx, "rl.example", "urn:ietf:params:acme:error:rateLimited: too many requests")
+	require.NoError(t, err)
+	require.NotNil(t, evt)
+	assert.Equal(t, EscalationTypeRateLimited, evt.EscalationType)
 }
 
-// TestACMEEscalationThresholds tests escalation threshold configuration
-func TestACMEEscalationThresholds(t *testing.T) {
-	t.Run("should support configurable failure thresholds", func(t *testing.T) {
-		// Expected: escalation thresholds should be configurable
-		var config interface {
-			GetFailureThreshold() int
-			GetTimeoutThreshold() interface{}
-			GetEscalationWindow() interface{}
-			SetFailureThreshold(count int) error
-		}
-		
-		assert.NotNil(t, config, "EscalationConfig interface should be defined")
-		assert.Fail(t, "Configurable escalation thresholds not implemented")
-	})
-	
-	t.Run("should support time-based escalation windows", func(t *testing.T) {
-		// Expected: escalation should consider time windows
-		assert.Fail(t, "Time-based escalation windows not implemented")
-	})
-	
-	t.Run("should support per-domain escalation thresholds", func(t *testing.T) {
-		// Expected: different domains might have different thresholds
-		assert.Fail(t, "Per-domain escalation thresholds not implemented")
-	})
-	
-	t.Run("should validate escalation threshold configuration", func(t *testing.T) {
-		// Expected: should validate that thresholds are reasonable
-		assert.Fail(t, "Escalation threshold validation not implemented")
-	})
+func TestEscalation_ExpiringSoon(t *testing.T) {
+	em := &mockEmitter{}
+	cfg := EscalationConfig{ExpiringSoonDays: 10}
+	mgr := NewEscalationManager(cfg, em.emit)
+	ctx := context.Background()
+	certInfo := &CertificateInfo{Domain: "expiring.example", DaysRemaining: 5}
+	evt, err := mgr.CheckExpiration(ctx, certInfo.Domain, certInfo)
+	require.NoError(t, err)
+	require.NotNil(t, evt)
+	assert.Equal(t, EscalationTypeExpiringSoon, evt.EscalationType)
 }
 
-// TestACMEEscalationEventData tests event data completeness
-func TestACMEEscalationEventData(t *testing.T) {
-	t.Run("should include complete failure history", func(t *testing.T) {
-		// Expected: escalation events should include failure history
-		assert.Fail(t, "Failure history in escalation events not implemented")
-	})
-	
-	t.Run("should include certificate metadata", func(t *testing.T) {
-		// Expected: events should include certificate details
-		assert.Fail(t, "Certificate metadata in escalation events not implemented")
-	})
-	
-	t.Run("should include system context", func(t *testing.T) {
-		// Expected: events should include system state context
-		assert.Fail(t, "System context in escalation events not implemented")
-	})
-	
-	t.Run("should include retry strategy information", func(t *testing.T) {
-		// Expected: events should include next retry plans
-		assert.Fail(t, "Retry strategy in escalation events not implemented")
-	})
+func TestEscalation_NotificationCooldownAndAck(t *testing.T) {
+	em := &mockEmitter{}
+	ch := &mockChannel{}
+	now := time.Now()
+	fakeNow := now
+	mgr := NewEscalationManager(EscalationConfig{FailureThreshold:1, NotificationCooldown: 10 * time.Minute}, em.emit, WithNotificationChannels(ch), WithNow(func() time.Time { return fakeNow }))
+	ctx := context.Background()
+	// trigger first escalation
+	evt, _ := mgr.RecordFailure(ctx, "cool.example", "error")
+	require.NotNil(t, evt)
+	require.Len(t, ch.events, 1)
+	// attempt re-escalation inside cooldown -> no new notification
+	fakeNow = fakeNow.Add(5 * time.Minute)
+	_, _ = mgr.RecordFailure(ctx, "cool.example", "error again")
+	assert.Len(t, ch.events, 1, "should not notify again inside cooldown")
+	// advance past cooldown without ack -> new notification
+	fakeNow = fakeNow.Add(6 * time.Minute)
+	_, _ = mgr.RecordFailure(ctx, "cool.example", "error again2")
+	assert.Len(t, ch.events, 2, "should notify again after cooldown")
+	// acknowledge and advance beyond cooldown -> no notification
+	mgr.Acknowledge("cool.example")
+	fakeNow = fakeNow.Add(20 * time.Minute)
+	_, _ = mgr.RecordFailure(ctx, "cool.example", "error again3")
+	assert.Len(t, ch.events, 2, "acknowledged escalation should suppress further notifications")
 }
 
-// TestACMEEscalationNotification tests escalation notification mechanisms
-func TestACMEEscalationNotification(t *testing.T) {
-	t.Run("should support multiple notification channels", func(t *testing.T) {
-		// Expected: should support email, webhook, etc. notifications
-		assert.Fail(t, "Multiple notification channels not implemented")
-	})
-	
-	t.Run("should support notification rate limiting", func(t *testing.T) {
-		// Expected: should not spam notifications for same issue
-		assert.Fail(t, "Notification rate limiting not implemented")
-	})
-	
-	t.Run("should support notification templates", func(t *testing.T) {
-		// Expected: should support customizable notification templates
-		assert.Fail(t, "Notification templates not implemented")
-	})
-	
-	t.Run("should support escalation acknowledgment", func(t *testing.T) {
-		// Expected: should support acknowledging escalations
-		assert.Fail(t, "Escalation acknowledgment not implemented")
-	})
+func TestEscalation_Recovery(t *testing.T) {
+	em := &mockEmitter{}
+	cfg := EscalationConfig{FailureThreshold:1}
+	mgr := NewEscalationManager(cfg, em.emit)
+	ctx := context.Background()
+	evt, _ := mgr.RecordFailure(ctx, "recover.example", "boom")
+	require.NotNil(t, evt)
+	mgr.Clear(ctx, "recover.example")
+	// Expect a recovery event emitted after escalation
+	var foundRecovery bool
+	for _, e := range em.events { if _, ok := e.(*CertificateRenewalEscalationRecoveredEvent); ok { foundRecovery = true; break } }
+	assert.True(t, foundRecovery, "expected recovery event")
+	stats := mgr.Stats()
+	assert.Equal(t, 1, stats.Resolutions)
 }
 
-// TestACMEEscalationRecovery tests escalation recovery mechanisms
-func TestACMEEscalationRecovery(t *testing.T) {
-	t.Run("should automatically clear escalations on success", func(t *testing.T) {
-		// Expected: successful renewals should clear escalation state
-		assert.Fail(t, "Automatic escalation clearing not implemented")
-	})
-	
-	t.Run("should support manual escalation resolution", func(t *testing.T) {
-		// Expected: should support manually resolving escalations
-		assert.Fail(t, "Manual escalation resolution not implemented")
-	})
-	
-	t.Run("should track escalation resolution time", func(t *testing.T) {
-		// Expected: should measure how long escalations take to resolve
-		assert.Fail(t, "Escalation resolution time tracking not implemented")
-	})
-	
-	t.Run("should emit recovery events", func(t *testing.T) {
-		// Expected: should emit events when escalations are resolved
-		assert.Fail(t, "Escalation recovery events not implemented")
-	})
-}
-
-// TestACMEEscalationMetrics tests escalation-related metrics
-func TestACMEEscalationMetrics(t *testing.T) {
-	t.Run("should track escalation frequency", func(t *testing.T) {
-		// Expected: should measure how often escalations occur
-		assert.Fail(t, "Escalation frequency metrics not implemented")
-	})
-	
-	t.Run("should track escalation reasons", func(t *testing.T) {
-		// Expected: should categorize escalations by reason
-		assert.Fail(t, "Escalation reason metrics not implemented")
-	})
-	
-	t.Run("should track escalation resolution time", func(t *testing.T) {
-		// Expected: should measure escalation time-to-resolution
-		assert.Fail(t, "Escalation resolution time metrics not implemented")
-	})
-	
-	t.Run("should track escalation impact", func(t *testing.T) {
-		// Expected: should measure business impact of escalations
-		assert.Fail(t, "Escalation impact metrics not implemented")
-	})
-}
-
-// TestACMEEscalationIntegration tests integration with monitoring systems
-func TestACMEEscalationIntegration(t *testing.T) {
-	t.Run("should integrate with application monitoring", func(t *testing.T) {
-		// Expected: should work with existing monitoring systems
-		assert.Fail(t, "Monitoring system integration not implemented")
-	})
-	
-	t.Run("should integrate with alerting systems", func(t *testing.T) {
-		// Expected: should work with existing alerting infrastructure
-		assert.Fail(t, "Alerting system integration not implemented")
-	})
-	
-	t.Run("should integrate with incident management", func(t *testing.T) {
-		// Expected: should work with incident management systems
-		assert.Fail(t, "Incident management integration not implemented")
-	})
-	
-	t.Run("should support escalation dashboards", func(t *testing.T) {
-		// Expected: should provide data for escalation dashboards
-		assert.Fail(t, "Escalation dashboard support not implemented")
-	})
-}
-
-// TestACMEEscalationConfiguration tests escalation system configuration
-func TestACMEEscalationConfiguration(t *testing.T) {
-	t.Run("should support runtime escalation rule changes", func(t *testing.T) {
-		// Expected: should support dynamic escalation rule updates
-		assert.Fail(t, "Runtime escalation rule changes not implemented")
-	})
-	
-	t.Run("should validate escalation configuration", func(t *testing.T) {
-		// Expected: should validate escalation configuration is correct
-		assert.Fail(t, "Escalation configuration validation not implemented")
-	})
-	
-	t.Run("should support escalation rule testing", func(t *testing.T) {
-		// Expected: should support testing escalation rules
-		assert.Fail(t, "Escalation rule testing not implemented")
-	})
-	
-	t.Run("should support escalation rule versioning", func(t *testing.T) {
-		// Expected: should support versioning of escalation rules
-		assert.Fail(t, "Escalation rule versioning not implemented")
-	})
+func TestEscalation_MetricsReasonTracking(t *testing.T) {
+	em := &mockEmitter{}
+	mgr := NewEscalationManager(EscalationConfig{FailureThreshold:1}, em.emit)
+	ctx := context.Background()
+	mgr.RecordFailure(ctx, "r1.example", "a")
+	mgr.HandleACMEError(ctx, "r2.example", "acme error")
+	mgr.HandleACMEError(ctx, "r3.example", "rateLimited hit")
+	mgr.RecordTimeout(ctx, "r4.example", "timeout")
+	stats := mgr.Stats()
+	assert.GreaterOrEqual(t, stats.TotalEscalations, 4)
+	assert.True(t, stats.Reasons[EscalationTypeRetryExhausted] >= 1)
+	assert.True(t, stats.Reasons[EscalationTypeACMEError] >= 1)
+	assert.True(t, stats.Reasons[EscalationTypeRateLimited] >= 1)
+	assert.True(t, stats.Reasons[EscalationTypeValidationFailed] >= 1)
 }

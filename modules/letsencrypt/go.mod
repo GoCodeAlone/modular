@@ -87,3 +87,4 @@ require (
 )
 
 replace github.com/GoCodeAlone/modular/modules/httpserver => ../httpserver
+replace github.com/GoCodeAlone/modular => ../..
