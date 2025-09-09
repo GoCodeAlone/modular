@@ -3,6 +3,7 @@ package modular
 import (
 	"context"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -18,14 +19,18 @@ func (l *simpleSyncLogger) Debug(string, ...any) {}
 
 // mockStartStopModule is a test module exercising Start/Stop hooks used by Run
 type mockStartStopModule struct {
-	started bool
+	// Use atomic for started because it's written in Start (Run goroutine) and
+	// read in the test goroutine before shutdown synchronization completes.
+	started atomic.Bool
+	// stopped is only read after Run completes (via channel synchronization),
+	// so it does not require atomic access.
 	stopped bool
 }
 
 func (m *mockStartStopModule) Name() string           { return "mockLifecycle" }
 func (m *mockStartStopModule) Init(Application) error { return nil }
 func (m *mockStartStopModule) Start(ctx context.Context) error {
-	m.started = true
+	m.started.Store(true)
 	return nil
 }
 func (m *mockStartStopModule) Stop(ctx context.Context) error {
@@ -56,7 +61,7 @@ func TestApplicationRunLifecycle(t *testing.T) {
 
 	// Give some time for Init+Start
 	time.Sleep(100 * time.Millisecond)
-	if !mod.started {
+	if !mod.started.Load() {
 		t.Fatalf("expected module to be started")
 	}
 
