@@ -71,6 +71,7 @@
     - [Tenant-Aware Modules](#tenant-aware-modules)
     - [Tenant-Aware Configuration](#tenant-aware-configuration)
     - [Tenant Configuration Loading](#tenant-configuration-loading)
+    - [Tenant Guard](#tenant-guard)
   - [Error Handling](#error-handling)
     - [Common Error Types](#common-error-types)
     - [Error Wrapping](#error-wrapping)
@@ -1247,6 +1248,66 @@ config := tenantAwareConfig.GetConfigWithContext(ctx).(*MyConfig)
 ```
 
 ### Tenant Configuration Loading
+### Tenant Guard
+
+The Tenant Guard provides runtime enforcement (or observation) of cross-tenant access. It is configured via the application builder using either `WithTenantGuardMode(mode)` for quick setup, or `WithTenantGuardModeConfig(config)` for full control.
+
+Accessor:
+
+`app.GetTenantGuard()` (added in this release) returns the active `TenantGuard` implementation or `nil` if none was configured.
+
+Modes:
+
+- `strict`: Blocks cross-tenant access attempts unless explicitly whitelisted.
+- `lenient`: Allows access but records violations for monitoring/migration.
+- `disabled`: No isolation checks performed (single-tenant or legacy mode).
+
+Whitelist:
+
+`TenantGuardConfig.CrossTenantWhitelist` maps a requesting tenant ID to a list of allowed target tenant prefixes. A resource path is considered whitelisted when it begins with `<targetTenant>/`.
+
+Violations:
+
+`ValidateAccess(ctx, violation)` records a `TenantViolation` (timestamp + metadata) when in lenient mode or blocks (strict) depending on configuration. The current implementation keeps violations in an in-memory slice intended for short-lived inspection in tests and diagnostics (future versions may add bounded ring buffer + observer emissions).
+
+Concurrency:
+
+`stdTenantGuard` now uses an internal RW mutex to protect violation recording. `ValidateAccess` acquires a write lock only for the append. `GetRecentViolations()` takes a read lock and returns a shallow copy for isolation. This provides race-free concurrent usage with minimal contention (violations are only written on actual cross-tenant attempts). Future optimization may replace the slice+mutex with a bounded lock-free ring buffer if high-frequency writes emerge.
+
+Recommended Usage:
+
+1. Start new multi-tenant services in `strict` unless migrating legacy code.
+2. Use `lenient` during phased adoption—monitor violations, then switch to `strict`.
+3. Do not leave `disabled` in multi-tenant deployments beyond initial bootstrap.
+4. Keep whitelist entries minimal and review periodically.
+
+Example:
+
+```go
+guardCfg := modular.NewDefaultTenantGuardConfig(modular.TenantGuardModeStrict)
+guardCfg.CrossTenantWhitelist["reporting-svc"] = []string{"analytics"}
+app, _ := modular.NewApplication(
+    modular.WithTenantGuardModeConfig(guardCfg),
+)
+
+if tg := app.GetTenantGuard(); tg != nil {
+    allowed, err := tg.ValidateAccess(ctx, &modular.TenantViolation{
+        RequestingTenant:  "tenantA",
+        AccessedResource:  "tenantB/resource123",
+        ViolationType:     modular.TenantViolationCrossTenantAccess,
+        Severity:          modular.TenantViolationSeverityMedium,
+    })
+    if err != nil { /* handle */ }
+    if !allowed { /* enforce */ }
+}
+```
+
+Future Evolution (non-breaking goals):
+
+- Bounded lock-free ring buffer for violations.
+- Observer events for violation emission (avoids direct slice exposure).
+- Structured logger integration for strict-mode blocks.
+
 
 Modular provides utilities for loading tenant configurations from files:
 

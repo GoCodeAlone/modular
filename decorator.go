@@ -178,3 +178,12 @@ func (d *BaseApplicationDecorator) RegisterHealthProvider(moduleName string, pro
 func (d *BaseApplicationDecorator) Health() (HealthAggregator, error) {
 	return d.inner.Health() //nolint:wrapcheck // Forwarding call
 }
+
+// GetTenantGuard forwards to the inner application's GetTenantGuard method if implemented
+func (d *BaseApplicationDecorator) GetTenantGuard() TenantGuard {
+	// Inner must implement the extended Application interface; use type assertion defensively
+	if app, ok := d.inner.(interface{ GetTenantGuard() TenantGuard }); ok {
+		return app.GetTenantGuard()
+	}
+	return nil
+}

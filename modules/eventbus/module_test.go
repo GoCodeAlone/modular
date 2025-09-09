@@ -127,6 +127,8 @@ func (a *mockApp) RegisterHealthProvider(moduleName string, provider modular.Hea
 	return fmt.Errorf("health provider registration not supported in test mock")
 }
 
+// GetTenantGuard satisfies the modular.Application interface; eventbus tests are not tenant-aware.
+func (a *mockApp) GetTenantGuard() modular.TenantGuard { return nil }
 
 type mockConfigProvider struct{}
 

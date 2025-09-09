@@ -204,17 +204,23 @@ func (m *DatabaseModule) Reload(ctx context.Context, changes []modular.ConfigCha
 		case "database.max_connections":
 			if val, ok := change.NewValue.(int); ok {
 				m.db.SetMaxOpenConns(val)
-				log.Printf("Updated database max connections to %d", val)
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Info("updated database max connections to %d", val)
+				}
 			}
 		case "database.max_idle_conns":
 			if val, ok := change.NewValue.(int); ok {
 				m.db.SetMaxIdleConns(val)
-				log.Printf("Updated database max idle connections to %d", val)
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Info("updated database max idle connections to %d", val)
+				}
 			}
 		case "database.conn_max_lifetime":
 			if val, ok := change.NewValue.(time.Duration); ok {
 				m.db.SetConnMaxLifetime(val)
-				log.Printf("Updated database connection lifetime to %v", val)
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Info("updated database connection lifetime to %v", val)
+				}
 			}
 		}
 	}
@@ -346,17 +352,23 @@ func (m *CacheModule) Reload(ctx context.Context, changes []modular.ConfigChange
 		case "cache.enabled":
 			if val, ok := change.NewValue.(bool); ok {
 				m.enabled = val
-				log.Printf("Cache enabled: %v", val)
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Info("cache enabled changed to %v", val)
+				}
 			}
 		case "cache.ttl":
 			if val, ok := change.NewValue.(time.Duration); ok {
 				m.config.TTL = val
-				log.Printf("Updated cache TTL to %v", val)
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Info("updated cache ttl to %v", val)
+				}
 			}
 		case "cache.max_entries":
 			if val, ok := change.NewValue.(int); ok {
 				m.config.MaxEntries = val
-				log.Printf("Updated cache max entries to %d", val)
+				if m.app != nil && m.app.Logger() != nil {
+					m.app.Logger().Info("updated cache max entries to %d", val)
+				}
 			}
 		}
 	}
@@ -405,9 +417,13 @@ func (s *HTTPServer) Init(app modular.Application) error {
 
 func (s *HTTPServer) Start(ctx context.Context) error {
 	go func() {
-		log.Printf("HTTP server starting on port %d", s.config.Port)
+		if s.app != nil && s.app.Logger() != nil {
+			s.app.Logger().Info("http server starting on port %d", s.config.Port)
+		}
 		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("HTTP server error: %v", err)
+			if s.app != nil && s.app.Logger() != nil {
+				s.app.Logger().Error("http server error: %v", err)
+			}
 		}
 	}()
 	return nil
@@ -442,7 +458,9 @@ func (s *HTTPServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(aggregated); err != nil {
-		log.Printf("Failed to encode health response: %v", err)
+		if s.app != nil && s.app.Logger() != nil {
+			s.app.Logger().Error("failed to encode health response: %v", err)
+		}
 	}
 }
 
@@ -474,7 +492,9 @@ func (s *HTTPServer) readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Failed to encode readiness response: %v", err)
+		if s.app != nil && s.app.Logger() != nil {
+			s.app.Logger().Error("failed to encode readiness response: %v", err)
+		}
 	}
 }
 
@@ -486,7 +506,9 @@ func (s *HTTPServer) livenessHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Failed to encode liveness response: %v", err)
+		if s.app != nil && s.app.Logger() != nil {
+			s.app.Logger().Error("failed to encode liveness response: %v", err)
+		}
 	}
 }
 
@@ -507,7 +529,9 @@ func (s *HTTPServer) reloadHandler(w http.ResponseWriter, r *http.Request) {
 		"status":  "success",
 		"message": "Configuration reload initiated",
 	}); err != nil {
-		log.Printf("Failed to encode reload response: %v", err)
+		if s.app != nil && s.app.Logger() != nil {
+			s.app.Logger().Error("failed to encode reload response: %v", err)
+		}
 	}
 }
 
@@ -522,7 +546,9 @@ func (s *HTTPServer) configHandler(w http.ResponseWriter, r *http.Request) {
 			"write_timeout": s.config.WriteTimeout.String(),
 		},
 	}); err != nil {
-		log.Printf("Failed to encode config response: %v", err)
+		if s.app != nil && s.app.Logger() != nil {
+			s.app.Logger().Error("failed to encode config response: %v", err)
+		}
 	}
 }
 
@@ -568,18 +594,27 @@ func main() {
 
 	go func() {
 		<-sigChan
-		log.Println("Shutting down...")
+		if app.Logger() != nil {
+			app.Logger().Info("shutting down...")
+		}
 		_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		if err := app.Stop(); err != nil {
-			log.Printf("Error during shutdown: %v", err)
+			if app.Logger() != nil {
+				app.Logger().Error("error during shutdown: %v", err)
+			}
 		}
 	}()
 
 	// Start the application
-	log.Println("Starting Dynamic Health Application...")
+	if app.Logger() != nil {
+		app.Logger().Info("starting Dynamic Health Application...")
+	}
 	if err := app.Run(); err != nil {
-		log.Fatalf("Application failed: %v", err)
+		if app.Logger() != nil {
+			app.Logger().Error("application failed: %v", err)
+		}
+		os.Exit(1)
 	}
 }

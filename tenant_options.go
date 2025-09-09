@@ -3,6 +3,7 @@ package modular
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -282,6 +283,7 @@ func WithTenantGuardModeConfig(config TenantGuardConfig) Option {
 type stdTenantGuard struct {
 	config     TenantGuardConfig
 	violations []*TenantViolation
+	mu         sync.RWMutex // protects violations slice
 }
 
 func (g *stdTenantGuard) GetMode() TenantGuardMode {
@@ -317,7 +319,12 @@ func (g *stdTenantGuard) ValidateAccess(ctx context.Context, violation *TenantVi
 }
 
 func (g *stdTenantGuard) GetRecentViolations() []*TenantViolation {
-	return g.violations
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	// Return a shallow copy to avoid callers mutating internal slice
+	out := make([]*TenantViolation, len(g.violations))
+	copy(out, g.violations)
+	return out
 }
 
 func (g *stdTenantGuard) isWhitelisted(requestingTenant, accessedResource string) bool {
@@ -342,9 +349,10 @@ func (g *stdTenantGuard) isWhitelisted(requestingTenant, accessedResource string
 }
 
 func (g *stdTenantGuard) logViolation(violation *TenantViolation) {
-	// Record the violation
 	violation.Timestamp = time.Now()
+	g.mu.Lock()
 	g.violations = append(g.violations, violation)
+	g.mu.Unlock()
 
 	// In a real implementation, this would use proper logging
 	// For now, we just store it for testing
@@ -357,16 +365,4 @@ type ApplicationBuilderExtension struct {
 }
 
 // GetTenantGuard returns the application's tenant guard if configured.
-func (app *StdApplication) GetTenantGuard() TenantGuard {
-	// In a real implementation, this would be retrieved from the service registry
-	// For testing, we'll implement a simple approach
-
-	// Try to get tenant guard service
-	var tenantGuard TenantGuard
-	if err := app.GetService("tenantGuard", &tenantGuard); err == nil {
-		return tenantGuard
-	}
-
-	// Return nil if no tenant guard is configured
-	return nil
-}
+// (GetTenantGuard now defined on StdApplication in application.go to satisfy Application interface)

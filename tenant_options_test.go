@@ -1,5 +1,3 @@
-//go:build failing_test
-
 package modular
 
 import (
@@ -61,9 +59,12 @@ func TestWithTenantGuardModeOption(t *testing.T) {
 				// Test that WithTenantGuardMode option can be applied to application builder
 				builder := NewApplicationBuilder()
 				option := WithTenantGuardMode(TenantGuardModeStrict)
-
-				err := builder.WithOption(option)
-				assert.NoError(t, err, "Should apply WithTenantGuardMode option to builder")
+				// builder.WithOption never returns error directly; ensure chain works
+				_ = builder.WithOption(option)
+				// Build to ensure no panic or error on registration (need logger)
+				builder.WithOption(WithLogger(NewTestLogger()))
+				_, buildErr := builder.Build()
+				assert.NoError(t, buildErr, "Should build with tenant guard option")
 			},
 		},
 		{
@@ -73,9 +74,10 @@ func TestWithTenantGuardModeOption(t *testing.T) {
 				builder := NewApplicationBuilder()
 
 				app, err := builder.
+					WithOption(WithLogger(NewTestLogger())).
 					WithOption(WithTenantGuardMode(TenantGuardModeStrict)).
-					Build(context.Background())
-				assert.NoError(t, err, "Should build application with tenant guard mode")
+					Build()
+				assert.NoError(t, err, "Should build application with tenant guard mode (strict)")
 
 				// Check that application has tenant guard capability
 				tenantGuard := app.GetTenantGuard()
@@ -244,6 +246,27 @@ func TestTenantGuardBehavior(t *testing.T) {
 		testFunc    func(t *testing.T)
 	}{
 		{
+			name:        "should_allow_disabled_mode_early",
+			description: "Disabled mode should always allow access without recording violations",
+			testFunc: func(t *testing.T) {
+				builder := NewApplicationBuilder()
+				app, err := builder.
+					WithOption(WithLogger(NewTestLogger())).
+					WithOption(WithTenantGuardMode(TenantGuardModeDisabled)).
+					Build()
+				assert.NoError(t, err)
+
+				tg := app.GetTenantGuard()
+				if tg == nil {
+					return // acceptable if not registered for disabled
+				}
+				allowed, err := tg.ValidateAccess(context.Background(), &TenantViolation{ViolationType: TenantViolationCrossTenantAccess})
+				assert.NoError(t, err)
+				assert.True(t, allowed, "Disabled mode must allow access")
+				assert.Len(t, tg.GetRecentViolations(), 0, "Disabled mode should not record violations")
+			},
+		},
+		{
 			name:        "should_enforce_strict_tenant_isolation",
 			description: "Strict tenant guard mode should prevent cross-tenant access",
 			testFunc: func(t *testing.T) {
@@ -256,8 +279,9 @@ func TestTenantGuardBehavior(t *testing.T) {
 				}
 
 				app, err := builder.
+					WithOption(WithLogger(NewTestLogger())).
 					WithOption(WithTenantGuardModeConfig(config)).
-					Build(context.Background())
+					Build()
 				require.NoError(t, err, "Should build application with strict tenant guard")
 
 				tenantGuard := app.GetTenantGuard()
@@ -290,8 +314,9 @@ func TestTenantGuardBehavior(t *testing.T) {
 				}
 
 				app, err := builder.
+					WithOption(WithLogger(NewTestLogger())).
 					WithOption(WithTenantGuardModeConfig(config)).
-					Build(context.Background())
+					Build()
 				require.NoError(t, err, "Should build application with lenient tenant guard")
 
 				tenantGuard := app.GetTenantGuard()
@@ -323,8 +348,9 @@ func TestTenantGuardBehavior(t *testing.T) {
 				builder := NewApplicationBuilder()
 
 				app, err := builder.
+					WithOption(WithLogger(NewTestLogger())).
 					WithOption(WithTenantGuardMode(TenantGuardModeDisabled)).
-					Build(context.Background())
+					Build()
 				require.NoError(t, err, "Should build application with disabled tenant guard")
 
 				tenantGuard := app.GetTenantGuard()
@@ -362,8 +388,9 @@ func TestTenantGuardBehavior(t *testing.T) {
 
 				builder := NewApplicationBuilder()
 				app, err := builder.
+					WithOption(WithLogger(NewTestLogger())).
 					WithOption(WithTenantGuardModeConfig(config)).
-					Build(context.Background())
+					Build()
 				require.NoError(t, err, "Should build application with whitelisted cross-tenant access")
 
 				tenantGuard := app.GetTenantGuard()
@@ -386,6 +413,71 @@ func TestTenantGuardBehavior(t *testing.T) {
 				allowed, err = tenantGuard.ValidateAccess(ctx, violation)
 				assert.NoError(t, err, "Validation should succeed")
 				assert.False(t, allowed, "Non-whitelisted cross-tenant access should be blocked")
+			},
+		},
+		{
+			name:        "should_handle_unknown_mode_defensive_branch",
+			description: "Defensive error path for unknown mode returns error and blocks",
+			testFunc: func(t *testing.T) {
+				// Create a guard with an invalid mode manually (bypass option validation)
+				guard := &stdTenantGuard{config: TenantGuardConfig{Mode: TenantGuardMode("weird")}}
+				allowed, err := guard.ValidateAccess(context.Background(), &TenantViolation{ViolationType: TenantViolationCrossTenantAccess})
+				assert.Error(t, err)
+				assert.False(t, allowed)
+			},
+		},
+		{
+			name:        "should_not_panic_on_nil_whitelist",
+			description: "Nil whitelist map path returns false (not whitelisted)",
+			testFunc: func(t *testing.T) {
+				guard := &stdTenantGuard{config: TenantGuardConfig{Mode: TenantGuardModeStrict}}
+				allowed, err := guard.ValidateAccess(context.Background(), &TenantViolation{
+					ViolationType:    TenantViolationCrossTenantAccess,
+					RequestingTenant: "t1",
+					AccessedResource: "t2/resource",
+				})
+				assert.NoError(t, err)
+				assert.False(t, allowed)
+			},
+		},
+		{
+			name:        "should_respect_whitelist_prefix_exact_boundary",
+			description: "Whitelist should match only proper tenant prefix + '/'",
+			testFunc: func(t *testing.T) {
+				guard := &stdTenantGuard{config: TenantGuardConfig{
+					Mode: TenantGuardModeStrict,
+					CrossTenantWhitelist: map[string][]string{
+						"team": {"tenant"},
+					},
+				}}
+				// resource starts with 'tenantX' not exact 'tenant/' prefix
+				allowed, _ := guard.ValidateAccess(context.Background(), &TenantViolation{
+					ViolationType:    TenantViolationCrossTenantAccess,
+					RequestingTenant: "team",
+					AccessedResource: "tenantX/resource",
+				})
+				assert.False(t, allowed, "Should not allow partial prefix (tenantX)")
+
+				// Proper exact prefix match
+				allowed, _ = guard.ValidateAccess(context.Background(), &TenantViolation{
+					ViolationType:    TenantViolationCrossTenantAccess,
+					RequestingTenant: "team",
+					AccessedResource: "tenant/service",
+				})
+				assert.True(t, allowed, "Should allow exact whitelisted tenant prefix")
+			},
+		},
+		{
+			name:        "should_reject_invalid_config_in_option",
+			description: "Option should return error on invalid negative values and builder ignores it",
+			testFunc: func(t *testing.T) {
+				invalid := TenantGuardConfig{Mode: TenantGuardModeStrict, ValidationTimeout: -1}
+				op := WithTenantGuardModeConfig(invalid)
+				b := NewApplicationBuilder().WithOption(WithLogger(NewTestLogger()))
+				b.WithOption(op) // builder ignores internal error but guard should not be registered
+				app, err := b.Build()
+				assert.NoError(t, err)
+				assert.Nil(t, app.GetTenantGuard(), "Invalid config must not register tenant guard")
 			},
 		},
 	}

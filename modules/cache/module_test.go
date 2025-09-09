@@ -91,6 +91,9 @@ func (a *mockApp) Run() error {
 	return nil
 }
 
+// GetTenantGuard returns nil for tests (tenant guard not used in cache module tests)
+func (a *mockApp) GetTenantGuard() modular.TenantGuard { return nil }
+
 func (a *mockApp) IsVerboseConfig() bool {
 	return false
 }

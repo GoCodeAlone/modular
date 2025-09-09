@@ -76,6 +76,9 @@ func (a *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// GetTenantGuard satisfies the modular.Application interface for tests; database tests are not tenant-aware.
+func (a *MockApplication) GetTenantGuard() modular.TenantGuard { return nil }
+
 // ServiceIntrospector returns nil (not used in database module tests)
 func (a *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 

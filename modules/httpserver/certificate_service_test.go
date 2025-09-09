@@ -136,6 +136,9 @@ func (m *SimpleMockApplication) GetServicesByInterface(interfaceType reflect.Typ
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// GetTenantGuard returns nil for certificate service tests (tenant guard not exercised here)
+func (m *SimpleMockApplication) GetTenantGuard() modular.TenantGuard { return nil }
+
 // ServiceIntrospector returns nil (not needed in certificate tests)
 func (m *SimpleMockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 

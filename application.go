@@ -213,6 +213,11 @@ type Application interface {
 	//   }
 	//   status, err := healthAgg.Collect(ctx)
 	Health() (HealthAggregator, error)
+
+	// GetTenantGuard returns the tenant guard service if configured.
+	// This provides access to tenant isolation enforcement features.
+	// Returns nil when no tenant guard is configured (e.g., disabled mode or not set).
+	GetTenantGuard() TenantGuard
 }
 
 // ServiceIntrospector provides advanced service registry introspection helpers.
@@ -1664,6 +1669,16 @@ func (app *StdApplication) Health() (HealthAggregator, error) {
 
 	// No health aggregator service registered
 	return nil, ErrHealthAggregatorNotAvailable
+}
+
+// GetTenantGuard returns the application's tenant guard if configured.
+// Returns nil if no tenant guard service has been registered.
+func (app *StdApplication) GetTenantGuard() TenantGuard {
+	var tg TenantGuard
+	if err := app.GetService("tenantGuard", &tg); err == nil {
+		return tg
+	}
+	return nil
 }
 
 // (Intentionally removed old direct service introspection methods; use ServiceIntrospector())

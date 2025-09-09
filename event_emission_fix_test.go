@@ -214,3 +214,6 @@ func (m *mockApplicationForNilSubjectTest) RegisterHealthProvider(moduleName str
 func (m *mockApplicationForNilSubjectTest) Health() (HealthAggregator, error) {
 	return nil, fmt.Errorf("Health not implemented in mock")
 }
+
+// Added to satisfy updated Application interface extension
+func (m *mockApplicationForNilSubjectTest) GetTenantGuard() TenantGuard { return nil }

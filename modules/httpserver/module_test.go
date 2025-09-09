@@ -119,6 +119,9 @@ func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// GetTenantGuard returns nil for tests (no tenant isolation needed in these unit tests)
+func (m *MockApplication) GetTenantGuard() modular.TenantGuard { return nil }
+
 // ServiceIntrospector returns nil (not needed in tests)
 func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
