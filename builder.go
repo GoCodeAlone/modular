@@ -57,9 +57,12 @@ func NewApplication(opts ...Option) (Application, error) {
 	return builder.Build()
 }
 
-// Build constructs the final application with all decorators applied
-func (b *ApplicationBuilder) Build(ctx ...context.Context) (Application, error) {
-	// Accept optional context parameter for compatibility with test expectations
+// Build constructs the final application with all decorators applied.
+// NOTE: The signature intentionally matches the stable API on main
+// (no context parameters) to avoid a breaking contract change. Context
+// should be supplied to individual operations/services rather than the
+// builder itself.
+func (b *ApplicationBuilder) Build() (Application, error) {
 	var app Application
 
 	// Start with base application or create default
