@@ -40,7 +40,7 @@ jobs:
           go test -race ./... -v
           go test -race -v -coverprofile=coverage.txt -covermode=atomic -json ./... >> report.json
       - name: Upload coverage reports to Codecov (unit)
-        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
+        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
@@ -91,7 +91,7 @@ jobs:
           go test ./... -v -coverprofile=cli-coverage.txt -covermode=atomic -json >> cli-report.json
 
       - name: Upload CLI coverage reports to Codecov
-        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
+        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
@@ -190,7 +190,7 @@ jobs:
       - name: Upload merged total coverage
         # Fail the job if Codecov can't find or upload the merged coverage
         if: always()
-        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0 pinned
+        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
