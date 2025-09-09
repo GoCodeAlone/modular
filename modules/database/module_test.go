@@ -186,7 +186,10 @@ func TestModule_Services(t *testing.T) {
 
 	// Test RequiredServices
 	required := module.RequiresServices()
-	assert.Empty(t, required)
+	assert.Len(t, required, 1)
+	assert.Equal(t, "logger", required[0].Name)
+	assert.True(t, required[0].Required)
+	assert.Equal(t, reflect.TypeOf((*modular.Logger)(nil)).Elem(), required[0].Type)
 
 	// Test ProvidedServices after initialization
 	app := NewMockApplication()
@@ -260,7 +263,7 @@ func TestDatabaseServiceFactory(t *testing.T) {
 				DSN:    tt.dsn,
 			}
 
-			service, err := NewDatabaseService(config)
+			service, err := NewDatabaseService(config, &MockLogger{})
 			if tt.shouldSucceed {
 				require.NoError(t, err)
 				assert.NotNil(t, service)
@@ -281,7 +284,7 @@ func TestDatabaseService_Operations(t *testing.T) {
 		MaxOpenConnections: 5, // Allow multiple connections for parallel subtests
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
@@ -385,7 +388,7 @@ func TestDatabaseService_ErrorHandling(t *testing.T) {
 			Driver: "sqlite",
 			DSN:    ":memory:",
 		}
-		service, err := NewDatabaseService(config)
+		service, err := NewDatabaseService(config, &MockLogger{})
 		require.NoError(t, err)
 
 		ctx := context.Background()
@@ -433,7 +436,7 @@ func TestDatabaseService_ErrorHandling(t *testing.T) {
 			DSN:    "test://localhost",
 		}
 
-		service, err := NewDatabaseService(config)
+		service, err := NewDatabaseService(config, &MockLogger{})
 		require.NoError(t, err) // Service creation should succeed
 		assert.NotNil(t, service)
 
@@ -549,7 +552,7 @@ func BenchmarkDatabaseService_Connect(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		service, err := NewDatabaseService(config)
+		service, err := NewDatabaseService(config, &MockLogger{})
 		if err != nil {
 			b.Skipf("Skipping benchmark - SQLite3 requires CGO: %v", err)
 			return
@@ -572,7 +575,7 @@ func BenchmarkDatabaseService_Query(b *testing.B) {
 		DSN:    ":memory:",
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	if err != nil {
 		b.Skipf("Skipping benchmark - SQLite3 requires CGO: %v", err)
 		return

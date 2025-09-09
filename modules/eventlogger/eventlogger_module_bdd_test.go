@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1865,23 +1866,35 @@ func (ctx *EventLoggerBDDTestContext) theEventsShouldBeProcessedInOrder() error 
 
 // Helper function to check if a log entry contains a specific event type
 func containsEventType(logEntry, eventType string) bool {
-	// Check if the event type appears in the log entry
-	return containsString(logEntry, eventType)
+	// Use Go's built-in string search for better reliability
+	return strings.Contains(logEntry, eventType)
+}
+
+// Helper function to extract event type from a formatted log line
+func extractEventTypeFromLog(logLine string) string {
+	// Log format: [timestamp] LEVEL TYPE
+	// Look for pattern after the second space
+	parts := strings.SplitN(logLine, " ", 3)
+	if len(parts) >= 3 {
+		// The third part should start with the event type
+		typePart := strings.TrimSpace(parts[2])
+		// Extract just the event type (before any newline)
+		if idx := strings.Index(typePart, "\n"); idx >= 0 {
+			return typePart[:idx]
+		}
+		return typePart
+	}
+	return ""
 }
 
 // Helper function to check if a string contains a substring
 func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && indexOfString(s, substr) >= 0
+	return strings.Contains(s, substr)
 }
 
 // Helper function to find index of substring
 func indexOfString(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
+	return strings.Index(s, substr)
 }
 
 // Queue overflow scenario implementations
@@ -1986,17 +1999,33 @@ func (ctx *EventLoggerBDDTestContext) newerEventsShouldBePreservedInTheQueue() e
 }
 
 func (ctx *EventLoggerBDDTestContext) onlyThePreservedEventsShouldBeProcessed() error {
-	// Wait for events to be processed
-	time.Sleep(300 * time.Millisecond)
+	// Wait longer for events to be processed with polling for queue clearance
+	maxWait := 2 * time.Second
+	checkInterval := 50 * time.Millisecond
+	deadline := time.Now().Add(maxWait)
+	
+	for time.Now().Before(deadline) {
+		ctx.service.mutex.Lock()
+		queueLen := len(ctx.service.eventQueue)
+		ctx.service.mutex.Unlock()
+		
+		if queueLen == 0 {
+			break
+		}
+		time.Sleep(checkInterval)
+	}
 
-	// Verify queue is cleared
+	// Final verification that queue is cleared
 	ctx.service.mutex.Lock()
 	queueLen := len(ctx.service.eventQueue)
 	ctx.service.mutex.Unlock()
 
 	if queueLen != 0 {
-		return fmt.Errorf("expected queue to be cleared after start, but has %d events", queueLen)
+		return fmt.Errorf("expected queue to be cleared after start, but has %d events after %v", queueLen, maxWait)
 	}
+
+	// Additional wait for logs to be written to test console
+	time.Sleep(200 * time.Millisecond)
 
 	// Get the captured logs from our test console output
 	if ctx.testConsole == nil {
@@ -2014,7 +2043,7 @@ func (ctx *EventLoggerBDDTestContext) onlyThePreservedEventsShouldBeProcessed() 
 	preservedEvents := []string{"queue.overflow.event3", "queue.overflow.event4", "queue.overflow.event5"}
 	droppedEvents := []string{"queue.overflow.event0", "queue.overflow.event1", "queue.overflow.event2"}
 
-	// Check that preserved events are present
+	// Check that preserved events are present with better string matching
 	foundPreserved := make([]bool, len(preservedEvents))
 	for i, expected := range preservedEvents {
 		for _, log := range logs {
@@ -2025,9 +2054,19 @@ func (ctx *EventLoggerBDDTestContext) onlyThePreservedEventsShouldBeProcessed() 
 		}
 	}
 
+	// Provide detailed debugging information if events are missing
 	for i, expected := range preservedEvents {
 		if !foundPreserved[i] {
-			return fmt.Errorf("expected preserved event %s not found in logs", expected)
+			// Create debug information about what we found vs expected
+			var foundEventTypes []string
+			for _, log := range logs {
+				// Extract event type from log line format: [timestamp] LEVEL TYPE
+				if strings.Contains(log, "queue.overflow.event") {
+					foundEventTypes = append(foundEventTypes, extractEventTypeFromLog(log))
+				}
+			}
+			return fmt.Errorf("expected preserved event %s not found in logs. Found queue overflow events: %v. Total logs: %d", 
+				expected, foundEventTypes, len(logs))
 		}
 	}
 
