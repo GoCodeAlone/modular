@@ -3150,8 +3150,6 @@ func (m *ReverseProxyModule) emitEvent(ctx context.Context, eventType string, da
 				return // Successfully emitted via app, no need to log error
 			}
 		}
-		// Note: No logger field available in module, skipping additional error logging
-		// to eliminate noisy test output. Error handling is centralized in EmitEvent.
 	}
 }
 

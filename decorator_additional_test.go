@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -81,8 +82,11 @@ func TestBaseApplicationDecoratorForwarding(t *testing.T) {
 	}
 
 	// Observer related forwards
-	received := 0
-	obs := NewFunctionalObserver("test-observer", func(ctx context.Context, event cloudevents.Event) error { received++; return nil })
+	var received int64
+	obs := NewFunctionalObserver("test-observer", func(ctx context.Context, event cloudevents.Event) error {
+		atomic.AddInt64(&received, 1)
+		return nil
+	})
 	if err := dec.RegisterObserver(obs); err != nil {
 		t.Fatalf("register observer: %v", err)
 	}
@@ -97,7 +101,7 @@ func TestBaseApplicationDecoratorForwarding(t *testing.T) {
 	if err := dec.NotifyObservers(WithSynchronousNotification(context.Background()), evt); err != nil {
 		t.Fatalf("notify: %v", err)
 	}
-	if received == 0 {
+	if atomic.LoadInt64(&received) == 0 {
 		t.Fatalf("observer not notified")
 	}
 	if err := dec.UnregisterObserver(obs); err != nil {

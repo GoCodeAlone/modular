@@ -49,10 +49,13 @@
 coverage*.txt
 *-coverage.txt
 
+race_output.txt
+
 # Backup files
 *.backup
 *.bak
 *~
+*.orig
 
 # Local AI assistant settings (kept locally only)
 .claude/settings.local.json

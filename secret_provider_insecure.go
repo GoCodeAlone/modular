@@ -166,29 +166,44 @@ func (p *InsecureSecretProvider) Retrieve(handle SecretHandle) (string, error) {
 		return "", ErrInvalidSecretHandle
 	}
 
+	// Acquire read lock and COPY the encrypted value and key while still protected.
+	// The previous implementation released the lock before decrypting and a
+	// concurrently scheduled auto-destroy goroutine could zero the underlying
+	// slices, triggering a data race (observed in TestSecretProviders with -race).
+	// By copying the slices under the read lock we ensure a stable view.
 	p.mu.RLock()
 	secret, exists := p.secrets[handle.ID()]
-	p.mu.RUnlock()
-
 	if !exists {
+		p.mu.RUnlock()
 		return "", ErrSecretNotFound
 	}
-
 	if secret.metadata.IsEmpty {
+		p.mu.RUnlock()
 		return "", nil
 	}
+	encCopy := make([]byte, len(secret.encryptedValue))
+	copy(encCopy, secret.encryptedValue)
+	keyCopy := make([]byte, len(secret.key))
+	copy(keyCopy, secret.key)
+	p.mu.RUnlock()
 
-	// Decrypt using XOR
-	decrypted := make([]byte, len(secret.encryptedValue))
-	for i, b := range secret.encryptedValue {
-		decrypted[i] = b ^ secret.key[i%len(secret.key)]
+	// Decrypt using XOR with the stable copies
+	decrypted := make([]byte, len(encCopy))
+	for i, b := range encCopy {
+		decrypted[i] = b ^ keyCopy[i%len(keyCopy)]
 	}
 
 	result := string(decrypted)
 
-	// Zero out decrypted bytes (though this doesn't guarantee security in Go)
+	// Zero out decrypted bytes (best-effort)
 	for i := range decrypted {
 		decrypted[i] = 0
+	}
+	for i := range encCopy { // also scrub local copies
+		encCopy[i] = 0
+	}
+	for i := range keyCopy {
+		keyCopy[i] = 0
 	}
 
 	return result, nil
@@ -259,17 +274,19 @@ func (p *InsecureSecretProvider) Clone(handle SecretHandle) (SecretHandle, error
 		return nil, ErrInvalidSecretHandle
 	}
 
+	// Copy metadata under lock to avoid race if secret destroyed concurrently
 	p.mu.RLock()
 	secret, exists := p.secrets[handle.ID()]
-	p.mu.RUnlock()
-
 	if !exists {
+		p.mu.RUnlock()
 		return nil, ErrSecretNotFound
 	}
+	meta := secret.metadata
+	p.mu.RUnlock()
 
 	// Clone by retrieving and storing again
-	if secret.metadata.IsEmpty {
-		return p.Store("", secret.metadata.Type)
+	if meta.IsEmpty {
+		return p.Store("", meta.Type)
 	}
 
 	value, err := p.Retrieve(handle)
@@ -277,7 +294,7 @@ func (p *InsecureSecretProvider) Clone(handle SecretHandle) (SecretHandle, error
 		return nil, err
 	}
 
-	newHandle, err := p.Store(value, secret.metadata.Type)
+	newHandle, err := p.Store(value, meta.Type)
 
 	// Zero out the retrieved value
 	zeroString(&value)

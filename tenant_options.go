@@ -321,9 +321,23 @@ func (g *stdTenantGuard) ValidateAccess(ctx context.Context, violation *TenantVi
 func (g *stdTenantGuard) GetRecentViolations() []*TenantViolation {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	// Return a shallow copy to avoid callers mutating internal slice
+	// Return a deep copy (slice + element structs) so tests can verify isolation
+	// without allowing external mutation of internal violation entries.
 	out := make([]*TenantViolation, len(g.violations))
-	copy(out, g.violations)
+	for i, v := range g.violations {
+		if v == nil { // preserve nil entries if any
+			continue
+		}
+		clone := *v           // copy struct fields
+		if v.Context != nil { // shallow copy context map to prevent mutation
+			ctxCopy := make(map[string]interface{}, len(v.Context))
+			for k, val := range v.Context {
+				ctxCopy[k] = val
+			}
+			clone.Context = ctxCopy
+		}
+		out[i] = &clone
+	}
 	return out
 }
 
