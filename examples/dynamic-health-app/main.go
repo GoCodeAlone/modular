@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,10 +21,40 @@ import (
 // testLogger implements modular.Logger for this example
 type testLogger struct{}
 
-func (l *testLogger) Debug(msg string, args ...any) { log.Printf("[DEBUG] "+msg, args...) }
-func (l *testLogger) Info(msg string, args ...any)  { log.Printf("[INFO] "+msg, args...) }
-func (l *testLogger) Warn(msg string, args ...any)  { log.Printf("[WARN] "+msg, args...) }
-func (l *testLogger) Error(msg string, args ...any) { log.Printf("[ERROR] "+msg, args...) }
+// logKV formats key-value pairs while redacting any sensitive header/content values.
+// Keys that are considered sensitive: authorization, cookie, set-cookie, x-api-key, api-key, password, secret, token.
+func (l *testLogger) logKV(prefix, msg string, args ...any) {
+	sanitized := make([]any, 0, len(args))
+	for i := 0; i < len(args); i += 2 {
+		// If uneven args, just append remaining raw.
+		if i+1 >= len(args) {
+			sanitized = append(sanitized, args[i])
+			break
+		}
+		k, v := args[i], args[i+1]
+		keyStr, ok := k.(string)
+		if !ok {
+			sanitized = append(sanitized, k, v)
+			continue
+		}
+		lower := strings.ToLower(keyStr)
+		if lower == "authorization" || lower == "cookie" || lower == "set-cookie" || lower == "x-api-key" || strings.Contains(lower, "password") || strings.Contains(lower, "secret") || strings.HasSuffix(lower, "token") || lower == "api-key" {
+			// Redact value preserving length for debugging.
+			if s, ok := v.(string); ok && s != "" {
+				v = fmt.Sprintf("[REDACTED len=%d]", len(s))
+			} else if v != nil {
+				v = "[REDACTED]"
+			}
+		}
+		sanitized = append(sanitized, keyStr, v)
+	}
+	log.Printf("%s%s %v", prefix, msg, sanitized)
+}
+
+func (l *testLogger) Debug(msg string, args ...any) { l.logKV("[DEBUG] ", msg, args...) }
+func (l *testLogger) Info(msg string, args ...any)  { l.logKV("[INFO] ", msg, args...) }
+func (l *testLogger) Warn(msg string, args ...any)  { l.logKV("[WARN] ", msg, args...) }
+func (l *testLogger) Error(msg string, args ...any) { l.logKV("[ERROR] ", msg, args...) }
 
 // AppConfig represents the application configuration with dynamic reload support
 type AppConfig struct {

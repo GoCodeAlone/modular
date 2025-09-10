@@ -12,6 +12,7 @@ on:
 # Minimal necessary permissions per security review comment
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   doc-drift:
