@@ -46,7 +46,7 @@
 .DS_Store
 *.log
 .vscode/settings.json
-coverage.txt
+coverage*.txt
 *-coverage.txt
 
 # Backup files
