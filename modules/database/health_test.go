@@ -31,7 +31,8 @@ func TestModule_HealthCheck_WithHealthyDatabase(t *testing.T) {
 	}
 
 	// Initialize the module to establish connections
-	err := module.initializeConnections()
+	app := NewMockApplication()
+	err := module.initializeConnections(app)
 	require.NoError(t, err)
 
 	// Act: Perform health check
@@ -124,7 +125,8 @@ func TestModule_HealthCheck_MultipleConnections(t *testing.T) {
 	}
 
 	// Initialize the module to establish connections
-	err := module.initializeConnections()
+	app := NewMockApplication()
+	err := module.initializeConnections(app)
 	require.NoError(t, err)
 
 	// Act: Perform health check
@@ -169,7 +171,8 @@ func TestModule_HealthCheck_WithContext(t *testing.T) {
 	}
 
 	// Initialize the module to establish connections
-	err := module.initializeConnections()
+	app := NewMockApplication()
+	err := module.initializeConnections(app)
 	require.NoError(t, err)
 
 	// Act: Create a cancelled context

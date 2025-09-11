@@ -30,7 +30,7 @@ func TestSpecialCharacterPasswordDSNParsing(t *testing.T) {
 		DSN:    issueExampleDSN,
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
@@ -57,7 +57,7 @@ func TestSpecialCharacterPasswordDSNParsingWithAWSIAM(t *testing.T) {
 	}
 
 	// Skip this test if AWS credentials are not available
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	if err != nil {
 		// If AWS config loading fails, skip this test
 		if err.Error() == "failed to create AWS IAM token provider: failed to load AWS config: no EC2 IMDS role found, operation error ec2imds: GetMetadata, canceled, context canceled" {
@@ -154,7 +154,7 @@ func TestExactFailingScenario(t *testing.T) {
 		DSN:    problematicDSN,
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err, "NewDatabaseService should not fail with special characters in DSN")
 	require.NotNil(t, service)
 
@@ -193,7 +193,7 @@ func TestDSNParsingWithoutAWSIAM(t *testing.T) {
 		// No AWSIAMAuth - this should still work
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err, "NewDatabaseService should not fail with special characters in DSN")
 	require.NotNil(t, service)
 
@@ -215,7 +215,7 @@ func TestNonAWSIAMSpecialCharsDSNConnection(t *testing.T) {
 		// No AWS IAM auth configured - this should trigger the bug
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err, "NewDatabaseService should not fail")
 	require.NotNil(t, service)
 
@@ -283,7 +283,7 @@ func TestServiceConnectWithoutPreprocessing(t *testing.T) {
 		// No AWS IAM auth - this is the scenario where the bug occurs
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err, "NewDatabaseService should succeed")
 
 	// Clean up

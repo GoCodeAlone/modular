@@ -14,6 +14,14 @@ import (
 	"github.com/GoCodeAlone/modular/feeders"
 )
 
+// MockLogger implements the Logger interface for testing
+type MockLogger struct{}
+
+func (m *MockLogger) Info(msg string, args ...any)  {}
+func (m *MockLogger) Error(msg string, args ...any) {}
+func (m *MockLogger) Warn(msg string, args ...any)  {}
+func (m *MockLogger) Debug(msg string, args ...any) {}
+
 func TestAWSIAMAuthConfig(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -71,7 +79,8 @@ func TestAWSIAMAuthConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider, err := NewAWSIAMTokenProvider(tt.config)
+			mockLogger := &MockLogger{}
+			provider, err := NewAWSIAMTokenProvider(tt.config, mockLogger)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Nil(t, provider)
@@ -232,7 +241,7 @@ func TestDatabaseServiceWithAWSIAMAuth(t *testing.T) {
 
 	// Skip this test if AWS credentials are not available
 	// The test will create the service but not actually connect
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	if err != nil {
 		// If AWS config loading fails, skip this test
 		if strings.Contains(err.Error(), "failed to load AWS config") {
@@ -261,7 +270,7 @@ func TestDatabaseServiceWithoutAWSIAMAuth(t *testing.T) {
 		DSN:    "postgres://user:password@localhost:5432/mydb",
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
@@ -286,7 +295,8 @@ func TestAWSIAMTokenProvider_NoDeadlockOnClose(t *testing.T) {
 		TokenRefreshInterval: 300,
 	}
 
-	provider, err := NewAWSIAMTokenProvider(config)
+	mockLogger := &MockLogger{}
+	provider, err := NewAWSIAMTokenProvider(config, mockLogger)
 	if err != nil {
 		if strings.Contains(err.Error(), "failed to load AWS config") {
 			t.Skip("AWS credentials not available, skipping test")
@@ -318,7 +328,8 @@ func TestAWSIAMTokenProvider_StartStopRefresh(t *testing.T) {
 		TokenRefreshInterval: 1, // Short interval for testing
 	}
 
-	provider, err := NewAWSIAMTokenProvider(config)
+	mockLogger := &MockLogger{}
+	provider, err := NewAWSIAMTokenProvider(config, mockLogger)
 	if err != nil {
 		if strings.Contains(err.Error(), "failed to load AWS config") {
 			t.Skip("AWS credentials not available, skipping test")

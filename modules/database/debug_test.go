@@ -12,7 +12,7 @@ func TestDebugTableCreation(t *testing.T) {
 		DSN:    ":memory:",
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
