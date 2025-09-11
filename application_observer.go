@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -269,6 +270,16 @@ func (app *ObservableApplication) Stop() error {
 	app.emitEvent(ctx, stoppedEvt)
 
 	return nil
+}
+
+// RequestReload triggers a dynamic configuration reload for the specified sections
+func (app *ObservableApplication) RequestReload(sections ...string) error {
+	return errors.New("dynamic reload not available")
+}
+
+// RegisterHealthProvider registers a health check provider for a module
+func (app *ObservableApplication) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
+	return errors.New("health provider registration not available in ObservableApplication")
 }
 
 // getTypeName returns the type name of an interface{} value

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // MockLogger implements modular.Logger for testing.

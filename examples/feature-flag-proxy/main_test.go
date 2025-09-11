@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/modules/reverseproxy"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/reverseproxy"
 )
 
 // TestFeatureFlagEvaluatorIntegration tests the integration between modules

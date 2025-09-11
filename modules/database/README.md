@@ -1,9 +1,9 @@
 # Database Module for Modular
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/database.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/database)
-[![Modules CI](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/database.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/database)
+[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
 
-A [Modular](https://github.com/CrisisTextLine/modular) module that provides database connectivity and management.
+A [Modular](https://github.com/GoCodeAlone/modular) module that provides database connectivity and management.
 
 ## Overview
 
@@ -20,7 +20,7 @@ The Database module provides a service for connecting to and interacting with SQ
 ## Installation
 
 ```bash
-go get github.com/CrisisTextLine/modular/modules/database
+go get github.com/GoCodeAlone/modular/modules/database
 ```
 
 ## Usage
@@ -31,8 +31,8 @@ The database module uses the standard Go `database/sql` package, which requires 
 
 ```go
 import (
-    "github.com/CrisisTextLine/modular"
-    "github.com/CrisisTextLine/modular/modules/database"
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/database"
     
     // Import database drivers as needed
     _ "github.com/lib/pq"           // PostgreSQL driver
@@ -58,8 +58,8 @@ go get github.com/mattn/go-sqlite3
 
 ```go
 import (
-    "github.com/CrisisTextLine/modular"
-    "github.com/CrisisTextLine/modular/modules/database"
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/database"
     _ "github.com/lib/pq" // Import PostgreSQL driver
 )
 

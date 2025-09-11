@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // TestInstanceAwareComprehensiveRegressionSuite creates a comprehensive test suite

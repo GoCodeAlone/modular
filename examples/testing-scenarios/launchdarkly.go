@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/modules/reverseproxy"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/reverseproxy"
 )
 
 // LaunchDarklyConfig provides configuration for LaunchDarkly integration.

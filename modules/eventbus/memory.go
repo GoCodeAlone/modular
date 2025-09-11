@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	"github.com/google/uuid"
 )
 

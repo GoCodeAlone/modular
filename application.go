@@ -175,6 +175,15 @@ type Application interface {
 	// This enables interface-based service discovery for modules that need to
 	// aggregate services by capability rather than name.
 	GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry
+
+	// RequestReload triggers a dynamic configuration reload for the specified sections.
+	// If no sections are specified, reloads all dynamic sections.
+	// Returns an error if dynamic reload is not supported or if the reload fails.
+	RequestReload(sections ...string) error
+
+	// RegisterHealthProvider registers a health check provider for a module.
+	// The provider will be called during health check aggregation.
+	RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error
 }
 
 // TenantApplication extends Application with multi-tenant functionality.
@@ -1530,4 +1539,14 @@ func (app *StdApplication) GetServicesByInterface(interfaceType reflect.Type) []
 		return app.enhancedSvcRegistry.GetServicesByInterface(interfaceType)
 	}
 	return nil
+}
+
+// RequestReload triggers a dynamic configuration reload for the specified sections
+func (app *StdApplication) RequestReload(sections ...string) error {
+	return errors.New("dynamic reload not available")
+}
+
+// RegisterHealthProvider registers a health check provider for a module
+func (app *StdApplication) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
+	return errors.New("health provider registration not available in StdApplication")
 }

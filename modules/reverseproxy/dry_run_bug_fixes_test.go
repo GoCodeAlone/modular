@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestDryRunBugFixes tests the specific bugs that were fixed in the dry-run feature:

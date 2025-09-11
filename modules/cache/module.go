@@ -69,7 +69,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 

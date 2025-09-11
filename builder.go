@@ -20,6 +20,7 @@ type ApplicationBuilder struct {
 	tenantLoader     TenantLoader
 	enableObserver   bool
 	enableTenant     bool
+	tenantGuard      TenantGuard
 }
 
 // ObserverFunc is a functional observer that can be registered with the application

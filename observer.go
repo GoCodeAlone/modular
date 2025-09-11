@@ -86,6 +86,15 @@ const (
 	EventTypeConfigValidated = "com.modular.config.validated"
 	EventTypeConfigChanged   = "com.modular.config.changed"
 
+	// Configuration reload events
+	EventTypeConfigReloadStart   = "com.modular.config.reload.started"
+	EventTypeConfigReloadSuccess = "com.modular.config.reload.success"
+	EventTypeConfigReloadFailed  = "com.modular.config.reload.failed"
+	EventTypeConfigReloadNoop    = "com.modular.config.reload.noop"
+
+	// Health aggregate events
+	EventTypeHealthAggregateUpdated = "com.modular.health.aggregate.updated"
+
 	// Application lifecycle events
 	EventTypeApplicationStarted = "com.modular.application.started"
 	EventTypeApplicationStopped = "com.modular.application.stopped"

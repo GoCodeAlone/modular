@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )

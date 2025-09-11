@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cucumber/godog"
 	_ "modernc.org/sqlite" // Import pure-Go SQLite driver for BDD tests (works with CGO_DISABLED)

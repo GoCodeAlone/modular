@@ -78,7 +78,7 @@ modcli contract extract .
 modcli contract extract ./modules/auth
 
 # Extract from remote package
-modcli contract extract github.com/CrisisTextLine/modular
+modcli contract extract github.com/GoCodeAlone/modular
 
 # Save to file with verbose output
 modcli contract extract . -o contract.json -v

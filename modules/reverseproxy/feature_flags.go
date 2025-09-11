@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // FeatureFlagEvaluator defines the interface for evaluating feature flags.

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // DryRunConfig provides configuration for dry-run functionality.

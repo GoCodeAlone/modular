@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // TestInstanceAwareFeedingAfterYAML verifies instance-aware feeding after YAML load.

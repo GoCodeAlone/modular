@@ -102,6 +102,34 @@ var (
 	ErrCreatedNilProvider         = errors.New("created nil provider for tenant section")
 	ErrIncompatibleFieldTypes     = errors.New("incompatible types for field assignment")
 	ErrIncompatibleInterfaceValue = errors.New("incompatible interface value for field")
+
+	// Health check errors
+	ErrInvalidHealthTrigger = errors.New("invalid health check trigger")
+
+	// Reload orchestrator errors
+	ErrReloadModuleNameEmpty      = errors.New("reload module name cannot be empty")
+	ErrReloadModuleNil            = errors.New("reload module cannot be nil")
+	ErrReloadModuleAlreadyExists  = errors.New("reload module already exists")
+	ErrReloadModuleNotFound       = errors.New("reload module not found")
+	ErrReloadQueueFull            = errors.New("reload queue is full")
+	ErrReloadBackoffActive        = errors.New("reload backoff is active")
+	ErrReloadStopTimeout          = errors.New("reload stop timeout")
+
+	// Secret provider errors
+	ErrUnknownSecretProvider     = errors.New("unknown secret provider")
+	ErrSecretProviderNotSecure   = errors.New("secret provider is not secure")
+	ErrUnknownProvider           = errors.New("unknown provider")
+	ErrSecretLimitReached        = errors.New("secret limit reached")
+	ErrInvalidSecretHandle       = errors.New("invalid secret handle")
+	ErrSecretNotFound            = errors.New("secret not found")
+	ErrMemguardNotAvailable      = errors.New("memguard not available")
+	ErrMemguardProviderNotAvailable = errors.New("memguard provider not available")
+	ErrInvalidSecureBuffer       = errors.New("invalid secure buffer")
+
+	// Tenant guard errors
+	ErrInvalidTenantGuardMode          = errors.New("invalid tenant guard mode")
+	ErrInvalidTenantGuardConfiguration = errors.New("invalid tenant guard configuration")
+	ErrUnknownTenantGuardMode          = errors.New("unknown tenant guard mode")
 )
 
 // Error checking helper functions

@@ -5,8 +5,8 @@ go 1.25
 toolchain go1.25.0
 
 require (
-	github.com/CrisisTextLine/modular v1.11.1
-	github.com/CrisisTextLine/modular/modules/eventlogger v0.0.0-00010101000000-000000000000
+	github.com/GoCodeAlone/modular v1.11.1
+	github.com/GoCodeAlone/modular/modules/eventlogger v0.0.0-00010101000000-000000000000
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 )
 
@@ -22,6 +22,30 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/CrisisTextLine/modular => ../..
+replace github.com/GoCodeAlone/modular => ../..
 
-replace github.com/CrisisTextLine/modular/modules/eventlogger => ../../modules/eventlogger
+replace github.com/GoCodeAlone/modular/modules/eventlogger => ../../modules/eventlogger
+
+replace github.com/GoCodeAlone/modular/modules/auth => ../../modules/auth
+
+replace github.com/GoCodeAlone/modular/modules/cache => ../../modules/cache
+
+replace github.com/GoCodeAlone/modular/modules/chimux => ../../modules/chimux
+
+replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database
+
+replace github.com/GoCodeAlone/modular/modules/eventbus => ../../modules/eventbus
+
+replace github.com/GoCodeAlone/modular/modules/httpclient => ../../modules/httpclient
+
+replace github.com/GoCodeAlone/modular/modules/httpserver => ../../modules/httpserver
+
+replace github.com/GoCodeAlone/modular/modules/jsonschema => ../../modules/jsonschema
+
+replace github.com/GoCodeAlone/modular/modules/letsencrypt => ../../modules/letsencrypt
+
+replace github.com/GoCodeAlone/modular/modules/logmasker => ../../modules/logmasker
+
+replace github.com/GoCodeAlone/modular/modules/reverseproxy => ../../modules/reverseproxy
+
+replace github.com/GoCodeAlone/modular/modules/scheduler => ../../modules/scheduler

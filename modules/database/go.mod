@@ -1,15 +1,15 @@
-module github.com/CrisisTextLine/modular/modules/database
+module github.com/GoCodeAlone/modular/modules/database
 
 go 1.25
 
 require (
-	github.com/CrisisTextLine/modular v1.11.1
+	github.com/GoCodeAlone/modular v1.11.1
 	github.com/aws/aws-sdk-go-v2 v1.38.0
 	github.com/aws/aws-sdk-go-v2/config v1.31.0
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.5.11
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
-	github.com/stretchr/testify v1.11.0
+	github.com/stretchr/testify v1.11.1
 	modernc.org/sqlite v1.38.0
 )
 
@@ -44,7 +44,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
@@ -55,3 +54,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../..

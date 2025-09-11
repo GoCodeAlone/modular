@@ -1,11 +1,11 @@
-module github.com/CrisisTextLine/modular/modules/jsonschema
+module github.com/GoCodeAlone/modular/modules/jsonschema
 
 go 1.25
 
 toolchain go1.25.0
 
 require (
-	github.com/CrisisTextLine/modular v1.11.1
+	github.com/GoCodeAlone/modular v1.11.1
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
@@ -30,3 +30,5 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../..

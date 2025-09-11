@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	"github.com/go-chi/chi/v5" // Import chi for router type assertion
 )
 

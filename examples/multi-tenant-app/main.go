@@ -6,8 +6,8 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 func main() {
