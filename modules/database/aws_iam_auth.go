@@ -23,16 +23,30 @@ var (
 	ErrNoUserInfoInDSN       = errors.New("no user information in DSN to replace password")
 )
 
+// TokenRefreshCallback is called when a token is refreshed
+type TokenRefreshCallback func(newToken string, endpoint string)
+
+// IAMTokenProvider defines the interface for AWS IAM token providers
+type IAMTokenProvider interface {
+	GetToken(ctx context.Context, endpoint string) (string, error)
+	BuildDSNWithIAMToken(ctx context.Context, originalDSN string) (string, error)
+	StartTokenRefresh(ctx context.Context, endpoint string)
+	StopTokenRefresh()
+	// SetTokenRefreshCallback sets a callback to be notified when tokens are refreshed
+	SetTokenRefreshCallback(callback TokenRefreshCallback)
+}
+
 // AWSIAMTokenProvider manages AWS IAM authentication tokens for RDS
 type AWSIAMTokenProvider struct {
-	config         *AWSIAMAuthConfig
-	awsConfig      aws.Config
-	currentToken   string
-	tokenExpiry    time.Time
-	mutex          sync.RWMutex
-	stopChan       chan struct{}
-	refreshDone    chan struct{}
-	refreshStarted bool
+	config               *AWSIAMAuthConfig
+	awsConfig            aws.Config
+	currentToken         string
+	tokenExpiry          time.Time
+	mutex                sync.RWMutex
+	stopChan             chan struct{}
+	refreshDone          chan struct{}
+	refreshStarted       bool
+	tokenRefreshCallback TokenRefreshCallback
 }
 
 // NewAWSIAMTokenProvider creates a new AWS IAM token provider
@@ -104,6 +118,22 @@ func (p *AWSIAMTokenProvider) refreshToken(ctx context.Context, endpoint string)
 	// Tokens are valid for 15 minutes, we refresh earlier to avoid expiry
 	p.tokenExpiry = time.Now().Add(time.Duration(p.config.TokenRefreshInterval) * time.Second)
 
+	// Notify callback if set (this allows database service to recreate connections)
+	if p.tokenRefreshCallback != nil {
+		// Call callback in a separate goroutine to avoid blocking token refresh
+		// Add panic recovery to prevent callback panics from affecting token refresh
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Log the panic but don't fail the token refresh process
+					// The actual logging will be handled by the callback implementation if available
+					fmt.Printf("Database token refresh callback panic recovered: %v\n", r)
+				}
+			}()
+			p.tokenRefreshCallback(token, endpoint)
+		}()
+	}
+
 	return token, nil
 }
 
@@ -131,6 +161,13 @@ func (p *AWSIAMTokenProvider) StopTokenRefresh() {
 
 	close(p.stopChan)
 	<-p.refreshDone
+}
+
+// SetTokenRefreshCallback sets a callback to be notified when tokens are refreshed
+func (p *AWSIAMTokenProvider) SetTokenRefreshCallback(callback TokenRefreshCallback) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.tokenRefreshCallback = callback
 }
 
 // tokenRefreshLoop runs in the background to refresh tokens

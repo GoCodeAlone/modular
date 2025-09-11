@@ -14,6 +14,14 @@ import (
 	"github.com/GoCodeAlone/modular/feeders"
 )
 
+// MockLogger implements the Logger interface for testing
+type MockLogger struct{}
+
+func (m *MockLogger) Info(msg string, args ...any)  {}
+func (m *MockLogger) Error(msg string, args ...any) {}
+func (m *MockLogger) Warn(msg string, args ...any)  {}
+func (m *MockLogger) Debug(msg string, args ...any) {}
+
 func TestAWSIAMAuthConfig(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -232,7 +240,7 @@ func TestDatabaseServiceWithAWSIAMAuth(t *testing.T) {
 
 	// Skip this test if AWS credentials are not available
 	// The test will create the service but not actually connect
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	if err != nil {
 		// If AWS config loading fails, skip this test
 		if strings.Contains(err.Error(), "failed to load AWS config") {
@@ -261,7 +269,7 @@ func TestDatabaseServiceWithoutAWSIAMAuth(t *testing.T) {
 		DSN:    "postgres://user:password@localhost:5432/mydb",
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 

@@ -508,7 +508,7 @@ func (m *Module) Init(app modular.Application) error {
 	}()
 
 	// Initialize connections
-	if err := m.initializeConnections(); err != nil {
+	if err := m.initializeConnections(app); err != nil {
 		return fmt.Errorf("failed to initialize database connections: %w", err)
 	}
 
@@ -695,7 +695,7 @@ func (m *Module) GetService(name string) (DatabaseService, bool) {
 // initializeConnections initializes database connections based on the module's configuration.
 // This method processes each configured connection, creates database services,
 // and establishes initial connectivity to validate the configuration.
-func (m *Module) initializeConnections() error {
+func (m *Module) initializeConnections(app modular.Application) error {
 	// Initialize database connections
 	if len(m.config.Connections) > 0 {
 		for name, connConfig := range m.config.Connections {
@@ -707,7 +707,7 @@ func (m *Module) initializeConnections() error {
 			}
 
 			// Create the database service and connect
-			dbService, err := NewDatabaseService(*connConfig)
+			dbService, err := NewDatabaseService(*connConfig, app.Logger())
 			if err != nil {
 				return fmt.Errorf("failed to create database service for '%s': %w", name, err)
 			}
