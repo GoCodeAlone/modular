@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/database
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.4.2
+	github.com/GoCodeAlone/modular v1.4.3
 	github.com/aws/aws-sdk-go-v2 v1.38.0
 	github.com/aws/aws-sdk-go-v2/config v1.31.0
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.5.11
@@ -54,6 +54,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-// Use local modular version for development
-replace github.com/GoCodeAlone/modular => ../..

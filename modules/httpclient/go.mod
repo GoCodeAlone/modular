@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/httpclient
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.4.2
+	github.com/GoCodeAlone/modular v1.4.3
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/stretchr/testify v1.11.1

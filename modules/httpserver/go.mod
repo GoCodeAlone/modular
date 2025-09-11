@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/httpserver
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.4.2
+	github.com/GoCodeAlone/modular v1.4.3
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/stretchr/testify v1.11.1
@@ -30,6 +30,3 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// Use local modular version for development
-replace github.com/GoCodeAlone/modular => ../..
