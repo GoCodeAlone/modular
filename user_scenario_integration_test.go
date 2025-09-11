@@ -74,7 +74,7 @@ type TestUserInterface interface {
 // testNilServiceModule provides a service with nil Instance (reproduces the issue)
 type testNilServiceModule struct{}
 
-func (m *testNilServiceModule) Name() string { return "nil-service" }
+func (m *testNilServiceModule) Name() string               { return "nil-service" }
 func (m *testNilServiceModule) Init(app Application) error { return nil }
 func (m *testNilServiceModule) ProvidesServices() []ServiceProvider {
 	return []ServiceProvider{{
@@ -86,7 +86,7 @@ func (m *testNilServiceModule) ProvidesServices() []ServiceProvider {
 // testInterfaceConsumerModule consumes interface-based services (triggers the matching)
 type testInterfaceConsumerModule struct{}
 
-func (m *testInterfaceConsumerModule) Name() string { return "consumer" }
+func (m *testInterfaceConsumerModule) Name() string               { return "consumer" }
 func (m *testInterfaceConsumerModule) Init(app Application) error { return nil }
 func (m *testInterfaceConsumerModule) RequiresServices() []ServiceDependency {
 	return []ServiceDependency{{
