@@ -3143,11 +3143,9 @@ func (m *ReverseProxyModule) emitEvent(ctx context.Context, eventType string, da
 		// If module subject isn't available, try to emit directly through app if it's a Subject
 		if m.app != nil {
 			if subj, ok := any(m.app).(modular.Subject); ok {
-				if appErr := subj.NotifyObservers(ctx, event); appErr != nil {
-					// Note: No logger field available in module, skipping additional error logging
-					// to eliminate noisy test output. Error handling is centralized in EmitEvent.
-				}
-				return // Successfully emitted via app, no need to log error
+				// Best-effort notify; ignore error to keep silent behavior consistent with earlier design.
+				_ = subj.NotifyObservers(ctx, event)
+				return
 			}
 		}
 	}
