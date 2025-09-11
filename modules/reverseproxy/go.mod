@@ -5,7 +5,7 @@ go 1.25
 retract v1.0.0
 
 require (
-	github.com/GoCodeAlone/modular v1.4.2
+	github.com/GoCodeAlone/modular v1.4.3
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/go-chi/chi/v5 v5.2.2

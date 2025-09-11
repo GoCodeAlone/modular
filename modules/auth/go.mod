@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/auth
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.4.2
+	github.com/GoCodeAlone/modular v1.4.3
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/golang-jwt/jwt/v5 v5.2.3
