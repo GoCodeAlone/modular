@@ -273,3 +273,122 @@ var (
 	// ErrInvalidServiceScope indicates that an invalid service scope was provided
 	ErrInvalidServiceScope = errors.New("invalid service scope")
 )
+
+// ScopedServiceRegistry extends the basic service registry with scoping functionality
+type ScopedServiceRegistry struct {
+	services map[string]any
+	scopes   map[string]ServiceScopeConfig
+	counters map[string]int
+	instances map[string]map[string]any // scope -> service -> instance
+}
+
+// NewServiceRegistry creates a new scoped service registry
+func NewServiceRegistry() *ScopedServiceRegistry {
+	return &ScopedServiceRegistry{
+		services:  make(map[string]any),
+		scopes:    make(map[string]ServiceScopeConfig),
+		counters:  make(map[string]int),
+		instances: make(map[string]map[string]any),
+	}
+}
+
+// ServiceRegistryOption represents an option for configuring the service registry
+type ServiceRegistryOption func(*ScopedServiceRegistry) error
+
+// WithServiceScope sets the scope for a specific service
+func WithServiceScope(serviceName string, scope ServiceScope) ServiceRegistryOption {
+	return func(reg *ScopedServiceRegistry) error {
+		reg.scopes[serviceName] = ServiceScopeConfig{
+			Scope: scope,
+		}
+		return nil
+	}
+}
+
+// WithServiceScopeConfig sets the scope configuration for a specific service
+func WithServiceScopeConfig(serviceName string, config ServiceScopeConfig) ServiceRegistryOption {
+	return func(reg *ScopedServiceRegistry) error {
+		reg.scopes[serviceName] = config
+		return nil
+	}
+}
+
+// ApplyOption applies a service registry option
+func (r *ScopedServiceRegistry) ApplyOption(option ServiceRegistryOption) error {
+	return option(r)
+}
+
+// Register registers a service factory with the registry
+func (r *ScopedServiceRegistry) Register(name string, factory any) {
+	r.services[name] = factory
+}
+
+// Get retrieves a service instance, respecting scope rules
+func (r *ScopedServiceRegistry) Get(name string) (any, bool) {
+	factory, exists := r.services[name]
+	if !exists {
+		return nil, false
+	}
+
+	// Get scope configuration
+	scopeConfig, hasScope := r.scopes[name]
+	if !hasScope {
+		scopeConfig = ServiceScopeConfig{
+			Scope: GetDefaultServiceScope(),
+		}
+	}
+
+	// Handle different scopes
+	switch scopeConfig.Scope {
+	case ServiceScopeSingleton:
+		return r.getSingleton(name, factory)
+	case ServiceScopeTransient:
+		return r.getTransient(factory)
+	case ServiceScopeScoped:
+		return r.getScoped(name, factory, scopeConfig.ScopeKey)
+	default:
+		return r.getSingleton(name, factory)
+	}
+}
+
+// getSingleton returns a singleton instance
+func (r *ScopedServiceRegistry) getSingleton(name string, factory any) (any, bool) {
+	if instance, exists := r.instances["singleton"][name]; exists {
+		return instance, true
+	}
+
+	instance := r.createInstance(factory)
+	if r.instances["singleton"] == nil {
+		r.instances["singleton"] = make(map[string]any)
+	}
+	r.instances["singleton"][name] = instance
+	return instance, true
+}
+
+// getTransient returns a new instance each time
+func (r *ScopedServiceRegistry) getTransient(factory any) (any, bool) {
+	return r.createInstance(factory), true
+}
+
+// getScoped returns a scoped instance
+func (r *ScopedServiceRegistry) getScoped(name string, factory any, scopeKey string) (any, bool) {
+	if r.instances[scopeKey] == nil {
+		r.instances[scopeKey] = make(map[string]any)
+	}
+
+	if instance, exists := r.instances[scopeKey][name]; exists {
+		return instance, true
+	}
+
+	instance := r.createInstance(factory)
+	r.instances[scopeKey][name] = instance
+	return instance, true
+}
+
+// createInstance creates an instance from a factory function
+func (r *ScopedServiceRegistry) createInstance(factory any) any {
+	if factoryFunc, ok := factory.(func() any); ok {
+		return factoryFunc()
+	}
+	return factory
+}

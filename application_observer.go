@@ -282,6 +282,26 @@ func (app *ObservableApplication) RegisterHealthProvider(moduleName string, prov
 	return errors.New("health provider registration not available in ObservableApplication")
 }
 
+// GetModules returns all registered modules
+func (app *ObservableApplication) GetModules() []Module {
+	return app.StdApplication.GetModules()
+}
+
+// ServiceIntrospector returns a service introspector for debugging
+func (app *ObservableApplication) ServiceIntrospector() ServiceIntrospector {
+	return app.StdApplication.ServiceIntrospector()
+}
+
+// Health returns the health reporter for the application
+func (app *ObservableApplication) Health() HealthReporter {
+	return app.StdApplication.Health()
+}
+
+// GetTenantGuard returns the tenant guard if available
+func (app *ObservableApplication) GetTenantGuard() TenantGuard {
+	return app.StdApplication.GetTenantGuard()
+}
+
 // getTypeName returns the type name of an interface{} value
 func getTypeName(v interface{}) string {
 	if v == nil {

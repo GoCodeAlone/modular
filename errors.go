@@ -130,6 +130,9 @@ var (
 	ErrInvalidTenantGuardMode          = errors.New("invalid tenant guard mode")
 	ErrInvalidTenantGuardConfiguration = errors.New("invalid tenant guard configuration")
 	ErrUnknownTenantGuardMode          = errors.New("unknown tenant guard mode")
+
+	// Reload errors  
+	ErrReloadNotSupported = errors.New("reload not supported")
 )
 
 // Error checking helper functions

@@ -41,6 +41,16 @@ type AppRegistry interface {
 //	if err := app.Run(); err != nil {
 //	    log.Fatal(err)
 //	}
+
+// ServiceIntrospector provides debugging information about registered services
+type ServiceIntrospector interface {
+	// GetAllServices returns information about all registered services
+	GetAllServices() map[string]any
+	
+	// GetServiceInfo returns detailed information about a specific service
+	GetServiceInfo(name string) (any, bool)
+}
+
 type Application interface {
 	// ConfigProvider retrieves the application's main configuration provider.
 	// This provides access to application-level configuration that isn't
@@ -184,6 +194,18 @@ type Application interface {
 	// RegisterHealthProvider registers a health check provider for a module.
 	// The provider will be called during health check aggregation.
 	RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error
+
+	// GetModules returns all registered modules.
+	GetModules() []Module
+
+	// ServiceIntrospector returns a service introspector for debugging.
+	ServiceIntrospector() ServiceIntrospector
+
+	// Health returns the health reporter for the application.
+	Health() HealthReporter
+
+	// GetTenantGuard returns the tenant guard if available.
+	GetTenantGuard() TenantGuard
 }
 
 // TenantApplication extends Application with multi-tenant functionality.
@@ -1549,4 +1571,28 @@ func (app *StdApplication) RequestReload(sections ...string) error {
 // RegisterHealthProvider registers a health check provider for a module
 func (app *StdApplication) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
 	return errors.New("health provider registration not available in StdApplication")
+}
+
+// GetModules returns all registered modules
+func (app *StdApplication) GetModules() []Module {
+	modules := make([]Module, 0, len(app.moduleRegistry))
+	for _, module := range app.moduleRegistry {
+		modules = append(modules, module)
+	}
+	return modules
+}
+
+// ServiceIntrospector returns a service introspector for debugging
+func (app *StdApplication) ServiceIntrospector() ServiceIntrospector {
+	return nil // Not implemented in StdApplication
+}
+
+// Health returns the health reporter for the application
+func (app *StdApplication) Health() HealthReporter {
+	return nil // Not implemented in StdApplication
+}
+
+// GetTenantGuard returns the tenant guard if available
+func (app *StdApplication) GetTenantGuard() TenantGuard {
+	return nil // Not implemented in StdApplication
 }

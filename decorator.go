@@ -182,3 +182,23 @@ func (d *BaseApplicationDecorator) RequestReload(sections ...string) error {
 func (d *BaseApplicationDecorator) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
 	return d.inner.RegisterHealthProvider(moduleName, provider, optional)
 }
+
+// GetModules forwards to the inner application
+func (d *BaseApplicationDecorator) GetModules() []Module {
+	return d.inner.GetModules()
+}
+
+// ServiceIntrospector forwards to the inner application
+func (d *BaseApplicationDecorator) ServiceIntrospector() ServiceIntrospector {
+	return d.inner.ServiceIntrospector()
+}
+
+// Health forwards to the inner application
+func (d *BaseApplicationDecorator) Health() HealthReporter {
+	return d.inner.Health()
+}
+
+// GetTenantGuard forwards to the inner application
+func (d *BaseApplicationDecorator) GetTenantGuard() TenantGuard {
+	return d.inner.GetTenantGuard()
+}

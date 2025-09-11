@@ -202,3 +202,9 @@ func (m *mockApplicationForNilSubjectTest) GetServiceEntry(serviceName string) (
 func (m *mockApplicationForNilSubjectTest) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
 	return nil
 }
+func (m *mockApplicationForNilSubjectTest) RequestReload(sections ...string) error { return nil }
+func (m *mockApplicationForNilSubjectTest) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error { return nil }
+func (m *mockApplicationForNilSubjectTest) GetModules() []Module { return nil }
+func (m *mockApplicationForNilSubjectTest) ServiceIntrospector() ServiceIntrospector { return nil }
+func (m *mockApplicationForNilSubjectTest) Health() HealthReporter { return nil }
+func (m *mockApplicationForNilSubjectTest) GetTenantGuard() TenantGuard { return nil }
