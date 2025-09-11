@@ -79,7 +79,8 @@ func TestAWSIAMAuthConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider, err := NewAWSIAMTokenProvider(tt.config)
+			mockLogger := &MockLogger{}
+			provider, err := NewAWSIAMTokenProvider(tt.config, mockLogger)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Nil(t, provider)
@@ -294,7 +295,8 @@ func TestAWSIAMTokenProvider_NoDeadlockOnClose(t *testing.T) {
 		TokenRefreshInterval: 300,
 	}
 
-	provider, err := NewAWSIAMTokenProvider(config)
+	mockLogger := &MockLogger{}
+	provider, err := NewAWSIAMTokenProvider(config, mockLogger)
 	if err != nil {
 		if strings.Contains(err.Error(), "failed to load AWS config") {
 			t.Skip("AWS credentials not available, skipping test")
@@ -326,7 +328,8 @@ func TestAWSIAMTokenProvider_StartStopRefresh(t *testing.T) {
 		TokenRefreshInterval: 1, // Short interval for testing
 	}
 
-	provider, err := NewAWSIAMTokenProvider(config)
+	mockLogger := &MockLogger{}
+	provider, err := NewAWSIAMTokenProvider(config, mockLogger)
 	if err != nil {
 		if strings.Contains(err.Error(), "failed to load AWS config") {
 			t.Skip("AWS credentials not available, skipping test")

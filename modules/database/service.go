@@ -134,7 +134,7 @@ func NewDatabaseService(config ConnectionConfig, logger modular.Logger) (Databas
 
 	// Initialize AWS IAM token provider if enabled
 	if config.AWSIAMAuth != nil && config.AWSIAMAuth.Enabled {
-		tokenProvider, err := NewAWSIAMTokenProvider(config.AWSIAMAuth)
+		tokenProvider, err := NewAWSIAMTokenProvider(config.AWSIAMAuth, logger)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("failed to create AWS IAM token provider: %w", err)

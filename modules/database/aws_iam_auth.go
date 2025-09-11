@@ -10,6 +10,7 @@ import (
 
 	"errors"
 
+	"github.com/GoCodeAlone/modular"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
@@ -47,10 +48,11 @@ type AWSIAMTokenProvider struct {
 	refreshDone          chan struct{}
 	refreshStarted       bool
 	tokenRefreshCallback TokenRefreshCallback
+	logger               modular.Logger // Logger service for error reporting
 }
 
 // NewAWSIAMTokenProvider creates a new AWS IAM token provider
-func NewAWSIAMTokenProvider(authConfig *AWSIAMAuthConfig) (*AWSIAMTokenProvider, error) {
+func NewAWSIAMTokenProvider(authConfig *AWSIAMAuthConfig, logger modular.Logger) (*AWSIAMTokenProvider, error) {
 	if authConfig == nil || !authConfig.Enabled {
 		return nil, ErrIAMAuthNotEnabled
 	}
@@ -80,6 +82,7 @@ func NewAWSIAMTokenProvider(authConfig *AWSIAMAuthConfig) (*AWSIAMTokenProvider,
 		awsConfig:   awsConfig,
 		stopChan:    make(chan struct{}),
 		refreshDone: make(chan struct{}),
+		logger:      logger,
 	}
 
 	return provider, nil
@@ -126,8 +129,8 @@ func (p *AWSIAMTokenProvider) refreshToken(ctx context.Context, endpoint string)
 			defer func() {
 				if r := recover(); r != nil {
 					// Log the panic but don't fail the token refresh process
-					// The actual logging will be handled by the callback implementation if available
-					fmt.Printf("Database token refresh callback panic recovered: %v\n", r)
+					// Use the logger service for proper error reporting
+					p.logger.Error("Database token refresh callback panic recovered", "panic", r)
 				}
 			}()
 			p.tokenRefreshCallback(token, endpoint)
