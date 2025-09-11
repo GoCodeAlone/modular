@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // OutputTarget defines the interface for event log output targets.

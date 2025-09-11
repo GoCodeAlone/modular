@@ -158,7 +158,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) theServiceShouldBeRegisteredWithMo
 
 func (ctx *EnhancedServiceRegistryBDDContext) iShouldBeAbleToRetrieveTheServiceEntryWithModuleInformation() error {
 	for serviceName := range ctx.services {
-		entry, exists := ctx.app.ServiceIntrospector().GetServiceEntry(serviceName)
+		entry, exists := ctx.app.GetServiceEntry(serviceName)
 		if !exists {
 			return fmt.Errorf("service entry for %s not found", serviceName)
 		}
@@ -264,7 +264,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) iQueryForServicesByInterfaceType()
 
 	// Query for services implementing TestServiceInterface
 	interfaceType := reflect.TypeOf((*TestServiceInterface)(nil)).Elem()
-	ctx.retrievedServices = ctx.app.ServiceIntrospector().GetServicesByInterface(interfaceType)
+	ctx.retrievedServices = ctx.app.GetServicesByInterface(interfaceType)
 	return nil
 }
 
@@ -336,7 +336,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) iQueryForServicesProvidedBy(module
 		}
 	}
 
-	ctx.servicesByModule = ctx.app.ServiceIntrospector().GetServicesByModule(moduleName)
+	ctx.servicesByModule = ctx.app.GetServicesByModule(moduleName)
 	return nil
 }
 
@@ -358,7 +358,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) iShouldGetOnlyTheServicesRegistere
 func (ctx *EnhancedServiceRegistryBDDContext) theServiceNamesShouldReflectAnyConflictResolutionApplied() error {
 	// All service names should be retrievable
 	for _, serviceName := range ctx.servicesByModule {
-		entry, exists := ctx.app.ServiceIntrospector().GetServiceEntry(serviceName)
+		entry, exists := ctx.app.GetServiceEntry(serviceName)
 		if !exists {
 			return fmt.Errorf("service entry for %s not found", serviceName)
 		}
@@ -397,7 +397,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) iRetrieveTheServiceEntryByName() e
 		break // Use the first service
 	}
 
-	entry, exists := ctx.app.ServiceIntrospector().GetServiceEntry(serviceName)
+	entry, exists := ctx.app.GetServiceEntry(serviceName)
 	ctx.serviceEntry = entry
 	ctx.serviceEntryExists = exists
 	return nil
@@ -522,7 +522,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) eachServiceShouldGetAUniqueNameThr
 
 func (ctx *EnhancedServiceRegistryBDDContext) allServicesShouldBeDiscoverableByInterface() error {
 	interfaceType := reflect.TypeOf((*TestServiceInterface)(nil)).Elem()
-	services := ctx.app.ServiceIntrospector().GetServicesByInterface(interfaceType)
+	services := ctx.app.GetServicesByInterface(interfaceType)
 
 	if len(services) != 3 {
 		return fmt.Errorf("expected 3 services discoverable by interface, got %d", len(services))
@@ -578,7 +578,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) theEnhancedRegistryShouldResolveAl
 }
 
 func (ctx *EnhancedServiceRegistryBDDContext) eachServiceShouldMaintainItsModuleAssociation() error {
-	services := ctx.app.ServiceIntrospector().GetServicesByModule("ConflictingModule")
+	services := ctx.app.GetServicesByModule("ConflictingModule")
 
 	if len(services) != 3 {
 		return fmt.Errorf("expected 3 services for ConflictingModule, got %d", len(services))
@@ -586,7 +586,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) eachServiceShouldMaintainItsModule
 
 	// Check that all services have proper module association
 	for _, serviceName := range services {
-		entry, exists := ctx.app.ServiceIntrospector().GetServiceEntry(serviceName)
+		entry, exists := ctx.app.GetServiceEntry(serviceName)
 		if !exists {
 			return fmt.Errorf("service entry for %s not found", serviceName)
 		}

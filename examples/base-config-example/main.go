@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // AppConfig represents our application configuration

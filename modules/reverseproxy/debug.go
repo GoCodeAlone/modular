@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // DebugEndpointsConfig provides configuration for debug endpoints.

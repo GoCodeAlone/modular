@@ -1,12 +1,12 @@
-module github.com/GoCodeAlone/modular/examples/multi-engine-eventbus
+module multi-engine-eventbus
 
 go 1.25
 
 toolchain go1.25.0
 
 require (
-	github.com/GoCodeAlone/modular v1.4.3
-	github.com/GoCodeAlone/modular/modules/eventbus v0.0.0
+	github.com/CrisisTextLine/modular v1.11.1
+	github.com/CrisisTextLine/modular/modules/eventbus v0.0.0
 )
 
 require (
@@ -68,6 +68,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/GoCodeAlone/modular => ../../
+replace github.com/CrisisTextLine/modular => ../../
 
-replace github.com/GoCodeAlone/modular/modules/eventbus => ../../modules/eventbus
+replace github.com/CrisisTextLine/modular/modules/eventbus => ../../modules/eventbus

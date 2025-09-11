@@ -34,13 +34,13 @@ func NewMockOAuth2Server() *MockOAuth2Server {
 
 	// Create HTTP server with OAuth2 endpoints
 	mux := http.NewServeMux()
-
+	
 	// Authorization endpoint
 	mux.HandleFunc("/oauth2/auth", mock.handleAuthEndpoint)
-
+	
 	// Token exchange endpoint
 	mux.HandleFunc("/oauth2/token", mock.handleTokenEndpoint)
-
+	
 	// User info endpoint
 	mux.HandleFunc("/oauth2/userinfo", mock.handleUserInfoEndpoint)
 
@@ -88,7 +88,7 @@ func (m *MockOAuth2Server) handleAuthEndpoint(w http.ResponseWriter, r *http.Req
 	// This endpoint would normally show a login form and redirect back with a code
 	// For testing, we just return the parameters that would be used
 	query := r.URL.Query()
-
+	
 	response := map[string]interface{}{
 		"client_id":     query.Get("client_id"),
 		"redirect_uri":  query.Get("redirect_uri"),
@@ -97,7 +97,7 @@ func (m *MockOAuth2Server) handleAuthEndpoint(w http.ResponseWriter, r *http.Req
 		"response_type": query.Get("response_type"),
 		"auth_url":      r.URL.String(),
 	}
-
+	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }

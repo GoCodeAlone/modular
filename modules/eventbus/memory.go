@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/google/uuid"
 )
 
@@ -214,20 +214,16 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 		return nil
 	}
 
-	// Optional rotation for fairness: when RotateSubscriberOrder is enabled and there is more
-	// than one subscriber we round‑robin the starting index (pubCounter % len) to reduce
-	// perpetual head‑of‑line bias if an early subscriber is slow. We allocate a rotated slice
-	// only when the computed start offset is non‑zero. This keeps the common zero‑offset path
-	// allocation‑free while keeping the code straightforward. Further micro‑optimization (e.g.
-	// in‑place three‑segment reverse) is intentionally deferred until profiling shows material
-	// impact. Feature is opt‑in; disabled means zero added cost.
-	// Cancellation flag atomic vs lock rationale: we keep the tiny RWMutex protected flag via
-	// isCancelled() so all subscription life‑cycle fields remain consistently guarded; handler
-	// execution dominates latency so an atomic provides no demonstrated benefit yet.
+	// Optional rotation for fairness. We deliberately removed the previous random shuffle fallback
+	// (when rotation disabled) to preserve deterministic ordering and avoid per-publish RNG cost.
 	if m.config.RotateSubscriberOrder && len(allMatchingSubs) > 1 {
 		pc := atomic.AddUint64(&m.pubCounter, 1) - 1
-		ln := len(allMatchingSubs) // >=2 here due to enclosing condition
-		// safe widening conversion: int->uint64
+		ln := len(allMatchingSubs)
+		if ln <= 0 {
+			return nil
+		}
+		// Compute rotation starting offset. We keep start as uint64 and avoid any uint64->int cast
+		// (gosec G115) by performing a manual copy instead of slicing with an int index.
 		start64 := pc % uint64(ln)
 		if start64 != 0 { // avoid allocation when rotation index is zero
 			rotated := make([]*memorySubscription, 0, ln)
@@ -247,50 +243,6 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	blockTimeout := m.config.PublishBlockTimeout
 
 	for _, sub := range allMatchingSubs {
-		// When fairness rotation is enabled we deterministically rotate the subscription
-		// ordering. However the original implementation still relied on independent
-		// per‑subscription goroutines pulling from their buffered channels which leaves
-		// the actual handler execution order up to the scheduler – making the fairness
-		// test flaky / consistently biased (often the last started goroutine wins).
-		//
-		// To make fairness observable and deterministic, we deliver synchronously
-		// inline for non‑async subscriptions when rotation is enabled. This preserves
-		// previous semantics (handlers for sync subscriptions were effectively
-		// processed synchronously from the caller perspective) while making the first
-		// handler per publish match the rotated ordering. Async subscriptions still
-		// follow the existing channel + worker pool path so they are unaffected.
-		if m.config.RotateSubscriberOrder && !sub.isAsync {
-			// Skip cancelled subscriptions early
-			sub.mutex.RLock()
-			cancelled := sub.cancelled
-			sub.mutex.RUnlock()
-			if cancelled {
-				continue
-			}
-			// Inline execution mirrors handleEvents sync branch logic.
-			// (We intentionally do not copy the whole event except timestamps; metadata
-			// already per publish.)
-			copyEvt := event
-			now := time.Now()
-			copyEvt.ProcessingStarted = &now
-			m.emitEvent(m.ctx, EventTypeMessageReceived, "memory-eventbus", map[string]interface{}{
-				"topic":           copyEvt.Topic,
-				"subscription_id": sub.id,
-			})
-			if err := sub.handler(m.ctx, copyEvt); err != nil {
-				m.emitEvent(m.ctx, EventTypeMessageFailed, "memory-eventbus", map[string]interface{}{
-					"topic":           copyEvt.Topic,
-					"subscription_id": sub.id,
-					"error":           err.Error(),
-				})
-				slog.Error("Event handler failed", "error", err, "topic", copyEvt.Topic)
-			}
-			completed := time.Now()
-			copyEvt.ProcessingCompleted = &completed
-			atomic.AddUint64(&m.deliveredCount, 1)
-			continue
-		}
-
 		sub.mutex.RLock()
 		if sub.cancelled {
 			sub.mutex.RUnlock()
@@ -485,10 +437,6 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 		if sub.isCancelled() {
 			return
 		}
-		// Decline rationale (atomic flag suggestion): we keep the small RLock‑protected isCancelled()
-		// helper instead of an atomic.Bool to preserve consistency with other guarded fields and
-		// avoid widening the struct with an additional atomic value. The lock is expected to be
-		// uncontended and the helper is on a non‑hot path relative to user handler execution time.
 		select {
 		case <-m.ctx.Done():
 			return

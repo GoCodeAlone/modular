@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // TestConnectionConfigEnvMapping tests environment variable mapping for database connections

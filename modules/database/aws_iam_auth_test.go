@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/feeders"
 )
 
 func TestAWSIAMAuthConfig(t *testing.T) {
@@ -232,7 +232,7 @@ func TestDatabaseServiceWithAWSIAMAuth(t *testing.T) {
 
 	// Skip this test if AWS credentials are not available
 	// The test will create the service but not actually connect
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	if err != nil {
 		// If AWS config loading fails, skip this test
 		if strings.Contains(err.Error(), "failed to load AWS config") {
@@ -261,7 +261,7 @@ func TestDatabaseServiceWithoutAWSIAMAuth(t *testing.T) {
 		DSN:    "postgres://user:password@localhost:5432/mydb",
 	}
 
-	service, err := NewDatabaseService(config)
+	service, err := NewDatabaseService(config, &MockLogger{})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
@@ -379,6 +379,10 @@ func (m *MockAWSIAMTokenProvider) StartTokenRefresh(ctx context.Context, endpoin
 }
 
 func (m *MockAWSIAMTokenProvider) StopTokenRefresh() {
+	// No-op for testing
+}
+
+func (m *MockAWSIAMTokenProvider) SetTokenRefreshCallback(callback TokenRefreshCallback) {
 	// No-op for testing
 }
 

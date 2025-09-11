@@ -1,10 +1,10 @@
-module github.com/GoCodeAlone/modular/examples/multi-tenant-app
+module multi-tenant-app
 
 go 1.25
 
-replace github.com/GoCodeAlone/modular => ../../
+replace github.com/CrisisTextLine/modular => ../../
 
-require github.com/GoCodeAlone/modular v1.6.0
+require github.com/CrisisTextLine/modular v1.6.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect

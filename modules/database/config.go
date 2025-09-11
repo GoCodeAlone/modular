@@ -67,4 +67,8 @@ type AWSIAMAuthConfig struct {
 	// TokenRefreshInterval specifies how often to refresh the IAM token (in seconds)
 	// Default is 10 minutes (600 seconds), tokens expire after 15 minutes
 	TokenRefreshInterval int `json:"token_refresh_interval" yaml:"token_refresh_interval" env:"AWS_IAM_AUTH_TOKEN_REFRESH" default:"600"`
+
+	// ConnectionTimeout specifies the timeout for database connection tests (in seconds)
+	// Default is 5 seconds
+	ConnectionTimeout time.Duration `json:"connection_timeout" yaml:"connection_timeout" env:"AWS_IAM_AUTH_CONNECTION_TIMEOUT" default:"5s"`
 }

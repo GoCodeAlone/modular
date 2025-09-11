@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // FileLogger handles logging HTTP request and response data to files.

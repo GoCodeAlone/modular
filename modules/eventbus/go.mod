@@ -1,12 +1,12 @@
-module github.com/GoCodeAlone/modular/modules/eventbus
+module github.com/CrisisTextLine/modular/modules/eventbus
 
 go 1.25
 
 toolchain go1.25.0
 
 require (
+	github.com/CrisisTextLine/modular v1.11.1
 	github.com/DataDog/datadog-go/v5 v5.4.0
-	github.com/GoCodeAlone/modular v1.4.3
 	github.com/IBM/sarama v1.45.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.0
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.38.0
@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/redis/go-redis/v9 v9.12.1
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.11.0
 )
 
 require (

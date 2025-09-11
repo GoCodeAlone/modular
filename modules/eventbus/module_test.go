@@ -2,11 +2,10 @@ package eventbus
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -109,26 +108,12 @@ func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.
 	return []*modular.ServiceRegistryEntry{}
 }
 
-// ServiceIntrospector returns nil for test mock
-func (a *mockApp) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+type mockLogger struct{}
 
-// Health returns nil with error for test mock
-func (a *mockApp) Health() (modular.HealthAggregator, error) {
-	return nil, fmt.Errorf("health aggregator not available in test mock")
-}
-
-// RequestReload returns error for test mock
-func (a *mockApp) RequestReload(sections ...string) error {
-	return fmt.Errorf("reload not supported in test mock")
-}
-
-// RegisterHealthProvider returns error for test mock
-func (a *mockApp) RegisterHealthProvider(moduleName string, provider modular.HealthProvider, optional bool) error {
-	return fmt.Errorf("health provider registration not supported in test mock")
-}
-
-// GetTenantGuard satisfies the modular.Application interface; eventbus tests are not tenant-aware.
-func (a *mockApp) GetTenantGuard() modular.TenantGuard { return nil }
+func (l *mockLogger) Debug(msg string, args ...interface{}) {}
+func (l *mockLogger) Info(msg string, args ...interface{})  {}
+func (l *mockLogger) Warn(msg string, args ...interface{})  {}
+func (l *mockLogger) Error(msg string, args ...interface{}) {}
 
 type mockConfigProvider struct{}
 

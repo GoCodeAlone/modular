@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // TestFileBasedFeatureFlagEvaluator_WithMockApp tests the feature flag evaluator with a mock application

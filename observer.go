@@ -86,15 +86,6 @@ const (
 	EventTypeConfigValidated = "com.modular.config.validated"
 	EventTypeConfigChanged   = "com.modular.config.changed"
 
-	// Dynamic reload events (FR-045 specification)
-	EventTypeConfigReloadStart   = "config.reload.start"
-	EventTypeConfigReloadSuccess = "config.reload.success"
-	EventTypeConfigReloadFailed  = "config.reload.failed"
-	EventTypeConfigReloadNoop    = "config.reload.noop"
-
-	// Health aggregation events (FR-048 specification)
-	EventTypeHealthAggregateUpdated = "health.aggregate.updated"
-
 	// Application lifecycle events
 	EventTypeApplicationStarted = "com.modular.application.started"
 	EventTypeApplicationStopped = "com.modular.application.stopped"

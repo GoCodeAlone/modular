@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"reflect"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
@@ -108,9 +109,17 @@ func (d *BaseApplicationDecorator) IsVerboseConfig() bool {
 	return d.inner.IsVerboseConfig()
 }
 
-// ServiceIntrospector forwards to the inner application's ServiceIntrospector implementation.
-func (d *BaseApplicationDecorator) ServiceIntrospector() ServiceIntrospector {
-	return d.inner.ServiceIntrospector()
+// Enhanced service registry methods
+func (d *BaseApplicationDecorator) GetServicesByModule(moduleName string) []string {
+	return d.inner.GetServicesByModule(moduleName)
+}
+
+func (d *BaseApplicationDecorator) GetServiceEntry(serviceName string) (*ServiceRegistryEntry, bool) {
+	return d.inner.GetServiceEntry(serviceName)
+}
+
+func (d *BaseApplicationDecorator) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	return d.inner.GetServicesByInterface(interfaceType)
 }
 
 // TenantAware methods - if inner supports TenantApplication interface
@@ -160,30 +169,6 @@ func (d *BaseApplicationDecorator) NotifyObservers(ctx context.Context, event cl
 func (d *BaseApplicationDecorator) GetObservers() []ObserverInfo {
 	if observableApp, ok := d.inner.(Subject); ok {
 		return observableApp.GetObservers()
-	}
-	return nil
-}
-
-// RequestReload forwards to the inner application's RequestReload method
-func (d *BaseApplicationDecorator) RequestReload(sections ...string) error {
-	return d.inner.RequestReload(sections...) //nolint:wrapcheck // Forwarding call
-}
-
-// RegisterHealthProvider forwards to the inner application's RegisterHealthProvider method
-func (d *BaseApplicationDecorator) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
-	return d.inner.RegisterHealthProvider(moduleName, provider, optional) //nolint:wrapcheck // Forwarding call
-}
-
-// Health forwards to the inner application's Health method
-func (d *BaseApplicationDecorator) Health() (HealthAggregator, error) {
-	return d.inner.Health() //nolint:wrapcheck // Forwarding call
-}
-
-// GetTenantGuard forwards to the inner application's GetTenantGuard method if implemented
-func (d *BaseApplicationDecorator) GetTenantGuard() TenantGuard {
-	// Inner must implement the extended Application interface; use type assertion defensively
-	if app, ok := d.inner.(interface{ GetTenantGuard() TenantGuard }); ok {
-		return app.GetTenantGuard()
 	}
 	return nil
 }

@@ -65,8 +65,3 @@ func (d *TenantAwareDecorator) WithTenant(tenantID TenantID) (*TenantContext, er
 func (d *TenantAwareDecorator) GetTenantConfig(tenantID TenantID, section string) (ConfigProvider, error) {
 	return d.BaseApplicationDecorator.GetTenantConfig(tenantID, section)
 }
-
-// GetTenantGuard forwards to inner application's GetTenantGuard implementation
-func (d *TenantAwareDecorator) GetTenantGuard() TenantGuard {
-	return d.BaseApplicationDecorator.GetTenantGuard()
-}

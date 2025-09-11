@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular/modules/httpserver"
+	"github.com/CrisisTextLine/modular/modules/httpserver"
 	"github.com/go-acme/lego/v4/certificate"
 )
 

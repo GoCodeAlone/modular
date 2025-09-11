@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -91,9 +91,6 @@ func (a *mockApp) Run() error {
 	return nil
 }
 
-// GetTenantGuard returns nil for tests (tenant guard not used in cache module tests)
-func (a *mockApp) GetTenantGuard() modular.TenantGuard { return nil }
-
 func (a *mockApp) IsVerboseConfig() bool {
 	return false
 }
@@ -116,24 +113,6 @@ func (a *mockApp) GetServiceEntry(serviceName string) (*modular.ServiceRegistryE
 // GetServicesByInterface mock implementation returns empty slice
 func (a *mockApp) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return []*modular.ServiceRegistryEntry{}
-}
-
-// ServiceIntrospector returns nil for tests
-func (a *mockApp) ServiceIntrospector() modular.ServiceIntrospector { return nil }
-
-// Health returns nil with error for test mock
-func (a *mockApp) Health() (modular.HealthAggregator, error) {
-	return nil, fmt.Errorf("health aggregator not available in test mock")
-}
-
-// RequestReload returns error for test mock
-func (a *mockApp) RequestReload(sections ...string) error {
-	return fmt.Errorf("reload not supported in test mock")
-}
-
-// RegisterHealthProvider returns error for test mock
-func (a *mockApp) RegisterHealthProvider(moduleName string, provider modular.HealthProvider, optional bool) error {
-	return fmt.Errorf("health provider registration not supported in test mock")
 }
 
 type mockConfigProvider struct{}

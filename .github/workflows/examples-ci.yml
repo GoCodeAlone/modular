@@ -357,24 +357,26 @@ jobs:
           
           echo "🔍 Verifying go.mod configuration for ${{ matrix.example }}..."
           
-          # Allow either a short module name (directory) or fully-qualified path under the repo
-          MODULE_NAME=$(grep "^module " go.mod | awk '{print $2}')
-          SHORT_NAME="${{ matrix.example }}"
-          FQ_EXPECTED="github.com/GoCodeAlone/modular/examples/${{ matrix.example }}"
-
-          if [ "$MODULE_NAME" != "$SHORT_NAME" ] && [ "$MODULE_NAME" != "$FQ_EXPECTED" ]; then
-            echo "❌ Module name unexpected in ${{ matrix.example }}"
-            echo "Found: $MODULE_NAME"
-            echo "Expected one of: $SHORT_NAME OR $FQ_EXPECTED"
+          # Check that replace directives point to correct paths
+          if ! grep -q "replace.*=> ../../" go.mod; then
+            echo "❌ Missing or incorrect replace directive in ${{ matrix.example }}/go.mod"
+            echo "Expected: replace github.com/CrisisTextLine/modular => ../../"
+            cat go.mod
             exit 1
           fi
-
-          # The replace directive is optional when using go.work; warn if absent but don't fail.
-          if ! grep -q "replace .*github.com/GoCodeAlone/modular => ../../" go.mod; then
-            echo "⚠️  Warning: replace directive to root module not found (acceptable when using go.work)."
+          
+          # Verify module name matches directory
+          MODULE_NAME=$(grep "^module " go.mod | awk '{print $2}')
+          EXPECTED_NAME="${{ matrix.example }}"
+          
+          if [ "$MODULE_NAME" != "$EXPECTED_NAME" ]; then
+            echo "❌ Module name mismatch in ${{ matrix.example }}"
+            echo "Expected: $EXPECTED_NAME"
+            echo "Found: $MODULE_NAME"
+            exit 1
           fi
-
-          echo "✅ go.mod configuration verified for ${{ matrix.example }} (module: $MODULE_NAME)"
+          
+          echo "✅ go.mod configuration verified for ${{ matrix.example }}"
 
   examples-overview:
     name: Examples Overview

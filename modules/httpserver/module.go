@@ -43,7 +43,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -670,6 +670,7 @@ func (m *HTTPServerModule) wrapHandlerWithRequestEvents(handler http.Handler) ht
 			if m.logger != nil {
 				m.logger.Debug("Failed to emit request received event", "error", emitErr)
 			}
+		} else {
 		}
 
 		// Wrap response writer to capture status code
@@ -699,6 +700,7 @@ func (m *HTTPServerModule) wrapHandlerWithRequestEvents(handler http.Handler) ht
 			if m.logger != nil {
 				m.logger.Debug("Failed to emit request handled event", "error", emitErr)
 			}
+		} else {
 		}
 	})
 }

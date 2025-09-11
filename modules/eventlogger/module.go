@@ -119,7 +119,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -603,24 +603,15 @@ func (m *EventLoggerModule) OnEvent(ctx context.Context, event cloudevents.Event
 				queueResult = nil
 				return
 			} else {
-				// Queue is full - drop oldest event and add new one. We log both the incoming event type
-				// and the dropped oldest event type for observability. This path intentionally avoids
-				// emitting an operational CloudEvent because the logger itself is not yet started; emitting
-				// here would risk recursive generation of events that also attempt to enqueue. Once started,
-				// pressure signals are emitted via BufferFull/EventDropped events on the hot path with
-				// safeguards to prevent amplification loops (see further below in non-started path logic).
-				var droppedEventType string
+				// Queue is full - drop oldest event and add new one
 				if len(m.eventQueue) > 0 {
-					// Capture dropped event type for debugging visibility then shift slice
-					droppedEventType = m.eventQueue[0].Type()
+					// Shift slice to remove first element (oldest)
 					copy(m.eventQueue, m.eventQueue[1:])
 					m.eventQueue[len(m.eventQueue)-1] = event
 				}
 				if m.logger != nil {
 					m.logger.Debug("Event queue full, dropped oldest event",
-						"queue_size", m.queueMaxSize,
-						"new_event", event.Type(),
-						"dropped_event", droppedEventType)
+						"queue_size", m.queueMaxSize, "new_event", event.Type())
 				}
 				queueResult = nil
 				return

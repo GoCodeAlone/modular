@@ -1,8 +1,8 @@
-module github.com/GoCodeAlone/modular/modules/logmasker
+module github.com/CrisisTextLine/modular/modules/logmasker
 
 go 1.25
 
-require github.com/GoCodeAlone/modular v1.4.3
+require github.com/CrisisTextLine/modular v1.11.1
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect

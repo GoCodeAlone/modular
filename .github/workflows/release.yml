@@ -1,12 +1,6 @@
 name: Release
 run-name: Release ${{ github.event.inputs.version || github.event.inputs.releaseType }}
 
-# Explicit minimal permissions per security guidance (code scanning recommendation).
-# Provide ONLY the permission strictly required at the workflow scope. Jobs that need
-# additional scopes (e.g., creating PRs) declare their own permissions blocks.
-permissions:
-  contents: write        # needed to create tags/releases and read repo contents
-
 on:
   workflow_dispatch:
     inputs:
@@ -50,10 +44,6 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Harden job: restrict token further if steps don't need broader scopes
-    # Job requires only contents:write for tagging & release artifact upload.
-    permissions:
-      contents: write
     outputs:
       released_version: ${{ steps.version.outputs.next_version }}
       core_changed: ${{ steps.detect.outputs.core_changed }}
@@ -301,20 +291,14 @@ jobs:
         if: steps.detect.outputs.core_changed == 'true'
         run: |
           VERSION=${{ steps.version.outputs.next_version }}
-          MODULE_NAME="github.com/GoCodeAlone/modular"
+          MODULE_NAME="github.com/CrisisTextLine/modular"
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
           echo "Announced version ${VERSION} to Go proxy"
 
   bump-modules:
     needs: release
     if: needs.release.result == 'success' && needs.release.outputs.core_changed == 'true' && inputs.skipModuleBump != true
-    # Reusable workflow call to bump module dependency versions after core release
     uses: ./.github/workflows/auto-bump-modules.yml
-    permissions:
-      contents: write        # push bump branch & tag refs
-      pull-requests: write   # open/update PR
-      actions: read          # required by called workflow (declared in auto-bump-modules.yml)
-      checks: write          # allow updating / creating status checks if that workflow does so
     with:
       coreVersion: ${{ needs.release.outputs.released_version }}
     secrets:

@@ -21,22 +21,7 @@ package eventbus
 //   go exporter.Run(ctx)
 //   ... later cancel();
 //
-// NOTE: Optional deps. To exclude an exporter, prefer build tags over editing this file.
-// Planned (future) file layout if / when we split:
-//   prometheus_exporter.go        //go:build prometheus
-//   prometheus_exporter_stub.go   //go:build !prometheus (no-op types / constructors)
-//   datadog_exporter.go           //go:build datadog
-//   datadog_exporter_stub.go      //go:build !datadog
-// Rationale: keeps the default experience zero-config (single file, no tags needed) while
-// allowing downstream builds to opt-out to avoid pulling transitive deps (prometheus, datadog-go)
-// or to trim binary size. We delay the physical split until there is concrete pressure (size,
-// dependency policy, or benchmarking evidence) to avoid premature fragmentation.
-//
-// Using the split: add -tags "!prometheus" (or "!datadog") to disable; add the positive tag
-// to enable if we decide future default is disabled. For now BOTH exporters are always compiled
-// because this unified source improves discoverability and keeps the API surface obvious.
-// This comment documents the strategic direction so readers do not misinterpret the unified
-// file as a lack of modularity options.
+// NOTE: Prometheus and Datadog dependencies are optional; if removed, comment out related code.
 
 import (
 	"context"

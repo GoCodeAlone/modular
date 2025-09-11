@@ -25,7 +25,7 @@ func createTestProject(t testing.TB) string {
 	moduleContent := `package testmodule
 
 import (
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"reflect"
 )
 

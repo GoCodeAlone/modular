@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cucumber/godog"
 	_ "modernc.org/sqlite" // Import pure-Go SQLite driver for BDD tests (works with CGO_DISABLED)
@@ -140,7 +140,7 @@ func (ctx *DatabaseBDDTestContext) iHaveAModularApplicationWithDatabaseModuleCon
 	// HACK: Manually set the config and reinitialize connections
 	// This is needed because the instance-aware provider doesn't get our config
 	ctx.module.config = dbConfig
-	if err := ctx.module.initializeConnections(); err != nil {
+	if err := ctx.module.initializeConnections(ctx.app); err != nil {
 		return fmt.Errorf("failed to initialize connections manually: %v", err)
 	}
 
@@ -475,7 +475,7 @@ func (ctx *DatabaseBDDTestContext) iHaveADatabaseServiceWithEventObservationEnab
 	// HACK: Manually set the config and reinitialize connections
 	// This is needed because the instance-aware provider doesn't get our config
 	ctx.module.config = dbConfig
-	if err := ctx.module.initializeConnections(); err != nil {
+	if err := ctx.module.initializeConnections(ctx.app); err != nil {
 		return fmt.Errorf("failed to initialize connections manually: %v", err)
 	}
 
@@ -716,7 +716,7 @@ func (ctx *DatabaseBDDTestContext) aDatabaseConnectionFailsWithInvalidCredential
 	}
 
 	// Create a service that will fail to connect
-	badService, err := NewDatabaseService(badConfig)
+	badService, err := NewDatabaseService(badConfig, &testLogger{})
 	if err != nil {
 		// Driver error - this is before connection, which is what we want
 		ctx.connectionError = err

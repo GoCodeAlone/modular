@@ -67,7 +67,7 @@ jobs:
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           files: core-bdd-coverage.txt
           flags: core-bdd
       - name: Persist core BDD coverage artifact
@@ -127,7 +127,7 @@ jobs:
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           files: modules/${{ matrix.module }}/bdd-${{ matrix.module }}-coverage.txt
           flags: bdd-${{ matrix.module }}
       - name: Persist module BDD coverage artifact
@@ -203,7 +203,7 @@ jobs:
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           files: merged-bdd-coverage.txt
           flags: merged-bdd
       - name: Persist merged BDD coverage artifact

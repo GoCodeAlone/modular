@@ -4,9 +4,6 @@
 # Unignore all with extensions
 !*.*
 
-# Unignore Makefile
-!Makefile
-
 # Unignore all directories
 !*/
 
@@ -29,16 +26,12 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# coverage files
-*.cov
-
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
 # Go workspace file
-# Temporarily include go.work during sync merge (will be removed in release workflow)
-# go.work
-# go.work.sum
+go.work
+go.work.sum
 
 # env file
 .env
@@ -46,19 +39,10 @@
 .DS_Store
 *.log
 .vscode/settings.json
-coverage*.txt
+coverage.txt
 *-coverage.txt
-
-race_output.txt
 
 # Backup files
 *.backup
 *.bak
 *~
-*.orig
-
-# Local AI assistant settings (kept locally only)
-.claude/settings.local.json
-
-# Ignore accidentally added secondary worktree directory
-main-worktree/

@@ -1,9 +1,9 @@
 # JSON Schema Module for Modular
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/jsonschema.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/jsonschema)
-[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/jsonschema.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/jsonschema)
+[![Modules CI](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml)
 
-A [Modular](https://github.com/GoCodeAlone/modular) module that provides JSON Schema validation capabilities.
+A [Modular](https://github.com/CrisisTextLine/modular) module that provides JSON Schema validation capabilities.
 
 ## Overview
 
@@ -21,7 +21,7 @@ The JSON Schema module provides a service for validating JSON data against JSON 
 ## Installation
 
 ```bash
-go get github.com/GoCodeAlone/modular/modules/jsonschema@v1.0.0
+go get github.com/CrisisTextLine/modular/modules/jsonschema@v1.0.0
 ```
 
 ## Usage
@@ -30,8 +30,8 @@ go get github.com/GoCodeAlone/modular/modules/jsonschema@v1.0.0
 
 ```go
 import (
-    "github.com/GoCodeAlone/modular"
-    "github.com/GoCodeAlone/modular/modules/jsonschema"
+    "github.com/CrisisTextLine/modular"
+    "github.com/CrisisTextLine/modular/modules/jsonschema"
 )
 
 func main() {

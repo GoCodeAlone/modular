@@ -1,13 +1,13 @@
-module github.com/GoCodeAlone/modular/modules/chimux
+module github.com/CrisisTextLine/modular/modules/chimux
 
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.4.3
+	github.com/CrisisTextLine/modular v1.11.1
 	github.com/cloudevents/sdk-go/v2 v2.16.1
 	github.com/cucumber/godog v0.15.1
 	github.com/go-chi/chi/v5 v5.2.2
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.11.0
 )
 
 require (

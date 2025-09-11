@@ -1,8 +1,8 @@
-module github.com/GoCodeAlone/modular/examples/base-config-example
+module github.com/CrisisTextLine/modular/examples/base-config-example
 
 go 1.25
 
-require github.com/GoCodeAlone/modular v1.6.0
+require github.com/CrisisTextLine/modular v1.6.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
@@ -17,4 +17,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/GoCodeAlone/modular => ../../
+replace github.com/CrisisTextLine/modular => ../../

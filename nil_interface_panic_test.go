@@ -69,7 +69,7 @@ func TestGetServicesByInterfaceWithNilService(t *testing.T) {
 
 	// This should not panic
 	interfaceType := reflect.TypeOf((*NilTestInterface)(nil)).Elem()
-	results := app.ServiceIntrospector().GetServicesByInterface(interfaceType)
+	results := app.GetServicesByInterface(interfaceType)
 
 	// Should return empty results, not panic
 	if len(results) != 0 {

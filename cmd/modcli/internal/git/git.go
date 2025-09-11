@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GoCodeAlone/modular/cmd/modcli/internal/contract"
+	"github.com/CrisisTextLine/modular/cmd/modcli/internal/contract"
 )
 
 // GitHelper provides functionality to work with git repositories for contract extraction

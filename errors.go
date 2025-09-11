@@ -102,49 +102,6 @@ var (
 	ErrCreatedNilProvider         = errors.New("created nil provider for tenant section")
 	ErrIncompatibleFieldTypes     = errors.New("incompatible types for field assignment")
 	ErrIncompatibleInterfaceValue = errors.New("incompatible interface value for field")
-
-	// Dynamic reload errors
-	ErrReloadNotSupported = errors.New("dynamic reload not supported")
-
-	// Health system errors
-	ErrInvalidHealthTrigger = errors.New("invalid health trigger")
-
-	// Reload orchestrator errors
-	ErrReloadModuleNameEmpty     = errors.New("reload orchestrator: module name cannot be empty")
-	ErrReloadModuleNil           = errors.New("reload orchestrator: module cannot be nil")
-	ErrReloadModuleAlreadyExists = errors.New("reload orchestrator: module already registered")
-	ErrReloadModuleNotFound      = errors.New("reload orchestrator: no module registered")
-	ErrReloadQueueFull           = errors.New("reload orchestrator: request queue is full")
-	ErrReloadBackoffActive       = errors.New("reload orchestrator: backing off after recent failures")
-	ErrReloadStopTimeout         = errors.New("reload orchestrator: timeout waiting for stop")
-
-	// Secret provider errors
-	ErrUnknownSecretProvider        = errors.New("unknown secret provider")
-	ErrSecretProviderNotSecure      = errors.New("provider is not secure, but secure memory is required")
-	ErrUnknownProvider              = errors.New("unknown provider")
-	ErrSecretLimitReached           = errors.New("maximum number of secrets reached")
-	ErrInvalidSecretHandle          = errors.New("invalid secret handle")
-	ErrSecretStoreNotInitialized    = errors.New("secret store not initialized")
-	ErrSecretNotFound               = errors.New("secret not found")
-	ErrInvalidSecretKeyLength       = errors.New("invalid secret key length")
-	ErrSecretTypeMismatch           = errors.New("secret type mismatch")
-	ErrCannotClearSecretValue       = errors.New("cannot clear secret value")
-	ErrSecretHandleInvalid          = errors.New("secret handle is invalid")
-	ErrSecretValueOverflow          = errors.New("secret value overflow")
-	ErrSecretProviderUnavailable    = errors.New("secret provider unavailable")
-	ErrSecretConfigInvalid          = errors.New("secret configuration invalid")
-	ErrMemguardNotAvailable         = errors.New("memguard library is not available - ensure 'github.com/awnumar/memguard' is imported and CGO is enabled")
-	ErrMemguardProviderNotAvailable = errors.New("memguard provider not available")
-	ErrInvalidSecureBuffer          = errors.New("invalid secure buffer")
-
-	// Tenant isolation errors
-	ErrTenantNotIsolated               = errors.New("tenant is not properly isolated")
-	ErrInvalidTenantGuardMode          = errors.New("invalid tenant guard mode")
-	ErrInvalidTenantGuardConfiguration = errors.New("invalid tenant guard configuration")
-	ErrUnknownTenantGuardMode          = errors.New("unknown tenant guard mode")
-
-	// HTTP/Server errors
-	ErrServerClosed = errors.New("server closed")
 )
 
 // Error checking helper functions

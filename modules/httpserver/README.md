@@ -1,6 +1,6 @@
 # HTTP Server Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/httpserver.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/httpserver)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/httpserver.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/httpserver)
 
 This module provides HTTP/HTTPS server capabilities for the modular framework. It handles listening on a specified port, TLS configuration, and server timeouts.
 
@@ -44,10 +44,10 @@ This module works with other modules in the application:
 package main
 
 import (
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/chimux"
-	"github.com/GoCodeAlone/modular/modules/httpserver"
-	"github.com/GoCodeAlone/modular/modules/reverseproxy"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/modules/chimux"
+	"github.com/CrisisTextLine/modular/modules/httpserver"
+	"github.com/CrisisTextLine/modular/modules/reverseproxy"
 )
 
 func main() {

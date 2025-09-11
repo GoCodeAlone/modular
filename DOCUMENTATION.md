@@ -4,11 +4,9 @@
 
 - [Modular Framework Detailed Documentation](#modular-framework-detailed-documentation)
   - [Table of Contents](#table-of-contents)
-  - [Baseline Framework Tasks](#baseline-framework-tasks)
   - [Introduction](#introduction)
-  - [Governance \& Best Practices](#governance--best-practices)
   - [Application Builder API](#application-builder-api)
-  - [Concurrency \& Race Guidelines](#concurrency--race-guidelines)
+    - [Concurrency & Race Guidelines](#concurrency--race-guidelines)
     - [Builder Pattern](#builder-pattern)
       - [Basic Usage](#basic-usage)
     - [Functional Options](#functional-options)
@@ -71,7 +69,6 @@
     - [Tenant-Aware Modules](#tenant-aware-modules)
     - [Tenant-Aware Configuration](#tenant-aware-configuration)
     - [Tenant Configuration Loading](#tenant-configuration-loading)
-    - [Tenant Guard](#tenant-guard)
   - [Error Handling](#error-handling)
     - [Common Error Types](#common-error-types)
     - [Error Wrapping](#error-wrapping)
@@ -103,72 +100,6 @@
 ## Introduction
 
 The Modular framework provides a structured approach to building modular Go applications. This document offers in-depth explanations of the framework's features and capabilities, providing developers with the knowledge they need to build robust, maintainable applications.
-
-## Baseline Framework Tasks
-
-The modular framework implementation follows a structured approach defined in `specs/001-baseline-specification-for/tasks.md`. This file contains 70 ordered tasks across 9 phases that implement the baseline functionality:
-
-- **Phase 3.1**: Setup - Task scaffolding, test structure, and build targets ✅
-- **Phase 3.2**: Contract & Integration Tests - TDD approach with failing tests first ✅
-- **Phase 3.3**: Core Models - Entity structures from the data model ✅
-- **Phase 3.4**: Core Services & Interfaces - Service contract definitions ✅
-- **Phase 3.5**: Service Implementations - Initial service stubs ✅
-- **Phase 3.6**: Incremental Feature Completion - Complete implementations ✅
-- **Phase 3.7**: Integration Wiring - Component integration ✅
-- **Phase 3.8**: Quickstart Pass & End-to-End - Full integration testing ✅
-- **Phase 3.9**: Polish & Performance - Optimization and cleanup ✅
-
-### Implementation Status: COMPLETE ✅
-
-All 70 baseline tasks (T001-T070) have been successfully implemented, providing:
-
-- **Core Infrastructure**: Complete application lifecycle management with deterministic ordering
-- **Service Registry**: O(1) lookup performance with conflict resolution and pre-sized maps
-- **Configuration System**: Multi-source loading, validation, provenance tracking, and hot-reload
-- **Authentication**: JWT/OIDC/API key validation with comprehensive principal mapping
-- **Health Monitoring**: Worst-case aggregation with readiness/liveness separation
-- **Lifecycle Events**: CloudEvents-based structured events with observer pattern
-- **Job Scheduling**: Cron parsing, concurrency limits, and backfill policies
-- **Certificate Management**: ACME integration with automated renewal and escalation
-- **Performance Optimization**: Pre-sized maps, benchmark guardrails, and regression detection
-- **End-to-End Validation**: Complete integration tests demonstrating real-world usage
-
-### Quickstart Verification
-
-The framework now fully supports the quickstart flow outlined in the specification:
-
-1. **Application Creation**: `app := modular.NewApplication()`
-2. **Module Registration**: `app.RegisterModule(httpModule, authModule, dbModule)`
-3. **Enhanced Lifecycle**: `app.EnableEnhancedLifecycle()` for advanced features
-4. **Configuration**: Multi-source configuration with automatic validation
-5. **Service Discovery**: Automatic service registration and dependency injection
-6. **Execution**: `app.RunWithEnhancedLifecycle()` with graceful shutdown
-
-For detailed task information, see `specs/001-baseline-specification-for/tasks.md`. To run the task validation suite, use `make tasks-check` which runs linting and all tests.
-
-### Performance Baselines
-
-Service registry performance baselines are established in `performance/baseline.md`:
-- **Lookup**: <20ns per operation with zero allocations
-- **Registration**: ~485ns average per service (up to 1000 services)
-- **Memory**: Linear growth with optimal map pre-sizing
-- **Regression Detection**: >10% threshold monitoring for performance changes
-
-## Governance & Best Practices
-
-High-level non-negotiable principles and quality gates are defined in the `memory/constitution.md` (versioned project constitution). For actionable, day-to-day engineering checklists (interfaces, constructors, reflection, logging, concurrency, API export review, boilerplate reduction) see `GO_BEST_PRACTICES.md`.
-
-Quick references:
-- Constitution Articles XI–XV: Idiomatic Go, API stability, documentation freshness, boilerplate targets, style enforcement.
-- `GO_BEST_PRACTICES.md`: Implementation guidelines & PR checklists.
-- `CONCURRENCY_GUIDELINES.md`: Race-safe patterns and synchronization practices.
-
-When adding a feature:
-1. Start with spec → plan (research/contracts) → tasks (TDD first).
-2. Write failing test(s) before implementation.
-3. Update docs & examples in the same PR—stale docs block merge.
-4. Run full lint + test matrix (core, modules, examples, CLI).
-5. Verify API diff shows only intended additive or properly deprecated changes.
 
 ## Application Builder API
 ## Concurrency & Race Guidelines
@@ -1028,8 +959,8 @@ import (
     "fmt"
     "os"
     
-    "github.com/GoCodeAlone/modular"
-    "github.com/GoCodeAlone/modular/modules/database"
+    "github.com/CrisisTextLine/modular"
+    "github.com/CrisisTextLine/modular/modules/database"
 )
 
 func main() {
@@ -1248,66 +1179,6 @@ config := tenantAwareConfig.GetConfigWithContext(ctx).(*MyConfig)
 ```
 
 ### Tenant Configuration Loading
-### Tenant Guard
-
-The Tenant Guard provides runtime enforcement (or observation) of cross-tenant access. It is configured via the application builder using either `WithTenantGuardMode(mode)` for quick setup, or `WithTenantGuardModeConfig(config)` for full control.
-
-Accessor:
-
-`app.GetTenantGuard()` (added in this release) returns the active `TenantGuard` implementation or `nil` if none was configured.
-
-Modes:
-
-- `strict`: Blocks cross-tenant access attempts unless explicitly whitelisted.
-- `lenient`: Allows access but records violations for monitoring/migration.
-- `disabled`: No isolation checks performed (single-tenant or legacy mode).
-
-Whitelist:
-
-`TenantGuardConfig.CrossTenantWhitelist` maps a requesting tenant ID to a list of allowed target tenant prefixes. A resource path is considered whitelisted when it begins with `<targetTenant>/`.
-
-Violations:
-
-`ValidateAccess(ctx, violation)` records a `TenantViolation` (timestamp + metadata) when in lenient mode or blocks (strict) depending on configuration. The current implementation keeps violations in an in-memory slice intended for short-lived inspection in tests and diagnostics (future versions may add bounded ring buffer + observer emissions).
-
-Concurrency:
-
-`stdTenantGuard` now uses an internal RW mutex to protect violation recording. `ValidateAccess` acquires a write lock only for the append. `GetRecentViolations()` takes a read lock and returns a shallow copy for isolation. This provides race-free concurrent usage with minimal contention (violations are only written on actual cross-tenant attempts). Future optimization may replace the slice+mutex with a bounded lock-free ring buffer if high-frequency writes emerge.
-
-Recommended Usage:
-
-1. Start new multi-tenant services in `strict` unless migrating legacy code.
-2. Use `lenient` during phased adoption—monitor violations, then switch to `strict`.
-3. Do not leave `disabled` in multi-tenant deployments beyond initial bootstrap.
-4. Keep whitelist entries minimal and review periodically.
-
-Example:
-
-```go
-guardCfg := modular.NewDefaultTenantGuardConfig(modular.TenantGuardModeStrict)
-guardCfg.CrossTenantWhitelist["reporting-svc"] = []string{"analytics"}
-app, _ := modular.NewApplication(
-    modular.WithTenantGuardModeConfig(guardCfg),
-)
-
-if tg := app.GetTenantGuard(); tg != nil {
-    allowed, err := tg.ValidateAccess(ctx, &modular.TenantViolation{
-        RequestingTenant:  "tenantA",
-        AccessedResource:  "tenantB/resource123",
-        ViolationType:     modular.TenantViolationCrossTenantAccess,
-        Severity:          modular.TenantViolationSeverityMedium,
-    })
-    if err != nil { /* handle */ }
-    if !allowed { /* enforce */ }
-}
-```
-
-Future Evolution (non-breaking goals):
-
-- Bounded lock-free ring buffer for violations.
-- Observer events for violation emission (avoids direct slice exposure).
-- Structured logger integration for strict-mode blocks.
-
 
 Modular provides utilities for loading tenant configurations from files:
 
@@ -1370,7 +1241,7 @@ The Modular framework provides several debugging utilities to help diagnose comm
 Use `DebugModuleInterfaces` to check which interfaces a specific module implements:
 
 ```go
-import "github.com/GoCodeAlone/modular"
+import "github.com/CrisisTextLine/modular"
 
 // Debug a specific module
 modular.DebugModuleInterfaces(app, "your-module-name")
@@ -1481,7 +1352,7 @@ modular.CompareModuleInstances(originalModule, currentModule, "module-name")
 For detailed analysis of why a module doesn't implement Startable:
 
 ```go
-import "github.com/GoCodeAlone/modular"
+import "github.com/CrisisTextLine/modular"
 
 // Check specific module
 modular.CheckModuleStartableImplementation(yourModule)

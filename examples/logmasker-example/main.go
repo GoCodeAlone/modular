@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/logmasker"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/modules/logmasker"
 )
 
 // SimpleLogger implements modular.Logger for demonstration

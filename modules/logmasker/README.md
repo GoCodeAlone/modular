@@ -1,6 +1,6 @@
 # LogMasker Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/logmasker.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/logmasker)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/logmasker.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/logmasker)
 
 The LogMasker Module provides centralized log masking functionality for Modular applications. It acts as a decorator around the standard Logger interface to automatically redact sensitive information from log output based on configurable rules.
 
@@ -20,7 +20,7 @@ The LogMasker Module provides centralized log masking functionality for Modular 
 Add the logmasker module to your project:
 
 ```bash
-go get github.com/GoCodeAlone/modular/modules/logmasker
+go get github.com/CrisisTextLine/modular/modules/logmasker
 ```
 
 ## Configuration
@@ -72,8 +72,8 @@ Register the module and use the masking logger service:
 package main
 
 import (
-    "github.com/GoCodeAlone/modular"
-    "github.com/GoCodeAlone/modular/modules/logmasker"
+    "github.com/CrisisTextLine/modular"
+    "github.com/CrisisTextLine/modular/modules/logmasker"
 )
 
 func main() {

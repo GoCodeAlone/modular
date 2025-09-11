@@ -28,9 +28,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -508,7 +509,7 @@ func (m *Module) Init(app modular.Application) error {
 	}()
 
 	// Initialize connections
-	if err := m.initializeConnections(); err != nil {
+	if err := m.initializeConnections(app); err != nil {
 		return fmt.Errorf("failed to initialize database connections: %w", err)
 	}
 
@@ -600,10 +601,25 @@ func (m *Module) ProvidesServices() []modular.ServiceProvider {
 }
 
 // RequiresServices declares services required by this module.
-// The database module is self-contained and doesn't require
-// services from other modules.
+// The database module requires the logger service for structured logging.
 func (m *Module) RequiresServices() []modular.ServiceDependency {
-	return nil // No required services
+	return []modular.ServiceDependency{
+		{
+			Name:     "logger",
+			Required: true,
+			Type:     reflect.TypeOf((*modular.Logger)(nil)).Elem(),
+		},
+	}
+}
+
+// Constructor provides a dependency injection constructor for the module.
+// This allows the logger service to be properly injected during module initialization.
+func (m *Module) Constructor() modular.ModuleConstructor {
+	return func(app modular.Application, services map[string]any) (modular.Module, error) {
+		// The logger service should be available in the services map
+		// but we can also fallback to app.Logger() for backwards compatibility
+		return m, nil
+	}
 }
 
 // GetConnection returns a database connection by name.
@@ -695,7 +711,7 @@ func (m *Module) GetService(name string) (DatabaseService, bool) {
 // initializeConnections initializes database connections based on the module's configuration.
 // This method processes each configured connection, creates database services,
 // and establishes initial connectivity to validate the configuration.
-func (m *Module) initializeConnections() error {
+func (m *Module) initializeConnections(app modular.Application) error {
 	// Initialize database connections
 	if len(m.config.Connections) > 0 {
 		for name, connConfig := range m.config.Connections {
@@ -707,7 +723,7 @@ func (m *Module) initializeConnections() error {
 			}
 
 			// Create the database service and connect
-			dbService, err := NewDatabaseService(*connConfig)
+			dbService, err := NewDatabaseService(*connConfig, app.Logger())
 			if err != nil {
 				return fmt.Errorf("failed to create database service for '%s': %w", name, err)
 			}

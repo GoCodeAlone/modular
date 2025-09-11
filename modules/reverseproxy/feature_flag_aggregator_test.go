@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // Mock evaluators for testing

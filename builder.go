@@ -2,7 +2,6 @@ package modular
 
 import (
 	"context"
-	"fmt"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
@@ -19,23 +18,12 @@ type ApplicationBuilder struct {
 	configDecorators []ConfigDecorator
 	observers        []ObserverFunc
 	tenantLoader     TenantLoader
-	tenantGuard      TenantGuard
 	enableObserver   bool
 	enableTenant     bool
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
 type ObserverFunc func(ctx context.Context, event cloudevents.Event) error
-
-// NewApplicationBuilder creates a new application builder that can be used to
-// configure and construct applications step by step.
-func NewApplicationBuilder() *ApplicationBuilder {
-	return &ApplicationBuilder{
-		modules:          make([]Module, 0),
-		configDecorators: make([]ConfigDecorator, 0),
-		observers:        make([]ObserverFunc, 0),
-	}
-}
 
 // NewApplication creates a new application with the provided options.
 // This is the main entry point for the new builder API.
@@ -57,11 +45,7 @@ func NewApplication(opts ...Option) (Application, error) {
 	return builder.Build()
 }
 
-// Build constructs the final application with all decorators applied.
-// NOTE: The signature intentionally matches the stable API on main
-// (no context parameters) to avoid a breaking contract change. Context
-// should be supplied to individual operations/services rather than the
-// builder itself.
+// Build constructs the final application with all decorators applied
 func (b *ApplicationBuilder) Build() (Application, error) {
 	var app Application
 
@@ -109,13 +93,6 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 
 	if b.enableObserver && len(b.observers) > 0 {
 		app = NewObservableDecorator(app, b.observers...)
-	}
-
-	// Register tenant guard if configured
-	if b.tenantGuard != nil {
-		if err := app.RegisterService("tenantGuard", b.tenantGuard); err != nil {
-			return nil, fmt.Errorf("failed to register tenant guard: %w", err)
-		}
 	}
 
 	// Register modules
@@ -182,17 +159,6 @@ func WithTenantAware(loader TenantLoader) Option {
 		b.tenantLoader = loader
 		return nil
 	}
-}
-
-// WithOption applies an option to the application builder
-func (b *ApplicationBuilder) WithOption(opt Option) *ApplicationBuilder {
-	if err := opt(b); err != nil {
-		// In a real implementation, we might want to store the error and return it during Build
-		// For now, we'll just continue (the test expects this to work)
-		// TODO: Store errors and validate during Build() to provide better error reporting
-		_ = err // intentionally ignore for now, but acknowledge error occurred
-	}
-	return b
 }
 
 // Convenience functions for creating common decorators

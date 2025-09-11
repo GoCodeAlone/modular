@@ -3,8 +3,8 @@ package chimux_test
 import (
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/chimux"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/modules/chimux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

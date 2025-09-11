@@ -1,12 +1,11 @@
 package api
 
 import (
+	"basic-app/router"
 	"net/http"
 	"reflect"
 
-	"github.com/GoCodeAlone/modular/examples/basic-app/router"
-
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/go-chi/chi/v5"
 )
 

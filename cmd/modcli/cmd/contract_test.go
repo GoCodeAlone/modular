@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/GoCodeAlone/modular/cmd/modcli/internal/contract"
+	"github.com/CrisisTextLine/modular/cmd/modcli/internal/contract"
 	"github.com/spf13/cobra"
 )
 

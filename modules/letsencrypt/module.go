@@ -147,7 +147,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/route53"
 	"github.com/go-acme/lego/v4/registration"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -191,15 +191,6 @@ type LetsEncryptModule struct {
 	rootCAs       *x509.CertPool  // Certificate authority root certificates
 	subject       modular.Subject // Added for event observation
 	subjectMu     sync.RWMutex    // Protects subject publication & reads during emission
-
-	// test hooks (set only in tests; when nil production code paths use lego client directly)
-	obtainCertificate   func(request certificate.ObtainRequest) (*certificate.Resource, error)
-	revokeCertificate   func(raw []byte) error
-	setHTTP01Provider   func(p challenge.Provider) error
-	setDNS01Provider    func(p challenge.Provider) error
-	registerAccountFunc func(opts registration.RegisterOptions) (*registration.Resource, error)
-	// test-only: override renewal interval (nil => default 24h)
-	renewalInterval func() time.Duration
 }
 
 // User implements the ACME User interface for Let's Encrypt
@@ -422,28 +413,6 @@ func (m *LetsEncryptModule) initClient() error {
 	if err != nil {
 		return fmt.Errorf("failed to create ACME client: %w", err)
 	}
-	m.client = client
-
-	// Initialize hook functions if not already injected (tests may pre-populate)
-	if m.obtainCertificate == nil {
-		m.obtainCertificate = func(r certificate.ObtainRequest) (*certificate.Resource, error) {
-			return m.client.Certificate.Obtain(r)
-		}
-	}
-	if m.revokeCertificate == nil {
-		m.revokeCertificate = func(raw []byte) error { return m.client.Certificate.Revoke(raw) }
-	}
-	if m.setHTTP01Provider == nil {
-		m.setHTTP01Provider = func(p challenge.Provider) error { return m.client.Challenge.SetHTTP01Provider(p) }
-	}
-	if m.setDNS01Provider == nil {
-		m.setDNS01Provider = func(p challenge.Provider) error { return m.client.Challenge.SetDNS01Provider(p) }
-	}
-	if m.registerAccountFunc == nil {
-		m.registerAccountFunc = func(opts registration.RegisterOptions) (*registration.Resource, error) {
-			return m.client.Registration.Register(opts)
-		}
-	}
 
 	// Configure challenge type
 	if m.config.UseDNS {
@@ -452,10 +421,14 @@ func (m *LetsEncryptModule) initClient() error {
 		}
 	} else {
 		// Setup HTTP challenge
-		if err := m.setHTTP01Provider(&letsEncryptHTTPProvider{handler: m.config.HTTPChallengeHandler}); err != nil {
+		if err := client.Challenge.SetHTTP01Provider(&letsEncryptHTTPProvider{
+			handler: m.config.HTTPChallengeHandler,
+		}); err != nil {
 			return fmt.Errorf("failed to set HTTP challenge provider: %w", err)
 		}
 	}
+
+	m.client = client
 	return nil
 }
 
@@ -466,8 +439,10 @@ func (m *LetsEncryptModule) createUser() error {
 		return nil
 	}
 
-	// Create new registration (use hook if set)
-	reg, err := m.registerAccountFunc(registration.RegisterOptions{TermsOfServiceAgreed: true})
+	// Create new registration
+	reg, err := m.client.Registration.Register(registration.RegisterOptions{
+		TermsOfServiceAgreed: true,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to register account: %w", err)
 	}
@@ -490,7 +465,7 @@ func (m *LetsEncryptModule) refreshCertificates(ctx context.Context) error {
 		Bundle:  true,
 	}
 
-	certificates, err := m.obtainCertificate(request)
+	certificates, err := m.client.Certificate.Obtain(request)
 	if err != nil {
 		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
 			"error":   err.Error(),
@@ -527,13 +502,8 @@ func (m *LetsEncryptModule) refreshCertificates(ctx context.Context) error {
 
 // startRenewalTimer starts a background timer to check and renew certificates
 func (m *LetsEncryptModule) startRenewalTimer(ctx context.Context) {
-	interval := 24 * time.Hour
-	if m.renewalInterval != nil {
-		if d := m.renewalInterval(); d > 0 {
-			interval = d
-		}
-	}
-	m.renewalTicker = time.NewTicker(interval)
+	// Check certificates daily
+	m.renewalTicker = time.NewTicker(24 * time.Hour)
 
 	go func() {
 		for {
@@ -589,7 +559,7 @@ func (m *LetsEncryptModule) renewCertificateForDomain(ctx context.Context, domai
 		Bundle:  true,
 	}
 
-	certificates, err := m.obtainCertificate(request)
+	certificates, err := m.client.Certificate.Obtain(request)
 	if err != nil {
 		m.emitEvent(ctx, EventTypeError, map[string]interface{}{
 			"error":  err.Error(),
@@ -639,7 +609,7 @@ func (m *LetsEncryptModule) RevokeCertificate(domain string) error {
 	}
 
 	// Revoke the certificate
-	err = m.revokeCertificate(x509Cert.Raw)
+	err = m.client.Certificate.Revoke(x509Cert.Raw)
 	if err != nil {
 		return fmt.Errorf("failed to revoke certificate: %w", err)
 	}

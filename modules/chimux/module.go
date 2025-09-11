@@ -94,7 +94,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -113,11 +113,6 @@ var (
 	// with a non-tenant application. The chimux module requires tenant support
 	// for proper multi-tenant routing and configuration.
 	ErrRequiresTenantApplication = errors.New("chimux module requires a TenantApplication")
-	// Sentinel errors for runtime operations (avoid dynamic error construction per err113)
-	ErrMiddlewareNotFound       = errors.New("middleware not found")
-	ErrMiddlewareAlreadyRemoved = errors.New("middleware already removed")
-	ErrRouteNotFound            = errors.New("route not found")
-	ErrRouteAlreadyDisabled     = errors.New("route already disabled")
 )
 
 // ChiMuxModule provides HTTP routing functionality using the Chi router library.
@@ -146,10 +141,6 @@ type ChiMuxModule struct {
 	subject       modular.Subject // Added for event observation
 	// disabledRoutes keeps track of routes that have been disabled at runtime.
 	// Keyed by HTTP method (uppercase) then the original registered pattern.
-	// A disabled route short‑circuits matching before reaching the underlying chi mux
-	// allowing dynamic feature flag style shutdown without removing the route from
-	// the registry (so it can be re‑enabled later). Patterns are stored exactly as
-	// originally registered to avoid ambiguity with chi's internal normalized form.
 	disabledRoutes map[string]map[string]bool
 	// disabledMu guards access to disabledRoutes for concurrent reads/writes.
 	disabledMu sync.RWMutex
@@ -157,8 +148,8 @@ type ChiMuxModule struct {
 	routeRegistry []struct{ method, pattern string }
 	// middleware tracking for runtime enable/disable
 	middlewareMu    sync.RWMutex
-	middlewares     map[string]*controllableMiddleware // keyed by middleware name provided at registration
-	middlewareOrder []string                           // preserves deterministic application order for rebuilds
+	middlewares     map[string]*controllableMiddleware
+	middlewareOrder []string
 }
 
 // NewChiMuxModule creates a new instance of the chimux module.
@@ -177,30 +168,7 @@ func NewChiMuxModule() modular.Module {
 	}
 }
 
-// controllableMiddleware wraps a Chi middleware with a fast enable/disable flag.
-//
-// Why this exists instead of removing middleware from the chi chain:
-//   - Chi builds a linear slice of middleware; removing items would require
-//     rebuilding the chain and can race with in‑flight requests referencing the
-//     old handler sequence.
-//   - A single atomic flag read on each request is cheaper and simpler than
-//     chain reconstruction + synchronization around route rebuilds. Toggling is
-//     expected to be extremely rare (admin action / config reload) while reads
-//     happen on every request.
-//   - Keeping the wrapper stable avoids subtle ordering drift; the original
-//     registration order is preserved in middlewareOrder for deterministic
-//     reasoning and event emission.
-//
-// Thread-safety & performance:
-//   - enabled is an atomic.Bool so hot-path requests avoid taking a lock.
-//   - Disable simply flips the flag; the wrapper then becomes a no-op pass‑through.
-//   - We intentionally DO NOT attempt an atomic pointer swap to a passthrough
-//     function; the single conditional branch keeps clarity and is negligible
-//     compared to typical middleware work (logging, auth, etc.). Premature
-//     micro‑optimizations are avoided until profiling justifies them.
-//
-// This structure is intentionally small: name (for admin/UI & events), the
-// original middleware function, and the enabled flag.
+// controllableMiddleware wraps a middleware with an enabled flag so it can be disabled at runtime.
 type controllableMiddleware struct {
 	name    string
 	fn      Middleware
@@ -717,10 +685,10 @@ func (m *ChiMuxModule) RemoveMiddleware(name string) error {
 	defer m.middlewareMu.Unlock()
 	cm, ok := m.middlewares[name]
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrMiddlewareNotFound, name)
+		return fmt.Errorf("middleware %s not found", name)
 	}
 	if !cm.enabled.Load() {
-		return fmt.Errorf("%w: %s", ErrMiddlewareAlreadyRemoved, name)
+		return fmt.Errorf("middleware %s already removed", name)
 	}
 	cm.enabled.Store(false)
 	// Count remaining enabled
@@ -842,7 +810,7 @@ func (m *ChiMuxModule) DisableRoute(method, pattern string) error {
 		}
 	}
 	if !found {
-		return fmt.Errorf("%w: %s %s", ErrRouteNotFound, method, pattern)
+		return fmt.Errorf("route %s %s not found", method, pattern)
 	}
 
 	m.disabledMu.Lock()
@@ -851,7 +819,7 @@ func (m *ChiMuxModule) DisableRoute(method, pattern string) error {
 		m.disabledRoutes[method] = make(map[string]bool)
 	}
 	if m.disabledRoutes[method][pattern] {
-		return fmt.Errorf("%w: %s %s", ErrRouteAlreadyDisabled, method, pattern)
+		return fmt.Errorf("route %s %s already disabled", method, pattern)
 	}
 	m.disabledRoutes[method][pattern] = true
 
@@ -887,23 +855,7 @@ func (m *ChiMuxModule) disabledRouteMiddleware() func(http.Handler) http.Handler
 			if rctx != nil && len(rctx.RoutePatterns) > 0 {
 				pattern = rctx.RoutePatterns[len(rctx.RoutePatterns)-1]
 			} else {
-				// Fallback to the raw request path.
-				// Parameterized mismatch nuance: chi records the symbolic pattern (e.g. /users/{id}) in
-				// RouteContext.RoutePatterns, but the raw URL path is the concrete value (/users/123).
-				// disabledRoutes stores ONLY the originally registered symbolic pattern. If we do not
-				// have a RouteContext (some early middleware, non‑chi handler injection, or tests that
-				// bypass chi) we must fall back to r.URL.Path. Comparing /users/123 against a stored
-				// key /users/{id} will never match, so the route will appear enabled even if disabled.
-				// Operational guidance:
-				//   1. Always invoke DisableRoute with the exact pattern string used at registration.
-				//   2. For dynamic routes exposed to admin tooling, capture and present the symbolic
-				//      pattern (not an example concrete path) so disabling works reliably.
-				//   3. If a future need arises to disable by concrete path segment we could enrich
-				//      disabledRoutes with a reverse lookup of recognized chi parameters; premature
-				//      generalization avoided here to keep lookups O(1) and simple.
-				//   4. The mismatch only occurs when RouteContext is absent; normal chi routing always
-				//      supplies the pattern slice so dynamic disables are effective in steady state.
-				// This expanded comment documents the trade‑off explicitly per review feedback.
+				// Fallback to request path (may cause mismatch for dynamic patterns)
 				pattern = r.URL.Path
 			}
 			method := r.Method

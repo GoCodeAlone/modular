@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // MockLogger implements modular.Logger for testing.
@@ -114,9 +114,6 @@ func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceR
 func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return []*modular.ServiceRegistryEntry{}
 }
-
-// ServiceIntrospector returns nil (not required in tests)
-func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 // TestMaskableValue implements the MaskableValue interface for testing.
 type TestMaskableValue struct {

@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -117,33 +117,6 @@ func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceR
 }
 func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return []*modular.ServiceRegistryEntry{}
-}
-
-// GetTenantGuard returns nil for tests (no tenant isolation needed in these unit tests)
-func (m *MockApplication) GetTenantGuard() modular.TenantGuard { return nil }
-
-// ServiceIntrospector returns nil (not needed in tests)
-func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
-
-// Health returns nil (not needed in tests)
-func (m *MockApplication) Health() (modular.HealthAggregator, error) {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(modular.HealthAggregator), args.Error(1)
-}
-
-// RequestReload implements the Application interface
-func (m *MockApplication) RequestReload(sections ...string) error {
-	args := m.Called(sections)
-	return args.Error(0)
-}
-
-// RegisterHealthProvider implements the Application interface
-func (m *MockApplication) RegisterHealthProvider(moduleName string, provider modular.HealthProvider, optional bool) error {
-	args := m.Called(moduleName, provider, optional)
-	return args.Error(0)
 }
 
 // MockLogger is a mock implementation of the modular.Logger interface

@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/CrisisTextLine/modular/feeders"
 )
 
 // Static errors for better error handling

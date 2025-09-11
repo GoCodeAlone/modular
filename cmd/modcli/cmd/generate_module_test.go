@@ -14,7 +14,7 @@ import (
 
 	"encoding/json"
 
-	"github.com/GoCodeAlone/modular/cmd/modcli/cmd"
+	"github.com/CrisisTextLine/modular/cmd/modcli/cmd"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -825,7 +825,7 @@ func TestGenerateModuleCompiles(t *testing.T) {
 go 1.21
 
 require (
-	github.com/GoCodeAlone/modular v1
+	github.com/CrisisTextLine/modular v1
 )
 `
 
@@ -840,7 +840,7 @@ import (
 	"log"
 	"log/slog"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // Example function showing how to use the module

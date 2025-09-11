@@ -43,7 +43,7 @@ This is the Modular Go framework - a structured way to create modular applicatio
 ## Development Workflow
 
 ### Local Development Setup
-1. Clone the repository: `git clone https://github.com/GoCodeAlone/modular.git`
+1. Clone the repository: `git clone https://github.com/CrisisTextLine/modular.git`
 2. Install Go 1.23.0 or later (toolchain uses 1.24.2)
 3. Install golangci-lint: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 4. Run tests to verify setup: `go test ./... -v`
@@ -99,7 +99,6 @@ Working example applications:
 4. **Multi-tenancy**: Maintain tenant isolation and proper context handling
 5. **Error Handling**: Use wrapped errors with clear messages and proper error types
 6. **Backwards Compatibility**: Maintain API compatibility when possible
-7. **Pattern-First Evolution**: Prefer adding Builder options (fluent or functional) and Observer events over modifying existing interfaces or constructors. Justify any interface change with: why Builder/Observer insufficient, deprecation plan, adapter strategy.
 
 ### Module Development
 1. **Interface Implementation**: Implement core `Module` interface and relevant optional interfaces
@@ -108,9 +107,6 @@ Working example applications:
 4. **Documentation**: Include complete README with usage examples and configuration reference
 5. **Testing**: Write comprehensive unit tests and integration tests where applicable
 6. **Dependencies**: Minimize external dependencies and document any that are required
-7. **Builder Options**: Add new capabilities via additive option methods (no required param increases); ensure defaults preserve prior behavior.
-8. **Observer Events**: Emit new cross-cutting concerns (metrics, auditing, lifecycle) through observer mechanisms instead of changing service interfaces.
-9. **DDD Boundaries**: Keep domain types internal; expose minimal service interfaces as public API; avoid leaking external DTOs.
 
 ### Example Development
 1. **Standalone Applications**: Each example should be a complete, runnable application
@@ -138,7 +134,6 @@ Working example applications:
 3. **Example Tests**: Ensure examples build and run correctly
 4. **Mock Application**: Use the provided mock application for testing modules
 5. **Interface Testing**: Verify modules implement interfaces correctly
-6. **Pattern Tests**: Failing tests must precede new builder options or observer events (event emission ordering, default option behavior).
 
 ### Multi-tenancy Guidelines
 1. **Context Propagation**: Always propagate tenant context through the call chain
@@ -152,85 +147,13 @@ Working example applications:
 3. **Context**: Include relevant context in error messages
 4. **Logging**: Log errors at appropriate levels with structured logging
 5. **Graceful Degradation**: Handle optional dependencies gracefully
-6. **Event Emission Errors**: Observer dispatch should never panic; errors wrapped and surfaced through lifecycle/logging.
-
-### Strategic Patterns (Constitution Articles XII & XVI)
-- Prefer Builder pattern for additive configuration/evolution.
-- Prefer Observer pattern for cross-cutting concerns; events documented with name, payload, timing.
-- Avoid interface widening; introduce new narrow interface or use pattern alternative.
-- Record justification in PR when deviating; include migration notes for any deprecation.
-
-## Automated PR Code Review (GitHub Copilot Agent Guidance)
-
-When performing a pull request review, apply the checklist from `.github/pull_request_template.md` systematically. Respond with concise, actionable comments. Use line suggestions only when a clear fix is deterministic. Avoid style-only nits unless they violate stated standards or constitution.
-
-### Review Procedure
-1. Parse PR description; extract: change type, claimed motivation, breaking change note.
-2. Run quality gates mentally (or via CI artifacts):
-  - Missing failing test before implementation (unless docs-only) → request justification.
-  - Lint failures or skipped lint → request resolution or waiver rationale referencing `.golangci.yml` rule names.
-  - Any new exported symbol without doc comment → suggest adding Go doc.
-3. Compare API contract if `contract-check` comment/artifact present:
-  - Added items: ensure doc comments & tests.
-  - Breaking changes: require migration notes + deprecation window compliance.
-4. Configuration changes:
-  - New struct fields must have `yaml/json/default/required/desc` tags as appropriate.
-  - Dynamic reload fields: confirm justification + safe semantics.
-5. Multi-tenancy / instance:
-  - Check for cross-tenant map access; ensure tenant/instance parameters propagated.
-6. Performance-sensitive paths:
-  - Hot path (registry lookups, config merge) changes → ask for benchmark deltas or mark N/A.
-7. Error handling & logging:
-  - Ensure `fmt.Errorf("context: %w", err)` pattern; no capitalized messages; no secrets in logs.
-8. Concurrency:
-  - New goroutines: verify cancellation, error propagation, ownership comment.
-9. Boilerplate / duplication:
-  - >2 near-identical blocks → suggest refactor or rationale.
-10. Documentation:
-   - If behavior changes public API or module usage, confirm related README / `DOCUMENTATION.md` updates.
-
-### Comment Categories
-- `BLOCKER`: Must be resolved (correctness, safety, breaking contract, failing gates)
-- `RECOMMEND`: Improves maintainability or clarity
-- `QUESTION`: Clarify intent or hidden assumption
-- `NIT`: Only if violates explicit style/constitution; otherwise omit
-
-### Response Template
-Summarize at top:
-```
-Summary: <one line>
-Blockers: <count> | Recommendations: <count> | Questions: <count>
-Key Risks: <short list or 'None'>
-Contract Impact: <None|Additions|Breaking>
-```
-Then list comments grouped by category. End with either `APPROVE`, `REQUEST_CHANGES`, or `COMMENT` rationale.
-
-### Auto-Approve Criteria
-Return APPROVE if and only if:
-- No BLOCKER items
-- All checklist items either satisfied or explicitly justified
-- No unreviewed breaking changes
-
-### Scope Boundaries
-Do not: propose architectural rewrites, introduce new dependencies, or refactor unrelated files in review suggestions. Keep within diff scope.
-
-### Security & Secrets Scan
-Flag occurrences of obvious secrets (API keys, private keys) or accidental debug dumps.
-
-### Large PR Strategy
-If >500 added LOC: request splitting unless change is mechanical (generated, rename, vendored). Provide rationale.
-
-### Tone
-Concise, neutral, professional. Avoid apologies unless fixing prior incorrect review guidance.
-
----
 
 ## Development Tools
 
 ### CLI Tool (`modcli`)
 - Generate new modules: `modcli generate module --name MyModule`
 - Generate configurations: `modcli generate config --name MyConfig`
-- Install with: `go install github.com/GoCodeAlone/modular/cmd/modcli@latest`
+- Install with: `go install github.com/CrisisTextLine/modular/cmd/modcli@latest`
 
 ### Debugging Tools
 - Debug module interfaces: `modular.DebugModuleInterfaces(app, "module-name")`

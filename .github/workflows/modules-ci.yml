@@ -137,7 +137,7 @@ jobs:
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: GoCodeAlone/modular
+          slug: CrisisTextLine/modular
           directory: modules/${{ matrix.module }}/
           files: ${{ matrix.module }}-coverage.txt
           flags: ${{ matrix.module }}
@@ -206,7 +206,7 @@ jobs:
           version: latest
           only-new-issues: true
           working-directory: modules/${{ matrix.module }}
-          args: -c ../../.golangci.yml
+          args: -c ../../.golangci.github.yml
 
       - name: Set lint result
         run: |

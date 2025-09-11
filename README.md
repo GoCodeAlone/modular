@@ -1,15 +1,15 @@
 # modular
 Modular Go
 
-[![GitHub License](https://img.shields.io/github/license/GoCodeAlone/modular)](https://github.com/GoCodeAlone/modular/blob/main/LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular)
-[![CodeQL](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/github-code-scanning/codeql)
-[![Dependabot Updates](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/dependabot/dependabot-updates)
-[![CI](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml)
-[![Modules CI](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/modules-ci.yml)
-[![Examples CI](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/examples-ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
-[![codecov](https://codecov.io/gh/GoCodeAlone/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/GoCodeAlone/modular)
+[![GitHub License](https://img.shields.io/github/license/CrisisTextLine/modular)](https://github.com/CrisisTextLine/modular/blob/main/LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular)
+[![CodeQL](https://github.com/CrisisTextLine/modular/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/github-code-scanning/codeql)
+[![Dependabot Updates](https://github.com/CrisisTextLine/modular/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/dependabot/dependabot-updates)
+[![CI](https://github.com/CrisisTextLine/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/ci.yml)
+[![Modules CI](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/modules-ci.yml)
+[![Examples CI](https://github.com/CrisisTextLine/modular/actions/workflows/examples-ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/examples-ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/CrisisTextLine/modular)](https://goreportcard.com/report/github.com/CrisisTextLine/modular)
+[![codecov](https://codecov.io/gh/CrisisTextLine/modular/graph/badge.svg?token=2HCVC9RTN8)](https://codecov.io/gh/CrisisTextLine/modular)
 
 ## Testing
 
@@ -69,11 +69,6 @@ Each module is designed to be:
 - **Well-documented**: Complete documentation with examples and API references
 
 > 📖 For detailed information about each module, see the [modules directory](modules/README.md) or click on the individual module links above.
-
-### Governance & Engineering Standards
-Core, non-negotiable project principles (TDD, lifecycle determinism, API stability, performance baselines, multi-tenancy isolation) are codified in the versioned [Project Constitution](memory/constitution.md). Day-to-day implementation checklists (interfaces, reflection usage, error style, logging fields, concurrency annotations, export review) live in [Go Best Practices](GO_BEST_PRACTICES.md). Concurrency rules and race avoidance patterns are documented in [Concurrency & Race Guidelines](CONCURRENCY_GUIDELINES.md).
-
-Always update docs & examples in the same PR as feature code; stale documentation is considered a failing gate.
 
 ## 🌩️ Observer Pattern with CloudEvents Support
 
@@ -149,7 +144,7 @@ Visit the [examples directory](./examples/) for detailed documentation, configur
 ## Installation
 
 ```go
-go get github.com/GoCodeAlone/modular
+go get github.com/CrisisTextLine/modular
 ```
 
 ## Usage
@@ -160,7 +155,7 @@ go get github.com/GoCodeAlone/modular
 package main
 
 import (
-    "github.com/GoCodeAlone/modular"
+    "github.com/CrisisTextLine/modular"
     "log/slog"
     "os"
 )
@@ -707,20 +702,20 @@ You can install the CLI tool using one of the following methods:
 #### Using go install (recommended)
 
 ```bash
-go install github.com/GoCodeAlone/modular/cmd/modcli@latest
+go install github.com/CrisisTextLine/modular/cmd/modcli@latest
 ```
 
 This will download, build, and install the latest version of the CLI tool directly to your GOPATH's bin directory, which should be in your PATH.
 
 #### Download pre-built binaries
 
-Download the latest release from the [GitHub Releases page](https://github.com/GoCodeAlone/modular/releases) and add it to your PATH.
+Download the latest release from the [GitHub Releases page](https://github.com/CrisisTextLine/modular/releases) and add it to your PATH.
 
 #### Build from source
 
 ```bash
 # Clone the repository
-git clone https://github.com/GoCodeAlone/modular.git
+git clone https://github.com/CrisisTextLine/modular.git
 cd modular/cmd/modcli
 
 # Build the CLI tool

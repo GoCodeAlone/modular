@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // TestDryRunIssue reproduces the exact issue described in the GitHub issue

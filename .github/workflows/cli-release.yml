@@ -25,8 +25,7 @@ env:
   GO_VERSION: '^1.25'
 
 permissions:
-  contents: write   # tagging & attaching release assets
-  packages: write   # allow publishing to registries if added later
+  contents: write
       
 jobs:
   prepare:
@@ -169,7 +168,7 @@ jobs:
       - name: Build
         run: |
           cd cmd/modcli
-          go build -v -ldflags "-X github.com/GoCodeAlone/modular/cmd/modcli/cmd.Version=${{ needs.prepare.outputs.version }} -X github.com/GoCodeAlone/modular/cmd/modcli/cmd.Commit=${{ github.sha }} -X github.com/GoCodeAlone/modular/cmd/modcli/cmd.Date=$(date +'%Y-%m-%d')" -o ${{ matrix.artifact_name }}
+          go build -v -ldflags "-X github.com/CrisisTextLine/modular/cmd/modcli/cmd.Version=${{ needs.prepare.outputs.version }} -X github.com/CrisisTextLine/modular/cmd/modcli/cmd.Commit=${{ github.sha }} -X github.com/CrisisTextLine/modular/cmd/modcli/cmd.Date=$(date +'%Y-%m-%d')" -o ${{ matrix.artifact_name }}
         shell: bash
 
       - name: Upload artifact
@@ -253,7 +252,7 @@ jobs:
       - name: Announce to Go proxy
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
-          MODULE_NAME="github.com/GoCodeAlone/modular/cmd/modcli"
+          MODULE_NAME="github.com/CrisisTextLine/modular/cmd/modcli"
           
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
           

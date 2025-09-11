@@ -104,14 +104,7 @@ type EventBusConfig struct {
 	PublishBlockTimeout time.Duration `json:"publishBlockTimeout,omitempty" yaml:"publishBlockTimeout,omitempty" env:"PUBLISH_BLOCK_TIMEOUT"`
 
 	// RotateSubscriberOrder when true rotates the ordering of subscribers per publish
-	// to reduce starvation and provide fairer drop distribution. This is now OPT-IN.
-	// Historical note: an earlier revision forced this to true during validation which
-	// made it impossible for users to explicitly disable the feature (a plain bool
-	// cannot distinguish an "unset" zero value from an explicitly configured false).
-	// We intentionally removed the auto-enable logic so that leaving the field absent
-	// (or false) will NOT enable rotation. Users that want fairness rotation must set
-	// rotateSubscriberOrder: true explicitly in configuration. This trades a changed
-	// default for honoring explicit operator intent.
+	// to reduce starvation and provide fairer drop distribution.
 	RotateSubscriberOrder bool `json:"rotateSubscriberOrder,omitempty" yaml:"rotateSubscriberOrder,omitempty" env:"ROTATE_SUBSCRIBER_ORDER"`
 
 	// EventTTL is the time to live for events.
@@ -211,8 +204,10 @@ func (c *EventBusConfig) ValidateConfig() error {
 		if c.DeliveryMode == "" {
 			c.DeliveryMode = "drop" // Default
 		}
-		// NOTE: We intentionally DO NOT force RotateSubscriberOrder to true here.
-		// See field comment for rationale. Default remains false unless explicitly enabled.
+		// Enable rotation by default (improves fairness). Users can disable by explicitly setting rotateSubscriberOrder: false.
+		if !c.RotateSubscriberOrder {
+			c.RotateSubscriberOrder = true
+		}
 		if c.RetentionDays == 0 {
 			c.RetentionDays = 7 // Default value
 		}

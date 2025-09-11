@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/eventlogger"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/CrisisTextLine/modular/modules/eventlogger"
 )
 
 func main() {

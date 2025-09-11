@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -96,9 +96,6 @@ func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceR
 func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return []*modular.ServiceRegistryEntry{}
 }
-
-// ServiceIntrospector returns nil (advanced introspection unused in tests)
-func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 func (m *MockApplication) IsVerboseConfig() bool {
 	return false

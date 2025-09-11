@@ -453,7 +453,7 @@ func TestService_OAuth2(t *testing.T) {
 	// Set up realistic user info for the mock server
 	expectedUserInfo := map[string]interface{}{
 		"id":      "12345",
-		"email":   "testuser@example.com",
+		"email":   "testuser@example.com",  
 		"name":    "Test User",
 		"picture": "https://example.com/avatar.jpg",
 	}
@@ -491,7 +491,7 @@ func TestService_OAuth2(t *testing.T) {
 	assert.Equal(t, "google", result.Provider)
 	assert.Equal(t, mockServer.GetValidToken(), result.AccessToken)
 	assert.NotNil(t, result.UserInfo)
-
+	
 	// Verify user info contains expected data plus provider info
 	assert.Equal(t, "google", result.UserInfo["provider"])
 	assert.Equal(t, expectedUserInfo["email"], result.UserInfo["email"])

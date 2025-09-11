@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/GoCodeAlone/modular/cmd/modcli/internal/contract"
-	"github.com/GoCodeAlone/modular/cmd/modcli/internal/git"
+	"github.com/CrisisTextLine/modular/cmd/modcli/internal/contract"
+	"github.com/CrisisTextLine/modular/cmd/modcli/internal/git"
 	"github.com/spf13/cobra"
 )
 

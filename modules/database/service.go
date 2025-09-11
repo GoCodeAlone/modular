@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // Define static errors
@@ -16,6 +17,12 @@ var (
 	ErrEmptyDriver          = errors.New("database driver cannot be empty")
 	ErrEmptyDSN             = errors.New("database connection string (DSN) cannot be empty")
 	ErrDatabaseNotConnected = errors.New("database not connected")
+)
+
+// Constants for database service
+const (
+	// DefaultConnectionTimeout is the default timeout for database connection tests
+	DefaultConnectionTimeout = 5 * time.Second
 )
 
 // DatabaseService defines the operations that can be performed with a database
@@ -97,15 +104,18 @@ type DatabaseService interface {
 type databaseServiceImpl struct {
 	config           ConnectionConfig
 	db               *sql.DB
-	awsTokenProvider *AWSIAMTokenProvider
+	awsTokenProvider IAMTokenProvider
 	migrationService MigrationService
 	eventEmitter     EventEmitter
+	logger           modular.Logger // Logger service for error reporting
 	ctx              context.Context
 	cancel           context.CancelFunc
+	endpoint         string       // Store endpoint for reconnection
+	connMutex        sync.RWMutex // Protect database connection during recreation
 }
 
 // NewDatabaseService creates a new database service from configuration
-func NewDatabaseService(config ConnectionConfig) (DatabaseService, error) {
+func NewDatabaseService(config ConnectionConfig, logger modular.Logger) (DatabaseService, error) {
 	if config.Driver == "" {
 		return nil, ErrEmptyDriver
 	}
@@ -117,6 +127,7 @@ func NewDatabaseService(config ConnectionConfig) (DatabaseService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	service := &databaseServiceImpl{
 		config: config,
+		logger: logger,
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -145,12 +156,17 @@ func (s *databaseServiceImpl) Connect() error {
 			return fmt.Errorf("failed to build DSN with IAM token: %w", err)
 		}
 
-		// Start background token refresh
-		endpoint, err := extractEndpointFromDSN(s.config.DSN)
+		// Extract and store endpoint for token refresh callbacks
+		s.endpoint, err = extractEndpointFromDSN(s.config.DSN)
 		if err != nil {
 			return fmt.Errorf("failed to extract endpoint for token refresh: %w", err)
 		}
-		s.awsTokenProvider.StartTokenRefresh(s.ctx, endpoint)
+
+		// Set up token refresh callback to recreate connections when tokens are refreshed
+		s.awsTokenProvider.SetTokenRefreshCallback(s.onTokenRefresh)
+
+		// Start background token refresh
+		s.awsTokenProvider.StartTokenRefresh(s.ctx, s.endpoint)
 	} else {
 		// Only preprocess when NOT using AWS IAM auth (since AWS IAM auth does its own preprocessing)
 		var err error
@@ -179,8 +195,12 @@ func (s *databaseServiceImpl) Connect() error {
 		db.SetConnMaxIdleTime(s.config.ConnectionMaxIdleTime)
 	}
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Test connection with configurable timeout
+	timeout := DefaultConnectionTimeout
+	if s.config.AWSIAMAuth != nil && s.config.AWSIAMAuth.ConnectionTimeout > 0 {
+		timeout = s.config.AWSIAMAuth.ConnectionTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
@@ -189,7 +209,9 @@ func (s *databaseServiceImpl) Connect() error {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	s.connMutex.Lock()
 	s.db = db
+	s.connMutex.Unlock()
 
 	// Initialize migration service after successful connection
 	if s.eventEmitter != nil {
@@ -211,24 +233,110 @@ func (s *databaseServiceImpl) Close() error {
 	}
 
 	// Close database connection
+	s.connMutex.Lock()
+	defer s.connMutex.Unlock()
 	if s.db != nil {
 		err := s.db.Close()
 		if err != nil {
 			return fmt.Errorf("closing database connection: %w", err)
 		}
+		s.db = nil
 	}
 	return nil
 }
 
+// onTokenRefresh is called when IAM token is refreshed to recreate database connections
+func (s *databaseServiceImpl) onTokenRefresh(newToken string, endpoint string) {
+	// Recreate database connection with new token
+	s.connMutex.Lock()
+	defer s.connMutex.Unlock()
+
+	if s.db == nil {
+		return // Connection already closed
+	}
+
+	// Close existing connections to force pool refresh
+	oldDB := s.db
+
+	// Build new DSN with refreshed token
+	newDSN, err := s.awsTokenProvider.BuildDSNWithIAMToken(s.ctx, s.config.DSN)
+	if err != nil {
+		// Log error but don't crash the application
+		s.logger.Error("Failed to build DSN with refreshed IAM token", "error", err, "endpoint", endpoint)
+		return
+	}
+
+	// Create new database connection
+	newDB, err := sql.Open(s.config.Driver, newDSN)
+	if err != nil {
+		s.logger.Error("Failed to open new database connection with refreshed token", "error", err, "driver", s.config.Driver)
+		return
+	}
+
+	// Configure connection pool with same settings
+	if s.config.MaxOpenConnections > 0 {
+		newDB.SetMaxOpenConns(s.config.MaxOpenConnections)
+	}
+	if s.config.MaxIdleConnections > 0 {
+		newDB.SetMaxIdleConns(s.config.MaxIdleConnections)
+	}
+	if s.config.ConnectionMaxLifetime > 0 {
+		newDB.SetConnMaxLifetime(s.config.ConnectionMaxLifetime)
+	}
+	if s.config.ConnectionMaxIdleTime > 0 {
+		newDB.SetConnMaxIdleTime(s.config.ConnectionMaxIdleTime)
+	}
+
+	// Test new connection with configurable timeout
+	timeout := DefaultConnectionTimeout
+	if s.config.AWSIAMAuth != nil && s.config.AWSIAMAuth.ConnectionTimeout > 0 {
+		timeout = s.config.AWSIAMAuth.ConnectionTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := newDB.PingContext(ctx); err != nil {
+		s.logger.Error("Failed to ping database with refreshed token", "error", err, "timeout", timeout)
+		newDB.Close()
+		return
+	}
+
+	// Replace old connection with new one
+	s.db = newDB
+
+	// Close old connection in background to avoid blocking
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.Error("Panic occurred while closing old database connection", "panic", r)
+			}
+		}()
+		if err := oldDB.Close(); err != nil {
+			s.logger.Error("Error closing old database connection", "error", err)
+		}
+	}()
+
+	// Reinitialize migration service if needed
+	if s.eventEmitter != nil {
+		s.migrationService = NewMigrationService(s.db, s.eventEmitter)
+	}
+}
+
 func (s *databaseServiceImpl) DB() *sql.DB {
+	s.connMutex.RLock()
+	defer s.connMutex.RUnlock()
 	return s.db
 }
 
 func (s *databaseServiceImpl) Ping(ctx context.Context) error {
-	if s.db == nil {
+	s.connMutex.RLock()
+	db := s.db
+	s.connMutex.RUnlock()
+
+	if db == nil {
 		return ErrDatabaseNotConnected
 	}
-	err := s.db.PingContext(ctx)
+	err := db.PingContext(ctx)
 	if err != nil {
 		return fmt.Errorf("pinging database: %w", err)
 	}
@@ -236,6 +344,8 @@ func (s *databaseServiceImpl) Ping(ctx context.Context) error {
 }
 
 func (s *databaseServiceImpl) Stats() sql.DBStats {
+	s.connMutex.RLock()
+	defer s.connMutex.RUnlock()
 	if s.db == nil {
 		return sql.DBStats{}
 	}

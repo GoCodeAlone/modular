@@ -2,7 +2,6 @@ package modular
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -203,17 +202,3 @@ func (m *mockApplicationForNilSubjectTest) GetServiceEntry(serviceName string) (
 func (m *mockApplicationForNilSubjectTest) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
 	return nil
 }
-
-func (m *mockApplicationForNilSubjectTest) ServiceIntrospector() ServiceIntrospector { return nil }
-func (m *mockApplicationForNilSubjectTest) RequestReload(sections ...string) error {
-	return fmt.Errorf("RequestReload not implemented in mock")
-}
-func (m *mockApplicationForNilSubjectTest) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
-	return fmt.Errorf("RegisterHealthProvider not implemented in mock")
-}
-func (m *mockApplicationForNilSubjectTest) Health() (HealthAggregator, error) {
-	return nil, fmt.Errorf("Health not implemented in mock")
-}
-
-// Added to satisfy updated Application interface extension
-func (m *mockApplicationForNilSubjectTest) GetTenantGuard() TenantGuard { return nil }

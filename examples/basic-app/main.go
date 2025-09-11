@@ -1,16 +1,15 @@
 package main
 
 import (
+	"basic-app/api"
+	"basic-app/router"
+	"basic-app/webserver"
 	"fmt"
 	"log/slog"
 	"os"
 
-	"github.com/GoCodeAlone/modular/examples/basic-app/api"
-	"github.com/GoCodeAlone/modular/examples/basic-app/router"
-	"github.com/GoCodeAlone/modular/examples/basic-app/webserver"
-
-	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/feeders"
+	"github.com/CrisisTextLine/modular"
+	"github.com/CrisisTextLine/modular/feeders"
 )
 
 func main() {

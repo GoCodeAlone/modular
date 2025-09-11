@@ -12,12 +12,12 @@ on:
         default: patch
 
 permissions:
-  # Principle of least privilege: core orchestration requires these scopes. No others granted globally.
-  contents: write        # create tags/releases
-  actions: write         # dispatch called workflows
-  pull-requests: write   # create/update bump PRs
-  checks: write          # update status checks from composite jobs
-  packages: write        # allow future artifact/package publication without further scope changes
+  # Need contents write for tagging/releases, actions write for workflow dispatches,
+  # pull-requests & checks write are required by the called auto-bump-modules workflow
+  contents: write
+  actions: write
+  pull-requests: write
+  checks: write
 
 jobs:
 
@@ -180,6 +180,7 @@ jobs:
       - name: Post-release housekeeping
         run: |
           set -euo pipefail
+          # Placeholder for future auto-generated tasks (e.g. regenerate docs)
           go fmt ./... >/dev/null 2>&1 || true
       - name: Create cleanup PR if changes
         id: pr
@@ -191,14 +192,13 @@ jobs:
           git config user.name 'github-actions'
           git config user.email 'github-actions@users.noreply.github.com'
           git checkout -b "$BRANCH" || git checkout "$BRANCH"
-          git fetch origin main:refs/remotes/origin/main || true
-          if git diff --quiet origin/main...; then
+          if git diff --quiet; then
             echo 'No cleanup changes.'
             echo "created=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           git add .
-          git commit -m "chore: post-release core cleanup for ${{ needs.release-core.outputs.released_version }}" || true
+            git commit -m "chore: post-release core cleanup for ${{ needs.release-core.outputs.released_version }}" || true
           git push origin "$BRANCH" || true
           PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || gh pr create --title "chore: post-release core cleanup ${BRANCH}" --body "Automated housekeeping after core release." --head "$BRANCH" --base main --draft=false)
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
@@ -228,8 +228,7 @@ jobs:
     needs:
       - release-core
       - core-cleanup
-    # Always perform bump after successful core release (don't block on open trivial cleanup PR)
-    if: needs.release-core.result == 'success'
+    if: needs.release-core.result == 'success' && (needs.core-cleanup.outputs.pr_created == 'false' || needs.core-cleanup.outputs.pr_merged == 'true')
     uses: ./.github/workflows/auto-bump-modules.yml
     with:
       coreVersion: ${{ needs.release-core.outputs.released_version }}
@@ -326,7 +325,7 @@ jobs:
         run: |
           CURR=$(git tag -l 'v*' | grep -v '/' | sort -V | tail -n1 || true)
           [ -z "$CURR" ] && exit 0
-          GOPROXY=proxy.golang.org go list -m github.com/GoCodeAlone/modular@${CURR}
+          GOPROXY=proxy.golang.org go list -m github.com/CrisisTextLine/modular@${CURR}
 
   ensure-modules:
     needs: detect
@@ -360,7 +359,7 @@ jobs:
             TAG=$(git tag -l "modules/${M}/v*" | sort -V | tail -n1 || true)
             [ -z "$TAG" ] && { echo "Module $M has no tags yet; skipping."; continue; }
             VER=${TAG##*/}
-            MOD_PATH="github.com/GoCodeAlone/modular/modules/${M}"
+            MOD_PATH="github.com/CrisisTextLine/modular/modules/${M}"
             if gh release view "$TAG" >/dev/null 2>&1; then
               echo "Release exists for $TAG"
               URL=$(gh release view "$TAG" --json url --jq .url || echo '')

@@ -1,6 +1,6 @@
 # Authentication Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/auth.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/auth)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/auth.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/auth)
 
 The Authentication module provides comprehensive authentication capabilities for the Modular framework, including JWT tokens, session management, password hashing, and OAuth2/OIDC integration.
 
@@ -16,7 +16,7 @@ The Authentication module provides comprehensive authentication capabilities for
 ## Installation
 
 ```bash
-go get github.com/GoCodeAlone/modular/modules/auth
+go get github.com/CrisisTextLine/modular/modules/auth
 ```
 
 ## Configuration
@@ -71,8 +71,8 @@ auth:
 package main
 
 import (
-    "github.com/GoCodeAlone/modular"
-    "github.com/GoCodeAlone/modular/modules/auth"
+    "github.com/CrisisTextLine/modular"
+    "github.com/CrisisTextLine/modular/modules/auth"
 )
 
 func main() {

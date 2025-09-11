@@ -1,6 +1,6 @@
 # GoldenModule Module
 
-A module for the [Modular](https://github.com/GoCodeAlone/modular) framework.
+A module for the [Modular](https://github.com/CrisisTextLine/modular) framework.
 
 ## Overview
 
@@ -24,7 +24,7 @@ go get github.com/yourusername/goldenmodule
 package main
 
 import (
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	"github.com/yourusername/goldenmodule"
 	"log/slog"
 	"os"

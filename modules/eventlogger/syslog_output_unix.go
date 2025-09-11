@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/syslog"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 )
 
 // SyslogTarget outputs events to syslog (supported on Unix-like systems).
@@ -92,30 +92,15 @@ func (s *SyslogTarget) WriteEvent(entry *LogEntry) error {
 	msg := fmt.Sprintf("[%s] %s: %v", entry.Type, entry.Source, entry.Data)
 	switch entry.Level {
 	case "DEBUG":
-		if err := s.writer.Debug(msg); err != nil {
-			return fmt.Errorf("syslog write debug: %w", err)
-		}
-		return nil
+		return s.writer.Debug(msg)
 	case "INFO":
-		if err := s.writer.Info(msg); err != nil {
-			return fmt.Errorf("syslog write info: %w", err)
-		}
-		return nil
+		return s.writer.Info(msg)
 	case "WARN":
-		if err := s.writer.Warning(msg); err != nil {
-			return fmt.Errorf("syslog write warning: %w", err)
-		}
-		return nil
+		return s.writer.Warning(msg)
 	case "ERROR":
-		if err := s.writer.Err(msg); err != nil {
-			return fmt.Errorf("syslog write error: %w", err)
-		}
-		return nil
+		return s.writer.Err(msg)
 	default:
-		if err := s.writer.Info(msg); err != nil {
-			return fmt.Errorf("syslog write info: %w", err)
-		}
-		return nil
+		return s.writer.Info(msg)
 	}
 }
 

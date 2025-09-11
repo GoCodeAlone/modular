@@ -91,7 +91,7 @@ func (e *MyCustomEvaluator) EvaluateFlag(ctx context.Context, flagID string, ten
 The new system supports special sentinel errors for better control:
 
 ```go
-import "github.com/GoCodeAlone/modular/modules/reverseproxy"
+import "github.com/CrisisTextLine/modular/modules/reverseproxy"
 
 func (e *MyCustomEvaluator) EvaluateFlag(ctx context.Context, flagID string, tenantID modular.TenantID, req *http.Request) (bool, error) {
     // Check if you can make a decision

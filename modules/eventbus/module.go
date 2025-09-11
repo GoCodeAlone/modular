@@ -117,7 +117,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -149,7 +149,7 @@ type EventBusModule struct {
 	router    *EngineRouter
 	mutex     sync.RWMutex
 	isStarted bool
-	subject   modular.Subject // Lazily-set observer notification target. Guarded by m.mutex to avoid races with RegisterObservers and emit helpers. Nil means observation is disabled (no allocations / zero overhead when unused).
+	subject   modular.Subject // For event observation (guarded by mutex)
 }
 
 // DeliveryStats represents basic delivery outcomes for an engine or aggregate.

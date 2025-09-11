@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/GoCodeAlone/modular"
+	"github.com/CrisisTextLine/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
@@ -171,9 +171,6 @@ func (m *MockApplication) GetServiceEntry(serviceName string) (*modular.ServiceR
 func (m *MockApplication) GetServicesByInterface(interfaceType reflect.Type) []*modular.ServiceRegistryEntry {
 	return []*modular.ServiceRegistryEntry{}
 }
-
-// ServiceIntrospector returns nil (tests don't use advanced introspection)
-func (m *MockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
 
 // TenantApplication interface methods
 // GetTenantService returns the application's tenant service

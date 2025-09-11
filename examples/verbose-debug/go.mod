@@ -1,12 +1,12 @@
-module github.com/GoCodeAlone/modular/examples/verbose-debug
+module verbose-debug
 
 go 1.25
 
 toolchain go1.25.0
 
 require (
-	github.com/GoCodeAlone/modular v1.4.3
-	github.com/GoCodeAlone/modular/modules/database v1.1.0
+	github.com/CrisisTextLine/modular v1.11.1
+	github.com/CrisisTextLine/modular/modules/database v1.1.0
 	modernc.org/sqlite v1.38.0
 )
 
@@ -49,7 +49,7 @@ require (
 )
 
 // Use local module for development
-replace github.com/GoCodeAlone/modular => ../..
+replace github.com/CrisisTextLine/modular => ../..
 
 // Use local database module for development
-replace github.com/GoCodeAlone/modular/modules/database => ../../modules/database
+replace github.com/CrisisTextLine/modular/modules/database => ../../modules/database
