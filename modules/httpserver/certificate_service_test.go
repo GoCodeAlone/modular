@@ -136,8 +136,26 @@ func (m *SimpleMockApplication) GetServicesByInterface(interfaceType reflect.Typ
 	return []*modular.ServiceRegistryEntry{}
 }
 
+// GetTenantGuard returns nil for certificate service tests (tenant guard not exercised here)
+func (m *SimpleMockApplication) GetTenantGuard() modular.TenantGuard { return nil }
+
 // ServiceIntrospector returns nil (not needed in certificate tests)
 func (m *SimpleMockApplication) ServiceIntrospector() modular.ServiceIntrospector { return nil }
+
+// Health returns nil (not needed in certificate tests)
+func (m *SimpleMockApplication) Health() (modular.HealthAggregator, error) {
+	return nil, fmt.Errorf("health aggregator not available in test mock")
+}
+
+// RequestReload implements the Application interface
+func (m *SimpleMockApplication) RequestReload(sections ...string) error {
+	return fmt.Errorf("reload not supported in test mock")
+}
+
+// RegisterHealthProvider implements the Application interface
+func (m *SimpleMockApplication) RegisterHealthProvider(moduleName string, provider modular.HealthProvider, optional bool) error {
+	return fmt.Errorf("health provider registration not supported in test mock")
+}
 
 // SimpleMockLogger implements modular.Logger for certificate service tests
 type SimpleMockLogger struct{}

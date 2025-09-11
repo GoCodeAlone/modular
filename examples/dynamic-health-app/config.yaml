@@ -1,0 +1,29 @@
+# Dynamic Health Application Configuration
+# Fields marked with dynamic: true can be reloaded without restart
+
+server:
+  port: 8080
+  read_timeout: 10s      # dynamic: true
+  write_timeout: 10s     # dynamic: true
+  shutdown_timeout: 30s
+
+database:
+  host: localhost
+  port: 5432
+  database: myapp
+  # Connection pool settings - all dynamically reloadable
+  max_connections: 25    # dynamic: true - Adjust based on load
+  max_idle_conns: 5      # dynamic: true - Optimize for connection reuse
+  conn_max_lifetime: 1h  # dynamic: true - Prevent stale connections
+
+cache:
+  enabled: true          # dynamic: true - Enable/disable cache on the fly
+  ttl: 5m               # dynamic: true - Adjust cache duration
+  max_entries: 1000     # dynamic: true - Control memory usage
+  cleanup_time: 10m     # dynamic: true - Cleanup frequency
+
+features:
+  maintenance_mode: false     # dynamic: true - Enable maintenance mode
+  rate_limit_enabled: true    # dynamic: true - Toggle rate limiting
+  log_level: info             # dynamic: true - Change log verbosity
+  debug_endpoints: false      # dynamic: true - Enable debug endpoints

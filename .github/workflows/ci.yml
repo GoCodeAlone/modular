@@ -33,13 +33,56 @@ jobs:
         run: |
           go mod download
           go mod verify
-      - name: Run tests with coverage (race)
+      - name: Run tests with coverage (race) and always produce JSON
+        id: unit_tests
         run: |
+          set -euo pipefail
           export CGO_ENABLED=1
           export GORACE=halt_on_error=1
+          # First pass: standard race run (no coverage) just to surface issues quickly; don't stop pipeline on failure yet
+          set +e
           go test -race ./... -v
-          go test -race -v -coverprofile=coverage.txt -covermode=atomic -json ./... >> report.json
+          RACE_STATUS=$?
+          set -e
+          # Second pass: coverage + JSON (allow failures but still emit report.json)
+          set +e
+          go test -coverprofile=coverage.txt -covermode=atomic -json ./... > report.json
+          COV_STATUS=$?
+          set -e
+          # If coverage run failed AND coverage.txt missing or empty, attempt per-package collection as best-effort
+          if [ "$COV_STATUS" -ne 0 ]; then
+            if [ ! -s coverage.txt ]; then
+              echo "Attempting fallback per-package coverage collection" >&2
+              rm -f coverage.txt || true
+              echo 'mode: atomic' > coverage.txt
+              # Iterate packages; skip ones that previously crashed (still produce partial coverage)
+              for pkg in $(go list ./...); do
+                echo "Collecting coverage for $pkg" >&2
+                go test -race -covermode=atomic -coverprofile=tmp.cov -json $pkg >> report.json 2>/dev/null || true
+                if [ -f tmp.cov ]; then
+                  # Append without repeating mode line
+                  tail -n +2 tmp.cov >> coverage.txt || true
+                  rm -f tmp.cov
+                fi
+              done
+              # If only mode line present (no real data), remove file to avoid uploading empty coverage
+              if [ "$(wc -l < coverage.txt)" -le 1 ]; then
+                echo "No substantive coverage collected; removing coverage.txt" >&2
+                rm -f coverage.txt
+              fi
+            fi
+          fi
+          echo "race_status=$RACE_STATUS" >> $GITHUB_OUTPUT
+          echo "cov_status=$COV_STATUS" >> $GITHUB_OUTPUT
+        continue-on-error: true
+      - name: Fail unit tests if any step failed
+        if: ${{ steps.unit_tests.outputs.race_status != '0' || steps.unit_tests.outputs.cov_status != '0' }}
+        run: |
+          echo "Race test status: ${{ steps.unit_tests.outputs.race_status }}" >&2
+          echo "Coverage test status: ${{ steps.unit_tests.outputs.cov_status }}" >&2
+          exit 1
       - name: Upload coverage reports to Codecov (unit)
+        if: ${{ hashFiles('coverage.txt') != '' }}
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -47,6 +90,7 @@ jobs:
           files: coverage.txt
           flags: unit
       - name: Upload unit coverage artifact
+        if: ${{ hashFiles('coverage.txt') != '' }}
         # Make the raw Go coverage profile available for the merge job
         uses: actions/upload-artifact@v4
         with:
@@ -57,7 +101,9 @@ jobs:
       - name: CTRF Test Output
         run: |
           go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
-          cat report.json | go-ctrf-json-reporter -o report.ctrf.json
+          # Guard if report.json somehow missing
+          if [ ! -f report.json ]; then echo '{}' > report.json; fi
+          cat report.json | go-ctrf-json-reporter -o report.ctrf.json || echo 'CTRF conversion failed'
         if: always()
 
       # https://github.com/ctrf-io/github-test-reporter
@@ -137,7 +183,7 @@ jobs:
           # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
           version: latest
           only-new-issues: true
-          args: -c .golangci.github.yml
+          args: -c .golangci.yml
 
   merge-coverage:
     name: Merge Unit/CLI/BDD Coverage

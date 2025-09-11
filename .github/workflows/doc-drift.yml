@@ -1,0 +1,50 @@
+name: Doc Drift Check
+on:
+  pull_request:
+    paths:
+      - '**.go'
+      - 'README.md'
+      - 'DOCUMENTATION.md'
+      - 'GO_BEST_PRACTICES.md'
+      - 'memory/constitution.md'
+      - 'modules/**'
+
+# Minimal necessary permissions per security review comment
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  doc-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Collect exported symbols
+        run: |
+          echo "Collecting exported symbols" 
+          git ls-files '*.go' | grep -v '^vendor/' | xargs grep -h '^type [A-Z]' | cut -d' ' -f2 | cut -d'{' -f1 | sort -u > /tmp/exported_types.txt || true
+          git ls-files '*.go' | grep -v '^vendor/' | xargs grep -h '^func [A-Z]' | sed -E 's/^func ([A-Z][A-Za-z0-9_]*).*/\1/' | sort -u > /tmp/exported_funcs.txt || true
+          cat /tmp/exported_types.txt /tmp/exported_funcs.txt | sort -u > /tmp/exported_symbols.txt
+      - name: Check documentation references (best-effort)
+        run: |
+          missing=0
+          while read sym; do
+            # Skip common Go types and known false positives
+            [[ -z "$sym" ]] && continue
+            if ! grep -R "${sym}" -n README.md DOCUMENTATION.md GO_BEST_PRACTICES.md 2>/dev/null | head -n 1 >/dev/null; then
+              echo "⚠️  Symbol $sym not referenced in high-level docs (allowed if internal or low-level)." || true
+            fi
+          done < /tmp/exported_symbols.txt
+          echo "Note: This check is advisory and will not fail the build yet."
+      - name: Constitution version presence
+        run: |
+          if ! grep -q 'Version' memory/constitution.md; then
+            echo '❌ Constitution missing Version header' && exit 1
+          fi
+      - name: Success
+        run: echo 'Doc drift advisory check completed.'

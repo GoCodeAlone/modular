@@ -179,49 +179,56 @@ jobs:
           retention-days: 30
 
       - name: Summary (baseline missing notice)
-        if: env.baseline_has_contract == 'false'
         run: |
-          echo "## API Contract Check" >> $GITHUB_STEP_SUMMARY
-          echo "Baseline (origin/main) lacks contract subcommand; diff skipped. This is expected until main includes the CLI feature." >> $GITHUB_STEP_SUMMARY
+          if [ "${baseline_has_contract:-false}" = "false" ]; then
+            echo "## API Contract Check" >> $GITHUB_STEP_SUMMARY
+            echo "Baseline (origin/main) lacks contract subcommand; diff skipped. This is expected until main includes the CLI feature." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Generate contract summary
         id: summary
-        if: steps.contract-diff.outputs.has_changes == 'true'
         run: |
           echo "## 📋 API Contract Changes Summary" > contract-summary.md
           echo "" >> contract-summary.md
-          if [ "${{ steps.contract-diff.outputs.breaking_changes }}" == "true" ]; then
-            echo "⚠️ **WARNING: This PR contains breaking API changes!**" >> contract-summary.md
-            echo "" >> contract-summary.md
-          else
-            echo "✅ **No breaking changes detected - only additions and non-breaking modifications**" >> contract-summary.md
-            echo "" >> contract-summary.md
-          fi
-          echo "### Changed Components:" >> contract-summary.md
-          echo "" >> contract-summary.md
-          if [ -f "artifacts/diffs/core.md" ] && [ -s "artifacts/diffs/core.md" ]; then
-            echo "#### Core Framework" >> contract-summary.md
-            echo "" >> contract-summary.md
-            cat artifacts/diffs/core.md >> contract-summary.md
-            echo "" >> contract-summary.md
-          fi
-          for diff_file in artifacts/diffs/*.md; do
-            if [ -f "$diff_file" ] && [ -s "$diff_file" ]; then
-              module_name=$(basename "$diff_file" .md)
-              if [ "$module_name" != "core" ]; then
-                echo "#### Module: $module_name" >> contract-summary.md
-                echo "" >> contract-summary.md
-                cat "$diff_file" >> contract-summary.md
-                echo "" >> contract-summary.md
-              fi
+          if [ "${{ steps.contract-diff.outputs.has_changes }}" == "true" ]; then
+            if [ "${{ steps.contract-diff.outputs.breaking_changes }}" == "true" ]; then
+              echo "⚠️ **WARNING: This PR contains breaking API changes!**" >> contract-summary.md
+              echo "" >> contract-summary.md
+            else
+              echo "✅ **No breaking changes detected - only additions and non-breaking modifications**" >> contract-summary.md
+              echo "" >> contract-summary.md
             fi
-          done
-          echo "### Artifacts" >> contract-summary.md
+            echo "### Changed Components:" >> contract-summary.md
             echo "" >> contract-summary.md
-          echo "📁 Full contract diffs and JSON artifacts are available in the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." >> contract-summary.md
+            if [ -f "artifacts/diffs/core.md" ] && [ -s "artifacts/diffs/core.md" ]; then
+              echo "#### Core Framework" >> contract-summary.md
+              echo "" >> contract-summary.md
+              cat artifacts/diffs/core.md >> contract-summary.md
+              echo "" >> contract-summary.md
+            fi
+            for diff_file in artifacts/diffs/*.md; do
+              if [ -f "$diff_file" ] && [ -s "$diff_file" ]; then
+                module_name=$(basename "$diff_file" .md)
+                if [ "$module_name" != "core" ]; then
+                  echo "#### Module: $module_name" >> contract-summary.md
+                  echo "" >> contract-summary.md
+                  cat "$diff_file" >> contract-summary.md
+                  echo "" >> contract-summary.md
+                fi
+              fi
+            done
+            echo "### Artifacts" >> contract-summary.md
+            echo "" >> contract-summary.md
+            echo "📁 Full contract diffs and JSON artifacts are available in the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." >> contract-summary.md
+          else
+            echo "✅ No API surface changes detected relative to main." >> contract-summary.md
+            echo "" >> contract-summary.md
+            echo "This automated check examined exported types, functions, methods, and interfaces for the core framework and all modules." >> contract-summary.md
+            echo "" >> contract-summary.md
+            echo "If you expected API changes, ensure exported identifiers have the correct casing and that the contract extraction tool supports the new patterns." >> contract-summary.md
+          fi
 
-      - name: Comment PR with contract changes
-        if: steps.contract-diff.outputs.has_changes == 'true'
+      - name: Comment PR with contract results
         uses: actions/github-script@v8
         with:
           script: |

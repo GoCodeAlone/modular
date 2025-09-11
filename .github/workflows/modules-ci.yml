@@ -206,7 +206,7 @@ jobs:
           version: latest
           only-new-issues: true
           working-directory: modules/${{ matrix.module }}
-          args: -c ../../.golangci.github.yml
+          args: -c ../../.golangci.yml
 
       - name: Set lint result
         run: |

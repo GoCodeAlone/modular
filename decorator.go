@@ -163,3 +163,27 @@ func (d *BaseApplicationDecorator) GetObservers() []ObserverInfo {
 	}
 	return nil
 }
+
+// RequestReload forwards to the inner application's RequestReload method
+func (d *BaseApplicationDecorator) RequestReload(sections ...string) error {
+	return d.inner.RequestReload(sections...) //nolint:wrapcheck // Forwarding call
+}
+
+// RegisterHealthProvider forwards to the inner application's RegisterHealthProvider method
+func (d *BaseApplicationDecorator) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
+	return d.inner.RegisterHealthProvider(moduleName, provider, optional) //nolint:wrapcheck // Forwarding call
+}
+
+// Health forwards to the inner application's Health method
+func (d *BaseApplicationDecorator) Health() (HealthAggregator, error) {
+	return d.inner.Health() //nolint:wrapcheck // Forwarding call
+}
+
+// GetTenantGuard forwards to the inner application's GetTenantGuard method if implemented
+func (d *BaseApplicationDecorator) GetTenantGuard() TenantGuard {
+	// Inner must implement the extended Application interface; use type assertion defensively
+	if app, ok := d.inner.(interface{ GetTenantGuard() TenantGuard }); ok {
+		return app.GetTenantGuard()
+	}
+	return nil
+}

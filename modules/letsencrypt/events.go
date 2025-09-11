@@ -36,4 +36,8 @@ const (
 	// Error events
 	EventTypeError   = "com.modular.letsencrypt.error"
 	EventTypeWarning = "com.modular.letsencrypt.warning"
+
+	// Escalation events
+	EventTypeCertificateRenewalEscalated           = "com.modular.letsencrypt.certificate.renewal.escalated"
+	EventTypeCertificateRenewalEscalationRecovered = "com.modular.letsencrypt.certificate.renewal.escalation.recovered"
 )

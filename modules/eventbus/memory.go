@@ -247,6 +247,50 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 	blockTimeout := m.config.PublishBlockTimeout
 
 	for _, sub := range allMatchingSubs {
+		// When fairness rotation is enabled we deterministically rotate the subscription
+		// ordering. However the original implementation still relied on independent
+		// per‑subscription goroutines pulling from their buffered channels which leaves
+		// the actual handler execution order up to the scheduler – making the fairness
+		// test flaky / consistently biased (often the last started goroutine wins).
+		//
+		// To make fairness observable and deterministic, we deliver synchronously
+		// inline for non‑async subscriptions when rotation is enabled. This preserves
+		// previous semantics (handlers for sync subscriptions were effectively
+		// processed synchronously from the caller perspective) while making the first
+		// handler per publish match the rotated ordering. Async subscriptions still
+		// follow the existing channel + worker pool path so they are unaffected.
+		if m.config.RotateSubscriberOrder && !sub.isAsync {
+			// Skip cancelled subscriptions early
+			sub.mutex.RLock()
+			cancelled := sub.cancelled
+			sub.mutex.RUnlock()
+			if cancelled {
+				continue
+			}
+			// Inline execution mirrors handleEvents sync branch logic.
+			// (We intentionally do not copy the whole event except timestamps; metadata
+			// already per publish.)
+			copyEvt := event
+			now := time.Now()
+			copyEvt.ProcessingStarted = &now
+			m.emitEvent(m.ctx, EventTypeMessageReceived, "memory-eventbus", map[string]interface{}{
+				"topic":           copyEvt.Topic,
+				"subscription_id": sub.id,
+			})
+			if err := sub.handler(m.ctx, copyEvt); err != nil {
+				m.emitEvent(m.ctx, EventTypeMessageFailed, "memory-eventbus", map[string]interface{}{
+					"topic":           copyEvt.Topic,
+					"subscription_id": sub.id,
+					"error":           err.Error(),
+				})
+				slog.Error("Event handler failed", "error", err, "topic", copyEvt.Topic)
+			}
+			completed := time.Now()
+			copyEvt.ProcessingCompleted = &completed
+			atomic.AddUint64(&m.deliveredCount, 1)
+			continue
+		}
+
 		sub.mutex.RLock()
 		if sub.cancelled {
 			sub.mutex.RUnlock()

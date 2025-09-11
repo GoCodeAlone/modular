@@ -13,6 +13,13 @@ import (
 	"time"
 )
 
+// Static errors for application
+var (
+	ErrDynamicReloadNotAvailable    = errors.New("dynamic reload not available - use WithDynamicReload() option when creating application")
+	ErrInvalidHealthAggregator      = errors.New("invalid health aggregator service")
+	ErrHealthAggregatorNotAvailable = errors.New("health aggregator not available - use WithHealthAggregator() option when creating application")
+)
+
 // AppRegistry provides registry functionality for applications.
 // This interface provides access to the application's service registry,
 // allowing modules and components to access registered services.
@@ -161,6 +168,56 @@ type Application interface {
 	// ServiceIntrospector groups advanced service registry introspection helpers.
 	// Use this instead of adding new methods directly to Application.
 	ServiceIntrospector() ServiceIntrospector
+
+	// RequestReload triggers a dynamic configuration reload for the specified sections.
+	// If no sections are specified, all dynamic configuration will be reloaded.
+	// This method follows the design brief specification for FR-045 Dynamic Reload.
+	//
+	// The reload process will:
+	//   - Detect changes in configuration since last load
+	//   - Filter to only fields tagged with `dynamic:"true"`
+	//   - Validate all changes atomically before applying
+	//   - Call Reload() on all affected modules with the changes
+	//   - Emit appropriate events (config.reload.start/success/failed/noop)
+	//
+	// Returns an error if the reload fails for any reason.
+	RequestReload(sections ...string) error
+
+	// RegisterHealthProvider registers a health provider for the specified module.
+	// This method follows the design brief specification for FR-048 Health Aggregation.
+	//
+	// Parameters:
+	//   - moduleName: The name of the module providing health information
+	//   - provider: The HealthProvider implementation
+	//   - optional: Whether this provider is optional for readiness calculations
+	//
+	// Optional providers don't affect readiness status but are included in health reporting.
+	// Required providers affect both readiness and overall health status.
+	RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error
+
+	// Health returns the health aggregator service if available.
+	// This method follows the design brief specification for FR-048 Health Aggregation.
+	//
+	// The health aggregator provides system-wide health monitoring by collecting
+	// health reports from all registered providers and aggregating them according
+	// to readiness and health rules.
+	//
+	// Returns an error if the health aggregator service is not available.
+	// Use WithHealthAggregator() option when creating the application to register
+	// the health aggregation service.
+	//
+	// Example:
+	//   healthAgg, err := app.Health()
+	//   if err != nil {
+	//       return fmt.Errorf("health aggregation not available: %w", err)
+	//   }
+	//   status, err := healthAgg.Collect(ctx)
+	Health() (HealthAggregator, error)
+
+	// GetTenantGuard returns the tenant guard service if configured.
+	// This provides access to tenant isolation enforcement features.
+	// Returns nil when no tenant guard is configured (e.g., disabled mode or not set).
+	GetTenantGuard() TenantGuard
 }
 
 // ServiceIntrospector provides advanced service registry introspection helpers.
@@ -247,10 +304,18 @@ type StdApplication struct {
 	logger              Logger
 	ctx                 context.Context
 	cancel              context.CancelFunc
-	tenantService       TenantService // Added tenant service reference
-	verboseConfig       bool          // Flag for verbose configuration debugging
-	initialized         bool          // Tracks whether Init has already been successfully executed
-	configFeeders       []Feeder      // Optional per-application feeders (override global ConfigFeeders if non-nil)
+	// configFeeders holds per-application configuration feeders. When nil, the
+	// package-level ConfigFeeders slice is used (backwards compatible behavior).
+	configFeeders []Feeder
+	// initialized is set to true once Init() completes successfully. Makes
+	// Init idempotent and allows tests to guard against double initialization.
+	initialized bool
+	// tenantService caches the TenantService after first successful lookup so
+	// subsequent calls avoid registry lookups and to allow internal helpers to
+	// check if multi-tenancy is enabled.
+	tenantService TenantService
+	// verboseConfig enables extra configuration loader debug logging when true.
+	verboseConfig bool
 }
 
 // ServiceIntrospectorImpl implements ServiceIntrospector backed by StdApplication's enhanced registry.
@@ -667,12 +732,12 @@ func (app *StdApplication) Stop() error {
 func (app *StdApplication) Run() error {
 	// Initialize
 	if err := app.Init(); err != nil {
-		return err
+		return fmt.Errorf("application initialization failed: %w", err)
 	}
 
 	// Start all modules
 	if err := app.Start(); err != nil {
-		return err
+		return fmt.Errorf("application startup failed: %w", err)
 	}
 
 	// Setup signal handling
@@ -684,7 +749,10 @@ func (app *StdApplication) Run() error {
 	app.logger.Info("Received signal, shutting down", "signal", sig)
 
 	// Stop all modules
-	return app.Stop()
+	if err := app.Stop(); err != nil {
+		return fmt.Errorf("application shutdown failed: %w", err)
+	}
+	return nil
 }
 
 // injectServices injects required services into a module
@@ -1522,6 +1590,95 @@ func (app *StdApplication) GetTenantConfig(tenantID TenantID, section string) (C
 		return nil, fmt.Errorf("failed to get tenant config: %w", err)
 	}
 	return provider, nil
+}
+
+// GetModules returns a copy of the module registry for inspection.
+// This is primarily used for testing and debugging purposes.
+func (app *StdApplication) GetModules() map[string]Module {
+	modules := make(map[string]Module)
+	for name, module := range app.moduleRegistry {
+		modules[name] = module
+	}
+	return modules
+}
+
+// RequestReload triggers a dynamic configuration reload for specified sections
+func (app *StdApplication) RequestReload(sections ...string) error {
+	if app.logger != nil {
+		app.logger.Info("RequestReload called", "sections", sections)
+	}
+
+	// Try to use the registered ReloadOrchestrator service if available
+	service, exists := app.svcRegistry["reloadOrchestrator"]
+	if exists {
+		// Check if service implements the reload interface
+		type reloadable interface {
+			RequestReload(ctx context.Context, sections ...string) error
+		}
+
+		if orchestrator, ok := service.(reloadable); ok {
+			// Use the registered orchestrator
+			ctx := context.Background()
+			if err := orchestrator.RequestReload(ctx, sections...); err != nil {
+				return fmt.Errorf("reload orchestrator request failed: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// Fallback: No orchestrator registered, provide a helpful error
+	return ErrDynamicReloadNotAvailable
+}
+
+// RegisterHealthProvider registers a health provider for a module
+func (app *StdApplication) RegisterHealthProvider(moduleName string, provider HealthProvider, optional bool) error {
+	// TODO: Implement health provider registration
+	// This is a placeholder implementation that will be enhanced later
+	// The full implementation would include:
+	// 1. Health provider registry management
+	// 2. Registration validation
+	// 3. Integration with health aggregation service
+	// 4. Optional/required provider tracking
+
+	if app.logger != nil {
+		app.logger.Info("RegisterHealthProvider called", "module", moduleName, "optional", optional)
+	}
+
+	// For now, just register as a service for basic functionality
+	serviceName := fmt.Sprintf("healthProvider.%s", moduleName)
+	err := app.RegisterService(serviceName, provider)
+	if err != nil {
+		return fmt.Errorf("failed to register health provider for module %s: %w", moduleName, err)
+	}
+
+	return nil
+}
+
+// Health returns the health aggregator service if available
+func (app *StdApplication) Health() (HealthAggregator, error) {
+	// Try to get the registered health aggregator service
+	service, exists := app.svcRegistry["healthAggregator"]
+	if exists {
+		// Check if service implements the health aggregator interface
+		if aggregator, ok := service.(HealthAggregator); ok {
+			return aggregator, nil
+		}
+		// Service exists but is wrong type
+		return nil, ErrInvalidHealthAggregator
+	}
+
+	// No health aggregator service registered
+	return nil, ErrHealthAggregatorNotAvailable
+}
+
+// GetTenantGuard returns the application's tenant guard if configured.
+// Returns nil if no tenant guard service has been registered.
+func (app *StdApplication) GetTenantGuard() TenantGuard {
+	var tg TenantGuard
+	if err := app.GetService("tenantGuard", &tg); err == nil {
+		return tg
+	}
+	return nil
 }
 
 // (Intentionally removed old direct service introspection methods; use ServiceIntrospector())

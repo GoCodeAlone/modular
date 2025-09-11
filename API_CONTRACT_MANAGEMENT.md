@@ -379,6 +379,25 @@ modcli contract compare old.json new.json --format=markdown > CHANGELOG.md
 2. **Review**: Team reviews breaking changes in PR comments
 3. **Decision**: Approve for major version or request changes
 4. **Documentation**: Update migration guides and changelogs
+5. **Pattern Evaluation**: For each detected breaking or additive change altering existing interfaces/constructors, confirm Builder/Observer alternative was considered & documented (Constitution Art. XII & XVI)
+
+### 7. Pattern-Guided API Evolution
+When adding capabilities, first attempt one of:
+1. Builder option (additive, backward compatible, default preserves behavior)
+2. Observer event (informational or side-effect decoupled)
+3. New narrow interface (opt-in) instead of widening an existing one
+
+If none suffice, prepare:
+- Deprecation notice in old interface (comment)
+- Adapter bridging old to new
+- Migration notes referencing decision rationale
+- Contract diff attached to PR proving controlled change
+
+Contract review checklist additions:
+- [ ] Builder/Observer alternative documented
+- [ ] Deprecation + adapter (if interface change)
+- [ ] Event schema (if observer) tested & version-stable
+- [ ] Defaults of new builder options maintain backward behavior
 
 ## Examples
 
