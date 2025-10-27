@@ -71,7 +71,7 @@ jobs:
           files: core-bdd-coverage.txt
           flags: core-bdd
       - name: Persist core BDD coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: core-bdd-coverage
           path: core-bdd-coverage.txt
@@ -132,7 +132,7 @@ jobs:
           flags: bdd-${{ matrix.module }}
       - name: Persist module BDD coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bdd-${{ matrix.module }}-coverage
           path: modules/${{ matrix.module }}/bdd-${{ matrix.module }}-coverage.txt
@@ -208,7 +208,7 @@ jobs:
           flags: merged-bdd
       - name: Persist merged BDD coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: merged-bdd-coverage
           path: merged-bdd-coverage.txt
