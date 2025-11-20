@@ -21,7 +21,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.41.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
