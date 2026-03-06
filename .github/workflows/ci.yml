@@ -48,7 +48,7 @@ jobs:
           flags: unit
       - name: Upload unit coverage artifact
         # Make the raw Go coverage profile available for the merge job
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: unit-coverage
           path: coverage.txt
@@ -99,7 +99,7 @@ jobs:
           files: cli-coverage.txt
           flags: cli
       - name: Upload CLI coverage artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-coverage
           path: cmd/modcli/cli-coverage.txt
@@ -180,7 +180,7 @@ jobs:
           echo "Merged: ${FILES[*]}"
       - name: Upload merged total coverage artifact
         if: success() && hashFiles('total-coverage.txt') != ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: total-coverage
           path: total-coverage.txt
