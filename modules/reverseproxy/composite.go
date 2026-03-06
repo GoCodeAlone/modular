@@ -55,6 +55,15 @@ type CompositeHandler struct {
 	responseCache       *responseCache
 	eventEmitter        func(eventType string, data map[string]interface{})
 	responseTransformer ResponseTransformer
+
+	// Pipeline strategy configuration
+	pipelineConfig *PipelineConfig
+
+	// Fan-out-merge strategy merger function
+	fanOutMerger FanOutMerger
+
+	// Empty response policy for pipeline and fan-out-merge strategies
+	emptyResponsePolicy EmptyResponsePolicy
 }
 
 // NewCompositeHandler creates a new composite handler with the given backends and strategy.
@@ -121,6 +130,21 @@ func (h *CompositeHandler) SetResponseTransformer(transformer ResponseTransforme
 	h.responseTransformer = transformer
 }
 
+// SetPipelineConfig sets the pipeline configuration for pipeline strategy routes.
+func (h *CompositeHandler) SetPipelineConfig(config *PipelineConfig) {
+	h.pipelineConfig = config
+}
+
+// SetFanOutMerger sets the fan-out merger function for fan-out-merge strategy routes.
+func (h *CompositeHandler) SetFanOutMerger(merger FanOutMerger) {
+	h.fanOutMerger = merger
+}
+
+// SetEmptyResponsePolicy sets the empty response policy for pipeline and fan-out-merge strategies.
+func (h *CompositeHandler) SetEmptyResponsePolicy(policy EmptyResponsePolicy) {
+	h.emptyResponsePolicy = policy
+}
+
 // ServeHTTP handles the request by forwarding it to all backends
 // and merging the responses.
 func (h *CompositeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +197,10 @@ func (h *CompositeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.executeMerge(ctx, recorder, r, bodyBytes)
 	case StrategySequential:
 		h.executeSequential(ctx, recorder, r, bodyBytes)
+	case StrategyPipeline:
+		h.executePipeline(ctx, recorder, r, bodyBytes)
+	case StrategyFanOutMerge:
+		h.executeFanOutMerge(ctx, recorder, r, bodyBytes)
 	default:
 		// Default to first-success for unknown strategies
 		h.executeFirstSuccess(ctx, recorder, r, bodyBytes)
@@ -504,6 +532,11 @@ func (m *ReverseProxyModule) createCompositeHandler(ctx context.Context, routeCo
 	// Create and configure the handler
 	handler := NewCompositeHandler(backends, strategy, responseTimeout)
 
+	// Set empty response policy from config if specified
+	if routeConfig.EmptyPolicy != "" {
+		handler.SetEmptyResponsePolicy(EmptyResponsePolicy(routeConfig.EmptyPolicy))
+	}
+
 	// Set event emitter for circuit breaker events
 	handler.SetEventEmitter(func(eventType string, data map[string]interface{}) {
 		m.emitEvent(ctx, eventType, data)
@@ -534,6 +567,21 @@ func (m *ReverseProxyModule) createCompositeHandler(ctx context.Context, routeCo
 	// Set response transformer if available for this route
 	if transformer, exists := m.responseTransformers[routeConfig.Pattern]; exists {
 		handler.SetResponseTransformer(transformer)
+	}
+
+	// Set pipeline config if available for this route
+	if pipelineCfg, exists := m.pipelineConfigs[routeConfig.Pattern]; exists {
+		handler.SetPipelineConfig(pipelineCfg)
+	}
+
+	// Set fan-out merger if available for this route
+	if merger, exists := m.fanOutMergers[routeConfig.Pattern]; exists {
+		handler.SetFanOutMerger(merger)
+	}
+
+	// Set empty response policy if available for this route
+	if policy, exists := m.emptyResponsePolicies[routeConfig.Pattern]; exists {
+		handler.SetEmptyResponsePolicy(policy)
 	}
 
 	return handler, nil

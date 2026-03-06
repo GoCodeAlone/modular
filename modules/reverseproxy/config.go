@@ -96,6 +96,11 @@ type CompositeRoute struct {
 	Backends []string `json:"backends" yaml:"backends" toml:"backends" env:"BACKENDS"`
 	Strategy string   `json:"strategy" yaml:"strategy" toml:"strategy" env:"STRATEGY"`
 
+	// EmptyPolicy defines how empty backend responses are handled.
+	// Valid values: "allow-empty" (default), "skip-empty", "fail-on-empty".
+	// This is used by pipeline and fan-out-merge strategies.
+	EmptyPolicy string `json:"empty_policy" yaml:"empty_policy" toml:"empty_policy" env:"EMPTY_POLICY"`
+
 	// FeatureFlagID is the ID of the feature flag that controls whether this composite route is enabled
 	// If specified and the feature flag evaluates to false, this route will return 404
 	FeatureFlagID string `json:"feature_flag_id" yaml:"feature_flag_id" toml:"feature_flag_id" env:"FEATURE_FLAG_ID"`
