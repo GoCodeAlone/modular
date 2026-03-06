@@ -380,6 +380,31 @@ func registerAllStepDefinitions(s *godog.ScenarioContext, ctx *ReverseProxyBDDTe
 	// Timeout-related scenario steps (removing duplicate to avoid ambiguity)
 	s.Then(`^appropriate timeout error responses should be returned$`, ctx.appropriateTimeoutErrorResponsesShouldBeReturned)
 
+	// Pipeline and Fan-Out-Merge Composite Strategy Steps (from bdd_composite_pipeline_test.go)
+	s.Given(`^I have a pipeline composite route with two backends$`, ctx.iHaveAPipelineCompositeRouteWithTwoBackends)
+	s.When(`^I send a request to the pipeline route$`, ctx.iSendARequestToThePipelineRoute)
+	s.Then(`^the first backend should be called with the original request$`, ctx.theFirstBackendShouldBeCalledWithTheOriginalRequest)
+	s.Then(`^the second backend should receive data derived from the first response$`, ctx.theSecondBackendShouldReceiveDataDerivedFromTheFirstResponse)
+	s.Then(`^the final response should contain merged data from all stages$`, ctx.theFinalResponseShouldContainMergedDataFromAllStages)
+
+	s.Given(`^I have a fan-out-merge composite route with two backends$`, ctx.iHaveAFanOutMergeCompositeRouteWithTwoBackends)
+	s.When(`^I send a request to the fan-out-merge route$`, ctx.iSendARequestToTheFanOutMergeRoute)
+	s.Then(`^both backends should be called in parallel$`, ctx.bothBackendsShouldBeCalledInParallel)
+	s.Then(`^the responses should be merged by matching IDs$`, ctx.theResponsesShouldBeMergedByMatchingIDs)
+	s.Then(`^items with matching ancillary data should be enriched$`, ctx.itemsWithMatchingAncillaryDataShouldBeEnriched)
+
+	s.Given(`^I have a pipeline route with skip-empty policy$`, ctx.iHaveAPipelineRouteWithSkipEmptyPolicy)
+	s.When(`^I send a request and a backend returns an empty response$`, ctx.iSendARequestAndABackendReturnsAnEmptyResponse)
+	s.Then(`^the empty response should be excluded from the result$`, ctx.theEmptyResponseShouldBeExcludedFromTheResult)
+	s.Then(`^the non-empty responses should still be present$`, ctx.theNonEmptyResponsesShouldStillBePresent)
+
+	s.Given(`^I have a fan-out-merge route with fail-on-empty policy$`, ctx.iHaveAFanOutMergeRouteWithFailOnEmptyPolicy)
+	s.Then(`^the request should fail with a bad gateway error$`, ctx.theRequestShouldFailWithABadGatewayError)
+
+	s.Given(`^I have a pipeline route that filters by ancillary backend data$`, ctx.iHaveAPipelineRouteThatFiltersByAncillaryBackendData)
+	s.When(`^I send a request to fetch filtered results$`, ctx.iSendARequestToFetchFilteredResults)
+	s.Then(`^only items matching the ancillary criteria should be returned$`, ctx.onlyItemsMatchingTheAncillaryCriteriaShouldBeReturned)
+
 	// Note: Most comprehensive step implementations are already in existing BDD files
 	// Only add new steps here for scenarios that are completely missing implementations
 }
