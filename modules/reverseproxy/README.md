@@ -24,6 +24,9 @@ The Reverse Proxy module functions as a versatile API gateway that can route req
 * **Tenant Awareness**: Support for multi-tenant environments with tenant-specific routing
 * **Pattern-Based Routing**: Direct requests to specific backends based on URL patterns
 * **Custom Endpoint Mapping**: Define flexible mappings from frontend endpoints to backend services
+* **Pipeline Strategy**: Chain backend requests where each stage's response informs the next (map/reduce)
+* **Fan-Out-Merge Strategy**: Parallel backend requests with custom ID-based response merging
+* **Empty Response Policies**: Configurable handling of empty backend responses (allow, skip, or fail)
 * **Health Checking**: Continuous monitoring of backend service availability with DNS resolution and HTTP checks
 * **Circuit Breaker**: Automatic failure detection and recovery with configurable thresholds
 * **Response Caching**: Performance optimization with TTL-based caching
@@ -366,6 +369,139 @@ The module supports several advanced features:
 11. **Connection Pooling**: Advanced connection pool management with configurable limits
 12. **Queue Management**: Request queueing with configurable sizes and timeouts
 13. **Error Handling**: Comprehensive error handling with custom pages and retry logic
+14. **Pipeline Strategy**: Chain backend requests where each stage's response informs the next request (map/reduce pattern)
+15. **Fan-Out-Merge Strategy**: Parallel backend requests with custom ID-based response merging
+16. **Empty Response Policies**: Configurable handling of empty backend responses (allow, skip, or fail)
+
+### Composite Route Strategies
+
+Composite routes allow combining responses from multiple backend services. The module supports five strategies:
+
+#### first-success
+Tries backends sequentially until one succeeds. Use case: High-availability setup with primary and fallback backends.
+
+```yaml
+composite_routes:
+  "/api/data":
+    pattern: "/api/data"
+    backends: ["primary-backend", "fallback-backend"]
+    strategy: "first-success"
+```
+
+#### merge
+Executes all backend requests in parallel and merges JSON responses by backend ID.
+
+```yaml
+composite_routes:
+  "/api/user/profile":
+    pattern: "/api/user/profile"
+    backends: ["user-backend", "analytics-backend"]
+    strategy: "merge"
+```
+
+#### sequential
+Executes requests one at a time, returning the last successful response.
+
+```yaml
+composite_routes:
+  "/api/process":
+    pattern: "/api/process"
+    backends: ["auth-backend", "processing-backend"]
+    strategy: "sequential"
+```
+
+#### pipeline
+Executes backends sequentially where each stage's response can inform the next stage's request. Requires programmatic configuration via `SetPipelineConfig()`.
+
+Use case: A list page shows queued conversations. Backend A returns conversation details, those IDs are fed into Backend B to fetch follow-up information, and the responses are merged.
+
+```yaml
+composite_routes:
+  "/api/conversations":
+    pattern: "/api/conversations"
+    backends: ["conversations-backend", "followup-backend"]
+    strategy: "pipeline"
+    empty_policy: "skip-empty"  # Optional: allow-empty, skip-empty, fail-on-empty
+```
+
+```go
+proxyModule.SetPipelineConfig("/api/conversations", reverseproxy.PipelineConfig{
+    RequestBuilder: func(ctx context.Context, originalReq *http.Request, 
+        previousResponses map[string][]byte, nextBackendID string) (*http.Request, error) {
+        // Extract IDs from previous response and build next request
+        var convResp struct {
+            Conversations []struct{ ID string `json:"id"` } `json:"conversations"`
+        }
+        json.Unmarshal(previousResponses["conversations-backend"], &convResp)
+        
+        ids := []string{}
+        for _, c := range convResp.Conversations {
+            ids = append(ids, c.ID)
+        }
+        url := "http://followup-service/followups?ids=" + strings.Join(ids, ",")
+        return http.NewRequestWithContext(ctx, "GET", url, nil)
+    },
+    ResponseMerger: func(ctx context.Context, originalReq *http.Request,
+        allResponses map[string][]byte) (*http.Response, error) {
+        // Merge follow-up data into conversations
+        // ... custom merging logic ...
+        return reverseproxy.MakeJSONResponse(http.StatusOK, mergedResult)
+    },
+})
+```
+
+#### fan-out-merge
+Executes all backends in parallel (like merge), then applies a custom merger function for ID-based matching, filtering, or complex data correlation. Requires programmatic configuration via `SetFanOutMerger()`.
+
+Use case: A ticket dashboard where tickets come from one service and priority/assignment data comes from another. The merger matches by ticket ID.
+
+```yaml
+composite_routes:
+  "/api/tickets":
+    pattern: "/api/tickets"
+    backends: ["tickets-backend", "assignments-backend"]
+    strategy: "fan-out-merge"
+    empty_policy: "allow-empty"  # Optional
+```
+
+```go
+proxyModule.SetFanOutMerger("/api/tickets", func(ctx context.Context,
+    originalReq *http.Request, responses map[string][]byte) (*http.Response, error) {
+    // Parse both responses
+    var ticketsResp struct { Tickets []map[string]interface{} `json:"tickets"` }
+    json.Unmarshal(responses["tickets-backend"], &ticketsResp)
+    
+    var assignResp struct { Assignments map[string]interface{} `json:"assignments"` }
+    json.Unmarshal(responses["assignments-backend"], &assignResp)
+    
+    // Merge by ID
+    for i, ticket := range ticketsResp.Tickets {
+        if id, ok := ticket["id"].(string); ok {
+            if assignment, exists := assignResp.Assignments[id]; exists {
+                ticketsResp.Tickets[i]["assignment"] = assignment
+            }
+        }
+    }
+    return reverseproxy.MakeJSONResponse(http.StatusOK, map[string]interface{}{
+        "tickets": ticketsResp.Tickets,
+    })
+})
+```
+
+#### Empty Response Policies
+
+For `pipeline` and `fan-out-merge` strategies, you can control how empty backend responses are handled:
+
+| Policy | Description |
+|--------|-------------|
+| `allow-empty` | Include empty responses in the result set (default) |
+| `skip-empty` | Silently drop empty responses from the result |
+| `fail-on-empty` | Fail the entire request if any backend returns empty |
+
+Set via config (`empty_policy` field) or programmatically:
+```go
+proxyModule.SetEmptyResponsePolicy("/api/route", reverseproxy.EmptyResponseSkip)
+```
 
 ### Debug Endpoints
 

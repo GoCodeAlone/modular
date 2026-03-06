@@ -205,11 +205,13 @@ func (h *CompositeHandler) executePipeline(ctx context.Context, w http.ResponseW
 			switch h.emptyResponsePolicy {
 			case EmptyResponseFail:
 				w.WriteHeader(http.StatusBadGateway)
-				_, _ = w.Write([]byte(fmt.Sprintf("Backend %s returned empty response", backend.ID)))
+				fmt.Fprintf(w, "Backend %s returned empty response", backend.ID)
 				return
 			case EmptyResponseSkip:
 				continue
-			default: // EmptyResponseAllow or unset
+			case EmptyResponseAllow:
+				// Include empty response
+			default:
 				// Include empty response
 			}
 		}
@@ -222,7 +224,7 @@ func (h *CompositeHandler) executePipeline(ctx context.Context, w http.ResponseW
 		mergedResp, err := h.pipelineConfig.ResponseMerger(ctx, r, allResponses)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(fmt.Sprintf("Pipeline response merge failed: %v", err)))
+			fmt.Fprintf(w, "Pipeline response merge failed: %v", err)
 			return
 		}
 		if mergedResp != nil {
@@ -297,11 +299,13 @@ func (h *CompositeHandler) executeFanOutMerge(ctx context.Context, w http.Respon
 			switch h.emptyResponsePolicy {
 			case EmptyResponseFail:
 				w.WriteHeader(http.StatusBadGateway)
-				_, _ = w.Write([]byte(fmt.Sprintf("Backend %s returned empty response", backendID)))
+				fmt.Fprintf(w, "Backend %s returned empty response", backendID)
 				return
 			case EmptyResponseSkip:
 				continue
-			default: // EmptyResponseAllow or unset
+			case EmptyResponseAllow:
+				filteredResponses[backendID] = body
+			default:
 				filteredResponses[backendID] = body
 			}
 		} else {
@@ -313,7 +317,7 @@ func (h *CompositeHandler) executeFanOutMerge(ctx context.Context, w http.Respon
 	mergedResp, err := h.fanOutMerger(ctx, r, filteredResponses)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fmt.Sprintf("Fan-out merge failed: %v", err)))
+		fmt.Fprintf(w, "Fan-out merge failed: %v", err)
 		return
 	}
 	if mergedResp != nil {
@@ -333,7 +337,7 @@ func (h *CompositeHandler) buildBackendRequest(ctx context.Context, backend *Bac
 		backendURL += "?" + r.URL.RawQuery
 	}
 
-	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil)
+	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil) //nolint:gosec // G704: reverse proxy intentionally forwards requests to configured backends
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

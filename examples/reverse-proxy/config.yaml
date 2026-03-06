@@ -28,6 +28,14 @@ reverseproxy:
     # Custom Transformer Backends
     profile-backend: "http://localhost:9013"
     analytics-backend: "http://localhost:9014"
+
+    # Pipeline Strategy Backends
+    conversations-backend: "http://localhost:9015"
+    followup-backend: "http://localhost:9016"
+
+    # Fan-Out-Merge Strategy Backends
+    tickets-backend: "http://localhost:9017"
+    assignments-backend: "http://localhost:9018"
   
   default_backend: "global-default"
   tenant_id_header: "X-Tenant-ID"
@@ -99,6 +107,29 @@ reverseproxy:
         - "profile-backend"
         - "analytics-backend"
       strategy: "merge"  # Strategy is set, but transformer overrides merge behavior
+
+    # STRATEGY 4: PIPELINE
+    # Executes backends sequentially where each stage's response informs the next request.
+    # Use case: A list page showing queued conversations. Backend A returns conversation
+    # details, those IDs are fed into Backend B to fetch follow-up information,
+    # and the responses are merged into a unified view.
+    "/api/composite/pipeline":
+      pattern: "/api/composite/pipeline"
+      backends:
+        - "conversations-backend"
+        - "followup-backend"
+      strategy: "pipeline"
+
+    # STRATEGY 5: FAN-OUT-MERGE
+    # Executes all backends in parallel, then merges responses by matching IDs.
+    # Use case: A ticket dashboard where tickets come from one service and
+    # assignment/priority data comes from another. The merger correlates by ticket ID.
+    "/api/composite/fanout-merge":
+      pattern: "/api/composite/fanout-merge"
+      backends:
+        - "tickets-backend"
+        - "assignments-backend"
+      strategy: "fan-out-merge"
 
 # ChiMux router configuration
 chimux:

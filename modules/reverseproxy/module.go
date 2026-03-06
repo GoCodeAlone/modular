@@ -179,19 +179,19 @@ func NewModule() *ReverseProxyModule {
 	// either in Constructor (if httpclient service is available)
 	// or in Init (with default settings)
 	module := &ReverseProxyModule{
-		httpClient:           nil,
-		backendProxies:       make(map[string]*httputil.ReverseProxy),
-		backendRoutes:        make(map[string]map[string]http.HandlerFunc),
-		compositeRoutes:      make(map[string]http.HandlerFunc),
-		tenants:              make(map[modular.TenantID]*ReverseProxyConfig),
-		tenantBackendProxies: make(map[modular.TenantID]map[string]*httputil.ReverseProxy),
-		preProxyTransforms:   make(map[string]func(*http.Request)),
-		circuitBreakers:      make(map[string]*CircuitBreaker),
-		enableMetrics:        true,
-		loadBalanceCounters:  make(map[string]int),
-		responseTransformers: make(map[string]ResponseTransformer),
-		pipelineConfigs:      make(map[string]*PipelineConfig),
-		fanOutMergers:        make(map[string]FanOutMerger),
+		httpClient:            nil,
+		backendProxies:        make(map[string]*httputil.ReverseProxy),
+		backendRoutes:         make(map[string]map[string]http.HandlerFunc),
+		compositeRoutes:       make(map[string]http.HandlerFunc),
+		tenants:               make(map[modular.TenantID]*ReverseProxyConfig),
+		tenantBackendProxies:  make(map[modular.TenantID]map[string]*httputil.ReverseProxy),
+		preProxyTransforms:    make(map[string]func(*http.Request)),
+		circuitBreakers:       make(map[string]*CircuitBreaker),
+		enableMetrics:         true,
+		loadBalanceCounters:   make(map[string]int),
+		responseTransformers:  make(map[string]ResponseTransformer),
+		pipelineConfigs:       make(map[string]*PipelineConfig),
+		fanOutMergers:         make(map[string]FanOutMerger),
 		emptyResponsePolicies: make(map[string]EmptyResponsePolicy),
 	}
 
