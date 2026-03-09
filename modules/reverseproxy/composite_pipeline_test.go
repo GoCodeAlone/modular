@@ -1571,3 +1571,106 @@ func TestPipelineStrategy_ResponseMergerError(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
+
+func TestFanOutMerge_AllBackendsFail_Returns502(t *testing.T) {
+	// When all backends fail (unreachable), executeFanOutMerge should return 502
+	backends := []*Backend{
+		{ID: "b1", URL: "http://127.0.0.1:1", Client: &http.Client{Timeout: 50 * time.Millisecond}},
+		{ID: "b2", URL: "http://127.0.0.1:1", Client: &http.Client{Timeout: 50 * time.Millisecond}},
+	}
+
+	handler := NewCompositeHandler(backends, StrategyFanOutMerge, 5*time.Second)
+	handler.SetFanOutMerger(func(ctx context.Context, originalReq *http.Request, responses map[string][]byte) (*http.Response, error) {
+		// Should never be called since all backends fail
+		return MakeJSONResponse(http.StatusOK, map[string]interface{}{"ok": true})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+}
+
+func TestFanOutMerge_AllEmptyWithSkipPolicy_Returns502(t *testing.T) {
+	// When all responses are empty and skip-empty policy is set, return 502
+	backendA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`null`)) // Empty/null
+	}))
+	defer backendA.Close()
+
+	backendB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`)) // Empty object
+	}))
+	defer backendB.Close()
+
+	backends := []*Backend{
+		{ID: "a", URL: backendA.URL, Client: http.DefaultClient},
+		{ID: "b", URL: backendB.URL, Client: http.DefaultClient},
+	}
+
+	handler := NewCompositeHandler(backends, StrategyFanOutMerge, 10*time.Second)
+	handler.SetEmptyResponsePolicy(EmptyResponseSkip)
+	handler.SetFanOutMerger(func(ctx context.Context, originalReq *http.Request, responses map[string][]byte) (*http.Response, error) {
+		// Should never be called since all responses are skipped
+		return MakeJSONResponse(http.StatusOK, map[string]interface{}{"ok": true})
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+}
+
+func TestMakeJSONResponse_StatusFormat(t *testing.T) {
+	// Verify the status string is formatted per net/http conventions (e.g. "200 OK")
+	resp, err := MakeJSONResponse(http.StatusOK, map[string]interface{}{"ok": true})
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, "200 OK", resp.Status)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp2, err := MakeJSONResponse(http.StatusNotFound, map[string]interface{}{"error": "not found"})
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, "404 Not Found", resp2.Status)
+	assert.Equal(t, http.StatusNotFound, resp2.StatusCode)
+}
+
+func TestCreateCompositeHandler_InvalidEmptyPolicy(t *testing.T) {
+	// createCompositeHandler should return an error for invalid empty_policy values
+	m := NewModule()
+	require.NotNil(t, m)
+
+	cfg := &ReverseProxyConfig{
+		DefaultBackend: "backend-a",
+		BackendServices: map[string]string{
+			"backend-a": "http://localhost:9999",
+			"backend-b": "http://localhost:9998",
+		},
+		CompositeRoutes: map[string]CompositeRoute{
+			"/api/test": {
+				Pattern:     "/api/test",
+				Backends:    []string{"backend-a", "backend-b"},
+				Strategy:    "pipeline",
+				EmptyPolicy: "invalid-policy",
+			},
+		},
+	}
+	m.config = cfg
+
+	route := cfg.CompositeRoutes["/api/test"]
+	_, err := m.createCompositeHandler(context.Background(), route, cfg)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidEmptyResponsePolicy)
+}

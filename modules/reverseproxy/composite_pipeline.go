@@ -292,6 +292,13 @@ func (h *CompositeHandler) executeFanOutMerge(ctx context.Context, w http.Respon
 
 	wg.Wait()
 
+	// Short-circuit if all backends failed or were skipped by open circuit breakers
+	if len(responses) == 0 {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, "No successful responses from fan-out backends")
+		return
+	}
+
 	// Apply empty response policy
 	filteredResponses := make(map[string][]byte)
 	for backendID, body := range responses {
@@ -311,6 +318,13 @@ func (h *CompositeHandler) executeFanOutMerge(ctx context.Context, w http.Respon
 		} else {
 			filteredResponses[backendID] = body
 		}
+	}
+
+	// Short-circuit if all responses were filtered out (e.g., all empty with skip policy)
+	if len(filteredResponses) == 0 {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, "No non-empty responses from fan-out backends")
+		return
 	}
 
 	// Apply the fan-out merger
@@ -395,7 +409,7 @@ func MakeJSONResponse(statusCode int, data interface{}) (*http.Response, error) 
 	}
 
 	return &http.Response{
-		Status:     http.StatusText(statusCode),
+		Status:     fmt.Sprintf("%d %s", statusCode, http.StatusText(statusCode)),
 		StatusCode: statusCode,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(bytes.NewReader(body)),

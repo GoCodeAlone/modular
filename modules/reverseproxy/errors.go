@@ -40,8 +40,9 @@ var (
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 
 	// Dynamic operation errors
-	ErrBackendIDRequired    = errors.New("backend id required")
-	ErrServiceURLRequired   = errors.New("service URL required")
-	ErrNoBackendsConfigured = errors.New("no backends configured")
-	ErrBackendNotConfigured = errors.New("backend not configured")
+	ErrBackendIDRequired          = errors.New("backend id required")
+	ErrServiceURLRequired         = errors.New("service URL required")
+	ErrNoBackendsConfigured       = errors.New("no backends configured")
+	ErrBackendNotConfigured       = errors.New("backend not configured")
+	ErrInvalidEmptyResponsePolicy = errors.New("invalid empty_policy: must be one of allow-empty, skip-empty, fail-on-empty")
 )

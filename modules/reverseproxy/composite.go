@@ -405,7 +405,7 @@ func (h *CompositeHandler) executeBackendRequest(ctx context.Context, backend *B
 	}
 
 	// Create a new request with the same method, URL, and headers.
-	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil)
+	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil) //nolint:gosec // G704: reverse proxy intentionally forwards requests to configured backends
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new request: %w", err)
 	}
@@ -534,7 +534,13 @@ func (m *ReverseProxyModule) createCompositeHandler(ctx context.Context, routeCo
 
 	// Set empty response policy from config if specified
 	if routeConfig.EmptyPolicy != "" {
-		handler.SetEmptyResponsePolicy(EmptyResponsePolicy(routeConfig.EmptyPolicy))
+		switch routeConfig.EmptyPolicy {
+		case string(EmptyResponseAllow), string(EmptyResponseSkip), string(EmptyResponseFail):
+			handler.SetEmptyResponsePolicy(EmptyResponsePolicy(routeConfig.EmptyPolicy))
+		default:
+			return nil, fmt.Errorf("route %q empty_policy %q: %w",
+				routeConfig.Pattern, routeConfig.EmptyPolicy, ErrInvalidEmptyResponsePolicy)
+		}
 	}
 
 	// Set event emitter for circuit breaker events
