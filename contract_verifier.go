@@ -85,7 +85,7 @@ func (v *StandardContractVerifier) VerifyReloadContract(module Reloadable) []Con
 // whether any invocation panicked.
 func (v *StandardContractVerifier) checkCanReloadConcurrency(module Reloadable) bool {
 	var (
-		wg      sync.WaitGroup
+		wg       sync.WaitGroup
 		panicked int32
 		mu       sync.Mutex
 	)

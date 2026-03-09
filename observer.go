@@ -95,7 +95,7 @@ const (
 	EventTypeTenantViolation = "com.modular.tenant.violation"
 
 	// Configuration reload events
-	EventTypeConfigReloadStarted = "com.modular.config.reload.started"
+	EventTypeConfigReloadStarted   = "com.modular.config.reload.started"
 	EventTypeConfigReloadCompleted = "com.modular.config.reload.completed"
 	EventTypeConfigReloadFailed    = "com.modular.config.reload.failed"
 	EventTypeConfigReloadNoop      = "com.modular.config.reload.noop"

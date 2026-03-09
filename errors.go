@@ -86,6 +86,11 @@ var (
 	ErrTenantContextMissing     = errors.New("tenant context is missing")
 	ErrTenantIsolationViolation = errors.New("tenant isolation violation")
 
+	// Reload errors
+	ErrReloadCircuitBreakerOpen = errors.New("reload circuit breaker is open; backing off")
+	ErrReloadChannelFull        = errors.New("reload request channel is full")
+	ErrReloadInProgress         = errors.New("reload already in progress")
+
 	// Observer/Event emission errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
 

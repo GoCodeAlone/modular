@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -22,6 +23,8 @@ const (
 // String returns the string representation of a HealthStatus.
 func (s HealthStatus) String() string {
 	switch s {
+	case StatusUnknown:
+		return "unknown"
 	case StatusHealthy:
 		return "healthy"
 	case StatusDegraded:
@@ -130,7 +133,7 @@ func (p *compositeHealthProvider) HealthCheck(ctx context.Context) ([]HealthRepo
 	for _, provider := range p.providers {
 		reports, err := provider.HealthCheck(ctx)
 		if err != nil {
-			return all, err
+			return all, fmt.Errorf("composite health check: %w", err)
 		}
 		all = append(all, reports...)
 	}

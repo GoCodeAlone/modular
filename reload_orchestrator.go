@@ -2,7 +2,6 @@ package modular
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -66,13 +65,13 @@ func (o *ReloadOrchestrator) RegisterReloadable(name string, module Reloadable) 
 // channel is full or the circuit breaker is open.
 func (o *ReloadOrchestrator) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
 	if o.isCircuitOpen() {
-		return errors.New("reload circuit breaker is open; backing off")
+		return ErrReloadCircuitBreakerOpen
 	}
 	select {
 	case o.requestCh <- ReloadRequest{Trigger: trigger, Diff: diff, Ctx: ctx}:
 		return nil
 	default:
-		return errors.New("reload request channel is full")
+		return ErrReloadChannelFull
 	}
 }
 
@@ -89,10 +88,15 @@ func (o *ReloadOrchestrator) Start(ctx context.Context) {
 				if !ok {
 					return
 				}
-				// Use the request's context if provided, otherwise use the start context.
-				rctx := req.Ctx
-				if rctx == nil {
-					rctx = ctx
+				// Derive a context from the start context. If the request carries
+				// a deadline or values, merge them via the start context.
+				rctx := ctx
+				if req.Ctx != nil {
+					if deadline, ok := req.Ctx.Deadline(); ok {
+						var cancel context.CancelFunc
+						rctx, cancel = context.WithDeadline(ctx, deadline)
+						defer cancel()
+					}
 				}
 				if err := o.processReload(rctx, req); err != nil {
 					o.logger.Error("Reload failed", "trigger", req.Trigger.String(), "error", err)
@@ -113,7 +117,7 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 	// Single-flight: only one reload at a time.
 	if !o.processing.CompareAndSwap(false, true) {
 		o.logger.Warn("Reload already in progress, skipping request")
-		return errors.New("reload already in progress")
+		return ErrReloadInProgress
 	}
 	defer o.processing.Store(false)
 

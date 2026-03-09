@@ -20,9 +20,9 @@ type ApplicationBuilder struct {
 	tenantLoader      TenantLoader
 	enableObserver    bool
 	enableTenant      bool
-	configLoadedHooks  []func(Application) error // Hooks to run after config loading
-	tenantGuard        *StandardTenantGuard
-	tenantGuardConfig  *TenantGuardConfig
+	configLoadedHooks []func(Application) error // Hooks to run after config loading
+	tenantGuard       *StandardTenantGuard
+	tenantGuardConfig *TenantGuardConfig
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
