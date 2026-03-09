@@ -1,14 +1,25 @@
 package modular
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// tenantGuardTestLogger is a Logger implementation that counts Warn calls for testing.
+type tenantGuardTestLogger struct {
+	warnCalls atomic.Int32
+}
+
+func (l *tenantGuardTestLogger) Info(_ string, _ ...any)  {}
+func (l *tenantGuardTestLogger) Error(_ string, _ ...any) {}
+func (l *tenantGuardTestLogger) Debug(_ string, _ ...any) {}
+func (l *tenantGuardTestLogger) Warn(_ string, _ ...any) {
+	l.warnCalls.Add(1)
+}
 
 func TestTenantGuardMode_String(t *testing.T) {
 	tests := []struct {
@@ -102,8 +113,7 @@ func TestStandardTenantGuard_LenientMode(t *testing.T) {
 	config := DefaultTenantGuardConfig()
 	config.Mode = TenantGuardLenient
 
-	var buf bytes.Buffer
-	logger := log.New(&buf, "", 0)
+	logger := &tenantGuardTestLogger{}
 	guard := NewStandardTenantGuard(config, WithTenantGuardLogger(logger))
 
 	err := guard.ValidateAccess(context.Background(), TenantViolation{
@@ -123,7 +133,7 @@ func TestStandardTenantGuard_LenientMode(t *testing.T) {
 		t.Fatalf("expected 1 violation recorded, got %d", len(violations))
 	}
 
-	if buf.Len() == 0 {
+	if logger.warnCalls.Load() == 0 {
 		t.Error("expected log output for violation, got none")
 	}
 }

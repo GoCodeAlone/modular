@@ -3,6 +3,7 @@ package modular
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,15 +22,22 @@ type reloadEntry struct {
 	module Reloadable
 }
 
+// defaultReloadTimeout is used when a module returns a non-positive ReloadTimeout.
+const defaultReloadTimeout = 30 * time.Second
+
 // ReloadOrchestrator coordinates configuration reloading across all registered
 // Reloadable modules. It provides single-flight execution, circuit breaking,
 // rollback on partial failure, and event emission via the observer pattern.
+//
+// Note: Application-level integration (Application.RequestReload(), WithDynamicReload()
+// builder option) will be added when the Application interface is extended in a follow-up.
 type ReloadOrchestrator struct {
 	mu          sync.RWMutex
 	reloadables map[string]Reloadable
 
 	requestCh chan ReloadRequest
-	stopCh    chan struct{}
+	stopped   atomic.Bool
+	stopOnce  sync.Once
 
 	processing atomic.Bool
 
@@ -48,7 +56,6 @@ func NewReloadOrchestrator(logger Logger, subject Subject) *ReloadOrchestrator {
 	return &ReloadOrchestrator{
 		reloadables: make(map[string]Reloadable),
 		requestCh:   make(chan ReloadRequest, 100),
-		stopCh:      make(chan struct{}),
 		logger:      logger,
 		subject:     subject,
 	}
@@ -61,9 +68,12 @@ func (o *ReloadOrchestrator) RegisterReloadable(name string, module Reloadable) 
 	o.reloadables[name] = module
 }
 
-// RequestReload enqueues a reload request. It returns an error if the request
-// channel is full or the circuit breaker is open.
+// RequestReload enqueues a reload request. It returns an error if the orchestrator
+// is stopped, the request channel is full, or the circuit breaker is open.
 func (o *ReloadOrchestrator) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
+	if o.stopped.Load() {
+		return ErrReloadChannelFull
+	}
 	if o.isCircuitOpen() {
 		return ErrReloadCircuitBreakerOpen
 	}
@@ -82,19 +92,17 @@ func (o *ReloadOrchestrator) Start(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-o.stopCh:
-				return
 			case req, ok := <-o.requestCh:
 				if !ok {
 					return
 				}
 				// Derive a context from the start context. If the request carries
-				// a deadline or values, merge them via the start context.
+				// a deadline, apply it to the parent context.
 				rctx := ctx
 				if req.Ctx != nil {
 					if deadline, ok := req.Ctx.Deadline(); ok {
-						var cancel context.CancelFunc
-						rctx, cancel = context.WithDeadline(ctx, deadline)
+						dctx, cancel := context.WithDeadline(ctx, deadline)
+						rctx = dctx
 						defer cancel()
 					}
 				}
@@ -106,9 +114,12 @@ func (o *ReloadOrchestrator) Start(ctx context.Context) {
 	}()
 }
 
-// Stop signals the background goroutine to exit and closes the request channel.
+// Stop signals the background goroutine to exit. It is safe to call multiple times.
 func (o *ReloadOrchestrator) Stop() {
-	close(o.stopCh)
+	o.stopOnce.Do(func() {
+		o.stopped.Store(true)
+		close(o.requestCh)
+	})
 }
 
 // processReload executes a single reload request with atomic single-flight semantics,
@@ -121,14 +132,7 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 	}
 	defer o.processing.Store(false)
 
-	// Emit started event.
-	o.emitEvent(ctx, EventTypeConfigReloadStarted, map[string]interface{}{
-		"trigger": req.Trigger.String(),
-		"diffId":  req.Diff.DiffID,
-		"summary": req.Diff.ChangeSummary(),
-	})
-
-	// Noop if no changes.
+	// Noop if no changes — emit noop without a misleading "started" event.
 	if !req.Diff.HasChanges() {
 		o.emitEvent(ctx, EventTypeConfigReloadNoop, map[string]interface{}{
 			"trigger": req.Trigger.String(),
@@ -137,16 +141,28 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 		return nil
 	}
 
+	// Emit started event only when there are actual changes to apply.
+	o.emitEvent(ctx, EventTypeConfigReloadStarted, map[string]interface{}{
+		"trigger": req.Trigger.String(),
+		"diffId":  req.Diff.DiffID,
+		"summary": req.Diff.ChangeSummary(),
+	})
+
 	// Build the list of changes for the Reloadable interface.
 	changes := o.buildChanges(req.Diff)
 
-	// Snapshot current reloadables under read lock.
+	// Snapshot current reloadables under read lock, sorted by name for
+	// deterministic reload/rollback ordering.
 	o.mu.RLock()
-	var targets []reloadEntry
+	targets := make([]reloadEntry, 0, len(o.reloadables))
 	for name, mod := range o.reloadables {
 		targets = append(targets, reloadEntry{name: name, module: mod})
 	}
 	o.mu.RUnlock()
+
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].name < targets[j].name
+	})
 
 	// Track which modules have been successfully reloaded (for rollback).
 	var applied []reloadEntry
@@ -158,6 +174,9 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 		}
 
 		timeout := t.module.ReloadTimeout()
+		if timeout <= 0 {
+			timeout = defaultReloadTimeout
+		}
 		rctx, cancel := context.WithTimeout(ctx, timeout)
 
 		err := t.module.Reload(rctx, changes)
@@ -241,6 +260,9 @@ func (o *ReloadOrchestrator) rollback(ctx context.Context, applied []reloadEntry
 	for i := len(applied) - 1; i >= 0; i-- {
 		t := applied[i]
 		timeout := t.module.ReloadTimeout()
+		if timeout <= 0 {
+			timeout = defaultReloadTimeout
+		}
 		rctx, cancel := context.WithTimeout(ctx, timeout)
 
 		if err := t.module.Reload(rctx, reverseChanges); err != nil {

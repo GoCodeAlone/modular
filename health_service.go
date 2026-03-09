@@ -3,12 +3,8 @@ package modular
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
-
-	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/google/uuid"
 )
 
 // AggregateHealthService collects health reports from registered providers
@@ -22,7 +18,7 @@ type AggregateHealthService struct {
 	cacheTTL    time.Duration
 	lastStatus  HealthStatus
 	subject     Subject
-	logger      *log.Logger
+	logger      Logger
 }
 
 // HealthServiceOption configures an AggregateHealthService.
@@ -42,8 +38,8 @@ func WithSubject(sub Subject) HealthServiceOption {
 	}
 }
 
-// WithHealthLogger sets the logger for the health service.
-func WithHealthLogger(l *log.Logger) HealthServiceOption {
+// WithHealthLogger sets the structured logger for the health service.
+func WithHealthLogger(l Logger) HealthServiceOption {
 	return func(s *AggregateHealthService) {
 		s.logger = l
 	}
@@ -94,15 +90,16 @@ type providerResult struct {
 
 // Check evaluates all registered providers and returns an aggregated health result.
 // Results are cached for the configured TTL unless ForceHealthRefreshKey is set in the context.
+// The returned AggregatedHealth is a deep copy and safe to mutate.
 func (s *AggregateHealthService) Check(ctx context.Context) (*AggregatedHealth, error) {
 	// Check cache validity
 	forceRefresh, _ := ctx.Value(ForceHealthRefreshKey).(bool)
 	if !forceRefresh {
 		s.cacheMu.RLock()
 		if s.cache != nil && time.Now().Before(s.cacheExpiry) {
-			cached := s.cache
+			copied := s.deepCopyAggregated(s.cache)
 			s.cacheMu.RUnlock()
-			return cached, nil
+			return copied, nil
 		}
 		s.cacheMu.RUnlock()
 	}
@@ -201,25 +198,44 @@ func (s *AggregateHealthService) Check(ctx context.Context) (*AggregatedHealth, 
 		s.emitHealthStatusChanged(ctx, previousStatus, aggregated.Health)
 	}
 
-	return aggregated, nil
+	return s.deepCopyAggregated(aggregated), nil
+}
+
+// deepCopyAggregated returns a deep copy of an AggregatedHealth, including
+// reports and their Details maps, so callers cannot mutate cached state.
+func (s *AggregateHealthService) deepCopyAggregated(src *AggregatedHealth) *AggregatedHealth {
+	if src == nil {
+		return nil
+	}
+	dst := &AggregatedHealth{
+		Readiness:   src.Readiness,
+		Health:      src.Health,
+		GeneratedAt: src.GeneratedAt,
+		Reports:     make([]HealthReport, len(src.Reports)),
+	}
+	for i, r := range src.Reports {
+		dst.Reports[i] = r
+		if r.Details != nil {
+			dst.Reports[i].Details = make(map[string]any, len(r.Details))
+			for k, v := range r.Details {
+				dst.Reports[i].Details[k] = v
+			}
+		}
+	}
+	return dst
 }
 
 func (s *AggregateHealthService) emitHealthEvaluated(ctx context.Context, agg *AggregatedHealth) {
 	if s.subject == nil {
 		return
 	}
-	event := cloudevents.NewEvent()
-	event.SetID(uuid.New().String())
-	event.SetType(EventTypeHealthEvaluated)
-	event.SetSource("modular/health-service")
-	event.SetTime(agg.GeneratedAt)
-	_ = event.SetData(cloudevents.ApplicationJSON, map[string]any{
+	event := NewCloudEvent(EventTypeHealthEvaluated, "modular/health-service", map[string]any{
 		"readiness":    agg.Readiness.String(),
 		"health":       agg.Health.String(),
 		"report_count": len(agg.Reports),
-	})
+	}, nil)
 	if err := s.subject.NotifyObservers(ctx, event); err != nil && s.logger != nil {
-		s.logger.Printf("failed to emit health evaluated event: %v", err)
+		s.logger.Debug("Failed to emit health evaluated event", "error", err)
 	}
 }
 
@@ -227,22 +243,19 @@ func (s *AggregateHealthService) emitHealthStatusChanged(ctx context.Context, fr
 	if s.subject == nil {
 		return
 	}
-	event := cloudevents.NewEvent()
-	event.SetID(uuid.New().String())
-	event.SetType(EventTypeHealthStatusChanged)
-	event.SetSource("modular/health-service")
-	event.SetTime(time.Now())
-	_ = event.SetData(cloudevents.ApplicationJSON, map[string]any{
+	event := NewCloudEvent(EventTypeHealthStatusChanged, "modular/health-service", map[string]any{
 		"previous_status": from.String(),
 		"current_status":  to.String(),
-	})
+	}, nil)
 	if err := s.subject.NotifyObservers(ctx, event); err != nil && s.logger != nil {
-		s.logger.Printf("failed to emit health status changed event: %v", err)
+		s.logger.Debug("Failed to emit health status changed event", "error", err)
 	}
 }
 
 // worstStatus returns the worse of two health statuses.
 // StatusUnknown is treated as StatusUnhealthy for aggregation purposes.
+// When both normalize to the same severity, StatusUnhealthy is preferred
+// over StatusUnknown.
 func worstStatus(a, b HealthStatus) HealthStatus {
 	ar := normalizeForAggregation(a)
 	br := normalizeForAggregation(b)
@@ -251,6 +264,13 @@ func worstStatus(a, b HealthStatus) HealthStatus {
 	}
 	if br > ar {
 		return b
+	}
+	// Tie-break: prefer StatusUnhealthy over StatusUnknown
+	if a == StatusUnknown && b == StatusUnhealthy {
+		return b
+	}
+	if b == StatusUnknown && a == StatusUnhealthy {
+		return a
 	}
 	return a
 }

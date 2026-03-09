@@ -3,11 +3,8 @@ package modular
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
-
-	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // TenantGuardMode controls how the tenant guard responds to violations.
@@ -141,8 +138,8 @@ func DefaultTenantGuardConfig() TenantGuardConfig {
 // TenantGuardOption is a functional option for configuring a StandardTenantGuard.
 type TenantGuardOption func(*StandardTenantGuard)
 
-// WithTenantGuardLogger sets a custom logger on the guard.
-func WithTenantGuardLogger(l *log.Logger) TenantGuardOption {
+// WithTenantGuardLogger sets a structured logger on the guard.
+func WithTenantGuardLogger(l Logger) TenantGuardOption {
 	return func(g *StandardTenantGuard) {
 		g.logger = l
 	}
@@ -160,22 +157,35 @@ func WithTenantGuardSubject(s Subject) TenantGuardOption {
 // CloudEvents when violations are detected.
 type StandardTenantGuard struct {
 	config     TenantGuardConfig
+	whitelist  map[string]map[string]struct{} // deep-copied set for fast lookups
 	violations []TenantViolation
 	head       int
 	count      int
 	mu         sync.RWMutex
-	logger     *log.Logger
+	logger     Logger
 	subject    Subject
 }
 
 // NewStandardTenantGuard creates a new StandardTenantGuard with the given config and options.
+// The whitelist is deep-copied and converted to a set for safe, fast lookups.
 func NewStandardTenantGuard(config TenantGuardConfig, opts ...TenantGuardOption) *StandardTenantGuard {
 	if config.MaxViolations <= 0 {
 		config.MaxViolations = 1000
 	}
 
+	// Deep-copy and convert whitelist to set
+	wl := make(map[string]map[string]struct{}, len(config.Whitelist))
+	for tenant, targets := range config.Whitelist {
+		set := make(map[string]struct{}, len(targets))
+		for _, t := range targets {
+			set[t] = struct{}{}
+		}
+		wl[tenant] = set
+	}
+
 	g := &StandardTenantGuard{
 		config:     config,
+		whitelist:  wl,
 		violations: make([]TenantViolation, config.MaxViolations),
 	}
 
@@ -202,12 +212,10 @@ func (g *StandardTenantGuard) ValidateAccess(ctx context.Context, violation Tena
 		violation.Timestamp = time.Now()
 	}
 
-	// Check whitelist
-	if targets, ok := g.config.Whitelist[violation.TenantID]; ok {
-		for _, t := range targets {
-			if t == violation.TargetID {
-				return nil
-			}
+	// Check whitelist (set-based O(1) lookup)
+	if targets, ok := g.whitelist[violation.TenantID]; ok {
+		if _, allowed := targets[violation.TargetID]; allowed {
+			return nil
 		}
 	}
 
@@ -218,17 +226,18 @@ func (g *StandardTenantGuard) ValidateAccess(ctx context.Context, violation Tena
 
 	// Log if configured
 	if g.config.LogViolations && g.logger != nil {
-		g.logger.Printf("tenant violation: type=%s severity=%s tenant=%s target=%s details=%s",
-			violation.Type, violation.Severity, violation.TenantID, violation.TargetID, violation.Details)
+		g.logger.Warn("Tenant violation detected",
+			"type", violation.Type.String(),
+			"severity", violation.Severity.String(),
+			"tenant", violation.TenantID,
+			"target", violation.TargetID,
+			"details", violation.Details,
+		)
 	}
 
-	// Emit event if subject is available
+	// Emit event using NewCloudEvent helper (sets ID, specversion, time)
 	if g.subject != nil {
-		event := cloudevents.NewEvent()
-		event.SetType(EventTypeTenantViolation)
-		event.SetSource("com.modular.tenant.guard")
-		event.SetTime(violation.Timestamp)
-		_ = event.SetData(cloudevents.ApplicationJSON, violation)
+		event := NewCloudEvent(EventTypeTenantViolation, "com.modular.tenant.guard", violation, nil)
 		_ = g.subject.NotifyObservers(ctx, event)
 	}
 

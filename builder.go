@@ -99,9 +99,12 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		app = NewObservableDecorator(app, b.observers...)
 	}
 
-	// Create tenant guard if configured
+	// Create and register tenant guard if configured
 	if b.tenantGuardConfig != nil {
 		b.tenantGuard = NewStandardTenantGuard(*b.tenantGuardConfig)
+		// Register the guard as a service so modules/decorators can resolve it
+		svcReg := app.SvcRegistry()
+		svcReg["tenant.guard"] = b.tenantGuard
 	}
 
 	// Register modules
