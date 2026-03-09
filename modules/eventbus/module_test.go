@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/CrisisTextLine/modular"
+	cevent "github.com/cloudevents/sdk-go/v2/event"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -373,4 +374,53 @@ func TestEventBusServiceProvider(t *testing.T) {
 	// Test required services
 	required := module.RequiresServices()
 	assert.Empty(t, required)
+}
+func TestPublishEvent_RoutesPreBuiltCloudEvent(t *testing.T) {
+	// Setup: create and start the module (same pattern as TestEventBusOperations)
+	module := NewModule().(*EventBusModule)
+	app := newMockApp()
+	err := module.RegisterConfig(app)
+	require.NoError(t, err)
+	err = module.Init(app)
+	require.NoError(t, err)
+	ctx := context.Background()
+	err = module.Start(ctx)
+	require.NoError(t, err)
+	defer module.Stop(ctx)
+
+	// Create a pre-built CloudEvent with custom extensions
+	event := cevent.New()
+	event.SetType("test.event")
+	event.SetSource("/test/source")
+	event.SetID("test-id-123")
+	event.SetTime(time.Now())
+	event.SetData("application/json", map[string]string{"key": "value"})
+	event.SetExtension("encryption", "aes-256-gcm")
+	event.SetExtension("encryptedfields", `["key"]`)
+
+	// Subscribe to capture the event
+	eventReceived := make(chan Event, 1)
+	subscription, err := module.Subscribe(ctx, "test.event", func(ctx context.Context, e Event) error {
+		eventReceived <- e
+		return nil
+	})
+	require.NoError(t, err)
+	defer subscription.Cancel()
+
+	// Act
+	err = module.PublishEvent(ctx, event)
+	require.NoError(t, err)
+
+	// Assert
+	select {
+	case received := <-eventReceived:
+		assert.Equal(t, "test.event", received.Type())
+		assert.Equal(t, "/test/source", received.Source())
+		assert.Equal(t, "test-id-123", received.ID())
+		// Extensions should be preserved (not overwritten by module)
+		assert.Equal(t, "aes-256-gcm", received.Extensions()["encryption"])
+		assert.Equal(t, `["key"]`, received.Extensions()["encryptedfields"])
+	case <-time.After(5 * time.Second):
+		t.Fatal("Event not received within timeout")
+	}
 }

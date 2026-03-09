@@ -423,6 +423,31 @@ func (m *EventBusModule) Constructor() modular.ModuleConstructor {
 	}
 }
 
+// PublishEvent publishes a pre-built CloudEvents event to the event bus.
+// Unlike Publish, this method does not wrap the payload in a new CloudEvent —
+// it routes the provided event directly. This allows callers to set custom
+// CloudEvent extensions (e.g., encryption metadata) before publishing.
+func (m *EventBusModule) PublishEvent(ctx context.Context, event Event) error {
+	startTime := time.Now()
+	topic := event.Type()
+	err := m.router.Publish(ctx, event)
+	duration := time.Since(startTime)
+	if err != nil {
+		go m.emitEvent(ctx, EventTypeMessageFailed, map[string]interface{}{
+			"topic":       topic,
+			"error":       err.Error(),
+			"duration_ms": duration.Milliseconds(),
+		})
+		return fmt.Errorf("publishing event to topic %s: %w", topic, err)
+	}
+
+	go m.emitEvent(ctx, EventTypeMessagePublished, map[string]interface{}{
+		"topic":       topic,
+		"duration_ms": duration.Milliseconds(),
+	})
+	return nil
+}
+
 // Publish publishes an event to the event bus.
 // Creates an Event struct with the provided type and payload, then
 // sends it through the event bus for processing by subscribers.
