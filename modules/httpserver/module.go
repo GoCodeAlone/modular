@@ -245,11 +245,12 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 
 	// Create server with configured timeouts
 	m.server = &http.Server{
-		Addr:         addr,
-		Handler:      effectiveHandler,
-		ReadTimeout:  m.config.ReadTimeout,
-		WriteTimeout: m.config.WriteTimeout,
-		IdleTimeout:  m.config.IdleTimeout,
+		Addr:           addr,
+		Handler:        effectiveHandler,
+		ReadTimeout:    m.config.ReadTimeout,
+		WriteTimeout:   m.config.WriteTimeout,
+		IdleTimeout:    m.config.IdleTimeout,
+		MaxHeaderBytes: m.config.MaxHeaderBytes,
 	}
 
 	// Start the server in a goroutine

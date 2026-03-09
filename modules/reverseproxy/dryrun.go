@@ -203,7 +203,7 @@ func (d *DryRunHandler) sendRequest(ctx context.Context, originalReq *http.Reque
 		bodyReader = bytes.NewReader(requestBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, originalReq.Method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, originalReq.Method, url, bodyReader) //nolint:gosec // G704: url is built from configured backend address, not user input
 	if err != nil {
 		response.Error = fmt.Sprintf("failed to create request: %v", err)
 		return response

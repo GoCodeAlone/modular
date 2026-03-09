@@ -377,7 +377,7 @@ func (h *CompositeHandler) executeBackendRequest(ctx context.Context, backend *B
 	}
 
 	// Create a new request with the same method, URL, and headers.
-	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil)
+	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil) //nolint:gosec // G704: backendURL is built from configured backend.URL, not user input
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new request: %w", err)
 	}

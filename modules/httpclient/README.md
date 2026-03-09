@@ -29,7 +29,7 @@ httpclient:
   verbose_options:                # Options for verbose logging (when verbose is true)
     log_headers: true             # Log request and response headers
     log_body: true                # Log request and response bodies
-    max_body_log_size: 10000      # Maximum size of logged bodies (bytes)
+    max_body_log_size: 1024       # Maximum size of logged bodies (bytes, default 1KB)
     log_to_file: false            # Whether to log to files instead of application logger
     log_file_path: "/tmp/logs"    # Directory path for log files (required when log_to_file is true)
 ```

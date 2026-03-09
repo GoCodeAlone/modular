@@ -171,7 +171,7 @@ func (hc *HealthChecker) Start(ctx context.Context) error {
 	}
 
 	// Create a cancellable context for all health check goroutines
-	healthCtx, cancel := context.WithCancel(ctx)
+	healthCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in hc.cancel and called in Stop()
 	hc.ctx = healthCtx
 	hc.cancel = cancel
 
