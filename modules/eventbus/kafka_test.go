@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/GoCodeAlone/modular/modules/eventbus/mocks"
+	"github.com/GoCodeAlone/modular/modules/eventbus/v2/mocks"
 )
 
 // newTestKafkaEventBus creates a KafkaEventBus wired to a mock producer,
