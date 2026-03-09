@@ -258,12 +258,14 @@ func TestAffiliateBackendOverrideRouting(t *testing.T) {
 	err = module.Start(context.Background())
 	require.NoError(t, err)
 
-	// Get the captured handler for the root route "/" or "/*"
+	// Get the captured handler for the catch-all route "/*".
+	// Multiple "/*" handlers are registered (one per backend from setupBackendRoutes,
+	// plus the catch-all from registerBasicRoutes). The LAST "/*" is the catch-all
+	// which does proper route matching for all paths including "/".
 	var capturedHandler http.HandlerFunc
 	for _, call := range router.Calls {
-		if call.Method == "HandleFunc" && (call.Arguments[0].(string) == "/" || call.Arguments[0].(string) == "/*") {
+		if call.Method == "HandleFunc" && call.Arguments[0].(string) == "/*" {
 			capturedHandler = call.Arguments[1].(http.HandlerFunc)
-			break
 		}
 	}
 	assert.NotNil(t, capturedHandler, "Handler should have been captured")

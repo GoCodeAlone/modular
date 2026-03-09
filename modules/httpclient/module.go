@@ -542,6 +542,44 @@ func (m *HTTPClientModule) emitEventSync(ctx context.Context, eventType string, 
 	}
 }
 
+// shouldOmitResponseBody returns a non-empty reason string when the response body
+// should not be logged (compressed encoding or binary content type). Returns ""
+// when the body is safe to log as text.
+func shouldOmitResponseBody(resp *http.Response) string {
+	// Check Content-Encoding — compressed bytes are garbled in logs.
+	if enc := resp.Header.Get("Content-Encoding"); enc != "" && enc != "identity" {
+		return fmt.Sprintf("Content-Encoding=%s, Content-Length=%d", enc, resp.ContentLength)
+	}
+
+	// Check Content-Type — binary types produce unreadable output even without encoding.
+	ct := resp.Header.Get("Content-Type")
+	if ct != "" {
+		// Extract the media type before any parameters (e.g. "text/html; charset=utf-8" → "text/html")
+		mediaType := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
+		mediaType = strings.ToLower(mediaType)
+
+		// Allow text-based types that are useful in logs.
+		switch {
+		case strings.HasPrefix(mediaType, "text/"):
+			// text/plain, text/html, text/xml, etc.
+		case mediaType == "application/json",
+			mediaType == "application/xml",
+			mediaType == "application/javascript",
+			mediaType == "application/x-www-form-urlencoded",
+			mediaType == "application/graphql",
+			mediaType == "application/soap+xml":
+			// common text-based API content types
+		case strings.HasSuffix(mediaType, "+json"),
+			strings.HasSuffix(mediaType, "+xml"):
+			// vendor types like application/vnd.api+json
+		default:
+			return fmt.Sprintf("Content-Type=%s, Content-Length=%d", mediaType, resp.ContentLength)
+		}
+	}
+
+	return ""
+}
+
 // loggingTransport provides verbose logging of HTTP requests and responses.
 type loggingTransport struct {
 	Transport      http.RoundTripper
@@ -660,10 +698,13 @@ func (t *loggingTransport) logRequest(id string, req *http.Request) {
 
 // logResponse logs detailed information about the response.
 func (t *loggingTransport) logResponse(id, url string, resp *http.Response, duration time.Duration) {
+	// Sanitize URL for logging to prevent log injection via control characters.
+	safeURL := strings.ReplaceAll(strings.ReplaceAll(url, "\n", ""), "\r", "")
+
 	if resp == nil {
 		t.Logger.Warn("Nil response received",
 			"id", id,
-			"url", url,
+			"url", safeURL,
 			"duration_ms", duration.Milliseconds(),
 		)
 		return
@@ -680,29 +721,38 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response, dura
 		var bodyBytes []byte
 
 		if t.LogBody && resp.Body != nil {
-			// Read body for logging
-			bodyBytes, err = io.ReadAll(resp.Body)
-			if err != nil {
-				t.Logger.Info("Received response (body read failed)",
-					"id", id,
-					"response", basicInfo,
-					"url", url,
-					"duration_ms", duration.Milliseconds(),
-					"error", err,
-				)
-				return
-			}
+			// Skip body logging for compressed or binary responses — raw bytes
+			// produce garbled output that floods structured log systems.
+			if reason := shouldOmitResponseBody(resp); reason != "" {
+				respDump, err = httputil.DumpResponse(resp, false)
+				if err == nil {
+					respDump = append(respDump, []byte(fmt.Sprintf("\r\n[body omitted: %s]", reason))...)
+				}
+			} else {
+				// Read body for logging
+				bodyBytes, err = io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logger.Info("Received response (body read failed)",
+						"id", id,
+						"response", basicInfo,
+						"url", safeURL,
+						"duration_ms", duration.Milliseconds(),
+						"error", err,
+					)
+					return
+				}
 
-			// Restore the body for the caller
-			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+				// Restore the body for the caller
+				resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-			// Create the response dump manually
-			respDump = append([]byte(fmt.Sprintf("HTTP %s\r\n", resp.Status)), []byte{}...)
-			for k, v := range resp.Header {
-				respDump = append(respDump, []byte(fmt.Sprintf("%s: %s\r\n", k, v[0]))...)
+				// Create the response dump manually
+				respDump = append([]byte(fmt.Sprintf("HTTP %s\r\n", resp.Status)), []byte{}...)
+				for k, v := range resp.Header {
+					respDump = append(respDump, []byte(fmt.Sprintf("%s: %s\r\n", k, v[0]))...)
+				}
+				respDump = append(respDump, []byte("\r\n")...)
+				respDump = append(respDump, bodyBytes...)
 			}
-			respDump = append(respDump, []byte("\r\n")...)
-			respDump = append(respDump, bodyBytes...)
 
 		} else {
 			// If we don't need to log the body or there is no body,
@@ -937,33 +987,48 @@ func (t *loggingTransport) handleFileLogging(requestID string, req *http.Request
 	// Get response dump
 	var respDump []byte
 	if t.LogBody && resp.Body != nil {
-		// We need to read the body for logging and then restore it
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Logger.Error("Failed to read response body for transaction logging",
-				"id", requestID,
-				"error", err,
-			)
-			return
-		}
+		// Skip body logging for compressed or binary responses.
+		if reason := shouldOmitResponseBody(resp); reason != "" {
+			var dumpErr error
+			respDump, dumpErr = httputil.DumpResponse(resp, false)
+			if dumpErr != nil {
+				t.Logger.Error("Failed to dump response for transaction logging",
+					"id", requestID,
+					"error", dumpErr,
+				)
+				return
+			}
+			respDump = append(respDump, []byte(fmt.Sprintf("\r\n[body omitted: %s]", reason))...)
+		} else {
+			// We need to read the body for logging and then restore it
+			bodyBytes, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				t.Logger.Error("Failed to read response body for transaction logging",
+					"id", requestID,
+					"error", readErr,
+				)
+				return
+			}
 
-		// Restore the body for the caller
-		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			// Restore the body for the caller
+			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-		// Create the response dump manually
-		respDump = append([]byte(fmt.Sprintf("HTTP %s\r\n", resp.Status)), []byte{}...)
-		for k, v := range resp.Header {
-			respDump = append(respDump, []byte(fmt.Sprintf("%s: %s\r\n", k, v[0]))...)
+			// Create the response dump manually
+			respDump = append([]byte(fmt.Sprintf("HTTP %s\r\n", resp.Status)), []byte{}...)
+			for k, v := range resp.Header {
+				respDump = append(respDump, []byte(fmt.Sprintf("%s: %s\r\n", k, v[0]))...)
+			}
+			respDump = append(respDump, []byte("\r\n")...)
+			respDump = append(respDump, bodyBytes...)
 		}
-		respDump = append(respDump, []byte("\r\n")...)
-		respDump = append(respDump, bodyBytes...)
 	} else {
 		// If we don't need the body or there is no body
-		respDump, err = httputil.DumpResponse(resp, false)
-		if err != nil {
+		var dumpErr error
+		respDump, dumpErr = httputil.DumpResponse(resp, false)
+		if dumpErr != nil {
 			t.Logger.Error("Failed to dump response for transaction logging",
 				"id", requestID,
-				"error", err,
+				"error", dumpErr,
 			)
 			return
 		}

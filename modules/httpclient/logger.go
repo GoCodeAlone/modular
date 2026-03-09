@@ -92,8 +92,12 @@ func NewFileLogger(baseDir string, logger modular.Logger) (*FileLogger, error) {
 
 // LogRequest writes request data to a file.
 func (f *FileLogger) LogRequest(id string, data []byte) error {
-	requestFile := filepath.Join(f.requestDir, fmt.Sprintf("request_%s_%d.log", id, time.Now().UnixNano()))
-	if err := os.WriteFile(requestFile, data, 0600); err != nil {
+	safeID := sanitizeForFilename(id)
+	if safeID == "" {
+		return fmt.Errorf("request ID %q: %w", id, ErrUnsafeFilename)
+	}
+	requestFile := filepath.Join(f.requestDir, fmt.Sprintf("request_%s_%d.log", safeID, time.Now().UnixNano()))
+	if err := os.WriteFile(requestFile, data, 0600); err != nil { //nolint:gosec // path components are sanitized above
 		return fmt.Errorf("failed to write request log file %s: %w", requestFile, err)
 	}
 	return nil
@@ -101,8 +105,12 @@ func (f *FileLogger) LogRequest(id string, data []byte) error {
 
 // LogResponse writes response data to a file.
 func (f *FileLogger) LogResponse(id string, data []byte) error {
-	responseFile := filepath.Join(f.responseDir, fmt.Sprintf("response_%s_%d.log", id, time.Now().UnixNano()))
-	if err := os.WriteFile(responseFile, data, 0600); err != nil {
+	safeID := sanitizeForFilename(id)
+	if safeID == "" {
+		return fmt.Errorf("response ID %q: %w", id, ErrUnsafeFilename)
+	}
+	responseFile := filepath.Join(f.responseDir, fmt.Sprintf("response_%s_%d.log", safeID, time.Now().UnixNano()))
+	if err := os.WriteFile(responseFile, data, 0600); err != nil { //nolint:gosec // path components are sanitized above
 		return fmt.Errorf("failed to write response log file %s: %w", responseFile, err)
 	}
 	return nil
@@ -111,14 +119,18 @@ func (f *FileLogger) LogResponse(id string, data []byte) error {
 // LogTransactionToFile logs both request and response data to a single file for easier analysis.
 func (f *FileLogger) LogTransactionToFile(id string, reqData, respData []byte, duration time.Duration, url string) error {
 	// Create a filename that's safe for the filesystem
+	safeID := sanitizeForFilename(id)
+	if safeID == "" {
+		return fmt.Errorf("transaction ID %q: %w", id, ErrUnsafeFilename)
+	}
 	safeURL := sanitizeForFilename(url)
 	if safeURL == "" {
 		return fmt.Errorf("URL %q: %w", url, ErrUnsafeFilename)
 	}
 
-	txnFile := filepath.Join(f.txnDir, fmt.Sprintf("txn_%s_%s_%d.log", id, safeURL, time.Now().UnixNano()))
+	txnFile := filepath.Join(f.txnDir, fmt.Sprintf("txn_%s_%s_%d.log", safeID, safeURL, time.Now().UnixNano()))
 
-	file, err := os.Create(txnFile)
+	file, err := os.Create(txnFile) //nolint:gosec // path components are sanitized above
 	if err != nil {
 		return fmt.Errorf("failed to create transaction log file: %w", err)
 	}
@@ -130,7 +142,7 @@ func (f *FileLogger) LogTransactionToFile(id string, reqData, respData []byte, d
 	}()
 
 	// Write transaction metadata
-	if _, err := fmt.Fprintf(file, "Transaction ID: %s\n", id); err != nil {
+	if _, err := fmt.Fprintf(file, "Transaction ID: %s\n", id); err != nil { //nolint:gosec // G705 false positive: writing to local file, not HTTP response
 		return fmt.Errorf("failed to write transaction ID to log file: %w", err)
 	}
 	if _, err := fmt.Fprintf(file, "URL: %s\n", url); err != nil {
@@ -139,7 +151,7 @@ func (f *FileLogger) LogTransactionToFile(id string, reqData, respData []byte, d
 	if _, err := fmt.Fprintf(file, "Time: %s\n", time.Now().Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("failed to write timestamp to log file: %w", err)
 	}
-	if _, err := fmt.Fprintf(file, "Duration: %d ms\n", duration.Milliseconds()); err != nil {
+	if _, err := fmt.Fprintf(file, "Duration: %d ms\n", duration.Milliseconds()); err != nil { //nolint:gosec // G705 false positive: writing to local file, not HTTP response
 		return fmt.Errorf("failed to write duration to log file: %w", err)
 	}
 	if _, err := fmt.Fprintf(file, "\n----- REQUEST -----\n\n"); err != nil {

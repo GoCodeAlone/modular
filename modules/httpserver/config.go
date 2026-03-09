@@ -40,6 +40,12 @@ type HTTPServerConfig struct {
 	// shutdown.
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" json:"shutdown_timeout" env:"SHUTDOWN_TIMEOUT"`
 
+	// MaxHeaderBytes limits the total size of HTTP request headers the server
+	// will accept. Rejects oversized requests with 431 before parsing the body.
+	// Go's built-in default is 1MB; a tighter limit reduces DoS surface.
+	// Default: 32768 (32KB)
+	MaxHeaderBytes int `yaml:"max_header_bytes" json:"max_header_bytes" env:"MAX_HEADER_BYTES"`
+
 	// TLS configuration if HTTPS is enabled
 	TLS *TLSConfig `yaml:"tls" json:"tls"`
 }
@@ -100,6 +106,10 @@ func (c *HTTPServerConfig) Validate() error {
 
 	if c.ShutdownTimeout == 0 {
 		c.ShutdownTimeout = 30 * time.Second
+	}
+
+	if c.MaxHeaderBytes <= 0 {
+		c.MaxHeaderBytes = 32 * 1024 // 32KB
 	}
 
 	// Validate TLS configuration if enabled

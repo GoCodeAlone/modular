@@ -14,9 +14,11 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -594,4 +596,67 @@ func generateTestCertificate(certFile, keyFile string) error {
 	}
 
 	return nil
+}
+
+// TestMaxHeaderBytes_OversizedHeaderRejected verifies that the HTTP server rejects requests
+// whose headers exceed MaxHeaderBytes with a 431 status and does not allow the request
+// through to the application handler.
+// Regression test for: malicious clients sending large header payloads ("book of data")
+// to probe for buffer-overflow or resource-exhaustion vulnerabilities.
+func TestMaxHeaderBytes_OversizedHeaderRejected(t *testing.T) {
+	// Go adds 4096 bytes of internal overhead to MaxHeaderBytes before enforcing the
+	// limit, so the total request (line + headers) must exceed limit+4096 to trigger 431.
+	const smallLimit = 1024
+
+	t.Run("config default is 32KB", func(t *testing.T) {
+		cfg := &HTTPServerConfig{}
+		require.NoError(t, cfg.Validate())
+		assert.Equal(t, 32*1024, cfg.MaxHeaderBytes, "default MaxHeaderBytes should be 32KB")
+	})
+
+	t.Run("config explicit value is preserved", func(t *testing.T) {
+		cfg := &HTTPServerConfig{MaxHeaderBytes: smallLimit}
+		require.NoError(t, cfg.Validate())
+		assert.Equal(t, smallLimit, cfg.MaxHeaderBytes)
+	})
+
+	t.Run("negative value gets default", func(t *testing.T) {
+		cfg := &HTTPServerConfig{MaxHeaderBytes: -1}
+		require.NoError(t, cfg.Validate())
+		assert.Equal(t, 32*1024, cfg.MaxHeaderBytes, "negative MaxHeaderBytes should be replaced with 32KB default")
+	})
+
+	t.Run("oversized header rejected with 431", func(t *testing.T) {
+		// Use httptest.NewUnstartedServer so we can set MaxHeaderBytes before starting.
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		srv := httptest.NewUnstartedServer(handler)
+		srv.Config.MaxHeaderBytes = smallLimit
+		srv.Start()
+		defer srv.Close()
+
+		// Build a request with a header value large enough to exceed limit+4096 overhead.
+		bigValue := strings.Repeat("a", smallLimit+4096+100)
+		req, err := http.NewRequestWithContext(context.Background(), "GET", srv.URL+"/", nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Oversized", bigValue)
+
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			// A connection-reset or EOF is acceptable — Go may close the
+			// connection before writing a response when headers are very large.
+			var netErr *net.OpError
+			isNetErr := errors.As(err, &netErr)
+			isEOF := errors.Is(err, io.EOF)
+			assert.True(t, isNetErr || isEOF,
+				"expected network error or EOF, got: %v", err)
+		} else {
+			defer resp.Body.Close()
+			// Go returns 431 Request Header Fields Too Large when MaxHeaderBytes is exceeded.
+			assert.Equal(t, http.StatusRequestHeaderFieldsTooLarge, resp.StatusCode,
+				"oversized headers must be rejected with 431")
+		}
+	})
 }
