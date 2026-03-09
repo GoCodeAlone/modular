@@ -90,6 +90,19 @@ const (
 	EventTypeApplicationStarted = "com.modular.application.started"
 	EventTypeApplicationStopped = "com.modular.application.stopped"
 	EventTypeApplicationFailed  = "com.modular.application.failed"
+
+	// Tenant guard events
+	EventTypeTenantViolation = "com.modular.tenant.violation"
+
+	// Configuration reload events
+	EventTypeConfigReloadStarted = "com.modular.config.reload.started"
+	EventTypeConfigReloadCompleted = "com.modular.config.reload.completed"
+	EventTypeConfigReloadFailed    = "com.modular.config.reload.failed"
+	EventTypeConfigReloadNoop      = "com.modular.config.reload.noop"
+
+	// Health events
+	EventTypeHealthEvaluated     = "com.modular.health.evaluated"
+	EventTypeHealthStatusChanged = "com.modular.health.status.changed"
 )
 
 // ObservableModule is an optional interface that modules can implement
