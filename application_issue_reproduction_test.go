@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 	"github.com/stretchr/testify/mock"
 )
 

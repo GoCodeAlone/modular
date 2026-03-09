@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/davepgreene/go-db-credential-refresh/driver"
 	"github.com/davepgreene/go-db-credential-refresh/store/awsrds"

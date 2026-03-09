@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // TestFeederPriorityBasic tests the basic priority functionality

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestFeatureFlagEvaluatorServiceExposure tests that the module exposes the feature flag evaluator as a service

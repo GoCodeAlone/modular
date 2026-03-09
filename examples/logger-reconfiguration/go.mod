@@ -2,9 +2,9 @@ module logger-reconfiguration
 
 go 1.25
 
-replace github.com/CrisisTextLine/modular => ../../
+replace github.com/GoCodeAlone/modular => ../../
 
-require github.com/CrisisTextLine/modular v1.11.9-00010101000000-000000000000
+require github.com/GoCodeAlone/modular v1.11.9-00010101000000-000000000000
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect

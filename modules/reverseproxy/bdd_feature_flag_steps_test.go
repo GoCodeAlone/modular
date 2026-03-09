@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // mockFeatureFlagEvaluator implements FeatureFlagEvaluator for testing

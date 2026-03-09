@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Event observation BDD test steps for basic operations

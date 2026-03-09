@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // BDD Test: Feature-flagged composite route with dry-run fallback

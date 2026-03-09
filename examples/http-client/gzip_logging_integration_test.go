@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/modules/httpclient"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/httpclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

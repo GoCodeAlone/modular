@@ -3,7 +3,7 @@ package jsonschema
 import (
 	"fmt"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Core module initialization and setup step methods

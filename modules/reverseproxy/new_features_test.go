@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestNewFeatures tests the newly added features for debug endpoints and dry-run functionality

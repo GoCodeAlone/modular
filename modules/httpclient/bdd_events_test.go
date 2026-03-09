@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Event Observation BDD Test Steps

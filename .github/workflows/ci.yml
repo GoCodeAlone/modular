@@ -43,7 +43,7 @@ jobs:
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CrisisTextLine/modular
+          slug: GoCodeAlone/modular
           files: coverage.txt
           flags: unit
       - name: Upload unit coverage artifact
@@ -94,7 +94,7 @@ jobs:
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CrisisTextLine/modular
+          slug: GoCodeAlone/modular
           directory: cmd/modcli/
           files: cli-coverage.txt
           flags: cli
@@ -192,7 +192,7 @@ jobs:
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CrisisTextLine/modular
+          slug: GoCodeAlone/modular
           files: total-coverage.txt
           flags: total
           fail_ci_if_error: true

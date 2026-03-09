@@ -68,7 +68,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // ErrInvalidConfigType indicates the configuration type is incorrect for this module.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	cevent "github.com/cloudevents/sdk-go/v2/event"
 	"github.com/google/uuid"

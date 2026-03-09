@@ -1,7 +1,7 @@
 package modular
 
 import (
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // FieldTrackerBridge adapts between the main package's FieldTracker interface

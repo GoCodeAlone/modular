@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestDebugAuthScenarios tests the authenticated debug endpoints BDD scenarios

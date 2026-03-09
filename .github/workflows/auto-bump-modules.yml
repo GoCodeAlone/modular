@@ -63,12 +63,12 @@ jobs:
             [ -f "$mod" ] || continue
             dir=$(dirname "$mod")
             # If the require line exists with a version different from CORE, update via go mod edit (portable, avoids sed incompat)
-            if grep -q "github.com/CrisisTextLine/modular v" "$mod" && ! grep -q "github.com/CrisisTextLine/modular ${CORE}" "$mod"; then
-              (cd "$dir" && go mod edit -require=github.com/CrisisTextLine/modular@${CORE})
+            if grep -q "github.com/GoCodeAlone/modular v" "$mod" && ! grep -q "github.com/GoCodeAlone/modular ${CORE}" "$mod"; then
+              (cd "$dir" && go mod edit -require=github.com/GoCodeAlone/modular@${CORE})
               UPDATED=1
             fi
             # Drop any replace directive pointing to local modular path to avoid accidental pinning
-            (cd "$dir" && go mod edit -dropreplace=github.com/CrisisTextLine/modular 2>/dev/null || true)
+            (cd "$dir" && go mod edit -dropreplace=github.com/GoCodeAlone/modular 2>/dev/null || true)
           done
           if [ "$UPDATED" = 0 ]; then
             echo "No module files needed updating"
@@ -114,10 +114,10 @@ jobs:
         run: |
           set -euo pipefail
           CORE=${{ steps.ver.outputs.core_version }}
-          OLD=$(git grep -h -o 'github.com/CrisisTextLine/modular v[0-9]\+\.[0-9]\+\.[0-9]\+' -- '*.md' | grep -v $CORE | head -n1 | awk '{print $1}' || true)
+          OLD=$(git grep -h -o 'github.com/GoCodeAlone/modular v[0-9]\+\.[0-9]\+\.[0-9]\+' -- '*.md' | grep -v $CORE | head -n1 | awk '{print $1}' || true)
           # Replace any explicit old version with current in markdown examples
           if [ -n "$OLD" ]; then
-            find . -name '*.md' -print0 | xargs -0 sed -i "" -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#g" || find . -name '*.md' -print0 | xargs -0 sed -i -E "s#github.com/CrisisTextLine/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/CrisisTextLine/modular ${CORE}#g"
+            find . -name '*.md' -print0 | xargs -0 sed -i "" -E "s#github.com/GoCodeAlone/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/GoCodeAlone/modular ${CORE}#g" || find . -name '*.md' -print0 | xargs -0 sed -i -E "s#github.com/GoCodeAlone/modular v[0-9]+\.[0-9]+\.[0-9]+#github.com/GoCodeAlone/modular ${CORE}#g"
           fi
 
       - name: Create PR

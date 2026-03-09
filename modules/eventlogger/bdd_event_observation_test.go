@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Event observation setup and step implementations

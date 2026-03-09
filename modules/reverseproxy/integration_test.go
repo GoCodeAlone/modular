@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Integration tests for the complete feature flag aggregator system

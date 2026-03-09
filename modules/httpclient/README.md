@@ -1,6 +1,6 @@
 # HTTP Client Module
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/httpclient.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/httpclient)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/httpclient.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/httpclient)
 
 This module provides a configurable HTTP client service that can be used by other modules in the modular framework. It supports configurable connection pooling, timeouts, and optional verbose logging of HTTP requests and responses.
 
@@ -92,9 +92,9 @@ func (m *ReverseProxyModule) Constructor() modular.ModuleConstructor {
 package main
 
 import (
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/modules/httpclient"
-	"github.com/CrisisTextLine/modular/modules/reverseproxy"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/httpclient"
+	"github.com/GoCodeAlone/modular/modules/reverseproxy"
 )
 
 func main() {

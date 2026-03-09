@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/CrisisTextLine/modular/cmd/modcli/cmd"
+	"github.com/GoCodeAlone/modular/cmd/modcli/cmd"
 )
 
 // MockReader is a wrapper around a bytes.Buffer that also implements terminal.FileReader

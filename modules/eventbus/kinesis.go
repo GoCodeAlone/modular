@@ -1,6 +1,6 @@
 package eventbus
 
-//go:generate mockgen -destination=mocks/mock_kinesis.go -package=mocks github.com/CrisisTextLine/modular/modules/eventbus KinesisClient
+//go:generate mockgen -destination=mocks/mock_kinesis.go -package=mocks github.com/GoCodeAlone/modular/modules/eventbus KinesisClient
 
 import (
 	"context"

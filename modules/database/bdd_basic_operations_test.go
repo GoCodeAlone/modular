@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Module initialization and basic database operations

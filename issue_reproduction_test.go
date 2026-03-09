@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular/feeders"
 )
 
 // TestIssueReproduction demonstrates the exact scenario from the GitHub issue

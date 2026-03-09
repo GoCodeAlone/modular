@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Baseline stress test in drop mode to ensure no starvation of async subscribers.

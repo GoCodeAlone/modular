@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/modules/eventbus"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/modules/eventbus"
 )
 
 // testLogger is a simple logger for the example

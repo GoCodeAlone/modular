@@ -137,7 +137,7 @@ jobs:
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CrisisTextLine/modular
+          slug: GoCodeAlone/modular
           directory: modules/${{ matrix.module }}/
           files: ${{ matrix.module }}-coverage.txt
           flags: ${{ matrix.module }}

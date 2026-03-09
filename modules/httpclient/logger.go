@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // sanitizeForFilename replaces unsafe filename characters and ensures no directory traversal or special segments are allowed.

@@ -2,10 +2,10 @@ module basic-app
 
 go 1.25
 
-replace github.com/CrisisTextLine/modular => ../../
+replace github.com/GoCodeAlone/modular => ../../
 
 require (
-	github.com/CrisisTextLine/modular v1.11.9
+	github.com/GoCodeAlone/modular v1.11.9
 	github.com/go-chi/chi/v5 v5.2.2
 )
 

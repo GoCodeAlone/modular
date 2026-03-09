@@ -333,9 +333,9 @@ jobs:
           
           # Construct correct module path with version suffix for v2+
           if [ "$MAJOR_VERSION" -ge 2 ]; then
-            MODULE_NAME="github.com/CrisisTextLine/modular/v${MAJOR_VERSION}"
+            MODULE_NAME="github.com/GoCodeAlone/modular/v${MAJOR_VERSION}"
           else
-            MODULE_NAME="github.com/CrisisTextLine/modular"
+            MODULE_NAME="github.com/GoCodeAlone/modular"
           fi
           
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${CURR}
@@ -377,9 +377,9 @@ jobs:
             MAJOR_VERSION="${VER#v}"
             MAJOR_VERSION="${MAJOR_VERSION%%.*}"
             if [ "$MAJOR_VERSION" -ge 2 ]; then
-              MOD_PATH="github.com/CrisisTextLine/modular/modules/${M}/v${MAJOR_VERSION}"
+              MOD_PATH="github.com/GoCodeAlone/modular/modules/${M}/v${MAJOR_VERSION}"
             else
-              MOD_PATH="github.com/CrisisTextLine/modular/modules/${M}"
+              MOD_PATH="github.com/GoCodeAlone/modular/modules/${M}"
             fi
             
             if gh release view "$TAG" >/dev/null 2>&1; then

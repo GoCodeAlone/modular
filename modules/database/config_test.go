@@ -3,7 +3,7 @@ package database
 import (
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestGetInstanceConfigs_ReturnsOriginalPointers tests that GetInstanceConfigs returns

@@ -4,13 +4,13 @@ go 1.25
 
 toolchain go1.25.0
 
-replace github.com/CrisisTextLine/modular => ../../
+replace github.com/GoCodeAlone/modular => ../../
 
-replace github.com/CrisisTextLine/modular/modules/eventbus => ../../modules/eventbus
+replace github.com/GoCodeAlone/modular/modules/eventbus => ../../modules/eventbus
 
 require (
-	github.com/CrisisTextLine/modular v1.11.11
-	github.com/CrisisTextLine/modular/modules/eventbus v1.7.0
+	github.com/GoCodeAlone/modular v1.11.11
+	github.com/GoCodeAlone/modular/modules/eventbus v1.7.0
 )
 
 require (

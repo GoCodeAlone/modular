@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Static errors for bdd_config_test.go

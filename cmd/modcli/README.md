@@ -1,12 +1,12 @@
 # ModCLI
 
-[![CI](https://github.com/CrisisTextLine/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/ci.yml)
-[![Release](https://github.com/CrisisTextLine/modular/actions/workflows/cli-release.yml/badge.svg)](https://github.com/CrisisTextLine/modular/actions/workflows/cli-release.yml)
-[![codecov](https://codecov.io/gh/CrisisTextLine/modular/branch/main/graph/badge.svg?flag=cli)](https://codecov.io/gh/CrisisTextLine/modular)
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/cmd/modcli.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/cmd/modcli)
-[![Go Report Card](https://goreportcard.com/badge/github.com/CrisisTextLine/modular)](https://goreportcard.com/report/github.com/CrisisTextLine/modular)
+[![CI](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/ci.yml)
+[![Release](https://github.com/GoCodeAlone/modular/actions/workflows/cli-release.yml/badge.svg)](https://github.com/GoCodeAlone/modular/actions/workflows/cli-release.yml)
+[![codecov](https://codecov.io/gh/GoCodeAlone/modular/branch/main/graph/badge.svg?flag=cli)](https://codecov.io/gh/GoCodeAlone/modular)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/cmd/modcli.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/cmd/modcli)
+[![Go Report Card](https://goreportcard.com/badge/github.com/GoCodeAlone/modular)](https://goreportcard.com/report/github.com/GoCodeAlone/modular)
 
-ModCLI is a command-line interface tool for the [Modular](https://github.com/CrisisTextLine/modular) framework that helps you scaffold and generate code for modular applications.
+ModCLI is a command-line interface tool for the [Modular](https://github.com/GoCodeAlone/modular) framework that helps you scaffold and generate code for modular applications.
 
 ## Installation
 
@@ -15,7 +15,7 @@ ModCLI is a command-line interface tool for the [Modular](https://github.com/Cri
 Install the latest version directly using Go:
 
 ```bash
-go install github.com/CrisisTextLine/modular/cmd/modcli@latest
+go install github.com/GoCodeAlone/modular/cmd/modcli@latest
 ```
 
 After installation, the `modcli` command will be available in your PATH.
@@ -23,14 +23,14 @@ After installation, the `modcli` command will be available in your PATH.
 ### From Source
 
 ```bash
-git clone https://github.com/CrisisTextLine/modular.git
+git clone https://github.com/GoCodeAlone/modular.git
 cd modular/cmd/modcli
 go install
 ```
 
 ### From Releases
 
-Download the latest release for your platform from the [releases page](https://github.com/CrisisTextLine/modular/releases).
+Download the latest release for your platform from the [releases page](https://github.com/GoCodeAlone/modular/releases).
 
 ## Commands
 

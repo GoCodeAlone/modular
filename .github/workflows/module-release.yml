@@ -482,9 +482,9 @@ jobs:
           
           # Construct correct module path with version suffix for v2+
           if [ "$MAJOR_VERSION" -ge 2 ]; then
-            MODULE_NAME="github.com/CrisisTextLine/modular/modules/${MODULE}/v${MAJOR_VERSION}"
+            MODULE_NAME="github.com/GoCodeAlone/modular/modules/${MODULE}/v${MAJOR_VERSION}"
           else
-            MODULE_NAME="github.com/CrisisTextLine/modular/modules/${MODULE}"
+            MODULE_NAME="github.com/GoCodeAlone/modular/modules/${MODULE}"
           fi
           
           echo "Announcing ${MODULE_NAME}@${VERSION} to Go proxy..."

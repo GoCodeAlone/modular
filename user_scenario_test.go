@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
-	"github.com/CrisisTextLine/modular/feeders"
+	"github.com/GoCodeAlone/modular"
+	"github.com/GoCodeAlone/modular/feeders"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

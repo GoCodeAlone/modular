@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // TestMemoryEventBusHighConcurrencyRace is a stress test intended to be run with -race.

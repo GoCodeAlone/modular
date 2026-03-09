@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 	"github.com/cucumber/godog"
 )
 

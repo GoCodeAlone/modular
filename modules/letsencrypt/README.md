@@ -2,7 +2,7 @@
 
 The Let's Encrypt module provides automatic SSL/TLS certificate generation and management using Let's Encrypt's ACME protocol. It integrates seamlessly with the Modular framework to provide HTTPS capabilities for your applications.
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CrisisTextLine/modular/modules/letsencrypt.svg)](https://pkg.go.dev/github.com/CrisisTextLine/modular/modules/letsencrypt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoCodeAlone/modular/modules/letsencrypt.svg)](https://pkg.go.dev/github.com/GoCodeAlone/modular/modules/letsencrypt)
 
 ## Features
 
@@ -17,7 +17,7 @@ The Let's Encrypt module provides automatic SSL/TLS certificate generation and m
 ## Installation
 
 ```bash
-go get github.com/CrisisTextLine/modular/modules/letsencrypt
+go get github.com/GoCodeAlone/modular/modules/letsencrypt
 ```
 
 ## Quick Start
@@ -32,9 +32,9 @@ import (
     "log/slog"
     "os"
 
-    "github.com/CrisisTextLine/modular"
-    "github.com/CrisisTextLine/modular/modules/letsencrypt"
-    "github.com/CrisisTextLine/modular/modules/httpserver"
+    "github.com/GoCodeAlone/modular"
+    "github.com/GoCodeAlone/modular/modules/letsencrypt"
+    "github.com/GoCodeAlone/modular/modules/httpserver"
 )
 
 type AppConfig struct {

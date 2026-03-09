@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // Static errors for bdd_cors_test.go

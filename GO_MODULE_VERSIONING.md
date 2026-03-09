@@ -14,7 +14,7 @@ Go modules follow semantic versioning (semver) with a special requirement for ma
 
 ```go
 // go.mod
-module github.com/CrisisTextLine/modular
+module github.com/GoCodeAlone/modular
 ```
 
 Tags:
@@ -27,7 +27,7 @@ Tags:
 
 ```go
 // go.mod for v2
-module github.com/CrisisTextLine/modular/v2
+module github.com/GoCodeAlone/modular/v2
 ```
 
 Tags:
@@ -79,7 +79,7 @@ This two-step approach provides several benefits:
 **Initial State (v1.x.x):**
 ```go
 // modules/reverseproxy/go.mod
-module github.com/CrisisTextLine/modular/modules/reverseproxy
+module github.com/GoCodeAlone/modular/modules/reverseproxy
 ```
 
 **Step 1: Trigger v2.0.0 Release**
@@ -99,7 +99,7 @@ When you trigger a release for v2.0.0, the workflow:
 After merging the PR:
 ```go
 // modules/reverseproxy/go.mod (now updated)
-module github.com/CrisisTextLine/modular/modules/reverseproxy/v2
+module github.com/GoCodeAlone/modular/modules/reverseproxy/v2
 ```
 
 Re-run the same release workflow, and it will:
@@ -107,7 +107,7 @@ Re-run the same release workflow, and it will:
 2. Skip the PR creation
 3. Create tag `modules/reverseproxy/v2.0.0`
 4. Generate release with changelog
-5. Announce `github.com/CrisisTextLine/modular/modules/reverseproxy/v2@v2.0.0` to Go proxy
+5. Announce `github.com/GoCodeAlone/modular/modules/reverseproxy/v2@v2.0.0` to Go proxy
 
 ## Manual Version Updates
 
@@ -117,11 +117,11 @@ If you need to manually prepare for a v2+ release:
 
 ```bash
 # 1. Update go.mod
-sed -i 's|^module github.com/CrisisTextLine/modular$|module github.com/CrisisTextLine/modular/v2|' go.mod
+sed -i 's|^module github.com/GoCodeAlone/modular$|module github.com/GoCodeAlone/modular/v2|' go.mod
 
 # 2. Update import paths in all .go files (if any self-imports)
 find . -name "*.go" -type f -not -path "*/modules/*" -not -path "*/examples/*" \
-  -exec sed -i 's|github.com/CrisisTextLine/modular"|github.com/CrisisTextLine/modular/v2"|g' {} +
+  -exec sed -i 's|github.com/GoCodeAlone/modular"|github.com/GoCodeAlone/modular/v2"|g' {} +
 
 # 3. Run go mod tidy
 go mod tidy
@@ -137,12 +137,12 @@ MODULE_NAME="reverseproxy"  # Change this to your module name
 MAJOR_VERSION="2"           # Change to your target major version
 
 # 1. Update go.mod
-sed -i "s|^module github.com/CrisisTextLine/modular/modules/${MODULE_NAME}$|module github.com/CrisisTextLine/modular/modules/${MODULE_NAME}/v${MAJOR_VERSION}|" \
+sed -i "s|^module github.com/GoCodeAlone/modular/modules/${MODULE_NAME}$|module github.com/GoCodeAlone/modular/modules/${MODULE_NAME}/v${MAJOR_VERSION}|" \
   modules/${MODULE_NAME}/go.mod
 
 # 2. Update import paths (if module has self-imports - rare)
 find modules/${MODULE_NAME} -name "*.go" -type f \
-  -exec sed -i "s|github.com/CrisisTextLine/modular/modules/${MODULE_NAME}\"|github.com/CrisisTextLine/modular/modules/${MODULE_NAME}/v${MAJOR_VERSION}\"|g" {} +
+  -exec sed -i "s|github.com/GoCodeAlone/modular/modules/${MODULE_NAME}\"|github.com/GoCodeAlone/modular/modules/${MODULE_NAME}/v${MAJOR_VERSION}\"|g" {} +
 
 # 3. Run go mod tidy
 cd modules/${MODULE_NAME}
@@ -158,20 +158,20 @@ When using v2+ versions in your code:
 
 ```go
 // For v1.x.x
-import "github.com/CrisisTextLine/modular/modules/reverseproxy"
+import "github.com/GoCodeAlone/modular/modules/reverseproxy"
 
 // For v2.x.x
-import "github.com/CrisisTextLine/modular/modules/reverseproxy/v2"
+import "github.com/GoCodeAlone/modular/modules/reverseproxy/v2"
 
 // For v3.x.x
-import "github.com/CrisisTextLine/modular/modules/reverseproxy/v3"
+import "github.com/GoCodeAlone/modular/modules/reverseproxy/v3"
 ```
 
 In `go.mod`:
 ```go
 require (
-    github.com/CrisisTextLine/modular/v2 v2.0.0
-    github.com/CrisisTextLine/modular/modules/reverseproxy/v2 v2.0.0
+    github.com/GoCodeAlone/modular/v2 v2.0.0
+    github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.0.0
 )
 ```
 

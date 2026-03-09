@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CrisisTextLine/modular"
+	"github.com/GoCodeAlone/modular"
 )
 
 // CloudEvents emission and handling step methods

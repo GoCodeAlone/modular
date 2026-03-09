@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/CrisisTextLine/modular/modules/eventbus/mocks"
+	"github.com/GoCodeAlone/modular/modules/eventbus/mocks"
 )
 
 // newTestKinesisEventBus creates a KinesisEventBus wired to a mock client,

@@ -9,7 +9,7 @@ The Modular framework now supports explicit priority control for configuration f
 ### Basic Usage
 
 ```go
-import "github.com/CrisisTextLine/modular/feeders"
+import "github.com/GoCodeAlone/modular/feeders"
 
 // Add feeders with priority control
 config.AddFeeder(feeders.NewYamlFeeder("config.yaml").WithPriority(50))
