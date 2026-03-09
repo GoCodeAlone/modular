@@ -5,7 +5,7 @@ go 1.25
 toolchain go1.25.0
 
 require (
-	github.com/GoCodeAlone/modular v1.11.11
+	github.com/GoCodeAlone/modular v1.12.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1

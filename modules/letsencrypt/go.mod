@@ -3,8 +3,8 @@ module github.com/GoCodeAlone/modular/modules/letsencrypt
 go 1.25
 
 require (
-	github.com/GoCodeAlone/modular v1.11.11
-	github.com/GoCodeAlone/modular/modules/httpserver v0.2.3
+	github.com/GoCodeAlone/modular v1.12.0
+	github.com/GoCodeAlone/modular/modules/httpserver v1.12.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1
 	github.com/go-acme/lego/v4 v4.26.0
