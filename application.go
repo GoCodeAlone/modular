@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -340,6 +341,8 @@ type StdApplication struct {
 	dependencyHints     []DependencyEdge          // Config-driven dependency edges injected via WithModuleDependency
 	drainTimeout        time.Duration             // Timeout for pre-stop drain phase
 	phase               atomic.Int32              // Current lifecycle phase (AppPhase)
+	parallelInit        bool                      // Enable parallel module initialization at same topo depth
+	initMu              sync.Mutex                // Guards SetCurrentModule/ClearCurrentModule in parallel init
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -539,6 +542,105 @@ func (app *StdApplication) setPhase(p AppPhase) {
 	app.phase.Store(int32(p))
 }
 
+// computeDepthLevels groups module names from a topological order into levels
+// where modules at the same level have no dependencies on each other and can
+// be initialized concurrently.
+func (app *StdApplication) computeDepthLevels(order []string) [][]string {
+	// Build dependency set per module
+	deps := make(map[string]map[string]bool)
+	for _, name := range order {
+		deps[name] = make(map[string]bool)
+		module := app.moduleRegistry[name]
+		if da, ok := module.(DependencyAware); ok {
+			for _, d := range da.Dependencies() {
+				deps[name][d] = true
+			}
+		}
+	}
+	// Add config-driven hints
+	for _, hint := range app.dependencyHints {
+		if deps[hint.From] != nil {
+			deps[hint.From][hint.To] = true
+		}
+	}
+
+	placed := make(map[string]bool)
+	var levels [][]string
+
+	for len(placed) < len(order) {
+		var level []string
+		for _, name := range order {
+			if placed[name] {
+				continue
+			}
+			// Check if all deps are placed
+			ready := true
+			for dep := range deps[name] {
+				if !placed[dep] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				level = append(level, name)
+			}
+		}
+		for _, name := range level {
+			placed[name] = true
+		}
+		levels = append(levels, level)
+	}
+	return levels
+}
+
+// initModule initializes a single module: injects services, calls Init, registers provided services.
+func (app *StdApplication) initModule(appToPass Application, moduleName string) error {
+	module := app.moduleRegistry[moduleName]
+
+	if _, ok := module.(ServiceAware); ok {
+		var err error
+		app.moduleRegistry[moduleName], err = app.injectServices(module)
+		if err != nil {
+			return fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err)
+		}
+		module = app.moduleRegistry[moduleName]
+	}
+
+	// Set current module context for service registration tracking
+	app.initMu.Lock()
+	if app.enhancedSvcRegistry != nil {
+		app.enhancedSvcRegistry.SetCurrentModule(module)
+	}
+	app.initMu.Unlock()
+
+	if err := module.Init(appToPass); err != nil {
+		app.initMu.Lock()
+		if app.enhancedSvcRegistry != nil {
+			app.enhancedSvcRegistry.ClearCurrentModule()
+		}
+		app.initMu.Unlock()
+		return fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err)
+	}
+
+	app.initMu.Lock()
+	if _, ok := module.(ServiceAware); ok {
+		for _, svc := range module.(ServiceAware).ProvidesServices() {
+			if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
+				app.initMu.Unlock()
+				return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
+			}
+		}
+	}
+
+	if app.enhancedSvcRegistry != nil {
+		app.enhancedSvcRegistry.ClearCurrentModule()
+	}
+	app.initMu.Unlock()
+
+	app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
+	return nil
+}
+
 // Init initializes the application with the provided modules
 func (app *StdApplication) Init() error {
 	return app.InitWithApp(app)
@@ -604,46 +706,38 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	}
 
 	// Initialize modules in order
-	for _, moduleName := range moduleOrder {
-		module := app.moduleRegistry[moduleName]
-
-		if _, ok := module.(ServiceAware); ok {
-			// Inject required services
-			app.moduleRegistry[moduleName], err = app.injectServices(module)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err))
-				continue
-			}
-			module = app.moduleRegistry[moduleName] // Update reference after injection
-		}
-
-		// Set current module context for service registration tracking
-		if app.enhancedSvcRegistry != nil {
-			app.enhancedSvcRegistry.SetCurrentModule(module)
-		}
-
-		if err = module.Init(appToPass); err != nil {
-			errs = append(errs, fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err))
-			continue
-		}
-
-		if _, ok := module.(ServiceAware); ok {
-			// Register services provided by modules
-			for _, svc := range module.(ServiceAware).ProvidesServices() {
-				if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
-					// Collect registration errors (e.g., duplicates) for reporting
-					errs = append(errs, fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err))
-					continue
+	if app.parallelInit {
+		// Parallel init: group modules by topological depth and init each level concurrently
+		levels := app.computeDepthLevels(moduleOrder)
+		for _, level := range levels {
+			if len(level) == 1 {
+				if initErr := app.initModule(appToPass, level[0]); initErr != nil {
+					errs = append(errs, initErr)
 				}
+			} else {
+				var wg sync.WaitGroup
+				var mu sync.Mutex
+				for _, moduleName := range level {
+					wg.Add(1)
+					go func(name string) {
+						defer wg.Done()
+						if initErr := app.initModule(appToPass, name); initErr != nil {
+							mu.Lock()
+							errs = append(errs, initErr)
+							mu.Unlock()
+						}
+					}(moduleName)
+				}
+				wg.Wait()
 			}
 		}
-
-		// Clear current module context
-		if app.enhancedSvcRegistry != nil {
-			app.enhancedSvcRegistry.ClearCurrentModule()
+	} else {
+		// Sequential init (original behavior)
+		for _, moduleName := range moduleOrder {
+			if initErr := app.initModule(appToPass, moduleName); initErr != nil {
+				errs = append(errs, initErr)
+			}
 		}
-
-		app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
 	}
 
 	// Initialize tenant configuration after modules have registered their configurations

@@ -27,6 +27,7 @@ type ApplicationBuilder struct {
 	tenantGuardConfig *TenantGuardConfig
 	dependencyHints   []DependencyEdge
 	drainTimeout      time.Duration
+	parallelInit      bool
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
@@ -131,6 +132,15 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		}
 	}
 
+	// Propagate parallel init
+	if b.parallelInit {
+		if stdApp, ok := app.(*StdApplication); ok {
+			stdApp.parallelInit = true
+		} else if obsApp, ok := app.(*ObservableApplication); ok {
+			obsApp.parallelInit = true
+		}
+	}
+
 	// Register modules
 	for _, module := range b.modules {
 		app.RegisterModule(module)
@@ -193,6 +203,14 @@ func WithModuleDependency(from, to string) Option {
 func WithDrainTimeout(d time.Duration) Option {
 	return func(b *ApplicationBuilder) error {
 		b.drainTimeout = d
+		return nil
+	}
+}
+
+// WithParallelInit enables concurrent module initialization at the same topological depth.
+func WithParallelInit() Option {
+	return func(b *ApplicationBuilder) error {
+		b.parallelInit = true
 		return nil
 	}
 }
