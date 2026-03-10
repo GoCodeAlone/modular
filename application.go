@@ -337,6 +337,7 @@ type StdApplication struct {
 	startTime           time.Time                 // Tracks when the application was started
 	configLoadedHooks   []func(Application) error // Hooks to run after config loading but before module initialization
 	dependencyHints     []DependencyEdge          // Config-driven dependency edges injected via WithModuleDependency
+	drainTimeout        time.Duration             // Timeout for pre-stop drain phase
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -718,7 +719,25 @@ func (app *StdApplication) Stop() error {
 	// Reverse the slice
 	slices.Reverse(modules)
 
-	// Create timeout context for shutdown
+	// Phase 1: Drain
+	drainTimeout := app.drainTimeout
+	if drainTimeout <= 0 {
+		drainTimeout = defaultDrainTimeout
+	}
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer drainCancel()
+
+	for _, name := range modules {
+		module := app.moduleRegistry[name]
+		if drainable, ok := module.(Drainable); ok {
+			app.logger.Info("Draining module", "module", name)
+			if err := drainable.PreStop(drainCtx); err != nil {
+				app.logger.Error("Error draining module", "module", name, "error", err)
+			}
+		}
+	}
+
+	// Phase 2: Stop
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -728,7 +747,6 @@ func (app *StdApplication) Stop() error {
 		module := app.moduleRegistry[name]
 		stoppableModule, ok := module.(Stoppable)
 		if !ok {
-			app.logger.Debug("Module does not implement Stoppable, skipping", "module", name)
 			continue
 		}
 		app.logger.Info("Stopping module", "module", name)
