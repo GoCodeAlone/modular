@@ -13,12 +13,8 @@ var (
 	errPrimaryLoggerNotSet    = errors.New("primary logger not set")
 	errSecondaryLoggerNotSet  = errors.New("secondary logger not set")
 	errDecoratedLoggerNotSet  = errors.New("decorated logger not set")
-	errNoMessagesLogged       = errors.New("no messages logged")
-	_ = errors.New("unexpected message count")
-	_        = errors.New("message not found")
-	_            = errors.New("argument not found")
-	_     = errors.New("unexpected log level")
-	errServiceLoggerMismatch  = errors.New("service logger mismatch")
+	errNoMessagesLogged      = errors.New("no messages logged")
+	errServiceLoggerMismatch = errors.New("service logger mismatch")
 )
 
 // LoggerDecoratorBDDTestContext holds the test context for logger decorator BDD scenarios

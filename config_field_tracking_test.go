@@ -397,7 +397,7 @@ func TestDetailedInstanceAwareFieldTracking(t *testing.T) {
 
 	for _, fp := range tracker.FieldPopulations {
 		switch fp.InstanceKey {
-case "primary":
+		case "primary":
 			switch fp.FieldName {
 			case "Driver":
 				primaryDriverPop = &fp

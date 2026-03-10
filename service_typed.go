@@ -8,6 +8,8 @@ func RegisterTypedService[T any](app Application, name string, svc T) error {
 }
 
 // GetTypedService retrieves a service with compile-time type safety.
+// Note: This uses SvcRegistry() which copies the map. For hot paths,
+// consider using app.GetService() with a concrete target type instead.
 func GetTypedService[T any](app Application, name string) (T, error) {
 	var zero T
 	svcRegistry := app.SvcRegistry()

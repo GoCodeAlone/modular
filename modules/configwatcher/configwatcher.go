@@ -68,8 +68,7 @@ func (w *ConfigWatcher) Start(ctx context.Context) error {
 }
 
 func (w *ConfigWatcher) Stop(_ context.Context) error {
-	w.stopWatching()
-	return nil
+	return w.stopWatching()
 }
 
 func (w *ConfigWatcher) startWatching() error {
@@ -88,13 +87,15 @@ func (w *ConfigWatcher) startWatching() error {
 	return nil
 }
 
-func (w *ConfigWatcher) stopWatching() {
+func (w *ConfigWatcher) stopWatching() error {
+	var closeErr error
 	w.stopOnce.Do(func() {
 		close(w.stopCh)
 		if w.watcher != nil {
-			w.watcher.Close()
+			closeErr = w.watcher.Close()
 		}
 	})
+	return closeErr
 }
 
 func (w *ConfigWatcher) eventLoop() {

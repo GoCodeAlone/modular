@@ -62,11 +62,10 @@ func BenchmarkBootstrap(b *testing.B) {
 func BenchmarkServiceLookup(b *testing.B) {
 	registry := NewEnhancedServiceRegistry()
 	_, _ = registry.RegisterService("bench-service", &struct{ Value int }{42})
-	svcReg := registry.AsServiceRegistry()
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = svcReg["bench-service"]
+		_, _ = registry.GetService("bench-service")
 	}
 }
 

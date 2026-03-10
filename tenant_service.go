@@ -167,10 +167,10 @@ func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareMod
 
 	// Check if the module is already registered to avoid duplicates
 	if slices.Contains(ts.tenantAwareModules, module) {
-			ts.logger.Debug("Module already registered as tenant-aware",
-				"module", fmt.Sprintf("%T", module), "name", module.Name())
-			return nil
-		}
+		ts.logger.Debug("Module already registered as tenant-aware",
+			"module", fmt.Sprintf("%T", module), "name", module.Name())
+		return nil
+	}
 
 	ts.tenantAwareModules = append(ts.tenantAwareModules, module)
 	ts.logger.Debug("Registered tenant-aware module",

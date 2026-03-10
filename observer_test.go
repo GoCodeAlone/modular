@@ -197,8 +197,8 @@ func (m *mockSubject) NotifyObservers(ctx context.Context, event cloudevents.Eve
 		} else {
 			// Check if event type matches observer's interests
 			if slices.Contains(registration.eventTypes, event.Type()) {
-					_ = registration.observer.OnEvent(ctx, event)
-				}
+				_ = registration.observer.OnEvent(ctx, event)
+			}
 		}
 	}
 	return nil

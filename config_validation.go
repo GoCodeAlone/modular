@@ -17,7 +17,8 @@ const (
 	// Struct tag keys
 	tagDefault  = "default"
 	tagRequired = "required"
-	
+	tagValidate = "validate"
+	tagDesc     = "desc"
 )
 
 // ConfigValidator is an interface for configuration validation.
