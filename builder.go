@@ -28,6 +28,7 @@ type ApplicationBuilder struct {
 	dependencyHints   []DependencyEdge
 	drainTimeout      time.Duration
 	parallelInit      bool
+	dynamicReload     bool
 	plugins           []Plugin
 }
 
@@ -133,6 +134,15 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		}
 	}
 
+	// Propagate dynamic reload
+	if b.dynamicReload {
+		if stdApp, ok := app.(*StdApplication); ok {
+			stdApp.dynamicReload = true
+		} else if obsApp, ok := app.(*ObservableApplication); ok {
+			obsApp.dynamicReload = true
+		}
+	}
+
 	// Propagate parallel init
 	if b.parallelInit {
 		if stdApp, ok := app.(*StdApplication); ok {
@@ -231,6 +241,15 @@ func WithDrainTimeout(d time.Duration) Option {
 func WithParallelInit() Option {
 	return func(b *ApplicationBuilder) error {
 		b.parallelInit = true
+		return nil
+	}
+}
+
+// WithDynamicReload enables the ReloadOrchestrator, which coordinates
+// configuration reloading across all registered Reloadable modules.
+func WithDynamicReload() Option {
+	return func(b *ApplicationBuilder) error {
+		b.dynamicReload = true
 		return nil
 	}
 }

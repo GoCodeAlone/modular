@@ -343,6 +343,8 @@ type StdApplication struct {
 	phase               atomic.Int32              // Current lifecycle phase (AppPhase)
 	parallelInit        bool                      // Enable parallel module initialization at same topo depth
 	initMu              sync.Mutex                // Guards SetCurrentModule/ClearCurrentModule in parallel init
+	dynamicReload       bool                      // Enable dynamic reload orchestrator
+	reloadOrchestrator  *ReloadOrchestrator       // Coordinates config reload across Reloadable modules
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -745,6 +747,20 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 		errs = append(errs, fmt.Errorf("failed to initialize tenant configurations: %w", err))
 	}
 
+	// Wire up the ReloadOrchestrator if dynamic reload is enabled
+	if app.dynamicReload {
+		var subject Subject
+		if obsApp, ok := appToPass.(*ObservableApplication); ok {
+			subject = obsApp
+		}
+		app.reloadOrchestrator = NewReloadOrchestrator(app.logger, subject)
+		for name, module := range app.moduleRegistry {
+			if reloadable, ok := module.(Reloadable); ok {
+				app.reloadOrchestrator.RegisterReloadable(name, reloadable)
+			}
+		}
+	}
+
 	// Mark as initialized only after completing Init flow
 	if len(errs) == 0 {
 		app.initialized = true
@@ -815,12 +831,20 @@ func (app *StdApplication) Start() error {
 		}
 	}
 
+	if app.reloadOrchestrator != nil {
+		app.reloadOrchestrator.Start(ctx)
+	}
+
 	app.setPhase(PhaseRunning)
 	return nil
 }
 
 // Stop stops the application
 func (app *StdApplication) Stop() error {
+	if app.reloadOrchestrator != nil {
+		app.reloadOrchestrator.Stop()
+	}
+
 	app.setPhase(PhaseDraining)
 
 	// Get modules in reverse dependency order
@@ -878,6 +902,15 @@ func (app *StdApplication) Stop() error {
 
 	app.setPhase(PhaseStopped)
 	return lastErr
+}
+
+// RequestReload enqueues a configuration reload request with the ReloadOrchestrator.
+// Returns an error if dynamic reload was not enabled via WithDynamicReload().
+func (app *StdApplication) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
+	if app.reloadOrchestrator == nil {
+		return fmt.Errorf("dynamic reload not enabled")
+	}
+	return app.reloadOrchestrator.RequestReload(ctx, trigger, diff)
 }
 
 // Run starts the application and blocks until termination
