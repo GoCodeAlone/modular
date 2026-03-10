@@ -1827,6 +1827,17 @@ func (app *StdApplication) GetAllModules() map[string]Module {
 	return result
 }
 
+// CollectAllMetrics gathers metrics from all modules implementing MetricsProvider.
+func (app *StdApplication) CollectAllMetrics(ctx context.Context) []ModuleMetrics {
+	var results []ModuleMetrics
+	for _, module := range app.moduleRegistry {
+		if mp, ok := module.(MetricsProvider); ok {
+			results = append(results, mp.CollectMetrics(ctx))
+		}
+	}
+	return results
+}
+
 // OnConfigLoaded registers a callback to run after config loading but before module initialization.
 // This allows reconfiguring dependencies based on loaded configuration values.
 // Multiple hooks can be registered and will be executed in registration order.
