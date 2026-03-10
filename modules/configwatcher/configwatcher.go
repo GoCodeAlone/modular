@@ -2,6 +2,7 @@ package configwatcher
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -60,7 +61,7 @@ func (w *ConfigWatcher) Start(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			w.stopWatching()
+			_ = w.stopWatching()
 		case <-w.stopCh:
 		}
 	}()
@@ -74,13 +75,13 @@ func (w *ConfigWatcher) Stop(_ context.Context) error {
 func (w *ConfigWatcher) startWatching() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return err
+		return fmt.Errorf("creating file watcher: %w", err)
 	}
 	w.watcher = watcher
 	for _, path := range w.paths {
 		if err := watcher.Add(path); err != nil {
 			watcher.Close()
-			return err
+			return fmt.Errorf("watching path %q: %w", path, err)
 		}
 	}
 	go w.eventLoop()
@@ -92,7 +93,9 @@ func (w *ConfigWatcher) stopWatching() error {
 	w.stopOnce.Do(func() {
 		close(w.stopCh)
 		if w.watcher != nil {
-			closeErr = w.watcher.Close()
+			if err := w.watcher.Close(); err != nil {
+				closeErr = fmt.Errorf("closing file watcher: %w", err)
+			}
 		}
 	})
 	return closeErr

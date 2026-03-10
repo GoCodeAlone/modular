@@ -4,7 +4,10 @@ import "fmt"
 
 // RegisterTypedService registers a service with compile-time type safety.
 func RegisterTypedService[T any](app Application, name string, svc T) error {
-	return app.RegisterService(name, svc)
+	if err := app.RegisterService(name, svc); err != nil {
+		return fmt.Errorf("registering typed service %q: %w", name, err)
+	}
+	return nil
 }
 
 // GetTypedService retrieves a service with compile-time type safety.

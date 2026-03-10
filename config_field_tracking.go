@@ -17,16 +17,16 @@ type FieldTracker interface {
 
 // FieldPopulation represents a single field population event
 type FieldPopulation struct {
-	FieldPath   string      // Full path to the field (e.g., "Connections.primary.DSN")
-	FieldName   string      // Name of the field
-	FieldType   string      // Type of the field
-	FeederType  string      // Type of feeder that populated it
-	SourceType  string      // Type of source (env, yaml, etc.)
-	SourceKey   string      // Source key that was used (e.g., "DB_PRIMARY_DSN")
-	Value       any // Value that was set
-	InstanceKey string      // Instance key for instance-aware fields
-	SearchKeys  []string    // All keys that were searched for this field
-	FoundKey    string      // The key that was actually found
+	FieldPath   string   // Full path to the field (e.g., "Connections.primary.DSN")
+	FieldName   string   // Name of the field
+	FieldType   string   // Type of the field
+	FeederType  string   // Type of feeder that populated it
+	SourceType  string   // Type of source (env, yaml, etc.)
+	SourceKey   string   // Source key that was used (e.g., "DB_PRIMARY_DSN")
+	Value       any      // Value that was set
+	InstanceKey string   // Instance key for instance-aware fields
+	SearchKeys  []string // All keys that were searched for this field
+	FoundKey    string   // The key that was actually found
 }
 
 // FieldTrackingFeeder interface allows feeders to support field tracking

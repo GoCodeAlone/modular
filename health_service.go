@@ -1,9 +1,9 @@
 package modular
 
 import (
-	"maps"
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )

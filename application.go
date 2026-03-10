@@ -1,10 +1,10 @@
 package modular
 
 import (
-	"maps"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"reflect"
@@ -1672,8 +1672,8 @@ func (app *StdApplication) addNameBasedDependency(
 
 	// Check if dependency already exists
 	if slices.Contains(graph[consumerName], providerModule) {
-			return nil // Already exists
-		}
+		return nil // Already exists
+	}
 
 	// Add the dependency
 	if graph[consumerName] == nil {
@@ -1723,8 +1723,8 @@ func (app *StdApplication) addInterfaceBasedDependencyWithTypeInfo(match Interfa
 	}
 	// Check if this dependency already exists
 	if slices.Contains(graph[match.Consumer], match.Provider) {
-			return nil
-		}
+		return nil
+	}
 
 	// Add the dependency (including self-dependencies for cycle detection)
 	if graph[match.Consumer] == nil {

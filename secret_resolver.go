@@ -68,7 +68,11 @@ func resolveSecretString(ctx context.Context, val string, resolvers []SecretReso
 	ref := match[1]
 	for _, r := range resolvers {
 		if r.CanResolve(ref) {
-			return r.ResolveSecret(ctx, ref)
+			resolved, err := r.ResolveSecret(ctx, ref)
+			if err != nil {
+				return "", fmt.Errorf("resolving secret %q: %w", ref, err)
+			}
+			return resolved, nil
 		}
 	}
 	return val, nil
