@@ -143,7 +143,12 @@ func (s *AggregateHealthService) Check(ctx context.Context) (*AggregatedHealth, 
 	health := StatusHealthy
 
 	for range len(providers) {
-		result := <-ch
+		var result providerResult
+		select {
+		case result = <-ch:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 
 		if result.err != nil {
 			// Check if error is temporary

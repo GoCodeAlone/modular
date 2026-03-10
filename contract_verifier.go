@@ -109,18 +109,39 @@ func (v *StandardContractVerifier) checkCanReloadConcurrency(module Reloadable) 
 }
 
 // checkReloadIdempotent calls Reload with empty changes twice and returns an error
-// if either call fails.
+// if either call fails or hangs beyond the timeout. Each call is guarded by a
+// goroutine so a misbehaving module cannot block the verifier indefinitely.
 func (v *StandardContractVerifier) checkReloadIdempotent(module Reloadable) error {
+	for i, label := range []string{"first", "second"} {
+		_ = i
+		if err := v.runReloadWithGuard(module, label); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// runReloadWithGuard runs module.Reload in a goroutine and returns an error if
+// it fails or exceeds the 5-second timeout.
+func (v *StandardContractVerifier) runReloadWithGuard(module Reloadable, label string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := module.Reload(ctx, nil); err != nil {
-		return fmt.Errorf("first call: %w", err)
+	type result struct{ err error }
+	ch := make(chan result, 1)
+	go func() {
+		ch <- result{err: module.Reload(ctx, nil)}
+	}()
+
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return fmt.Errorf("%s call: %w", label, r.err)
+		}
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("%s call: timed out waiting for Reload to return", label)
 	}
-	if err := module.Reload(ctx, nil); err != nil {
-		return fmt.Errorf("second call: %w", err)
-	}
-	return nil
 }
 
 // checkReloadRespectsCancel calls Reload with an already-cancelled context and

@@ -13,7 +13,8 @@ type TenantGuardMode int
 const (
 	// TenantGuardStrict blocks the operation and returns an error on violation.
 	TenantGuardStrict TenantGuardMode = iota
-	// TenantGuardLenient logs the violation but allows the operation to proceed.
+	// TenantGuardLenient records the violation and allows the operation to proceed.
+	// Violations are logged when LogViolations is true and a logger is configured.
 	TenantGuardLenient
 	// TenantGuardDisabled performs no validation at all.
 	TenantGuardDisabled
@@ -238,7 +239,13 @@ func (g *StandardTenantGuard) ValidateAccess(ctx context.Context, violation Tena
 	// Emit event using NewCloudEvent helper (sets ID, specversion, time)
 	if g.subject != nil {
 		event := NewCloudEvent(EventTypeTenantViolation, "com.modular.tenant.guard", violation, nil)
-		_ = g.subject.NotifyObservers(ctx, event)
+		if err := g.subject.NotifyObservers(ctx, event); err != nil && g.logger != nil {
+			g.logger.Warn("Failed to emit tenant violation event",
+				"error", err,
+				"tenant", violation.TenantID,
+				"type", violation.Type.String(),
+			)
+		}
 	}
 
 	// In strict mode, return error

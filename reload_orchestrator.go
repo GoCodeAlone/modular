@@ -131,20 +131,32 @@ func (o *ReloadOrchestrator) Start(ctx context.Context) {
 // processes it. The context is cancelled immediately after processReload returns
 // to avoid resource leaks from accumulated timers in the processing loop.
 //
-// When the request carries a context with a deadline, that deadline is applied to
-// the parent context so that both caller deadlines and Start() cancellation are
-// respected. Request context values are not propagated to keep the context chain
-// rooted in parentCtx (required by contextcheck linter).
+// The reload context is rooted in parentCtx (the Start context) so that stopping
+// the orchestrator always cancels in-flight work. When the request carries its
+// own context, both its deadline and cancellation are wired in: deadline via
+// context.WithDeadline, and cancellation via a background goroutine that watches
+// req.Ctx.Done(). This ensures callers who cancel req.Ctx abort the reload.
 func (o *ReloadOrchestrator) handleReload(parentCtx context.Context, req ReloadRequest) {
 	rctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	// If the request carries a deadline, tighten the context with it.
 	if req.Ctx != nil {
+		// Apply deadline if present.
 		if deadline, ok := req.Ctx.Deadline(); ok {
 			rctx, cancel = context.WithDeadline(rctx, deadline) //nolint:contextcheck // deadline from request
 			defer cancel()
 		}
+
+		// Propagate cancellation from the request context. When req.Ctx is
+		// cancelled, cancel rctx so module Reload calls see cancellation.
+		go func() {
+			select {
+			case <-req.Ctx.Done():
+				cancel()
+			case <-rctx.Done():
+				// rctx already done (parent cancelled or reload finished); stop goroutine.
+			}
+		}()
 	}
 
 	if err := o.processReload(rctx, req); err != nil {

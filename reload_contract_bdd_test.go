@@ -349,10 +349,11 @@ func (rc *ReloadBDDContext) subsequentReloadRequestsShouldBeRejected() error {
 }
 
 func (rc *ReloadBDDContext) theCircuitBreakerShouldEventuallyReset() error {
-	// Manually reset the circuit breaker state to simulate backoff elapsed.
+	// Simulate that the backoff period has elapsed by moving lastFailure
+	// sufficiently into the past. This validates isCircuitOpen()/backoffDuration()
+	// rather than bypassing them.
 	rc.orchestrator.cbMu.Lock()
-	rc.orchestrator.circuitOpen = false
-	rc.orchestrator.failures = 0
+	rc.orchestrator.lastFailure = time.Now().Add(-circuitBreakerMaxDelay - time.Second)
 	rc.orchestrator.cbMu.Unlock()
 
 	diff := rc.newDiff()
