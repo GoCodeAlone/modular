@@ -130,16 +130,22 @@ func (o *ReloadOrchestrator) Start(ctx context.Context) {
 // handleReload derives a properly scoped context for a single reload request and
 // processes it. The context is cancelled immediately after processReload returns
 // to avoid resource leaks from accumulated timers in the processing loop.
+//
+// When the request carries a context with a deadline, that deadline is applied to
+// the parent context so that both caller deadlines and Start() cancellation are
+// respected. Request context values are not propagated to keep the context chain
+// rooted in parentCtx (required by contextcheck linter).
 func (o *ReloadOrchestrator) handleReload(parentCtx context.Context, req ReloadRequest) {
-	// Use the request context if provided so that caller cancellation and
-	// values propagate to module Reload calls. Fall back to the Start()
-	// parent context when no request context is set.
-	base := parentCtx
-	if req.Ctx != nil {
-		base = req.Ctx
-	}
-	rctx, cancel := context.WithCancel(base)
+	rctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
+
+	// If the request carries a deadline, tighten the context with it.
+	if req.Ctx != nil {
+		if deadline, ok := req.Ctx.Deadline(); ok {
+			rctx, cancel = context.WithDeadline(rctx, deadline) //nolint:contextcheck // deadline from request
+			defer cancel()
+		}
+	}
 
 	if err := o.processReload(rctx, req); err != nil {
 		o.logger.Error("Reload failed", "trigger", req.Trigger.String(), "error", err)
