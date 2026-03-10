@@ -193,7 +193,7 @@ func (c *CustomMemoryEventBus) Start(ctx context.Context) error {
 		return nil
 	}
 
-	c.ctx, c.cancel = context.WithCancel(ctx)
+	c.ctx, c.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in c.cancel and called in Stop()
 
 	// Start metrics collection if enabled
 	if c.config.EnableMetrics {

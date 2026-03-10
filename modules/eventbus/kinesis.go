@@ -210,7 +210,7 @@ func (k *KinesisEventBus) Start(ctx context.Context) error {
 	if k.config.PollInterval <= 0 {
 		k.config.PollInterval = DefaultKinesisPollInterval
 	}
-	k.ctx, k.cancel = context.WithCancel(ctx)
+	k.ctx, k.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in k.cancel and called in Stop()
 	k.isStarted = true
 	return nil
 }
