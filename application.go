@@ -597,7 +597,8 @@ func (app *StdApplication) computeDepthLevels(order []string) [][]string {
 }
 
 // initModule initializes a single module: injects services, calls Init, registers provided services.
-// Thread-safe: the EnhancedServiceRegistry has its own mutex protecting concurrent access.
+// Thread-safe for parallel init: uses RegisterServiceForModule to associate services with the
+// correct module without relying on the shared currentModule field.
 func (app *StdApplication) initModule(appToPass Application, moduleName string) error {
 	app.initMu.Lock()
 	module := app.moduleRegistry[moduleName]
@@ -613,32 +614,27 @@ func (app *StdApplication) initModule(appToPass Application, moduleName string) 
 	}
 	app.initMu.Unlock()
 
-	// Set current module context for service registration tracking
-	// EnhancedServiceRegistry has its own mutex, safe for concurrent access
-	if app.enhancedSvcRegistry != nil {
-		app.enhancedSvcRegistry.SetCurrentModule(module)
-	}
-
 	if err := module.Init(appToPass); err != nil {
-		if app.enhancedSvcRegistry != nil {
-			app.enhancedSvcRegistry.ClearCurrentModule()
-		}
 		return fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err)
 	}
 
-	if _, ok := module.(ServiceAware); ok {
-		for _, svc := range module.(ServiceAware).ProvidesServices() {
-			if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
-				if app.enhancedSvcRegistry != nil {
-					app.enhancedSvcRegistry.ClearCurrentModule()
+	// Register provided services with explicit module association (no shared state).
+	if sa, ok := module.(ServiceAware); ok {
+		for _, svc := range sa.ProvidesServices() {
+			if app.enhancedSvcRegistry != nil {
+				actualName, err := app.enhancedSvcRegistry.RegisterServiceForModule(svc.Name, svc.Instance, module)
+				if err != nil {
+					return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
 				}
-				return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
+				app.initMu.Lock()
+				app.svcRegistry[actualName] = svc.Instance
+				app.initMu.Unlock()
+			} else {
+				if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
+					return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
+				}
 			}
 		}
-	}
-
-	if app.enhancedSvcRegistry != nil {
-		app.enhancedSvcRegistry.ClearCurrentModule()
 	}
 
 	app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))

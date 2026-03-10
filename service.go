@@ -79,6 +79,23 @@ func (r *EnhancedServiceRegistry) ClearCurrentModule() {
 	r.currentModule = nil
 }
 
+// RegisterServiceForModule registers a service with explicit module association,
+// bypassing the shared currentModule field. This is safe for concurrent use
+// during parallel module initialization.
+func (r *EnhancedServiceRegistry) RegisterServiceForModule(name string, service any, module Module) (string, error) {
+	r.mu.Lock()
+
+	var moduleName string
+	var moduleType reflect.Type
+
+	if module != nil {
+		moduleName = module.Name()
+		moduleType = reflect.TypeOf(module)
+	}
+
+	return r.registerServiceLocked(name, service, moduleName, moduleType)
+}
+
 // RegisterService registers a service with automatic conflict resolution.
 // If a service name conflicts, it will automatically append module information.
 func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (string, error) {
@@ -91,6 +108,12 @@ func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (str
 		moduleName = r.currentModule.Name()
 		moduleType = reflect.TypeOf(r.currentModule)
 	}
+
+	return r.registerServiceLocked(name, service, moduleName, moduleType)
+}
+
+// registerServiceLocked performs service registration. Caller must hold r.mu.
+func (r *EnhancedServiceRegistry) registerServiceLocked(name string, service any, moduleName string, moduleType reflect.Type) (string, error) {
 
 	// Generate unique name handling conflicts
 	actualName := r.generateUniqueName(name, moduleName, moduleType)
