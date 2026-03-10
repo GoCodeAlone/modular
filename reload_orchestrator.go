@@ -51,8 +51,20 @@ type ReloadOrchestrator struct {
 	subject Subject
 }
 
+// nopLogger is a no-op Logger used when nil is passed.
+type nopLogger struct{}
+
+func (nopLogger) Info(_ string, _ ...any)  {}
+func (nopLogger) Error(_ string, _ ...any) {}
+func (nopLogger) Warn(_ string, _ ...any)  {}
+func (nopLogger) Debug(_ string, _ ...any) {}
+
 // NewReloadOrchestrator creates a new ReloadOrchestrator with the given logger and event subject.
+// If logger is nil, a no-op logger is used.
 func NewReloadOrchestrator(logger Logger, subject Subject) *ReloadOrchestrator {
+	if logger == nil {
+		logger = nopLogger{}
+	}
 	return &ReloadOrchestrator{
 		reloadables: make(map[string]Reloadable),
 		requestCh:   make(chan ReloadRequest, 100),
@@ -72,7 +84,7 @@ func (o *ReloadOrchestrator) RegisterReloadable(name string, module Reloadable) 
 // is stopped, the request channel is full, or the circuit breaker is open.
 func (o *ReloadOrchestrator) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
 	if o.stopped.Load() {
-		return ErrReloadChannelFull
+		return ErrReloadStopped
 	}
 	if o.isCircuitOpen() {
 		return ErrReloadCircuitBreakerOpen

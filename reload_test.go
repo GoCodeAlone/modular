@@ -31,7 +31,7 @@ func (m *mockReloadable) Reload(_ context.Context, changes []ConfigChange) error
 	return m.reloadErr
 }
 
-func (m *mockReloadable) CanReload() bool         { return m.canReload }
+func (m *mockReloadable) CanReload() bool              { return m.canReload }
 func (m *mockReloadable) ReloadTimeout() time.Duration { return m.timeout }
 
 func (m *mockReloadable) getLastChanges() []ConfigChange {
@@ -141,9 +141,9 @@ func TestConfigDiff_HasChanges(t *testing.T) {
 func TestConfigDiff_FilterByPrefix(t *testing.T) {
 	d := ConfigDiff{
 		Changed: map[string]FieldChange{
-			"db.host":    {OldValue: "old", NewValue: "new"},
-			"db.port":    {OldValue: 3306, NewValue: 5432},
-			"cache.ttl":  {OldValue: 30, NewValue: 60},
+			"db.host":   {OldValue: "old", NewValue: "new"},
+			"db.port":   {OldValue: 3306, NewValue: 5432},
+			"cache.ttl": {OldValue: 30, NewValue: 60},
 		},
 		Added: map[string]FieldChange{
 			"db.ssl": {NewValue: true},
@@ -304,20 +304,18 @@ func TestReloadOrchestrator_PartialFailure_Rollback(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	// Because map iteration order is not deterministic, we check both scenarios.
-	// If mod1 was applied first and mod2 failed, mod1 gets a rollback call (2 total).
-	// If mod2 was applied first and failed immediately, mod1 never ran (0 calls).
+	// Targets are sorted by name: aaa_first runs before zzz_second.
+	// aaa_first succeeds, then zzz_second fails, triggering rollback of aaa_first.
+	// So aaa_first gets 2 calls (apply + rollback) and zzz_second gets 1 call (the failure).
 	calls1 := mod1.reloadCalls.Load()
 	calls2 := mod2.reloadCalls.Load()
 
-	// mod2 must have been called at least once (the failing attempt).
-	if calls2 < 1 {
-		t.Errorf("expected mod2 to be called at least once, got %d", calls2)
+	if calls1 != 2 {
+		t.Errorf("expected aaa_first to be called 2 times (apply+rollback), got %d", calls1)
 	}
 
-	// If mod1 was called before mod2, it should have been called twice (original + rollback).
-	if calls1 > 0 && calls1 != 2 {
-		t.Errorf("if mod1 was called, expected 2 calls (apply+rollback), got %d", calls1)
+	if calls2 != 1 {
+		t.Errorf("expected zzz_second to be called 1 time (the failure), got %d", calls2)
 	}
 
 	// Verify a failed event was emitted.

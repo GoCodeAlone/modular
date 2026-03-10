@@ -90,6 +90,7 @@ var (
 	ErrReloadCircuitBreakerOpen = errors.New("reload circuit breaker is open; backing off")
 	ErrReloadChannelFull        = errors.New("reload request channel is full")
 	ErrReloadInProgress         = errors.New("reload already in progress")
+	ErrReloadStopped            = errors.New("reload orchestrator is stopped")
 
 	// Observer/Event emission errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")

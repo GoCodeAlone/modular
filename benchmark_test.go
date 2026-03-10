@@ -12,14 +12,14 @@ import (
 // benchModule is a minimal Module for bootstrap benchmarks.
 type benchModule struct{ name string }
 
-func (m *benchModule) Name() string              { return m.name }
-func (m *benchModule) Init(_ Application) error   { return nil }
+func (m *benchModule) Name() string             { return m.name }
+func (m *benchModule) Init(_ Application) error { return nil }
 
 // benchReloadable is a fast Reloadable for reload benchmarks.
 type benchReloadable struct{ name string }
 
-func (m *benchReloadable) Name() string              { return m.name }
-func (m *benchReloadable) Init(_ Application) error   { return nil }
+func (m *benchReloadable) Name() string             { return m.name }
+func (m *benchReloadable) Init(_ Application) error { return nil }
 func (m *benchReloadable) Reload(_ context.Context, _ []ConfigChange) error {
 	return nil
 }
@@ -97,17 +97,10 @@ func BenchmarkReload(b *testing.B) {
 			Diff:    diff,
 			Ctx:     ctx,
 		}
-		// Call processReload directly to avoid channel/goroutine overhead.
-		// We access it via RequestReload + drain, but since processReload is unexported,
-		// we use the public API with a synchronous approach.
-		if err := orchestrator.RequestReload(ctx, req.Trigger, req.Diff); err != nil {
-			b.Fatalf("RequestReload failed: %v", err)
-		}
-		// Drain the channel and process inline.
-		select {
-		case r := <-orchestrator.requestCh:
-			_ = r
-		default:
+		// Call processReload directly to measure the actual reload cycle
+		// without channel/goroutine overhead.
+		if err := orchestrator.processReload(ctx, req); err != nil {
+			b.Fatalf("processReload failed: %v", err)
 		}
 	}
 }
