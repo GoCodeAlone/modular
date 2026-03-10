@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"maps"
 	"context"
 	"errors"
 	"fmt"
@@ -491,7 +492,7 @@ func (app *StdApplication) GetService(name string, target any) error {
 	}
 
 	targetValue := reflect.ValueOf(target)
-	if targetValue.Kind() != reflect.Ptr || targetValue.IsNil() {
+	if targetValue.Kind() != reflect.Pointer || targetValue.IsNil() {
 		return ErrTargetNotPointer
 	}
 
@@ -526,7 +527,7 @@ func (app *StdApplication) GetService(name string, target any) error {
 	if serviceType.AssignableTo(targetType) {
 		targetValue.Elem().Set(reflect.ValueOf(service))
 		return nil
-	} else if serviceType.Kind() == reflect.Ptr && serviceType.Elem().AssignableTo(targetType) {
+	} else if serviceType.Kind() == reflect.Pointer && serviceType.Elem().AssignableTo(targetType) {
 		targetValue.Elem().Set(reflect.ValueOf(service).Elem())
 		return nil
 	}
@@ -1612,7 +1613,7 @@ func (app *StdApplication) typeImplementsInterface(svcType, interfaceType reflec
 	if svcType.Implements(interfaceType) {
 		return true
 	}
-	if svcType.Kind() == reflect.Ptr {
+	if svcType.Kind() == reflect.Pointer {
 		et := svcType.Elem()
 		if et != nil && et.Implements(interfaceType) {
 			return true
@@ -1674,11 +1675,9 @@ func (app *StdApplication) addNameBasedDependency(
 	}
 
 	// Check if dependency already exists
-	for _, existingDep := range graph[consumerName] {
-		if existingDep == providerModule {
+	if slices.Contains(graph[consumerName], providerModule) {
 			return nil // Already exists
 		}
-	}
 
 	// Add the dependency
 	if graph[consumerName] == nil {
@@ -1727,11 +1726,9 @@ func (app *StdApplication) addInterfaceBasedDependencyWithTypeInfo(match Interfa
 		app.logger.Debug("Adding required self interface dependency to expose unsatisfiable self-requirement", "module", match.Consumer, "interface", match.InterfaceType.Name(), "service", match.ServiceName)
 	}
 	// Check if this dependency already exists
-	for _, existingDep := range graph[match.Consumer] {
-		if existingDep == match.Provider {
+	if slices.Contains(graph[match.Consumer], match.Provider) {
 			return nil
 		}
-	}
 
 	// Add the dependency (including self-dependencies for cycle detection)
 	if graph[match.Consumer] == nil {
@@ -1822,9 +1819,7 @@ func (app *StdApplication) GetModule(name string) Module {
 // Returns a copy to prevent external modification of the module registry.
 func (app *StdApplication) GetAllModules() map[string]Module {
 	result := make(map[string]Module, len(app.moduleRegistry))
-	for k, v := range app.moduleRegistry {
-		result[k] = v
-	}
+	maps.Copy(result, app.moduleRegistry)
 	return result
 }
 

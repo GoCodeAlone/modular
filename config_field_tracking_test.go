@@ -311,7 +311,7 @@ func TestDetailedInstanceAwareFieldTracking(t *testing.T) {
 
 	// Create mock logger to capture verbose output
 	mockLogger := new(MockLogger)
-	debugLogs := make([][]interface{}, 0)
+	debugLogs := make([][]any, 0)
 	mockLogger.On("Debug", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		debugLogs = append(debugLogs, args)
 	}).Return()
@@ -396,7 +396,8 @@ func TestDetailedInstanceAwareFieldTracking(t *testing.T) {
 	var secondaryDriverPop, secondaryDSNPop, secondaryMaxConnsPop *FieldPopulation
 
 	for _, fp := range tracker.FieldPopulations {
-		if fp.InstanceKey == "primary" {
+		switch fp.InstanceKey {
+case "primary":
 			switch fp.FieldName {
 			case "Driver":
 				primaryDriverPop = &fp
@@ -405,7 +406,7 @@ func TestDetailedInstanceAwareFieldTracking(t *testing.T) {
 			case "MaxConns":
 				primaryMaxConnsPop = &fp
 			}
-		} else if fp.InstanceKey == "secondary" {
+		case "secondary":
 			switch fp.FieldName {
 			case "Driver":
 				secondaryDriverPop = &fp
@@ -470,7 +471,7 @@ func TestConfigDiffBasedFieldTracking(t *testing.T) {
 	tests := []struct {
 		name               string
 		envVars            map[string]string
-		expectedFieldDiffs map[string]interface{} // field path -> expected new value
+		expectedFieldDiffs map[string]any // field path -> expected new value
 	}{
 		{
 			name: "basic field diff tracking",
@@ -478,7 +479,7 @@ func TestConfigDiffBasedFieldTracking(t *testing.T) {
 				"APP_NAME":  "Test App",
 				"APP_DEBUG": "true",
 			},
-			expectedFieldDiffs: map[string]interface{}{
+			expectedFieldDiffs: map[string]any{
 				"AppName": "Test App",
 				"Debug":   true,
 			},
@@ -555,7 +556,7 @@ func TestVerboseDebugFieldVisibility(t *testing.T) {
 	mockLogger := new(MockLogger)
 
 	// Capture all debug log calls
-	var debugCalls [][]interface{}
+	var debugCalls [][]any
 	mockLogger.On("Debug", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		debugCalls = append(debugCalls, args)
 	}).Return()
@@ -598,17 +599,17 @@ func TestVerboseDebugFieldVisibility(t *testing.T) {
 
 // StructState represents the state of a struct at a point in time
 type StructState struct {
-	Fields map[string]interface{} // field path -> value
+	Fields map[string]any // field path -> value
 }
 
 // captureStructState captures the current state of all fields in a struct
-func captureStructState(structure interface{}) *StructState {
+func captureStructState(structure any) *StructState {
 	state := &StructState{
-		Fields: make(map[string]interface{}),
+		Fields: make(map[string]any),
 	}
 
 	rv := reflect.ValueOf(structure)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 
@@ -617,7 +618,7 @@ func captureStructState(structure interface{}) *StructState {
 }
 
 // captureStructFields recursively captures all field values
-func captureStructFields(rv reflect.Value, prefix string, fields map[string]interface{}) {
+func captureStructFields(rv reflect.Value, prefix string, fields map[string]any) {
 	rt := rv.Type()
 
 	for i := 0; i < rv.NumField(); i++ {
@@ -632,7 +633,7 @@ func captureStructFields(rv reflect.Value, prefix string, fields map[string]inte
 		switch field.Kind() {
 		case reflect.Struct:
 			captureStructFields(field, fieldPath, fields)
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
 				captureStructFields(field.Elem(), fieldPath, fields)
 			} else if !field.IsNil() {
@@ -662,8 +663,8 @@ func captureStructFields(rv reflect.Value, prefix string, fields map[string]inte
 }
 
 // computeFieldDiffs computes the differences between two struct states
-func computeFieldDiffs(before, after *StructState) map[string]interface{} {
-	diffs := make(map[string]interface{})
+func computeFieldDiffs(before, after *StructState) map[string]any {
+	diffs := make(map[string]any)
 
 	// Find fields that changed
 	for fieldPath, afterValue := range after.Fields {

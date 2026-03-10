@@ -50,8 +50,8 @@ func (c *ValidationTestConfig) Validate() error {
 func TestProcessConfigDefaults(t *testing.T) {
 	tests := []struct {
 		name     string
-		cfg      interface{}
-		expected interface{}
+		cfg      any
+		expected any
 		wantErr  bool
 	}{
 		{
@@ -116,7 +116,7 @@ func TestProcessConfigDefaults(t *testing.T) {
 func TestValidateConfigRequired(t *testing.T) {
 	tests := []struct {
 		name     string
-		cfg      interface{}
+		cfg      any
 		wantErr  bool
 		errorMsg string
 	}{
@@ -182,7 +182,7 @@ func TestValidateConfigRequired(t *testing.T) {
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     interface{}
+		cfg     any
 		wantErr bool
 	}{
 		{
@@ -242,7 +242,7 @@ func TestGenerateSampleConfig(t *testing.T) {
 	// Test JSON generation
 	jsonData, err := GenerateSampleConfig(cfg, "json")
 	require.NoError(t, err)
-	var jsonCfg map[string]interface{}
+	var jsonCfg map[string]any
 	err = json.Unmarshal(jsonData, &jsonCfg)
 	require.NoError(t, err)
 	assert.Equal(t, "Default Name", jsonCfg["name"])

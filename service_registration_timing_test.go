@@ -124,7 +124,7 @@ type serviceConsumerModule struct {
 	requiredService string
 	dependencies    []string
 	serviceReceived bool
-	receivedValue   interface{}
+	receivedValue   any
 }
 
 func (m *serviceConsumerModule) Name() string {
@@ -137,7 +137,7 @@ func (m *serviceConsumerModule) Dependencies() []string {
 
 func (m *serviceConsumerModule) Init(app Application) error {
 	// Try to get the required service during Init
-	var service interface{}
+	var service any
 	err := app.GetService(m.requiredService, &service)
 	if err != nil {
 		return err
@@ -270,7 +270,7 @@ type serviceConsumerWithRequires struct {
 	requiredServices []ServiceDependency
 	dependencies     []string
 	servicesInjected bool
-	injectedService  interface{}
+	injectedService  any
 }
 
 func (m *serviceConsumerWithRequires) Name() string {
@@ -315,7 +315,7 @@ type serviceConsumerWithDeclaredRequires struct {
 	requiredServices []ServiceDependency
 	requiredService  string
 	serviceReceived  bool
-	receivedValue    interface{}
+	receivedValue    any
 }
 
 func (m *serviceConsumerWithDeclaredRequires) Name() string {
@@ -324,7 +324,7 @@ func (m *serviceConsumerWithDeclaredRequires) Name() string {
 
 func (m *serviceConsumerWithDeclaredRequires) Init(app Application) error {
 	// Try to get the required service during Init
-	var service interface{}
+	var service any
 	err := app.GetService(m.requiredService, &service)
 	if err != nil {
 		return err

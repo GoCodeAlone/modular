@@ -76,7 +76,7 @@ func Test_ApplicationSetLoggerRuntimeUsage(t *testing.T) {
 	// Create a new mock logger to switch to
 	newMockLogger := &MockLogger{}
 	// Set up a simple expectation that might be called later
-	newMockLogger.On("Debug", "Test message", []interface{}{"key", "value"}).Return().Maybe()
+	newMockLogger.On("Debug", "Test message", []any{"key", "value"}).Return().Maybe()
 
 	// Switch to the new logger
 	app.SetLogger(newMockLogger)
@@ -120,9 +120,9 @@ func TestSetVerboseConfig(t *testing.T) {
 
 			// Set up expectations for debug messages
 			if tt.enabled {
-				mockLogger.On("Debug", "Verbose configuration debugging enabled", []interface{}(nil)).Return()
+				mockLogger.On("Debug", "Verbose configuration debugging enabled", []any(nil)).Return()
 			} else {
-				mockLogger.On("Debug", "Verbose configuration debugging disabled", []interface{}(nil)).Return()
+				mockLogger.On("Debug", "Verbose configuration debugging disabled", []any(nil)).Return()
 			}
 
 			// Create application with mock logger
@@ -165,14 +165,14 @@ func TestIsVerboseConfig(t *testing.T) {
 	}
 
 	// Test after enabling
-	mockLogger.On("Debug", "Verbose configuration debugging enabled", []interface{}(nil)).Return()
+	mockLogger.On("Debug", "Verbose configuration debugging enabled", []any(nil)).Return()
 	app.SetVerboseConfig(true)
 	if app.IsVerboseConfig() != true {
 		t.Error("Expected IsVerboseConfig to return true after enabling")
 	}
 
 	// Test after disabling
-	mockLogger.On("Debug", "Verbose configuration debugging disabled", []interface{}(nil)).Return()
+	mockLogger.On("Debug", "Verbose configuration debugging disabled", []any(nil)).Return()
 	app.SetVerboseConfig(false)
 	if app.IsVerboseConfig() != false {
 		t.Error("Expected IsVerboseConfig to return false after disabling")

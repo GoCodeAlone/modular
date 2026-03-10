@@ -27,5 +27,5 @@ func (p *InstanceAwareConfigProvider) GetInstancePrefixFunc() InstancePrefixFunc
 // InstanceAwareConfigSupport indicates that a configuration supports instance-aware feeding
 type InstanceAwareConfigSupport interface {
 	// GetInstanceConfigs returns a map of instance configurations that should be fed with instance-aware feeders
-	GetInstanceConfigs() map[string]interface{}
+	GetInstanceConfigs() map[string]any
 }

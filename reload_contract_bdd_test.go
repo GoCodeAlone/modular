@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"slices"
 	"context"
 	"errors"
 	"fmt"
@@ -77,11 +78,7 @@ func (s *reloadBDDSubject) eventTypes() []string {
 	return types
 }
 
-func (s *reloadBDDSubject) reset() {
-	s.mu.Lock()
-	s.events = nil
-	s.mu.Unlock()
-}
+
 
 // reloadBDDLogger implements Logger for BDD reload contract tests.
 type reloadBDDLogger struct{}
@@ -96,11 +93,9 @@ func (l *reloadBDDLogger) Debug(_ string, _ ...any) {}
 func bddWaitForEvent(subject *reloadBDDSubject, eventType string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		for _, et := range subject.eventTypes() {
-			if et == eventType {
+		if slices.Contains(subject.eventTypes(), eventType) {
 				return true
 			}
-		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	return false
@@ -206,11 +201,9 @@ func (rc *ReloadBDDContext) allNModulesShouldReceiveTheChanges(n int) error {
 }
 
 func (rc *ReloadBDDContext) aReloadCompletedEventShouldBeEmitted() error {
-	for _, et := range rc.subject.eventTypes() {
-		if et == EventTypeConfigReloadCompleted {
+	if slices.Contains(rc.subject.eventTypes(), EventTypeConfigReloadCompleted) {
 			return nil
 		}
-	}
 	return errExpectedCompletedEvent
 }
 
@@ -305,11 +298,9 @@ func (rc *ReloadBDDContext) theFirstModuleShouldBeRolledBack() error {
 }
 
 func (rc *ReloadBDDContext) aReloadFailedEventShouldBeEmitted() error {
-	for _, et := range rc.subject.eventTypes() {
-		if et == EventTypeConfigReloadFailed {
+	if slices.Contains(rc.subject.eventTypes(), EventTypeConfigReloadFailed) {
 			return nil
 		}
-	}
 	return errExpectedFailedEvent
 }
 
@@ -376,11 +367,9 @@ func (rc *ReloadBDDContext) aReloadIsRequestedWithNoChanges() error {
 }
 
 func (rc *ReloadBDDContext) aReloadNoopEventShouldBeEmitted() error {
-	for _, et := range rc.subject.eventTypes() {
-		if et == EventTypeConfigReloadNoop {
+	if slices.Contains(rc.subject.eventTypes(), EventTypeConfigReloadNoop) {
 			return nil
 		}
-	}
 	return errExpectedNoopEvent
 }
 
@@ -397,11 +386,9 @@ func (rc *ReloadBDDContext) tenReloadRequestsAreSubmittedConcurrently() error {
 	diff := rc.newDiff()
 	var wg sync.WaitGroup
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_ = rc.orchestrator.RequestReload(rc.ctx, ReloadManual, diff)
-		}()
+		})
 	}
 	wg.Wait()
 	bddWaitForCalls(rc.modules, 1, 2*time.Second)

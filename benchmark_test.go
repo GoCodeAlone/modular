@@ -75,7 +75,7 @@ func BenchmarkReload(b *testing.B) {
 	log := &benchLogger{}
 	orchestrator := NewReloadOrchestrator(log, nil)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		mod := &benchReloadable{name: fmt.Sprintf("reload-mod-%d", i)}
 		orchestrator.RegisterReloadable(mod.name, mod)
 	}
@@ -110,7 +110,7 @@ func BenchmarkReload(b *testing.B) {
 func BenchmarkHealthAggregation(b *testing.B) {
 	svc := NewAggregateHealthService(WithCacheTTL(0))
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		name := fmt.Sprintf("provider-%d", i)
 		provider := NewSimpleHealthProvider(name, "main", func(_ context.Context) (HealthStatus, string, error) {
 			return StatusHealthy, "ok", nil

@@ -174,7 +174,7 @@ func (ctx *LoggerDecoratorBDDTestContext) theMessagesShouldHaveLevels(expectedLe
 func InitializeLoggerDecoratorScenario(ctx *godog.ScenarioContext) {
 	testCtx := &LoggerDecoratorBDDTestContext{
 		expectedArgs:   make(map[string]string),
-		filterCriteria: make(map[string]interface{}),
+		filterCriteria: make(map[string]any),
 		levelMappings:  make(map[string]string),
 	}
 

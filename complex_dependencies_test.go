@@ -291,13 +291,13 @@ func (m *APIModule) RequiresServices() []ServiceDependency {
 			Name:               "cache",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*CacheService)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[CacheService](),
 		},
 		{
 			Name:               "database",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*DatabaseService)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[DatabaseService](),
 		},
 	}
 }
@@ -392,7 +392,7 @@ func (m *AuthModule) RequiresServices() []ServiceDependency {
 			Name:               "logger-service",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*LoggingService)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[LoggingService](),
 		},
 	}
 }

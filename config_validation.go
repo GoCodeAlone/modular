@@ -17,8 +17,7 @@ const (
 	// Struct tag keys
 	tagDefault  = "default"
 	tagRequired = "required"
-	tagValidate = "validate"
-	tagDesc     = "desc" // Used for generating sample config and documentation
+	
 )
 
 // ConfigValidator is an interface for configuration validation.
@@ -68,13 +67,13 @@ type ConfigValidator interface {
 //
 // This function is automatically called by the configuration loading system
 // before validation, but can also be called manually if needed.
-func ProcessConfigDefaults(cfg interface{}) error {
+func ProcessConfigDefaults(cfg any) error {
 	if cfg == nil {
 		return ErrConfigNil
 	}
 
 	v := reflect.ValueOf(cfg)
-	if v.Kind() != reflect.Ptr || v.IsNil() {
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return ErrConfigNotPointer
 	}
 
@@ -108,7 +107,7 @@ func processStructDefaults(v reflect.Value) error {
 		}
 
 		// Handle pointers to structs - but only if they're already non-nil
-		if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+		if field.Kind() == reflect.Pointer && field.Type().Elem().Kind() == reflect.Struct {
 			// Don't automatically initialize nil struct pointers
 			// (the previous behavior was automatically creating them)
 			if !field.IsNil() {
@@ -136,13 +135,13 @@ func processStructDefaults(v reflect.Value) error {
 
 // ValidateConfigRequired checks all struct fields with `required:"true"` tag
 // and verifies they are not zero/empty values
-func ValidateConfigRequired(cfg interface{}) error {
+func ValidateConfigRequired(cfg any) error {
 	if cfg == nil {
 		return ErrConfigNil
 	}
 
 	v := reflect.ValueOf(cfg)
-	if v.Kind() != reflect.Ptr || v.IsNil() {
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return ErrConfigNotPointer
 	}
 
@@ -186,7 +185,7 @@ func validateRequiredFields(v reflect.Value, prefix string, errors *[]string) {
 		}
 
 		// Handle pointers to structs
-		if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+		if field.Kind() == reflect.Pointer && field.Type().Elem().Kind() == reflect.Struct {
 			if !field.IsNil() {
 				validateRequiredFields(field.Elem(), fieldName, errors)
 			} else if isFieldRequired(&fieldType) {
@@ -221,7 +220,7 @@ func isZeroValue(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	case reflect.Invalid:
 		return true
@@ -239,7 +238,7 @@ func isZeroValue(v reflect.Value) bool {
 // setDefaultValue sets a default value from a string to the proper field type
 func setDefaultValue(field reflect.Value, defaultVal string) error {
 	// Special handling for time.Duration type
-	if field.Type() == reflect.TypeOf(time.Duration(0)) {
+	if field.Type() == reflect.TypeFor[time.Duration]() {
 		return setDefaultDuration(field, defaultVal)
 	}
 
@@ -262,7 +261,7 @@ func setDefaultValue(field reflect.Value, defaultVal string) error {
 	case reflect.Map:
 		return setDefaultMap(field, defaultVal)
 	case reflect.Invalid, reflect.Complex64, reflect.Complex128, reflect.Array,
-		reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr, reflect.Struct,
+		reflect.Chan, reflect.Func, reflect.Interface, reflect.Pointer, reflect.Struct,
 		reflect.UnsafePointer:
 		return handleUnsupportedDefaultType(kind)
 	default:
@@ -289,7 +288,7 @@ func handleUnsupportedDefaultType(kind reflect.Kind) error {
 		return fmt.Errorf("%w: functions not supported", ErrUnsupportedTypeForDefault)
 	case reflect.Interface:
 		return fmt.Errorf("%w: interfaces not supported", ErrUnsupportedTypeForDefault)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return fmt.Errorf("%w: pointers not supported", ErrUnsupportedTypeForDefault)
 	case reflect.Struct:
 		return fmt.Errorf("%w: structs not supported", ErrUnsupportedTypeForDefault)
@@ -391,7 +390,7 @@ func setDefaultInt(field reflect.Value, i int64) error {
 	case reflect.Invalid, reflect.Bool, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32,
 		reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64,
 		reflect.Complex128, reflect.Array, reflect.Chan, reflect.Func, reflect.Interface,
-		reflect.Map, reflect.Ptr, reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
+		reflect.Map, reflect.Pointer, reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
 		return fmt.Errorf("%w: cannot set int value to %s", ErrIncompatibleFieldKind, field.Kind())
 	default:
 		return fmt.Errorf("%w: cannot set int value to %s", ErrIncompatibleFieldKind, field.Kind())
@@ -408,7 +407,7 @@ func setDefaultUint(field reflect.Value, u uint64) error {
 		return nil
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 		reflect.Int64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
-		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr,
+		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer,
 		reflect.Slice, reflect.String, reflect.Struct, reflect.UnsafePointer:
 		return fmt.Errorf("%w: cannot set uint value to %s", ErrIncompatibleFieldKind, field.Kind())
 	default:
@@ -428,7 +427,7 @@ func setDefaultFloat(field reflect.Value, f float64) error {
 	case reflect.Invalid, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Uintptr, reflect.Complex64, reflect.Complex128, reflect.Array, reflect.Chan,
-		reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.String,
+		reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice, reflect.String,
 		reflect.Struct, reflect.UnsafePointer:
 		return fmt.Errorf("%w: cannot set float value to %s", ErrIncompatibleFieldKind, field.Kind())
 	default:
@@ -438,7 +437,7 @@ func setDefaultFloat(field reflect.Value, f float64) error {
 
 // GenerateSampleConfig generates a sample configuration for a config struct
 // The format parameter can be "yaml", "json", or "toml"
-func GenerateSampleConfig(cfg interface{}, format string) ([]byte, error) {
+func GenerateSampleConfig(cfg any, format string) ([]byte, error) {
 	if cfg == nil {
 		return nil, ErrConfigNil
 	}
@@ -476,10 +475,10 @@ func GenerateSampleConfig(cfg interface{}, format string) ([]byte, error) {
 }
 
 // mapStructFieldsForJSON creates a map with proper JSON field names based on struct tags
-func mapStructFieldsForJSON(cfg interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
+func mapStructFieldsForJSON(cfg any) map[string]any {
+	result := make(map[string]any)
 	v := reflect.ValueOf(cfg)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	t := v.Type()
@@ -508,7 +507,7 @@ func mapStructFieldsForJSON(cfg interface{}) map[string]interface{} {
 		switch field.Kind() { //nolint:exhaustive // only handling specific cases we care about
 		case reflect.Struct:
 			result[fieldName] = mapStructFieldsForJSON(field.Interface())
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
 				result[fieldName] = mapStructFieldsForJSON(field.Interface())
 			} else {
@@ -524,7 +523,7 @@ func mapStructFieldsForJSON(cfg interface{}) map[string]interface{} {
 }
 
 // SaveSampleConfig generates and saves a sample configuration file
-func SaveSampleConfig(cfg interface{}, format, filePath string) error {
+func SaveSampleConfig(cfg any, format, filePath string) error {
 	data, err := GenerateSampleConfig(cfg, format)
 	if err != nil {
 		return err
@@ -540,7 +539,7 @@ func SaveSampleConfig(cfg interface{}, format, filePath string) error {
 // 1. Processes default values
 // 2. Validates required fields
 // 3. If the config implements ConfigValidator, calls its Validate method
-func ValidateConfig(cfg interface{}) error {
+func ValidateConfig(cfg any) error {
 	if cfg == nil {
 		return ErrConfigNil
 	}

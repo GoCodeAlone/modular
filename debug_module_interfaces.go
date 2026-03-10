@@ -23,7 +23,7 @@ func DebugModuleInterfaces(app Application, moduleName string) {
 	fmt.Printf("   Memory address: %p\n", module)
 
 	// Check all the interfaces
-	interfaces := map[string]interface{}{
+	interfaces := map[string]any{
 		"Module":          (*Module)(nil),
 		"Configurable":    (*Configurable)(nil),
 		"DependencyAware": (*DependencyAware)(nil),

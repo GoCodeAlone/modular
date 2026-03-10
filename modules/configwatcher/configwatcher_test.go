@@ -61,7 +61,7 @@ func TestConfigWatcher_Debounces(t *testing.T) {
 	defer w.stopWatching()
 
 	time.Sleep(100 * time.Millisecond)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		os.WriteFile(cfgFile, []byte("v"+string(rune('2'+i))), 0644)
 		time.Sleep(20 * time.Millisecond)
 	}

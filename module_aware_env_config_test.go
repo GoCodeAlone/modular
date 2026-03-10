@@ -291,7 +291,7 @@ func TestModuleAwareEnvironmentVariableSearching(t *testing.T) {
 // mockModuleAwareConfigModule is a mock module for testing module-aware configuration
 type mockModuleAwareConfigModule struct {
 	name   string
-	config interface{}
+	config any
 }
 
 func (m *mockModuleAwareConfigModule) Name() string {
@@ -314,7 +314,7 @@ func (m *mockModuleAwareConfigModule) Init(app Application) error {
 }
 
 // createTestApplication creates a basic application for testing
-func createTestApplication(t *testing.T) *StdApplication {
+func createTestApplication(_ *testing.T) *StdApplication {
 	logger := &simpleTestLogger{}
 	app := NewStdApplication(nil, logger)
 	return app.(*StdApplication)

@@ -337,28 +337,28 @@ type TestObserverLogger struct {
 type LogEntry struct {
 	Level   string
 	Message string
-	Args    []interface{}
+	Args    []any
 }
 
-func (l *TestObserverLogger) Info(msg string, args ...interface{}) {
+func (l *TestObserverLogger) Info(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, LogEntry{Level: "INFO", Message: msg, Args: args})
 }
 
-func (l *TestObserverLogger) Error(msg string, args ...interface{}) {
+func (l *TestObserverLogger) Error(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, LogEntry{Level: "ERROR", Message: msg, Args: args})
 }
 
-func (l *TestObserverLogger) Debug(msg string, args ...interface{}) {
+func (l *TestObserverLogger) Debug(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, LogEntry{Level: "DEBUG", Message: msg, Args: args})
 }
 
-func (l *TestObserverLogger) Warn(msg string, args ...interface{}) {
+func (l *TestObserverLogger) Warn(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, LogEntry{Level: "WARN", Message: msg, Args: args})

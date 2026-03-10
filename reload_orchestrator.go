@@ -184,7 +184,7 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 
 	// Noop if no changes — emit noop without a misleading "started" event.
 	if !req.Diff.HasChanges() {
-		o.emitEvent(ctx, EventTypeConfigReloadNoop, map[string]interface{}{
+		o.emitEvent(ctx, EventTypeConfigReloadNoop, map[string]any{
 			"trigger": req.Trigger.String(),
 			"diffId":  req.Diff.DiffID,
 		})
@@ -192,7 +192,7 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 	}
 
 	// Emit started event only when there are actual changes to apply.
-	o.emitEvent(ctx, EventTypeConfigReloadStarted, map[string]interface{}{
+	o.emitEvent(ctx, EventTypeConfigReloadStarted, map[string]any{
 		"trigger": req.Trigger.String(),
 		"diffId":  req.Diff.DiffID,
 		"summary": req.Diff.ChangeSummary(),
@@ -240,7 +240,7 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 			o.rollback(ctx, applied, changes)
 
 			o.recordFailure()
-			o.emitEvent(ctx, EventTypeConfigReloadFailed, map[string]interface{}{
+			o.emitEvent(ctx, EventTypeConfigReloadFailed, map[string]any{
 				"trigger":      req.Trigger.String(),
 				"diffId":       req.Diff.DiffID,
 				"failedModule": t.name,
@@ -253,7 +253,7 @@ func (o *ReloadOrchestrator) processReload(ctx context.Context, req ReloadReques
 	}
 
 	o.recordSuccess()
-	o.emitEvent(ctx, EventTypeConfigReloadCompleted, map[string]interface{}{
+	o.emitEvent(ctx, EventTypeConfigReloadCompleted, map[string]any{
 		"trigger":       req.Trigger.String(),
 		"diffId":        req.Diff.DiffID,
 		"modulesLoaded": len(applied),
@@ -325,7 +325,7 @@ func (o *ReloadOrchestrator) rollback(ctx context.Context, applied []reloadEntry
 }
 
 // emitEvent sends a CloudEvent via the configured subject.
-func (o *ReloadOrchestrator) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+func (o *ReloadOrchestrator) emitEvent(ctx context.Context, eventType string, data map[string]any) {
 	if o.subject == nil {
 		return
 	}

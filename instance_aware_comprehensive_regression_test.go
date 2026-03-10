@@ -347,8 +347,8 @@ func testRegressionDetectionCopyVsOriginal(t *testing.T) {
 
 	// Create a "broken" version of GetInstanceConfigs that returns copies
 	// This simulates what would happen if someone reverted the fix
-	brokenGetInstanceConfigs := func() map[string]interface{} {
-		instances := make(map[string]interface{})
+	brokenGetInstanceConfigs := func() map[string]any {
+		instances := make(map[string]any)
 		for name, connection := range config.Connections {
 			// BUG: Creating a copy instead of returning pointer to original
 			connectionCopy := *connection

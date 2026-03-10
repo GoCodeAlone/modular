@@ -280,8 +280,8 @@ func (c *TestDatabaseConfig) Validate() error {
 	return nil
 }
 
-func (c *TestDatabaseConfig) GetInstanceConfigs() map[string]interface{} {
-	instances := make(map[string]interface{})
+func (c *TestDatabaseConfig) GetInstanceConfigs() map[string]any {
+	instances := make(map[string]any)
 	for name, connection := range c.Connections {
 		instances[name] = connection
 	}
@@ -302,8 +302,8 @@ func (c *TestWebappConfig) Validate() error {
 	return nil
 }
 
-func (c *TestWebappConfig) GetInstanceConfigs() map[string]interface{} {
-	instances := make(map[string]interface{})
+func (c *TestWebappConfig) GetInstanceConfigs() map[string]any {
+	instances := make(map[string]any)
 	for name, instance := range c.Instances {
 		instances[name] = instance
 	}
@@ -433,7 +433,7 @@ func testWebappInstanceAwareFeedingResults(t *testing.T, provider ConfigProvider
 
 func splitKey(key string) []string {
 	parts := make([]string, 0, 2)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if dotIndex := findDotIndex(key); dotIndex != -1 {
 			if i == 0 {
 				parts = append(parts, key[:dotIndex])
@@ -561,8 +561,8 @@ func (c *TestInstanceConfig) Validate() error {
 	return nil
 }
 
-func (c *TestInstanceConfig) GetInstanceConfigs() map[string]interface{} {
-	instances := make(map[string]interface{})
+func (c *TestInstanceConfig) GetInstanceConfigs() map[string]any {
+	instances := make(map[string]any)
 	for name, item := range c.Items {
 		instances[name] = item
 	}

@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"maps"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -43,9 +44,7 @@ func (m *MockTenantService) RegisterTenant(tenantID TenantID, configs map[string
 		m.tenants[tenantID] = make(map[string]ConfigProvider)
 	}
 
-	for section, provider := range configs {
-		m.tenants[tenantID][section] = provider
-	}
+	maps.Copy(m.tenants[tenantID], configs)
 	return nil
 }
 

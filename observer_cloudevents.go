@@ -17,7 +17,7 @@ type CloudEvent = cloudevents.Event
 
 // NewCloudEvent creates a new CloudEvent with the specified parameters.
 // This is a convenience function for creating properly formatted CloudEvents.
-func NewCloudEvent(eventType, source string, data interface{}, metadata map[string]interface{}) cloudevents.Event {
+func NewCloudEvent(eventType, source string, data any, metadata map[string]any) cloudevents.Event {
 	event := cloudevents.NewEvent()
 
 	// Set required attributes
@@ -58,12 +58,12 @@ type ModuleLifecyclePayload struct {
 	// Timestamp is when the lifecycle action occurred (RFC3339 in JSON output).
 	Timestamp time.Time `json:"timestamp"`
 	// Additional arbitrary metadata (kept minimal; prefer evolving the struct if fields become first-class).
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // NewModuleLifecycleEvent builds a CloudEvent for a module/application lifecycle using the structured payload.
 // It sets payload_schema and module_action extensions for lightweight routing without full payload decode.
-func NewModuleLifecycleEvent(source, subject, name, version, action string, metadata map[string]interface{}) cloudevents.Event {
+func NewModuleLifecycleEvent(source, subject, name, version, action string, metadata map[string]any) cloudevents.Event {
 	payload := ModuleLifecyclePayload{
 		Subject:   subject,
 		Name:      name,

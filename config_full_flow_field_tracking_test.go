@@ -46,7 +46,7 @@ func createTestConfig() (*Config, FieldTracker, *MockLogger) {
 }
 
 // clearTestEnvironment clears all environment variables that could affect our tests
-func clearTestEnvironment(t *testing.T) {
+func clearTestEnvironment(_ *testing.T) {
 	// Clear all potential test environment variables
 	testEnvVars := []string{
 		// Test 1 variables

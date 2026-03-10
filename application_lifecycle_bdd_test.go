@@ -37,7 +37,7 @@ type BDDTestContext struct {
 	startError    error
 	stopError     error
 	moduleStates  map[string]bool
-	servicesFound map[string]interface{}
+	servicesFound map[string]any
 }
 
 // Test modules for BDD scenarios
@@ -87,7 +87,7 @@ type MockTestService struct{}
 
 type ConsumerTestModule struct {
 	SimpleTestModule
-	receivedService interface{}
+	receivedService any
 }
 
 func (m *ConsumerTestModule) Init(app Application) error {
@@ -121,7 +121,7 @@ func (ctx *BDDTestContext) resetContext() {
 	ctx.startError = nil
 	ctx.stopError = nil
 	ctx.moduleStates = make(map[string]bool)
-	ctx.servicesFound = make(map[string]interface{})
+	ctx.servicesFound = make(map[string]any)
 }
 
 func (ctx *BDDTestContext) iHaveANewModularApplication() error {
@@ -386,16 +386,16 @@ func (ctx *BDDTestContext) theErrorShouldIndicateCircularDependency() error {
 // BDDTestLogger for BDD tests
 type BDDTestLogger struct{}
 
-func (l *BDDTestLogger) Debug(msg string, fields ...interface{}) {}
-func (l *BDDTestLogger) Info(msg string, fields ...interface{})  {}
-func (l *BDDTestLogger) Warn(msg string, fields ...interface{})  {}
-func (l *BDDTestLogger) Error(msg string, fields ...interface{}) {}
+func (l *BDDTestLogger) Debug(msg string, fields ...any) {}
+func (l *BDDTestLogger) Info(msg string, fields ...any)  {}
+func (l *BDDTestLogger) Warn(msg string, fields ...any)  {}
+func (l *BDDTestLogger) Error(msg string, fields ...any) {}
 
 // InitializeScenario initializes the BDD test scenario
 func InitializeScenario(ctx *godog.ScenarioContext) {
 	testCtx := &BDDTestContext{
 		moduleStates:  make(map[string]bool),
-		servicesFound: make(map[string]interface{}),
+		servicesFound: make(map[string]any),
 	}
 
 	// Reset context before each scenario

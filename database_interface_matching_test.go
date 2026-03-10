@@ -12,9 +12,9 @@ import (
 
 // DatabaseExecutor matches the user's interface from the problem description
 type DatabaseExecutor interface {
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
@@ -25,15 +25,15 @@ var _ DatabaseExecutor = (*sql.DB)(nil)
 // mockDatabaseExecutor is a mock implementation for testing
 type mockDatabaseExecutor struct{}
 
-func (m *mockDatabaseExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (m *mockDatabaseExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return &mockResult{}, nil
 }
 
-func (m *mockDatabaseExecutor) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (m *mockDatabaseExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, nil
 }
 
-func (m *mockDatabaseExecutor) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (m *mockDatabaseExecutor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return &sql.Row{}
 }
 
@@ -80,19 +80,19 @@ func TestInterfaceMatchingCore(t *testing.T) {
 	mockService := &mockDatabaseServiceImpl{executor: mockExecutor}
 
 	// Test 1: Check if mockDatabaseExecutor implements DatabaseExecutor (it should)
-	expectedType := reflect.TypeOf((*DatabaseExecutor)(nil)).Elem()
-	mockExecutorType := reflect.TypeOf((*mockDatabaseExecutor)(nil))
+	expectedType := reflect.TypeFor[DatabaseExecutor]()
+	mockExecutorType := reflect.TypeFor[*mockDatabaseExecutor]()
 
 	assert.True(t, mockExecutorType.Implements(expectedType),
 		"mockDatabaseExecutor should implement DatabaseExecutor interface")
 
 	// Test 2: Check if mockDatabaseServiceImpl implements DatabaseExecutor (it should NOT)
-	mockServiceType := reflect.TypeOf((*mockDatabaseServiceImpl)(nil))
+	mockServiceType := reflect.TypeFor[*mockDatabaseServiceImpl]()
 	assert.False(t, mockServiceType.Implements(expectedType),
 		"mockDatabaseServiceImpl should NOT implement DatabaseExecutor interface")
 
 	// Test 3: Check if mockDatabaseServiceImpl implements MockDatabaseService (it should)
-	mockDBServiceType := reflect.TypeOf((*MockDatabaseService)(nil)).Elem()
+	mockDBServiceType := reflect.TypeFor[MockDatabaseService]()
 	assert.True(t, mockServiceType.Implements(mockDBServiceType),
 		"mockDatabaseServiceImpl should implement MockDatabaseService interface")
 

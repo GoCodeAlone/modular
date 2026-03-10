@@ -22,7 +22,7 @@ type MockComplexFeeder struct {
 	mock.Mock
 }
 
-func (m *MockComplexFeeder) Feed(structure interface{}) error {
+func (m *MockComplexFeeder) Feed(structure any) error {
 	args := m.Called(structure)
 	if err := args.Error(0); err != nil {
 		return fmt.Errorf("mock feeder error: %w", err)
@@ -30,7 +30,7 @@ func (m *MockComplexFeeder) Feed(structure interface{}) error {
 	return nil
 }
 
-func (m *MockComplexFeeder) FeedKey(key string, target interface{}) error {
+func (m *MockComplexFeeder) FeedKey(key string, target any) error {
 	args := m.Called(key, target)
 	if err := args.Error(0); err != nil {
 		return fmt.Errorf("mock feeder key error: %w", err)

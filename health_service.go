@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"maps"
 	"context"
 	"fmt"
 	"sync"
@@ -107,9 +108,7 @@ func (s *AggregateHealthService) Check(ctx context.Context) (*AggregatedHealth, 
 	// Snapshot providers under read lock
 	s.mu.RLock()
 	providers := make(map[string]HealthProvider, len(s.providers))
-	for k, v := range s.providers {
-		providers[k] = v
-	}
+	maps.Copy(providers, s.providers)
 	s.mu.RUnlock()
 
 	// Fan-out to all providers
@@ -222,9 +221,7 @@ func (s *AggregateHealthService) deepCopyAggregated(src *AggregatedHealth) *Aggr
 		dst.Reports[i] = r
 		if r.Details != nil {
 			dst.Reports[i].Details = make(map[string]any, len(r.Details))
-			for k, v := range r.Details {
-				dst.Reports[i].Details[k] = v
-			}
+			maps.Copy(dst.Reports[i].Details, r.Details)
 		}
 	}
 	return dst

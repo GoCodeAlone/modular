@@ -90,10 +90,8 @@ func (v *StandardContractVerifier) checkCanReloadConcurrency(module Reloadable) 
 		mu       sync.Mutex
 	)
 
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					mu.Lock()
@@ -102,7 +100,7 @@ func (v *StandardContractVerifier) checkCanReloadConcurrency(module Reloadable) 
 				}
 			}()
 			module.CanReload()
-		}()
+		})
 	}
 	wg.Wait()
 	return panicked != 0

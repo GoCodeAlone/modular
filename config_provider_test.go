@@ -151,15 +151,13 @@ func TestImmutableConfigProvider(t *testing.T) {
 		errors := make(chan error, 100)
 
 		// 100 concurrent readers
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				cfg := provider.GetConfig().(*TestConfig)
 				if cfg == nil {
 					errors <- fmt.Errorf("config is nil")
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -178,26 +176,24 @@ func TestImmutableConfigProvider(t *testing.T) {
 		errors := make(chan error, 100)
 
 		// 50 concurrent readers
-		for i := 0; i < 50; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for j := 0; j < 100; j++ {
+		for range 50 {
+			wg.Go(func() {
+				for range 100 {
 					cfg := provider.GetConfig().(*TestConfig)
 					if cfg == nil {
 						errors <- ErrConfigNil
 						return
 					}
 				}
-			}()
+			})
 		}
 
 		// 10 concurrent updaters
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				for j := 0; j < 10; j++ {
+				for j := range 10 {
 					newCfg := &TestConfig{
 						Host: "example.com",
 						Port: 8080 + id*100 + j,
@@ -299,15 +295,13 @@ func TestCopyOnWriteConfigProvider(t *testing.T) {
 		errors := make(chan error, 100)
 
 		// 100 concurrent readers
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				cfg := provider.GetConfig().(*TestConfig)
 				if cfg == nil {
 					errors <- fmt.Errorf("config is nil")
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -331,7 +325,7 @@ func TestCopyOnWriteConfigProvider(t *testing.T) {
 		errors := make(chan error, 50)
 
 		// 50 concurrent mutable copy requests
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()

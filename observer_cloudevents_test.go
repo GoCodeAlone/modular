@@ -13,14 +13,14 @@ import (
 
 // Mock types for testing
 type mockConfigProvider struct {
-	config interface{}
+	config any
 }
 
-func (m *mockConfigProvider) GetConfig() interface{} {
+func (m *mockConfigProvider) GetConfig() any {
 	return m.config
 }
 
-func (m *mockConfigProvider) GetDefaultConfig() interface{} {
+func (m *mockConfigProvider) GetDefaultConfig() any {
 	return m.config
 }
 
@@ -32,28 +32,28 @@ type mockLogger struct {
 type mockLogEntry struct {
 	Level   string
 	Message string
-	Args    []interface{}
+	Args    []any
 }
 
-func (l *mockLogger) Info(msg string, args ...interface{}) {
+func (l *mockLogger) Info(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, mockLogEntry{Level: "INFO", Message: msg, Args: args})
 }
 
-func (l *mockLogger) Error(msg string, args ...interface{}) {
+func (l *mockLogger) Error(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, mockLogEntry{Level: "ERROR", Message: msg, Args: args})
 }
 
-func (l *mockLogger) Debug(msg string, args ...interface{}) {
+func (l *mockLogger) Debug(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, mockLogEntry{Level: "DEBUG", Message: msg, Args: args})
 }
 
-func (l *mockLogger) Warn(msg string, args ...interface{}) {
+func (l *mockLogger) Warn(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries = append(l.entries, mockLogEntry{Level: "WARN", Message: msg, Args: args})
@@ -72,8 +72,8 @@ func (m *mockModule) Init(app Application) error {
 }
 
 func TestNewCloudEvent(t *testing.T) {
-	data := map[string]interface{}{"test": "data"}
-	metadata := map[string]interface{}{"key": "value"}
+	data := map[string]any{"test": "data"}
+	metadata := map[string]any{"key": "value"}
 
 	event := NewCloudEvent("test.event", "test.source", data, metadata)
 
@@ -84,7 +84,7 @@ func TestNewCloudEvent(t *testing.T) {
 	assert.False(t, event.Time().IsZero())
 
 	// Check data
-	var eventData map[string]interface{}
+	var eventData map[string]any
 	err := event.DataAs(&eventData)
 	require.NoError(t, err)
 	assert.Equal(t, "data", eventData["test"])

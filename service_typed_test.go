@@ -7,7 +7,7 @@ type testTypedService struct{ Value string }
 func TestRegisterTypedService_and_GetTypedService(t *testing.T) {
 	app := NewStdApplication(NewStdConfigProvider(&struct{}{}), nopLogger{})
 	svc := &testTypedService{Value: "hello"}
-	if err := RegisterTypedService[*testTypedService](app, "test.svc", svc); err != nil {
+	if err := RegisterTypedService(app, "test.svc", svc); err != nil {
 		t.Fatalf("RegisterTypedService: %v", err)
 	}
 	got, err := GetTypedService[*testTypedService](app, "test.svc")
@@ -21,7 +21,7 @@ func TestRegisterTypedService_and_GetTypedService(t *testing.T) {
 
 func TestGetTypedService_WrongType(t *testing.T) {
 	app := NewStdApplication(NewStdConfigProvider(&struct{}{}), nopLogger{})
-	_ = RegisterTypedService[string](app, "str.svc", "hello")
+	_ = RegisterTypedService(app, "str.svc", "hello")
 	_, err := GetTypedService[int](app, "str.svc")
 	if err == nil {
 		t.Fatal("expected type mismatch error")

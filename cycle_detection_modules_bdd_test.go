@@ -26,7 +26,7 @@ func (m *CycleModuleA) RequiresServices() []ServiceDependency {
 		Name:               "serviceB",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceB)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceB](),
 	}}
 }
 
@@ -50,7 +50,7 @@ func (m *CycleModuleB) RequiresServices() []ServiceDependency {
 		Name:               "serviceA",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceA)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceA](),
 	}}
 }
 
@@ -82,7 +82,7 @@ func (m *LinearModuleB) RequiresServices() []ServiceDependency {
 		Name:               "linearServiceA",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceA)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceA](),
 	}}
 }
 
@@ -106,7 +106,7 @@ func (m *SelfDependentModule) RequiresServices() []ServiceDependency {
 		Name:               "selfService",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceA)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceA](),
 	}}
 }
 
@@ -153,7 +153,7 @@ func (m *MixedDependencyModuleB) RequiresServices() []ServiceDependency {
 		Name:               "mixedServiceA",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceA)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceA](),
 	}}
 }
 
@@ -177,7 +177,7 @@ func (m *ComplexCycleModuleA) RequiresServices() []ServiceDependency {
 		Name:               "complexServiceB",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceB)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceB](),
 	}}
 }
 
@@ -201,7 +201,7 @@ func (m *ComplexCycleModuleB) RequiresServices() []ServiceDependency {
 		Name:               "complexServiceC",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceC)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceC](),
 	}}
 }
 
@@ -225,7 +225,7 @@ func (m *ComplexCycleModuleC) RequiresServices() []ServiceDependency {
 		Name:               "complexServiceA",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestInterfaceA)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestInterfaceA](),
 	}}
 }
 
@@ -249,7 +249,7 @@ func (m *DisambiguationModuleA) RequiresServices() []ServiceDependency {
 		Name:               "disambiguationServiceB",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*AnotherEnhancedTestInterface)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[AnotherEnhancedTestInterface](),
 	}}
 }
 
@@ -273,6 +273,6 @@ func (m *DisambiguationModuleB) RequiresServices() []ServiceDependency {
 		Name:               "disambiguationServiceA",
 		Required:           true,
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*EnhancedTestInterface)(nil)).Elem(), // Note: different interface
+		SatisfiesInterface: reflect.TypeFor[EnhancedTestInterface](), // Note: different interface
 	}}
 }

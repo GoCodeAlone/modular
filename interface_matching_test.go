@@ -353,7 +353,7 @@ func (m *InterfaceConsumerModule) RequiresServices() []ServiceDependency {
 			Name:               "router.service",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*handleFuncService)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[handleFuncService](),
 		},
 	}
 }
@@ -436,7 +436,7 @@ func (m *CustomNameConsumerModule) RequiresServices() []ServiceDependency {
 			Name:               "router",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*handleFuncService)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[handleFuncService](),
 		},
 	}
 }

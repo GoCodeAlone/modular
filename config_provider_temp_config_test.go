@@ -156,7 +156,7 @@ func Test_updateConfig(t *testing.T) {
 		mockLogger := new(MockLogger)
 		mockLogger.On("Debug",
 			"Creating new provider with updated config (original was non-pointer)",
-			[]interface{}(nil)).Return()
+			[]any(nil)).Return()
 		app := &StdApplication{
 			logger:      mockLogger,
 			cfgProvider: NewStdConfigProvider(originalCfg),
@@ -209,7 +209,7 @@ func Test_updateSectionConfig(t *testing.T) {
 		tempCfgPtr.(*testSectionCfg).Name = "new"
 
 		mockLogger := new(MockLogger)
-		mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "test"}).Return()
+		mockLogger.On("Debug", "Creating new provider for section", []any{"section", "test"}).Return()
 
 		app := &StdApplication{
 			logger:      mockLogger,
@@ -288,7 +288,7 @@ func TestDeepCopyValue_Maps(t *testing.T) {
 	t.Run("nil map", func(t *testing.T) {
 		var src map[string]string = nil
 
-		dst := reflect.New(reflect.TypeOf(map[string]string{})).Elem()
+		dst := reflect.New(reflect.TypeFor[map[string]string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		// For nil map, deepCopyValue returns early without modifying dst
@@ -304,7 +304,7 @@ func TestDeepCopyValue_Slices(t *testing.T) {
 	t.Run("simple slice of integers", func(t *testing.T) {
 		src := []int{1, 2, 3, 4, 5}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[[]int]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstSlice := dst.Interface().([]int)
@@ -318,7 +318,7 @@ func TestDeepCopyValue_Slices(t *testing.T) {
 	t.Run("slice of strings", func(t *testing.T) {
 		src := []string{"hello", "world"}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[[]string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstSlice := dst.Interface().([]string)
@@ -349,7 +349,7 @@ func TestDeepCopyValue_Slices(t *testing.T) {
 	t.Run("nil slice", func(t *testing.T) {
 		var src []string = nil
 
-		dst := reflect.New(reflect.TypeOf([]string{})).Elem()
+		dst := reflect.New(reflect.TypeFor[[]string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		// For nil slice, deepCopyValue returns early without modifying dst
@@ -366,7 +366,7 @@ func TestDeepCopyValue_Pointers(t *testing.T) {
 		str := "original"
 		src := &str
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[*string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstPtr := dst.Interface().(*string)
@@ -385,7 +385,7 @@ func TestDeepCopyValue_Pointers(t *testing.T) {
 
 		src := &TestStruct{Name: "test", Value: 42}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[*TestStruct]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstPtr := dst.Interface().(*TestStruct)
@@ -400,7 +400,7 @@ func TestDeepCopyValue_Pointers(t *testing.T) {
 	t.Run("nil pointer", func(t *testing.T) {
 		var src *string = nil
 
-		dst := reflect.New(reflect.TypeOf((*string)(nil))).Elem()
+		dst := reflect.New(reflect.TypeFor[*string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		// For nil pointer, deepCopyValue returns early without modifying dst
@@ -421,7 +421,7 @@ func TestDeepCopyValue_Structs(t *testing.T) {
 
 		src := SimpleStruct{Name: "John", Age: 30}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[SimpleStruct]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstStruct := dst.Interface().(SimpleStruct)
@@ -440,7 +440,7 @@ func TestDeepCopyValue_Structs(t *testing.T) {
 			Settings: map[string]string{"key1": "value1", "key2": "value2"},
 		}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[ConfigStruct]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstStruct := dst.Interface().(ConfigStruct)
@@ -463,7 +463,7 @@ func TestDeepCopyValue_Structs(t *testing.T) {
 			Items: []string{"a", "b", "c"},
 		}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[ListStruct]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstStruct := dst.Interface().(ListStruct)
@@ -489,7 +489,7 @@ func TestDeepCopyValue_Structs(t *testing.T) {
 			Inner: InnerStruct{Value: 42},
 		}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[OuterStruct]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstStruct := dst.Interface().(OuterStruct)
@@ -522,7 +522,7 @@ func TestDeepCopyValue_BasicTypes(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		value interface{}
+		value any
 	}{
 		{"int", 42},
 		{"int64", int64(123456789)},
@@ -567,7 +567,7 @@ func TestDeepCopyValue_ComplexStructures(t *testing.T) {
 		AllowedIPs: []string{"192.168.1.1", "10.0.0.1"},
 	}
 
-	dst := reflect.New(reflect.TypeOf(src)).Elem()
+	dst := reflect.New(reflect.TypeFor[ComplexConfig]()).Elem()
 	deepCopyValue(dst, reflect.ValueOf(src))
 
 	dstConfig := dst.Interface().(ComplexConfig)
@@ -598,7 +598,7 @@ func TestDeepCopyValue_Arrays(t *testing.T) {
 	t.Run("array of integers", func(t *testing.T) {
 		src := [5]int{1, 2, 3, 4, 5}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[[5]int]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstArray := dst.Interface().([5]int)
@@ -612,7 +612,7 @@ func TestDeepCopyValue_Arrays(t *testing.T) {
 	t.Run("array of strings", func(t *testing.T) {
 		src := [3]string{"foo", "bar", "baz"}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[[3]string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstArray := dst.Interface().([3]string)
@@ -626,7 +626,7 @@ func TestDeepCopyValue_Arrays(t *testing.T) {
 		str1, str2 := "value1", "value2"
 		src := [2]*string{&str1, &str2}
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[[2]*string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstArray := dst.Interface().([2]*string)
@@ -644,7 +644,7 @@ func TestDeepCopyValue_Interfaces(t *testing.T) {
 	t.Parallel()
 
 	t.Run("interface with concrete string", func(t *testing.T) {
-		var src interface{} = "hello"
+		var src any = "hello"
 
 		dst := reflect.New(reflect.TypeOf(src)).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
@@ -654,7 +654,7 @@ func TestDeepCopyValue_Interfaces(t *testing.T) {
 	})
 
 	t.Run("interface with concrete map", func(t *testing.T) {
-		var src interface{} = map[string]int{"a": 1, "b": 2}
+		var src any = map[string]int{"a": 1, "b": 2}
 
 		dst := reflect.New(reflect.TypeOf(src)).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
@@ -672,7 +672,7 @@ func TestDeepCopyValue_Interfaces(t *testing.T) {
 	t.Run("struct with interface field", func(t *testing.T) {
 		type ConfigWithInterface struct {
 			Name string
-			Data interface{}
+			Data any
 		}
 
 		src := ConfigWithInterface{
@@ -696,7 +696,7 @@ func TestDeepCopyValue_Interfaces(t *testing.T) {
 	t.Run("struct with nil interface field", func(t *testing.T) {
 		type ConfigWithInterface struct {
 			Name string
-			Data interface{}
+			Data any
 		}
 
 		src := ConfigWithInterface{
@@ -718,7 +718,7 @@ func TestDeepCopyValue_Interfaces(t *testing.T) {
 			Data  map[string]string
 		}
 
-		var src interface{} = TestStruct{
+		var src any = TestStruct{
 			Value: 42,
 			Data:  map[string]string{"key": "value"},
 		}
@@ -746,7 +746,7 @@ func TestDeepCopyValue_Channels(t *testing.T) {
 		src <- 42
 		src <- 100
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[chan int]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstChan := dst.Interface().(chan int)
@@ -759,7 +759,7 @@ func TestDeepCopyValue_Channels(t *testing.T) {
 	t.Run("nil channel", func(t *testing.T) {
 		var src chan string = nil
 
-		dst := reflect.New(reflect.TypeOf(src)).Elem()
+		dst := reflect.New(reflect.TypeFor[chan string]()).Elem()
 		deepCopyValue(dst, reflect.ValueOf(src))
 
 		dstChan := dst.Interface().(chan string)
@@ -809,7 +809,7 @@ func TestDeepCopyValue_Invalid(t *testing.T) {
 	t.Run("invalid value", func(t *testing.T) {
 		var src reflect.Value // Invalid (zero value)
 
-		dst := reflect.New(reflect.TypeOf("")).Elem()
+		dst := reflect.New(reflect.TypeFor[string]()).Elem()
 
 		// Should not panic
 		require.NotPanics(t, func() {

@@ -88,7 +88,7 @@ func TestImplicitDependencyDeterministicFix(t *testing.T) {
 	// This test will pass once we fix the dependency resolution to be deterministic
 	attempts := 20
 
-	for i := 0; i < attempts; i++ {
+	for i := range attempts {
 		err := runSingleImplicitDependencyTestWithFix()
 		if err != nil {
 			t.Fatalf("Attempt %d failed after fix: %v", i+1, err)
@@ -164,7 +164,7 @@ func TestNamingGameAttempt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test multiple times to ensure deterministic behavior
-			for attempt := 0; attempt < 5; attempt++ {
+			for attempt := range 5 {
 				err := runNamingGameTest(tt.providerName, tt.consumerName)
 				if err != nil {
 					t.Errorf("Attempt %d failed for %s (%s): %v",
@@ -253,7 +253,7 @@ func TestServiceNamingGameAttempt(t *testing.T) {
 			}
 
 			// Test multiple times to ensure deterministic behavior
-			for attempt := 0; attempt < 3; attempt++ {
+			for attempt := range 3 {
 				err := runServiceNamingGameTest(tt.serviceName)
 				if err != nil {
 					t.Errorf("Attempt %d failed for %s (%s): %v",
@@ -353,7 +353,7 @@ func (m *FlakyServerModule) RequiresServices() []ServiceDependency {
 			Name:               "router",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*http.Handler)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[http.Handler](),
 		},
 	}
 }
@@ -476,7 +476,7 @@ func (m *CustomServiceConsumerModule) RequiresServices() []ServiceDependency {
 			Name:               m.serviceName,
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*http.Handler)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[http.Handler](),
 		},
 	}
 }

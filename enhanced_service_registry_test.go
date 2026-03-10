@@ -128,7 +128,7 @@ func TestEnhancedServiceRegistry_InterfaceDiscovery(t *testing.T) {
 	registry.RegisterService("nonInterface", nonInterfaceService)
 
 	// Discover by interface
-	interfaceType := reflect.TypeOf((*ServiceRegistryTestInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[ServiceRegistryTestInterface]()
 	entries := registry.GetServicesByInterface(interfaceType)
 
 	require.Len(t, entries, 2)

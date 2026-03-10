@@ -205,7 +205,7 @@ func TestStandardTenantGuard_RingBuffer(t *testing.T) {
 	guard := NewStandardTenantGuard(config)
 
 	// Add 8 violations to a buffer of size 5
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		_ = guard.ValidateAccess(context.Background(), TenantViolation{
 			Type:     CrossTenant,
 			Severity: SeverityLow,
@@ -262,7 +262,7 @@ func TestStandardTenantGuard_ConcurrentAccess(t *testing.T) {
 	guard := NewStandardTenantGuard(config)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()

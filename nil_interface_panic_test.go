@@ -35,14 +35,14 @@ func TestTypeImplementsInterfaceWithNil(t *testing.T) {
 	app := &StdApplication{}
 
 	// Test with nil svcType (should not panic)
-	interfaceType := reflect.TypeOf((*NilTestInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[NilTestInterface]()
 	result := app.typeImplementsInterface(nil, interfaceType)
 	if result {
 		t.Error("Expected false when svcType is nil")
 	}
 
 	// Test with nil interfaceType (should not panic)
-	svcType := reflect.TypeOf("")
+	svcType := reflect.TypeFor[string]()
 	result = app.typeImplementsInterface(svcType, nil)
 	if result {
 		t.Error("Expected false when interfaceType is nil")
@@ -68,7 +68,7 @@ func TestGetServicesByInterfaceWithNilService(t *testing.T) {
 	}
 
 	// This should not panic
-	interfaceType := reflect.TypeOf((*NilTestInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[NilTestInterface]()
 	results := app.GetServicesByInterface(interfaceType)
 
 	// Should return empty results, not panic
@@ -117,7 +117,7 @@ func (m *interfaceConsumerModule) RequiresServices() []ServiceDependency {
 	return []ServiceDependency{{
 		Name:               "testService",
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*NilTestInterface)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[NilTestInterface](),
 		Required:           false, // Make it optional to avoid required service errors
 	}}
 }

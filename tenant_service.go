@@ -3,6 +3,7 @@
 package modular
 
 import (
+	"slices"
 	"fmt"
 	"sync"
 )
@@ -165,13 +166,11 @@ func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareMod
 	defer ts.mutex.Unlock()
 
 	// Check if the module is already registered to avoid duplicates
-	for _, existingModule := range ts.tenantAwareModules {
-		if existingModule == module {
+	if slices.Contains(ts.tenantAwareModules, module) {
 			ts.logger.Debug("Module already registered as tenant-aware",
 				"module", fmt.Sprintf("%T", module), "name", module.Name())
 			return nil
 		}
-	}
 
 	ts.tenantAwareModules = append(ts.tenantAwareModules, module)
 	ts.logger.Debug("Registered tenant-aware module",

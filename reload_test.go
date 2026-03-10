@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"slices"
 	"context"
 	"errors"
 	"fmt"
@@ -34,13 +35,7 @@ func (m *mockReloadable) Reload(_ context.Context, changes []ConfigChange) error
 func (m *mockReloadable) CanReload() bool              { return m.canReload }
 func (m *mockReloadable) ReloadTimeout() time.Duration { return m.timeout }
 
-func (m *mockReloadable) getLastChanges() []ConfigChange {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([]ConfigChange, len(m.lastChanges))
-	copy(result, m.lastChanges)
-	return result
-}
+
 
 // reloadTestLogger implements Logger for testing.
 type reloadTestLogger struct {
@@ -75,13 +70,7 @@ func (s *reloadTestSubject) NotifyObservers(_ context.Context, event cloudevents
 	return nil
 }
 
-func (s *reloadTestSubject) getEvents() []cloudevents.Event {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	result := make([]cloudevents.Event, len(s.events))
-	copy(result, s.events)
-	return result
-}
+
 
 func (s *reloadTestSubject) eventTypes() []string {
 	s.mu.Lock()
@@ -269,8 +258,7 @@ func TestReloadOrchestrator_SuccessfulReload(t *testing.T) {
 	mod := &mockReloadable{canReload: true, timeout: 5 * time.Second}
 	orch.RegisterReloadable("testmod", mod)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	orch.Start(ctx)
 
 	diff := newTestDiff()
@@ -305,8 +293,7 @@ func TestReloadOrchestrator_PartialFailure_Rollback(t *testing.T) {
 	orch.RegisterReloadable("aaa_first", mod1)
 	orch.RegisterReloadable("zzz_second", mod2)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	orch.Start(ctx)
 
 	diff := newTestDiff()
@@ -354,14 +341,13 @@ func TestReloadOrchestrator_CircuitBreaker(t *testing.T) {
 	failMod := &mockReloadable{canReload: true, timeout: 5 * time.Second, reloadErr: errors.New("fail")}
 	orch.RegisterReloadable("failing", failMod)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	orch.Start(ctx)
 
 	diff := newTestDiff()
 
 	// Trigger enough failures to open the circuit breaker.
-	for i := 0; i < circuitBreakerThreshold; i++ {
+	for i := range circuitBreakerThreshold {
 		if err := orch.RequestReload(ctx, ReloadManual, diff); err != nil {
 			t.Fatalf("RequestReload %d failed: %v", i, err)
 		}
@@ -389,8 +375,7 @@ func TestReloadOrchestrator_CanReloadFalse_Skipped(t *testing.T) {
 	mod := &mockReloadable{canReload: false, timeout: 5 * time.Second}
 	orch.RegisterReloadable("disabled", mod)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	orch.Start(ctx)
 
 	diff := newTestDiff()
@@ -399,12 +384,7 @@ func TestReloadOrchestrator_CanReloadFalse_Skipped(t *testing.T) {
 	}
 
 	if !waitFor(t, 2*time.Second, func() bool {
-		for _, et := range subject.eventTypes() {
-			if et == EventTypeConfigReloadCompleted {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(subject.eventTypes(), EventTypeConfigReloadCompleted)
 	}) {
 		t.Fatal("timed out waiting for ConfigReloadCompleted event")
 	}
@@ -422,19 +402,16 @@ func TestReloadOrchestrator_ConcurrentRequests(t *testing.T) {
 	mod := &mockReloadable{canReload: true, timeout: 5 * time.Second}
 	orch.RegisterReloadable("concurrent", mod)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	orch.Start(ctx)
 
 	diff := newTestDiff()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			_ = orch.RequestReload(ctx, ReloadManual, diff)
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -455,8 +432,7 @@ func TestReloadOrchestrator_NoopOnEmptyDiff(t *testing.T) {
 	mod := &mockReloadable{canReload: true, timeout: 5 * time.Second}
 	orch.RegisterReloadable("mod", mod)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	orch.Start(ctx)
 
 	emptyDiff := ConfigDiff{
@@ -470,12 +446,7 @@ func TestReloadOrchestrator_NoopOnEmptyDiff(t *testing.T) {
 	}
 
 	if !waitFor(t, 2*time.Second, func() bool {
-		for _, et := range subject.eventTypes() {
-			if et == EventTypeConfigReloadNoop {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(subject.eventTypes(), EventTypeConfigReloadNoop)
 	}) {
 		t.Fatal("timed out waiting for ConfigReloadNoop event")
 	}

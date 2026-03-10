@@ -14,7 +14,7 @@ type MockVerboseAwareFeeder struct {
 	mock.Mock
 }
 
-func (m *MockVerboseAwareFeeder) Feed(structure interface{}) error {
+func (m *MockVerboseAwareFeeder) Feed(structure any) error {
 	args := m.Called(structure)
 	if err := args.Error(0); err != nil {
 		return fmt.Errorf("mock feeder error: %w", err)

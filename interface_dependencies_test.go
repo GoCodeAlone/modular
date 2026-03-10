@@ -147,7 +147,7 @@ func (m *RouterConsumerModule) RequiresServices() []ServiceDependency {
 			Name:               "router",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*Router)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[Router](),
 		},
 	}
 }
