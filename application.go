@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -338,6 +339,7 @@ type StdApplication struct {
 	configLoadedHooks   []func(Application) error // Hooks to run after config loading but before module initialization
 	dependencyHints     []DependencyEdge          // Config-driven dependency edges injected via WithModuleDependency
 	drainTimeout        time.Duration             // Timeout for pre-stop drain phase
+	phase               atomic.Int32              // Current lifecycle phase (AppPhase)
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -528,6 +530,15 @@ func (app *StdApplication) GetService(name string, target any) error {
 		ErrServiceIncompatible, name, serviceType, targetType)
 }
 
+// Phase returns the current lifecycle phase of the application.
+func (app *StdApplication) Phase() AppPhase {
+	return AppPhase(app.phase.Load())
+}
+
+func (app *StdApplication) setPhase(p AppPhase) {
+	app.phase.Store(int32(p))
+}
+
 // Init initializes the application with the provided modules
 func (app *StdApplication) Init() error {
 	return app.InitWithApp(app)
@@ -544,6 +555,8 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 		}
 		return nil
 	}
+
+	app.setPhase(PhaseInitializing)
 
 	errs := make([]error, 0)
 	for name, module := range app.moduleRegistry {
@@ -641,6 +654,7 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	// Mark as initialized only after completing Init flow
 	if len(errs) == 0 {
 		app.initialized = true
+		app.setPhase(PhaseInitialized)
 	}
 
 	return errors.Join(errs...)
@@ -678,6 +692,8 @@ func (app *StdApplication) initTenantConfigurations() error {
 
 // Start starts the application
 func (app *StdApplication) Start() error {
+	app.setPhase(PhaseStarting)
+
 	// Record the start time
 	app.startTime = time.Now()
 
@@ -705,11 +721,14 @@ func (app *StdApplication) Start() error {
 		}
 	}
 
+	app.setPhase(PhaseRunning)
 	return nil
 }
 
 // Stop stops the application
 func (app *StdApplication) Stop() error {
+	app.setPhase(PhaseDraining)
+
 	// Get modules in reverse dependency order
 	modules, err := app.resolveDependencies()
 	if err != nil {
@@ -737,6 +756,8 @@ func (app *StdApplication) Stop() error {
 		}
 	}
 
+	app.setPhase(PhaseStopping)
+
 	// Phase 2: Stop
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -761,6 +782,7 @@ func (app *StdApplication) Stop() error {
 		app.cancel()
 	}
 
+	app.setPhase(PhaseStopped)
 	return lastErr
 }
 
