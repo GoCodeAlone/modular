@@ -16,7 +16,10 @@
 //	}
 package modular
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Module represents a registrable component in the application.
 // All modules must implement this interface to be managed by the application.
@@ -246,6 +249,28 @@ type ModuleConstructor func(app Application, services map[string]any) (Module, e
 type ModuleWithConstructor interface {
 	Module
 	Constructable
+}
+
+// Reloadable is an optional interface for modules that support dynamic configuration reloading.
+// Modules implementing this interface can have their configuration updated at runtime
+// without requiring a full application restart.
+//
+// The reload process is coordinated by the ReloadOrchestrator, which detects configuration
+// changes, computes diffs, and calls Reload on each module that supports it.
+type Reloadable interface {
+	// Reload applies configuration changes to the module.
+	// The changes slice contains only the changes relevant to this module.
+	// Implementations should apply changes atomically where possible.
+	Reload(ctx context.Context, changes []ConfigChange) error
+
+	// CanReload reports whether the module can currently accept a reload.
+	// Modules may return false if they are in a state where reloading is unsafe
+	// (e.g., mid-transaction, shutting down).
+	CanReload() bool
+
+	// ReloadTimeout returns the maximum duration allowed for a reload operation.
+	// The orchestrator will cancel the reload context if this timeout is exceeded.
+	ReloadTimeout() time.Duration
 }
 
 // ModuleRegistry represents a registry of modules keyed by their names.

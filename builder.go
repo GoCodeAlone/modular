@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"fmt"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
@@ -21,6 +22,8 @@ type ApplicationBuilder struct {
 	enableObserver    bool
 	enableTenant      bool
 	configLoadedHooks []func(Application) error // Hooks to run after config loading
+	tenantGuard       *StandardTenantGuard
+	tenantGuardConfig *TenantGuardConfig
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
@@ -95,6 +98,16 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 
 	if b.enableObserver && len(b.observers) > 0 {
 		app = NewObservableDecorator(app, b.observers...)
+	}
+
+	// Create and register tenant guard if configured.
+	// Use RegisterService so that the EnhancedServiceRegistry (if enabled) tracks
+	// the entry and subsequent RegisterService calls don't overwrite it.
+	if b.tenantGuardConfig != nil {
+		b.tenantGuard = NewStandardTenantGuard(*b.tenantGuardConfig)
+		if err := app.RegisterService("tenant.guard", b.tenantGuard); err != nil {
+			return nil, fmt.Errorf("failed to register tenant guard service: %w", err)
+		}
 	}
 
 	// Register modules
@@ -190,6 +203,26 @@ func WithTenantAware(loader TenantLoader) Option {
 func WithOnConfigLoaded(hooks ...func(Application) error) Option {
 	return func(b *ApplicationBuilder) error {
 		b.configLoadedHooks = append(b.configLoadedHooks, hooks...)
+		return nil
+	}
+}
+
+// WithTenantGuardMode enables the tenant guard with the specified mode using default config.
+func WithTenantGuardMode(mode TenantGuardMode) Option {
+	return func(b *ApplicationBuilder) error {
+		if b.tenantGuardConfig == nil {
+			cfg := DefaultTenantGuardConfig()
+			b.tenantGuardConfig = &cfg
+		}
+		b.tenantGuardConfig.Mode = mode
+		return nil
+	}
+}
+
+// WithTenantGuardConfig enables the tenant guard with a full configuration.
+func WithTenantGuardConfig(config TenantGuardConfig) Option {
+	return func(b *ApplicationBuilder) error {
+		b.tenantGuardConfig = &config
 		return nil
 	}
 }

@@ -1,11 +1,28 @@
-# Dynamic Reload Manager — Reimplementation Plan
+# Dynamic Reload Manager — Revised Implementation Plan
 
-> Previously implemented in GoCodeAlone/modular (v1.4.3). Dropped during reset to GoCodeAlone/modular upstream.
-> This document captures the design for future reimplementation.
+> Reset from CrisisTextLine/modular upstream (2026-03-09). This revision reflects what already exists.
 
-## Overview
+## Gap Analysis
 
-The Dynamic Reload Manager enables live configuration reloading for modules that implement the `Reloadable` interface. It uses a channel-based request queue, atomic processing guards, an exponential backoff circuit breaker for failure resilience, and emits lifecycle events via the observer pattern. Reloads have atomic semantics: all modules apply or all roll back.
+**Already exists:**
+- Observer pattern with CloudEvents (`observer.go`) — foundation for reload events
+- Config field tracking (`config_field_tracking.go`) — `FieldPopulation`, `StructStateDiffer`
+- Config providers with thread-safe variants (`config_provider.go`) — `ImmutableConfigProvider` (atomic.Value)
+- Circuit breaker pattern in reverseproxy (`modules/reverseproxy/circuit_breaker.go`) — reference implementation
+- `EventTypeConfigChanged` event constant
+- Module interfaces: `Module`, `Configurable`, `Startable`, `Stoppable`, `DependencyAware`
+- Builder pattern with `WithOnConfigLoaded()` option
+
+**Must implement:**
+- `Reloadable` interface (add to `module.go`)
+- `ConfigChange`, `ConfigDiff`, `FieldChange` types
+- `ReloadTrigger` enum
+- `ReloadOrchestrator` with request queue, CAS guard, circuit breaker
+- Atomic reload with rollback semantics
+- Reload lifecycle events (4 new event types)
+- `RequestReload()` on Application interface
+- `WithDynamicReload()` builder option
+- Tests
 
 ## Key Interfaces
 
@@ -60,58 +77,58 @@ const (
 - Background goroutine drains the request queue
 
 **Circuit breaker** with exponential backoff:
-- Base delay: 2 seconds
-- Max delay cap: 2 minutes
+- Base delay: 2 seconds, max delay cap: 2 minutes
 - Formula: `min(base * 2^(failures-1), cap)`
-- Resets to zero on successful reload
-- Rejects requests while circuit is open (returns error immediately)
+- Resets on successful reload, rejects while open
 
 **Atomic reload semantics**:
 1. Compute `ConfigDiff` between old and new config
 2. Filter modules by affected sections
-3. Check `CanReload()` on each; abort if any critical module refuses
-4. Apply changes to each module with per-module timeout from `ReloadTimeout()`
-5. On first failure: roll back already-applied modules with reverse changes
+3. Check `CanReload()` on each; skip those returning false
+4. Apply changes with per-module timeout from `ReloadTimeout()`
+5. On failure: roll back already-applied modules with reverse changes
 6. Emit completion or failure event
 
-**Events** (via existing observer/event bus):
-- `ConfigReloadStarted{ReloadID, Trigger, Sections}`
-- `ConfigReloadCompleted{ReloadID, Duration, ModulesReloaded}`
-- `ConfigReloadFailed{ReloadID, Error, ModulesFailed}`
-- `ConfigReloadNoop{ReloadID, Reason}` — emitted when diff has no changes
+**Events** (add to observer.go):
+- `EventTypeConfigReloadStarted`
+- `EventTypeConfigReloadCompleted`
+- `EventTypeConfigReloadFailed`
+- `EventTypeConfigReloadNoop`
 
-**ConfigDiff methods**:
-- `HasChanges() bool` — true if any Changed/Added/Removed entries
-- `FilterByPrefix(prefix) ConfigDiff` — returns subset matching field path prefix
-- `RedactSensitiveFields() ConfigDiff` — replaces sensitive values with `"[REDACTED]"`
-- `ChangeSummary() string` — human-readable summary of changes
+## Files
 
-**HealthEvaluationMetrics** tracks per-reload stats: components evaluated, failed, skipped, timed out, and identifies the slowest component.
+| Action | File | What |
+|--------|------|------|
+| Create | `reload.go` | ConfigChange, ConfigDiff, FieldChange, ReloadTrigger types + ConfigDiff methods |
+| Modify | `module.go` | Add Reloadable interface |
+| Create | `reload_orchestrator.go` | ReloadOrchestrator implementation |
+| Modify | `observer.go` | Add 4 reload event type constants |
+| Modify | `application.go` | Add RequestReload() method |
+| Modify | `builder.go` | Add WithDynamicReload() option |
+| Create | `reload_test.go` | Unit + concurrency tests |
 
 ## Implementation Checklist
 
-- [ ] Define `Reloadable` interface
-- [ ] Define `ConfigChange`, `ConfigDiff`, `FieldChange` structs
-- [ ] Implement `ConfigDiff` methods (HasChanges, FilterByPrefix, RedactSensitiveFields, ChangeSummary)
-- [ ] Define `ReloadTrigger` enum
-- [ ] Implement `ReloadOrchestrator` with module registry and RWMutex
+- [ ] Define `Reloadable` interface in module.go
+- [ ] Create reload.go with ConfigChange, ConfigDiff, FieldChange, ChangeType, ReloadTrigger
+- [ ] Implement ConfigDiff methods: HasChanges, FilterByPrefix, RedactSensitiveFields, ChangeSummary
+- [ ] Add 4 reload event constants to observer.go
+- [ ] Implement ReloadOrchestrator with module registry + RWMutex
 - [ ] Implement channel-based request queue (buffered, size 100)
 - [ ] Implement atomic CAS processing guard
-- [ ] Implement exponential backoff circuit breaker (base 2s, cap 2m, factor 2^(n-1))
+- [ ] Implement exponential backoff circuit breaker
 - [ ] Implement atomic reload with rollback on failure
-- [ ] Implement per-module timeout via `ReloadTimeout()` and context cancellation
-- [ ] Define and emit reload lifecycle events
-- [ ] Implement `HealthEvaluationMetrics` tracking
-- [ ] Add `RequestReload(sections ...string)` to application interface
-- [ ] Add `WithDynamicReload()` builder option
-- [ ] Write unit tests: successful reload, partial failure + rollback, circuit breaker backoff
-- [ ] Write concurrency tests: concurrent reload requests, CAS contention
-- [ ] Write example: HTTP server with reloadable timeouts (read/write/idle) and non-reloadable address/port
+- [ ] Implement per-module timeout via context cancellation
+- [ ] Emit reload lifecycle events via observer
+- [ ] Add RequestReload() to Application interface + StdApplication
+- [ ] Add WithDynamicReload() builder option
+- [ ] Write unit tests: successful reload, partial failure + rollback, circuit breaker
+- [ ] Write concurrency tests: concurrent requests, CAS contention
 
 ## Notes
 
-- Modules that return `CanReload() == false` are skipped, not treated as errors.
-- Rollback applies reverse `ConfigChange` entries (swap Old/New) in reverse module order.
-- The request queue drops requests when full (capacity 100) and returns an error to the caller.
-- Circuit breaker state is internal to the orchestrator; not exposed to modules.
-- Sensitive field detection can use a configurable list of field path patterns (e.g., `*password*`, `*secret*`).
+- Modules returning `CanReload() == false` are skipped, not errors.
+- Rollback applies reverse ConfigChange entries in reverse module order.
+- Queue drops requests when full (capacity 100) and returns error.
+- Circuit breaker state is internal to orchestrator; not exposed to modules.
+- Sensitive field detection uses configurable field path patterns (e.g., `*password*`, `*secret*`).
