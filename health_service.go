@@ -253,26 +253,23 @@ func (s *AggregateHealthService) emitHealthStatusChanged(ctx context.Context, fr
 }
 
 // worstStatus returns the worse of two health statuses.
-// StatusUnknown is treated as StatusUnhealthy for aggregation purposes.
-// When both normalize to the same severity, StatusUnhealthy is preferred
-// over StatusUnknown.
+// StatusUnknown is treated as StatusUnhealthy for aggregation purposes:
+// if either status is Unknown, it is mapped to Unhealthy in the result
+// so that the aggregated output consistently reflects unhealthy severity.
 func worstStatus(a, b HealthStatus) HealthStatus {
 	ar := normalizeForAggregation(a)
 	br := normalizeForAggregation(b)
-	if ar > br {
-		return a
+	var winner HealthStatus
+	if ar >= br {
+		winner = a
+	} else {
+		winner = b
 	}
-	if br > ar {
-		return b
+	// Map Unknown → Unhealthy so aggregated health never reports "unknown".
+	if winner == StatusUnknown {
+		return StatusUnhealthy
 	}
-	// Tie-break: prefer StatusUnhealthy over StatusUnknown
-	if a == StatusUnknown && b == StatusUnhealthy {
-		return b
-	}
-	if b == StatusUnknown && a == StatusUnhealthy {
-		return a
-	}
-	return a
+	return winner
 }
 
 // normalizeForAggregation maps StatusUnknown to StatusUnhealthy severity for comparison.

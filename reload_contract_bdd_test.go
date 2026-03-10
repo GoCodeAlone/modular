@@ -91,6 +91,38 @@ func (l *reloadBDDLogger) Error(_ string, _ ...any) {}
 func (l *reloadBDDLogger) Warn(_ string, _ ...any)  {}
 func (l *reloadBDDLogger) Debug(_ string, _ ...any) {}
 
+// bddWaitForEvent polls until the subject has recorded an event of the given type,
+// or the timeout elapses. Returns true if the event was observed.
+func bddWaitForEvent(subject *reloadBDDSubject, eventType string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, et := range subject.eventTypes() {
+			if et == eventType {
+				return true
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return false
+}
+
+// bddWaitForCalls polls until the total reload calls across modules reaches
+// at least n, or the timeout elapses.
+func bddWaitForCalls(modules []*reloadBDDMockReloadable, n int32, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var total int32
+		for _, m := range modules {
+			total += m.reloadCalls.Load()
+		}
+		if total >= n {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return false
+}
+
 // ReloadBDDContext holds state for reload contract BDD scenarios.
 type ReloadBDDContext struct {
 	orchestrator *ReloadOrchestrator
@@ -156,7 +188,7 @@ func (rc *ReloadBDDContext) aReloadOrchestratorWithNReloadableModules(n int) err
 func (rc *ReloadBDDContext) aReloadIsRequestedWithConfigurationChanges() error {
 	diff := rc.newDiff()
 	rc.reloadErr = rc.orchestrator.RequestReload(rc.ctx, ReloadManual, diff)
-	time.Sleep(200 * time.Millisecond)
+	bddWaitForEvent(rc.subject, EventTypeConfigReloadCompleted, 2*time.Second)
 	return nil
 }
 
@@ -208,7 +240,9 @@ func (rc *ReloadBDDContext) aReloadOrchestratorWithAModuleThatCannotReload() err
 func (rc *ReloadBDDContext) aReloadIsRequested() error {
 	diff := rc.newDiff()
 	rc.reloadErr = rc.orchestrator.RequestReload(rc.ctx, ReloadManual, diff)
-	time.Sleep(200 * time.Millisecond)
+	// Wait for either completed or failed event (covers both success and failure scenarios).
+	bddWaitForEvent(rc.subject, EventTypeConfigReloadCompleted, 2*time.Second)
+	bddWaitForEvent(rc.subject, EventTypeConfigReloadFailed, 100*time.Millisecond)
 	return nil
 }
 
@@ -297,9 +331,10 @@ func (rc *ReloadBDDContext) aReloadOrchestratorWithAFailingModule() error {
 
 func (rc *ReloadBDDContext) nConsecutiveReloadsFail(n int) error {
 	diff := rc.newDiff()
-	for range n {
+	for i := range n {
 		_ = rc.orchestrator.RequestReload(rc.ctx, ReloadManual, diff)
-		time.Sleep(150 * time.Millisecond)
+		expected := int32(i + 1)
+		bddWaitForCalls(rc.modules, expected, 2*time.Second)
 	}
 	return nil
 }
@@ -335,7 +370,7 @@ func (rc *ReloadBDDContext) aReloadOrchestratorWithReloadableModules() error {
 func (rc *ReloadBDDContext) aReloadIsRequestedWithNoChanges() error {
 	diff := rc.emptyDiff()
 	rc.reloadErr = rc.orchestrator.RequestReload(rc.ctx, ReloadManual, diff)
-	time.Sleep(200 * time.Millisecond)
+	bddWaitForEvent(rc.subject, EventTypeConfigReloadNoop, 2*time.Second)
 	return nil
 }
 
@@ -368,7 +403,7 @@ func (rc *ReloadBDDContext) tenReloadRequestsAreSubmittedConcurrently() error {
 		}()
 	}
 	wg.Wait()
-	time.Sleep(500 * time.Millisecond)
+	bddWaitForCalls(rc.modules, 1, 2*time.Second)
 	return nil
 }
 

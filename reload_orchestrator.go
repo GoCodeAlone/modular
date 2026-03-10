@@ -121,22 +121,29 @@ func (o *ReloadOrchestrator) Start(ctx context.Context) {
 				if !ok {
 					return
 				}
-				// Derive a context from the start context. If the request carries
-				// a deadline, apply it to the parent context.
-				rctx := ctx
-				if req.Ctx != nil {
-					if deadline, ok := req.Ctx.Deadline(); ok {
-						dctx, cancel := context.WithDeadline(ctx, deadline)
-						rctx = dctx
-						defer cancel()
-					}
-				}
-				if err := o.processReload(rctx, req); err != nil {
-					o.logger.Error("Reload failed", "trigger", req.Trigger.String(), "error", err)
-				}
+				o.handleReload(ctx, req)
 			}
 		}
 	}()
+}
+
+// handleReload derives a properly scoped context for a single reload request and
+// processes it. The context is cancelled immediately after processReload returns
+// to avoid resource leaks from accumulated timers in the processing loop.
+func (o *ReloadOrchestrator) handleReload(parentCtx context.Context, req ReloadRequest) {
+	// Use the request context if provided so that caller cancellation and
+	// values propagate to module Reload calls. Fall back to the Start()
+	// parent context when no request context is set.
+	base := parentCtx
+	if req.Ctx != nil {
+		base = req.Ctx
+	}
+	rctx, cancel := context.WithCancel(base)
+	defer cancel()
+
+	if err := o.processReload(rctx, req); err != nil {
+		o.logger.Error("Reload failed", "trigger", req.Trigger.String(), "error", err)
+	}
 }
 
 // Stop signals the background goroutine to exit. It is safe to call multiple times.

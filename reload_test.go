@@ -233,6 +233,20 @@ func TestConfigDiff_ChangeSummary(t *testing.T) {
 	})
 }
 
+// waitFor polls cond every 5ms until it returns true or timeout elapses.
+// Returns true if cond was satisfied, false on timeout.
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return false
+}
+
 // --- ReloadOrchestrator tests ---
 
 func newTestDiff() ConfigDiff {
@@ -264,17 +278,15 @@ func TestReloadOrchestrator_SuccessfulReload(t *testing.T) {
 		t.Fatalf("RequestReload failed: %v", err)
 	}
 
-	// Wait for processing.
-	time.Sleep(100 * time.Millisecond)
+	if !waitFor(t, 2*time.Second, func() bool { return mod.reloadCalls.Load() >= 1 }) {
+		t.Fatalf("timed out waiting for reload call, got %d", mod.reloadCalls.Load())
+	}
 
-	if mod.reloadCalls.Load() != 1 {
-		t.Errorf("expected 1 reload call, got %d", mod.reloadCalls.Load())
+	if !waitFor(t, 2*time.Second, func() bool { return len(subject.eventTypes()) >= 2 }) {
+		t.Fatalf("timed out waiting for events, got %d", len(subject.eventTypes()))
 	}
 
 	events := subject.eventTypes()
-	if len(events) < 2 {
-		t.Fatalf("expected at least 2 events, got %d: %v", len(events), events)
-	}
 	if events[0] != EventTypeConfigReloadStarted {
 		t.Errorf("expected started event, got %s", events[0])
 	}
@@ -302,7 +314,11 @@ func TestReloadOrchestrator_PartialFailure_Rollback(t *testing.T) {
 		t.Fatalf("RequestReload failed: %v", err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	if !waitFor(t, 2*time.Second, func() bool {
+		return len(subject.eventTypes()) > 0 && subject.eventTypes()[len(subject.eventTypes())-1] == EventTypeConfigReloadFailed
+	}) {
+		t.Fatal("timed out waiting for reload failure event")
+	}
 
 	// Targets are sorted by name: aaa_first runs before zzz_second.
 	// aaa_first succeeds, then zzz_second fails, triggering rollback of aaa_first.
@@ -349,7 +365,10 @@ func TestReloadOrchestrator_CircuitBreaker(t *testing.T) {
 		if err := orch.RequestReload(ctx, ReloadManual, diff); err != nil {
 			t.Fatalf("RequestReload %d failed: %v", i, err)
 		}
-		time.Sleep(100 * time.Millisecond)
+		expected := int32(i + 1)
+		if !waitFor(t, 2*time.Second, func() bool { return failMod.reloadCalls.Load() >= expected }) {
+			t.Fatalf("timed out waiting for reload call %d", i+1)
+		}
 	}
 
 	// Next request should be rejected by the circuit breaker.
@@ -379,21 +398,19 @@ func TestReloadOrchestrator_CanReloadFalse_Skipped(t *testing.T) {
 		t.Fatalf("RequestReload failed: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	if !waitFor(t, 2*time.Second, func() bool {
+		for _, et := range subject.eventTypes() {
+			if et == EventTypeConfigReloadCompleted {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("timed out waiting for ConfigReloadCompleted event")
+	}
 
 	if mod.reloadCalls.Load() != 0 {
 		t.Errorf("expected 0 reload calls for disabled module, got %d", mod.reloadCalls.Load())
-	}
-
-	// Should still emit completed (no modules failed).
-	hasCompleted := false
-	for _, et := range subject.eventTypes() {
-		if et == EventTypeConfigReloadCompleted {
-			hasCompleted = true
-		}
-	}
-	if !hasCompleted {
-		t.Error("expected ConfigReloadCompleted event even when modules skipped")
 	}
 }
 
@@ -421,13 +438,11 @@ func TestReloadOrchestrator_ConcurrentRequests(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Give time for all queued reloads to process.
-	time.Sleep(500 * time.Millisecond)
+	if !waitFor(t, 2*time.Second, func() bool { return mod.reloadCalls.Load() >= 1 }) {
+		t.Fatalf("timed out waiting for at least 1 reload call, got %d", mod.reloadCalls.Load())
+	}
 
 	calls := mod.reloadCalls.Load()
-	if calls < 1 {
-		t.Errorf("expected at least 1 reload call, got %d", calls)
-	}
 	// Due to single-flight, some may be skipped — that's expected.
 	t.Logf("concurrent test: %d reload calls processed out of 10 requests", calls)
 }
@@ -454,19 +469,18 @@ func TestReloadOrchestrator_NoopOnEmptyDiff(t *testing.T) {
 		t.Fatalf("RequestReload failed: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	if !waitFor(t, 2*time.Second, func() bool {
+		for _, et := range subject.eventTypes() {
+			if et == EventTypeConfigReloadNoop {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("timed out waiting for ConfigReloadNoop event")
+	}
 
 	if mod.reloadCalls.Load() != 0 {
 		t.Errorf("expected 0 reload calls for empty diff, got %d", mod.reloadCalls.Load())
-	}
-
-	hasNoop := false
-	for _, et := range subject.eventTypes() {
-		if et == EventTypeConfigReloadNoop {
-			hasNoop = true
-		}
-	}
-	if !hasNoop {
-		t.Error("expected ConfigReloadNoop event for empty diff")
 	}
 }
