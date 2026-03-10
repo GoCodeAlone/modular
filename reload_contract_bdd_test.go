@@ -3,6 +3,7 @@ package modular
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -259,18 +260,13 @@ func (rc *ReloadBDDContext) aReloadOrchestratorWith3ModulesWhereTheSecondFails()
 }
 
 func (rc *ReloadBDDContext) theFirstModuleShouldBeRolledBack() error {
-	// Because map iteration is non-deterministic, the first module may or may not
-	// have been applied before the failing module. If it was applied, it should
-	// have been rolled back (2 calls: apply + rollback). If not applied, 0 calls.
-	// We verify the scenario produced a failure event (tested separately) and
-	// that if mod1 ran, it got rolled back.
+	// Reload targets are sorted by name. aaa_first runs before bbb_second (which
+	// fails), so aaa_first is always applied and then rolled back (2 calls total).
 	mod1 := rc.modules[0]
 	calls := mod1.reloadCalls.Load()
-	if calls == 1 {
-		// Applied but not rolled back — this is an error.
-		return errExpectedRollback
+	if calls != 2 {
+		return fmt.Errorf("%w: expected aaa_first to be called 2 times (apply + rollback), got %d", errExpectedRollback, calls)
 	}
-	// calls == 0 (never reached) or calls == 2 (applied + rolled back) are both acceptable.
 	return nil
 }
 

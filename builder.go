@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"fmt"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
@@ -99,12 +100,14 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		app = NewObservableDecorator(app, b.observers...)
 	}
 
-	// Create and register tenant guard if configured
+	// Create and register tenant guard if configured.
+	// Use RegisterService so that the EnhancedServiceRegistry (if enabled) tracks
+	// the entry and subsequent RegisterService calls don't overwrite it.
 	if b.tenantGuardConfig != nil {
 		b.tenantGuard = NewStandardTenantGuard(*b.tenantGuardConfig)
-		// Register the guard as a service so modules/decorators can resolve it
-		svcReg := app.SvcRegistry()
-		svcReg["tenant.guard"] = b.tenantGuard
+		if err := app.RegisterService("tenant.guard", b.tenantGuard); err != nil {
+			return nil, fmt.Errorf("failed to register tenant guard service: %w", err)
+		}
 	}
 
 	// Register modules

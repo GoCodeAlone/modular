@@ -82,13 +82,26 @@ func (o *ReloadOrchestrator) RegisterReloadable(name string, module Reloadable) 
 
 // RequestReload enqueues a reload request. It returns an error if the orchestrator
 // is stopped, the request channel is full, or the circuit breaker is open.
-func (o *ReloadOrchestrator) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
+//
+// The method is safe to call concurrently with Stop(). A recover guard protects
+// against the send-on-closed-channel panic that can occur when Stop() closes
+// requestCh between the stopped check and the channel send.
+func (o *ReloadOrchestrator) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) (retErr error) {
 	if o.stopped.Load() {
 		return ErrReloadStopped
 	}
 	if o.isCircuitOpen() {
 		return ErrReloadCircuitBreakerOpen
 	}
+
+	// Recover from a send on closed channel if Stop() races between the
+	// stopped check above and the channel send below.
+	defer func() {
+		if r := recover(); r != nil {
+			retErr = ErrReloadStopped
+		}
+	}()
+
 	select {
 	case o.requestCh <- ReloadRequest{Trigger: trigger, Diff: diff, Ctx: ctx}:
 		return nil
