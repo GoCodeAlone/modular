@@ -194,13 +194,13 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		s.logger.Info("Starting scheduler", "workers", s.workerCount, "queueSize", s.queueSize)
 	}
 
-	s.ctx, s.cancel = context.WithCancel(ctx)
+	s.ctx, s.cancel = context.WithCancel(ctx) //nolint:G118 // cancel is stored in s.cancel and called in Stop()
 	s.jobQueue = make(chan Job, s.queueSize)
 
 	// Start worker goroutines
 	for i := 0; i < s.workerCount; i++ {
 		s.wg.Add(1)
-		//nolint:contextcheck // Context is passed through s.ctx field
+		//nolint:contextcheck,G118 // Context is passed through s.ctx field; workers use s.ctx
 		go s.worker(i)
 
 		// Emit worker started event

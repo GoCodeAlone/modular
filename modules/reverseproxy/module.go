@@ -1631,13 +1631,16 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 	// Store the original target for use in the director function
 	originalTarget := *target
 
-	// Create a custom director that handles hostname forwarding and path rewriting
-	proxy.Director = func(req *http.Request) {
+	// Create a Rewrite function that handles hostname forwarding and path rewriting.
+	// This replaces the deprecated Director field (SA1019, deprecated since Go 1.26).
+	proxy.Rewrite = func(pr *httputil.ProxyRequest) {
+		req := pr.Out
+
 		// Extract tenant ID from the request header if available
 		var tenantIDStr string
 		var hasTenant bool
 		if m.config != nil {
-			tenantIDStr, hasTenant = TenantIDFromRequest(m.config.TenantIDHeader, req)
+			tenantIDStr, hasTenant = TenantIDFromRequest(m.config.TenantIDHeader, pr.In)
 		}
 
 		// Get the appropriate configuration (tenant-specific or global)
@@ -1654,7 +1657,7 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 		}
 
 		// Apply path rewriting if configured
-		rewrittenPath := m.applyPathRewritingForBackend(req.URL.Path, config, backendID, endpoint)
+		rewrittenPath := m.applyPathRewritingForBackend(pr.In.URL.Path, config, backendID, endpoint)
 
 		// Set up the request URL
 		req.URL.Scheme = originalTarget.Scheme
@@ -1670,25 +1673,13 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 
 		// Apply header rewriting
 		m.applyHeaderRewritingForBackend(req, config, backendID, endpoint, &originalTarget)
-	}
 
-	// If a custom director factory is available, use it (this is for advanced use cases)
-	if m.directorFactory != nil {
-		// Get the backend ID from the target URL host
-		backend := originalTarget.Host
-		originalDirector := proxy.Director
+		// Preserve X-Forwarded-* headers
+		pr.SetXForwarded()
 
-		// Create a custom director that handles the backend routing
-		proxy.Director = func(req *http.Request) {
-			// Apply our standard director first
-			originalDirector(req)
-
-			// Then apply custom director if available
-			var tenantIDStr string
-			var hasTenant bool
-			if m.config != nil {
-				tenantIDStr, hasTenant = TenantIDFromRequest(m.config.TenantIDHeader, req)
-			}
+		// If a custom director factory is available, apply it
+		if m.directorFactory != nil {
+			backend := originalTarget.Host
 
 			if hasTenant {
 				tenantID := modular.TenantID(tenantIDStr)
@@ -1707,6 +1698,7 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 			}
 		}
 	}
+	proxy.Director = nil
 
 	// Set up error handler to return proper HTTP status codes for connection failures
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -2565,7 +2557,7 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 
 			// Create a copy of the proxy with the timeout transport
 			proxyCopy := &httputil.ReverseProxy{
-				Director:       proxy.Director,
+				Rewrite:        proxy.Rewrite,
 				Transport:      timeoutTransport,
 				FlushInterval:  proxy.FlushInterval,
 				ErrorLog:       proxy.ErrorLog,
@@ -2761,7 +2753,7 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 			// No circuit breaker, use the proxy directly but capture status and apply timeout
 			// Create a request-specific proxy to avoid race conditions on shared Transport field
 			proxyForRequest := &httputil.ReverseProxy{
-				Director:       proxy.Director,
+				Rewrite:        proxy.Rewrite,
 				Transport:      proxy.Transport, // Start with the original transport
 				FlushInterval:  proxy.FlushInterval,
 				ErrorLog:       proxy.ErrorLog,
@@ -3019,7 +3011,7 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 
 				// Create a copy of the proxy with the original transport
 				proxyCopy := &httputil.ReverseProxy{
-					Director:       proxy.Director,
+					Rewrite:        proxy.Rewrite,
 					Transport:      originalTransport,
 					FlushInterval:  proxy.FlushInterval,
 					ErrorLog:       proxy.ErrorLog,
