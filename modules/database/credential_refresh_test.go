@@ -307,8 +307,8 @@ func TestStripPasswordFromDSN(t *testing.T) {
 		},
 		{
 			name:     "URL-style DSN with $TOKEN placeholder",
-			dsn:      "postgresql://chimera_app:$TOKEN@shared-chimera-dev-backend.cluster-cbysgk6e0u2x.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require",
-			expected: "postgresql://chimera_app@shared-chimera-dev-backend.cluster-cbysgk6e0u2x.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require",
+			dsn:      "postgresql://myapp_user:$TOKEN@mydb-instance.cluster-abc123def456.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require",
+			expected: "postgresql://myapp_user@mydb-instance.cluster-abc123def456.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require",
 		},
 		{
 			name:     "URL-style DSN without password",
@@ -350,8 +350,8 @@ func TestUsernameExtraction_WithTokenPlaceholder(t *testing.T) {
 	}{
 		{
 			name:     "DSN with $TOKEN placeholder",
-			dsn:      "postgresql://chimera_app:$TOKEN@shared-chimera-dev-backend.cluster-cbysgk6e0u2x.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require",
-			expected: "chimera_app",
+			dsn:      "postgresql://myapp_user:$TOKEN@mydb-instance.cluster-abc123def456.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require",
+			expected: "myapp_user",
 		},
 		{
 			name:     "DSN with TOKEN placeholder (no $)",

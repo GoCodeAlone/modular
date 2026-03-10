@@ -114,13 +114,13 @@ ERROR Failed to extract RDS endpoint from DSN
 **Valid DSN Formats:**
 ```yaml
 # URL style with placeholder
-dsn: "postgresql://chimera_app:$TOKEN@mydb.us-east-1.rds.amazonaws.com:5432/chimera_backend"
+dsn: "postgresql://myapp_user:$TOKEN@mydb.us-east-1.rds.amazonaws.com:5432/myappdb"
 
 # URL style without password
-dsn: "postgresql://chimera_app@mydb.us-east-1.rds.amazonaws.com:5432/chimera_backend"
+dsn: "postgresql://myapp_user@mydb.us-east-1.rds.amazonaws.com:5432/myappdb"
 
 # With options
-dsn: "postgresql://chimera_app@mydb.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require"
+dsn: "postgresql://myapp_user@mydb.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require"
 ```
 
 **Common Mistakes:**
@@ -147,7 +147,7 @@ ERROR Database username not found
 **Option 1:** Include username in DSN
 ```yaml
 # Include username after ://
-dsn: "postgresql://chimera_app@mydb.rds.amazonaws.com:5432/mydb"
+dsn: "postgresql://myapp_user@mydb.rds.amazonaws.com:5432/mydb"
 ```
 
 **Option 2:** Specify in config
@@ -155,7 +155,7 @@ dsn: "postgresql://chimera_app@mydb.rds.amazonaws.com:5432/mydb"
 aws_iam_auth:
   enabled: true
   region: us-east-1
-  db_user: chimera_app  # ← Specify username here
+  db_user: myapp_user  # ← Specify username here
 ```
 
 ---
@@ -183,7 +183,7 @@ ERROR Failed to create AWS RDS credential store
    aws rds generate-db-auth-token \
      --hostname mydb.us-east-1.rds.amazonaws.com \
      --port 5432 \
-     --username chimera_app \
+     --username myapp_user \
      --region us-east-1
    ```
    Should output a token string.
@@ -209,7 +209,7 @@ ERROR Failed to create AWS RDS credential store
 **Error Message:**
 ```
 ERROR Database ping failed with IAM authentication
-      error="pq: password authentication failed for user \"chimera_app\""
+      error="pq: password authentication failed for user \"myapp_user\""
       timeout=10s
       possible_causes=["IAM token generation failed", "Database user doesn't have rds_iam role", ...]
 ```
@@ -223,19 +223,19 @@ This is the most common production error. Follow this systematic diagnostic:
 -- Connect as master user
 SELECT rolname, rolcanlogin
 FROM pg_roles
-WHERE rolname = 'chimera_app';
+WHERE rolname = 'myapp_user';
 
 -- Check if user has rds_iam role
 SELECT r.rolname
 FROM pg_roles r
 JOIN pg_auth_members m ON r.oid = m.member
 WHERE m.roleid = (SELECT oid FROM pg_roles WHERE rolname = 'rds_iam')
-  AND r.rolname = 'chimera_app';
+  AND r.rolname = 'myapp_user';
 ```
 
 If the user doesn't have `rds_iam` role:
 ```sql
-GRANT rds_iam TO chimera_app;
+GRANT rds_iam TO myapp_user;
 ```
 
 **MySQL:**
@@ -243,15 +243,15 @@ GRANT rds_iam TO chimera_app;
 -- Check if user exists and uses IAM plugin
 SELECT user, host, plugin
 FROM mysql.user
-WHERE user = 'chimera_app';
+WHERE user = 'myapp_user';
 ```
 
 User should have `plugin = 'AWSAuthenticationPlugin'`.
 
 If not:
 ```sql
-CREATE USER chimera_app IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
-GRANT ALL PRIVILEGES ON chimera_backend.* TO chimera_app@'%';
+CREATE USER myapp_user IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+GRANT ALL PRIVILEGES ON myappdb.* TO myapp_user@'%';
 ```
 
 #### Step 2: Verify IAM Policy
@@ -266,7 +266,7 @@ Check your IAM policy allows `rds-db:connect`:
       "Effect": "Allow",
       "Action": ["rds-db:connect"],
       "Resource": [
-        "arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-XXXXX/chimera_app"
+        "arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-XXXXX/myapp_user"
       ]
     }
   ]
@@ -290,7 +290,7 @@ aws rds describe-db-clusters \
 aws iam simulate-principal-policy \
   --policy-source-arn arn:aws:iam::123456789012:role/my-role \
   --action-names rds-db:connect \
-  --resource-arns "arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-XXXXX/chimera_app"
+  --resource-arns "arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-XXXXX/myapp_user"
 ```
 
 #### Step 3: Test Manual Connection
@@ -301,17 +301,17 @@ Generate a token and try connecting manually:
 ```bash
 # Generate token
 TOKEN=$(aws rds generate-db-auth-token \
-  --hostname shared-chimera-dev-backend.cluster-xyz.us-east-1.rds.amazonaws.com \
+  --hostname mydb-instance.cluster-xyz.us-east-1.rds.amazonaws.com \
   --port 5432 \
-  --username chimera_app \
+  --username myapp_user \
   --region us-east-1)
 
 # Try connecting
 PGPASSWORD=$TOKEN psql \
-  -h shared-chimera-dev-backend.cluster-xyz.us-east-1.rds.amazonaws.com \
+  -h mydb-instance.cluster-xyz.us-east-1.rds.amazonaws.com \
   -p 5432 \
-  -U chimera_app \
-  -d chimera_backend
+  -U myapp_user \
+  -d myappdb
 ```
 
 If manual connection works but application doesn't:
@@ -429,7 +429,7 @@ aws rds generate-db-auth-token \
   --region REGION
 
 # Database User Check (PostgreSQL)
-psql -h HOST -U master_user -d postgres -c "\du+ chimera_app"
+psql -h HOST -U master_user -d postgres -c "\du+ myapp_user"
 
 # RDS IAM Status
 aws rds describe-db-instances \

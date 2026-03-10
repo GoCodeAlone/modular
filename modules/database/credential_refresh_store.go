@@ -25,7 +25,7 @@ var (
 //
 // AWS IAM Authentication Flow:
 //  1. Any password/token in the DSN is stripped (including placeholders like $TOKEN)
-//  2. Username is extracted from the DSN (e.g., "chimera_app" from postgresql://chimera_app:$TOKEN@host/db)
+//  2. Username is extracted from the DSN (e.g., "myapp_user" from postgresql://myapp_user:$TOKEN@host/db)
 //  3. AWS credentials are loaded from the environment/instance profile/etc.
 //  4. RDS IAM auth token is automatically generated using AWS credentials
 //  5. Token is automatically refreshed before expiration
@@ -33,11 +33,11 @@ var (
 //
 // This means you can pass a DSN with a placeholder token like:
 //
-//	postgresql://chimera_app:$TOKEN@shared-chimera-dev-backend.cluster-xyz.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require
+//	postgresql://myapp_user:$TOKEN@mydb-instance.cluster-xyz.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require
 //
 // And the module will:
 //   - Ignore the "$TOKEN" placeholder
-//   - Use "chimera_app" as the database username for IAM authentication
+//   - Use "myapp_user" as the database username for IAM authentication
 //   - Automatically generate and refresh the actual IAM token
 //
 // Configuration Requirements:
@@ -232,12 +232,12 @@ func configureConnectionPool(db *sql.DB, config ConnectionConfig) {
 //   - The actual IAM token is obtained using AWS credentials and the username extracted from the DSN
 //
 // Example DSNs that will have their passwords stripped:
-//   - postgresql://chimera_app:$TOKEN@host.rds.amazonaws.com:5432/mydb?sslmode=require
-//     becomes: postgresql://chimera_app@host.rds.amazonaws.com:5432/mydb?sslmode=require
+//   - postgresql://myapp_user:$TOKEN@host.rds.amazonaws.com:5432/mydb?sslmode=require
+//     becomes: postgresql://myapp_user@host.rds.amazonaws.com:5432/mydb?sslmode=require
 //   - postgres://user:some_placeholder@host:5432/mydb
 //     becomes: postgres://user@host:5432/mydb
 //
-// The username (e.g., "chimera_app") is preserved and used for IAM authentication.
+// The username (e.g., "myapp_user") is preserved and used for IAM authentication.
 func stripPasswordFromDSN(dsn string) string {
 	if strings.Contains(dsn, "://") {
 		// URL-style DSN (e.g., postgres://user:password@host:port/database)
