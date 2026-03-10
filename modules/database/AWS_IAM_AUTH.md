@@ -20,9 +20,9 @@ When AWS IAM authentication is enabled, **any password in the DSN is ignored and
 
 ```yaml
 # All of these DSN formats work identically with IAM auth:
-dsn: "postgresql://chimera_app:$TOKEN@host.rds.amazonaws.com:5432/mydb"
-dsn: "postgresql://chimera_app:PLACEHOLDER@host.rds.amazonaws.com:5432/mydb"
-dsn: "postgresql://chimera_app@host.rds.amazonaws.com:5432/mydb"
+dsn: "postgresql://myapp_user:$TOKEN@host.rds.amazonaws.com:5432/mydb"
+dsn: "postgresql://myapp_user:PLACEHOLDER@host.rds.amazonaws.com:5432/mydb"
+dsn: "postgresql://myapp_user@host.rds.amazonaws.com:5432/mydb"
 ```
 
 The password portion (`$TOKEN`, `PLACEHOLDER`, or empty) is completely ignored when IAM auth is enabled.
@@ -33,7 +33,7 @@ The database username is extracted from the DSN or can be explicitly specified:
 
 ```yaml
 # Option 1: Username in DSN (extracted automatically)
-dsn: "postgresql://chimera_app:$TOKEN@host.rds.amazonaws.com:5432/mydb"
+dsn: "postgresql://myapp_user:$TOKEN@host.rds.amazonaws.com:5432/mydb"
 aws_iam_auth:
   enabled: true
   region: us-east-1
@@ -43,7 +43,7 @@ dsn: "postgresql://ignored_user:$TOKEN@host.rds.amazonaws.com:5432/mydb"
 aws_iam_auth:
   enabled: true
   region: us-east-1
-  db_user: chimera_app  # This takes precedence
+  db_user: myapp_user  # This takes precedence
 ```
 
 ### 3. Token Generation Flow
@@ -66,7 +66,7 @@ database:
     writer:
       driver: postgres
       # DSN with $TOKEN placeholder - will be automatically stripped
-      dsn: "postgresql://chimera_app:$TOKEN@shared-chimera-dev-backend.cluster-xyz.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require"
+      dsn: "postgresql://myapp_user:$TOKEN@mydb-instance.cluster-xyz.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require"
       max_open_connections: 25
       max_idle_connections: 10
       connection_max_lifetime: 1h
@@ -82,7 +82,7 @@ database:
 
 ```bash
 export DB_WRITER_DRIVER=postgres
-export DB_WRITER_DSN="postgresql://chimera_app:$TOKEN@host.rds.amazonaws.com:5432/mydb?sslmode=require"
+export DB_WRITER_DSN="postgresql://myapp_user:$TOKEN@host.rds.amazonaws.com:5432/mydb?sslmode=require"
 export DB_WRITER_AWS_IAM_AUTH_ENABLED=true
 export DB_WRITER_AWS_IAM_AUTH_REGION=us-east-1
 export DB_WRITER_MAX_OPEN_CONNECTIONS=25
@@ -102,15 +102,15 @@ Create a database user configured for IAM authentication:
 
 **PostgreSQL:**
 ```sql
-CREATE USER chimera_app WITH LOGIN;
-GRANT rds_iam TO chimera_app;
-GRANT ALL PRIVILEGES ON DATABASE chimera_backend TO chimera_app;
+CREATE USER myapp_user WITH LOGIN;
+GRANT rds_iam TO myapp_user;
+GRANT ALL PRIVILEGES ON DATABASE myappdb TO myapp_user;
 ```
 
 **MySQL:**
 ```sql
-CREATE USER chimera_app IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
-GRANT ALL PRIVILEGES ON chimera_backend.* TO chimera_app@'%';
+CREATE USER myapp_user IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+GRANT ALL PRIVILEGES ON myappdb.* TO myapp_user@'%';
 ```
 
 ### 3. IAM Policy
@@ -125,7 +125,7 @@ The AWS principal (user/role) must have `rds-db:connect` permission:
       "Effect": "Allow",
       "Action": ["rds-db:connect"],
       "Resource": [
-        "arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-XXXXX/chimera_app"
+        "arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-XXXXX/myapp_user"
       ]
     }
   ]
@@ -135,7 +135,7 @@ The AWS principal (user/role) must have `rds-db:connect` permission:
 **Finding your Resource ARN:**
 - Format: `arn:aws:rds-db:REGION:ACCOUNT:dbuser:RESOURCE_ID/DB_USERNAME`
 - Get RESOURCE_ID from RDS console (cluster identifier starts with `cluster-`)
-- Example: `arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-ABC123DEF456/chimera_app`
+- Example: `arn:aws:rds-db:us-east-1:123456789012:dbuser:cluster-ABC123DEF456/myapp_user`
 
 ### 4. AWS Credentials
 
@@ -155,7 +155,7 @@ database:
   connections:
     writer:
       driver: postgres
-      dsn: "postgresql://myuser:MySecretPassword123@host.rds.amazonaws.com:5432/mydb"
+      dsn: "postgresql://myuser:MySecretP@ssword@host.rds.amazonaws.com:5432/mydb"
 ```
 
 ### After (with IAM):
@@ -173,18 +173,18 @@ database:
 
 **The password portion is completely ignored when IAM auth is enabled.**
 
-## Your Specific Use Case
+## Example Use Case
 
-You mentioned passing the DSN as:
+Here is a complete example DSN for an RDS Aurora PostgreSQL cluster:
 ```
-postgresql://chimera_app:$TOKEN@shared-chimera-dev-backend.cluster-cbysgk6e0u2x.us-east-1.rds.amazonaws.com:5432/chimera_backend?sslmode=require
+postgresql://myapp_user:$TOKEN@mydb-instance.cluster-abc123def456.us-east-1.rds.amazonaws.com:5432/myappdb?sslmode=require
 ```
 
-**This is exactly the correct format!** Here's what happens:
+**This is the correct format.** Here's what happens:
 
 1. ✅ The module sees `aws_iam_auth.enabled: true`
 2. ✅ The `$TOKEN` placeholder is automatically stripped from the DSN
-3. ✅ The username `chimera_app` is extracted and used for IAM authentication
+3. ✅ The username `myapp_user` is extracted and used for IAM authentication
 4. ✅ AWS credentials are loaded from your environment
 5. ✅ An RDS IAM token is generated automatically
 6. ✅ The token is refreshed every ~15 minutes automatically
@@ -237,10 +237,10 @@ DEBUG Processing DSN for IAM authentication original_dsn_length=142
 DEBUG Password stripped from DSN cleaned_dsn_length=128
 INFO  Extracted RDS endpoint endpoint=mydb.cluster-xyz.us-east-1.rds.amazonaws.com:5432
 DEBUG Extracted database configuration database=mydb options_count=1
-DEBUG Extracted username from DSN username=chimera_app
-INFO  IAM authentication will use database user username=chimera_app
+DEBUG Extracted username from DSN username=myapp_user
+INFO  IAM authentication will use database user username=myapp_user
 DEBUG Determined database driver configuration driver=pgx port=5432
-INFO  Creating AWS RDS credential store endpoint=mydb... region=us-east-1 username=chimera_app
+INFO  Creating AWS RDS credential store endpoint=mydb... region=us-east-1 username=myapp_user
 DEBUG AWS RDS credential store created successfully
 INFO  Database connection with AWS IAM authentication configured successfully
 DEBUG Testing database connection timeout=10s
@@ -353,17 +353,17 @@ You can test IAM authentication manually:
 ```bash
 # Generate a token
 TOKEN=$(aws rds generate-db-auth-token \
-  --hostname shared-chimera-dev-backend.cluster-xyz.us-east-1.rds.amazonaws.com \
+  --hostname mydb-instance.cluster-xyz.us-east-1.rds.amazonaws.com \
   --port 5432 \
-  --username chimera_app \
+  --username myapp_user \
   --region us-east-1)
 
 # Connect using the token
 PGPASSWORD=$TOKEN psql \
-  -h shared-chimera-dev-backend.cluster-xyz.us-east-1.rds.amazonaws.com \
+  -h mydb-instance.cluster-xyz.us-east-1.rds.amazonaws.com \
   -p 5432 \
-  -U chimera_app \
-  -d chimera_backend
+  -U myapp_user \
+  -d myappdb
 ```
 
 ## Benefits of IAM Authentication
