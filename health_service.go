@@ -147,7 +147,7 @@ func (s *AggregateHealthService) Check(ctx context.Context) (*AggregatedHealth, 
 		select {
 		case result = <-ch:
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("health check interrupted: %w", ctx.Err())
 		}
 
 		if result.err != nil {

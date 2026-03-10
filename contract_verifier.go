@@ -140,7 +140,7 @@ func (v *StandardContractVerifier) runReloadWithGuard(module Reloadable, label s
 		}
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("%s call: timed out waiting for Reload to return", label)
+		return fmt.Errorf("%s call: %w", label, ErrReloadTimeout)
 	}
 }
 

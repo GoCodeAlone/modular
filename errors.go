@@ -91,6 +91,7 @@ var (
 	ErrReloadChannelFull        = errors.New("reload request channel is full")
 	ErrReloadInProgress         = errors.New("reload already in progress")
 	ErrReloadStopped            = errors.New("reload orchestrator is stopped")
+	ErrReloadTimeout            = errors.New("reload timed out waiting for module")
 
 	// Observer/Event emission errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
