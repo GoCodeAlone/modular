@@ -46,6 +46,9 @@ type EnhancedServiceRegistry struct {
 
 	// currentModule tracks the module currently being initialized
 	currentModule Module
+
+	// readyCallbacks stores callbacks waiting for a service to be registered
+	readyCallbacks map[string][]func(any)
 }
 
 // NewEnhancedServiceRegistry creates a new enhanced service registry.
@@ -54,6 +57,7 @@ func NewEnhancedServiceRegistry() *EnhancedServiceRegistry {
 		services:       make(map[string]*ServiceRegistryEntry),
 		moduleServices: make(map[string][]string),
 		nameCounters:   make(map[string]int),
+		readyCallbacks: make(map[string][]func(any)),
 	}
 }
 
@@ -94,6 +98,16 @@ func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (str
 	// Register the service
 	r.services[actualName] = entry
 
+	// Fire readiness callbacks for original and actual names
+	for _, cbName := range []string{name, actualName} {
+		if callbacks, ok := r.readyCallbacks[cbName]; ok {
+			for _, cb := range callbacks {
+				cb(service)
+			}
+			delete(r.readyCallbacks, cbName)
+		}
+	}
+
 	// Track module associations
 	if moduleName != "" {
 		r.moduleServices[moduleName] = append(r.moduleServices[moduleName], actualName)
@@ -120,6 +134,16 @@ func (r *EnhancedServiceRegistry) GetServiceEntry(name string) (*ServiceRegistry
 // GetServicesByModule returns all services provided by a specific module.
 func (r *EnhancedServiceRegistry) GetServicesByModule(moduleName string) []string {
 	return r.moduleServices[moduleName]
+}
+
+// OnServiceReady registers a callback that fires when the named service is registered.
+// If the service is already registered, the callback fires immediately.
+func (r *EnhancedServiceRegistry) OnServiceReady(name string, callback func(any)) {
+	if entry, exists := r.services[name]; exists {
+		callback(entry.Service)
+		return
+	}
+	r.readyCallbacks[name] = append(r.readyCallbacks[name], callback)
 }
 
 // GetServicesByInterface returns all services that implement the given interface.
