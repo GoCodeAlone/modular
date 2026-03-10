@@ -4,9 +4,9 @@
 
 **Goal:** Implement 12 framework enhancements to the GoCodeAlone/modular framework covering lifecycle, services, plugins, configuration, reload, and observability.
 
-**Architecture:** All changes are in the root `modular` package except the config file watcher (new `modules/configwatcher` subpackage). The existing `Application` interface, `StdApplication` struct, and `ApplicationBuilder` are extended. New interfaces (`Drainable`, `Plugin`, `MetricsProvider`, `SecretResolver`) follow the existing optional-interface pattern. Generic service helpers use Go 1.25 type parameters.
+**Architecture:** All changes are in the root `modular` package except the config file watcher (new `modules/configwatcher` subpackage). The existing `Application` interface, `StdApplication` struct, and `ApplicationBuilder` are extended. New interfaces (`Drainable`, `Plugin`, `MetricsProvider`, `SecretResolver`) follow the existing optional-interface pattern. Generic service helpers use Go 1.26 type parameters.
 
-**Tech Stack:** Go 1.25, CloudEvents SDK, fsnotify (new dependency for configwatcher)
+**Tech Stack:** Go 1.26, CloudEvents SDK, fsnotify (new dependency for configwatcher)
 
 ---
 
