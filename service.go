@@ -113,8 +113,22 @@ func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (str
 }
 
 // registerServiceLocked performs service registration. Caller must hold r.mu.
+// The lock is released before firing callbacks to avoid deadlocks.
 func (r *EnhancedServiceRegistry) registerServiceLocked(name string, service any, moduleName string, moduleType reflect.Type) (string, error) {
+	callbacksToFire, actualName := r.registerServiceInner(name, service, moduleName, moduleType)
+	r.mu.Unlock()
 
+	// Fire callbacks outside the lock to avoid deadlocks
+	for _, cb := range callbacksToFire {
+		cb(service)
+	}
+
+	return actualName, nil
+}
+
+// registerServiceInner does the actual registration work under the lock.
+// Returns callbacks to fire and the actual service name.
+func (r *EnhancedServiceRegistry) registerServiceInner(name string, service any, moduleName string, moduleType reflect.Type) ([]func(any), string) {
 	// Generate unique name handling conflicts
 	actualName := r.generateUniqueName(name, moduleName, moduleType)
 
@@ -144,14 +158,7 @@ func (r *EnhancedServiceRegistry) registerServiceLocked(name string, service any
 		r.moduleServices[moduleName] = append(r.moduleServices[moduleName], actualName)
 	}
 
-	r.mu.Unlock()
-
-	// Fire callbacks outside the lock to avoid deadlocks
-	for _, cb := range callbacksToFire {
-		cb(service)
-	}
-
-	return actualName, nil
+	return callbacksToFire, actualName
 }
 
 // GetService retrieves a service by name.
@@ -174,10 +181,17 @@ func (r *EnhancedServiceRegistry) GetServiceEntry(name string) (*ServiceRegistry
 }
 
 // GetServicesByModule returns all services provided by a specific module.
+// Returns a copy of the internal slice for thread safety.
 func (r *EnhancedServiceRegistry) GetServicesByModule(moduleName string) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.moduleServices[moduleName]
+	src := r.moduleServices[moduleName]
+	if src == nil {
+		return nil
+	}
+	dst := make([]string, len(src))
+	copy(dst, src)
+	return dst
 }
 
 // OnServiceReady registers a callback that fires when the named service is registered.

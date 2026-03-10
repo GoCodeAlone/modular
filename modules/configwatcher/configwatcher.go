@@ -125,7 +125,7 @@ func (w *ConfigWatcher) eventLoop() {
 						for p := range changedPaths {
 							paths = append(paths, p)
 						}
-						changedPaths = make(map[string]struct{})
+						clear(changedPaths)
 						mu.Unlock()
 						w.onChange(paths)
 					}

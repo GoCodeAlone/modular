@@ -588,6 +588,10 @@ func (app *StdApplication) computeDepthLevels(order []string) [][]string {
 				level = append(level, name)
 			}
 		}
+		if len(level) == 0 {
+			// No progress — remaining modules have unresolvable dependencies
+			break
+		}
 		for _, name := range level {
 			placed[name] = true
 		}
