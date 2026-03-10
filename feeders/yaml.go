@@ -56,7 +56,7 @@ func getFieldNameFromTag(fieldType *reflect.StructField) (string, bool) {
 type YamlFeeder struct {
 	Path         string
 	verboseDebug bool
-	debugFn func(string)
+	debugFn      func(string)
 	fieldTracker FieldTracker
 	priority     int
 }

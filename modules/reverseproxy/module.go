@@ -1698,7 +1698,7 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 			}
 		}
 	}
-	proxy.Director = nil
+	proxy.Director = nil //nolint:staticcheck // SA1019: explicitly nil Director when using Rewrite per Go docs
 
 	// Set up error handler to return proper HTTP status codes for connection failures
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {

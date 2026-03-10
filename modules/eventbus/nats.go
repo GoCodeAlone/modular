@@ -177,7 +177,7 @@ func (n *NatsEventBus) Start(ctx context.Context) error {
 		return ErrNATSConnectionNotEstablished
 	}
 
-	n.ctx, n.cancel = context.WithCancel(ctx) //nolint:G118 // cancel is stored in n.cancel and called in Stop()
+	n.ctx, n.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in n.cancel and called in Stop()
 	n.isStarted = true
 	return nil
 }

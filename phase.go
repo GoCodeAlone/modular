@@ -4,7 +4,7 @@ package modular
 type AppPhase int32
 
 const (
-	PhaseCreated      AppPhase = iota
+	PhaseCreated AppPhase = iota
 	PhaseInitializing
 	PhaseInitialized
 	PhaseStarting

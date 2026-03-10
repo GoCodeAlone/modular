@@ -3,8 +3,8 @@
 package modular
 
 import (
-	"slices"
 	"fmt"
+	"slices"
 	"sync"
 )
 
