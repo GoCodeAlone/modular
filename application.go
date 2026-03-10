@@ -336,6 +336,7 @@ type StdApplication struct {
 	configFeeders       []Feeder                  // Optional per-application feeders (override global ConfigFeeders if non-nil)
 	startTime           time.Time                 // Tracks when the application was started
 	configLoadedHooks   []func(Application) error // Hooks to run after config loading but before module initialization
+	dependencyHints     []DependencyEdge          // Config-driven dependency edges injected via WithModuleDependency
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -1101,6 +1102,15 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 				Type: EdgeTypeModule,
 			})
 		}
+	}
+
+	// Merge config-driven dependency hints
+	for _, hint := range app.dependencyHints {
+		if graph[hint.From] == nil {
+			graph[hint.From] = nil
+		}
+		graph[hint.From] = append(graph[hint.From], hint.To)
+		dependencyEdges = append(dependencyEdges, hint)
 	}
 
 	// Analyze service dependencies to augment the graph with implicit dependencies

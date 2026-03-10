@@ -24,6 +24,7 @@ type ApplicationBuilder struct {
 	configLoadedHooks []func(Application) error // Hooks to run after config loading
 	tenantGuard       *StandardTenantGuard
 	tenantGuardConfig *TenantGuardConfig
+	dependencyHints   []DependencyEdge
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
@@ -110,6 +111,15 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		}
 	}
 
+	// Propagate config-driven dependency hints
+	if len(b.dependencyHints) > 0 {
+		if stdApp, ok := app.(*StdApplication); ok {
+			stdApp.dependencyHints = b.dependencyHints
+		} else if obsApp, ok := app.(*ObservableApplication); ok {
+			obsApp.dependencyHints = b.dependencyHints
+		}
+	}
+
 	// Register modules
 	for _, module := range b.modules {
 		app.RegisterModule(module)
@@ -151,6 +161,19 @@ func WithConfigProvider(provider ConfigProvider) Option {
 func WithModules(modules ...Module) Option {
 	return func(b *ApplicationBuilder) error {
 		b.modules = append(b.modules, modules...)
+		return nil
+	}
+}
+
+// WithModuleDependency declares that module `from` depends on module `to`,
+// injecting an edge into the dependency graph before resolution.
+func WithModuleDependency(from, to string) Option {
+	return func(b *ApplicationBuilder) error {
+		b.dependencyHints = append(b.dependencyHints, DependencyEdge{
+			From: from,
+			To:   to,
+			Type: EdgeTypeModule,
+		})
 		return nil
 	}
 }
