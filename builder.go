@@ -28,6 +28,7 @@ type ApplicationBuilder struct {
 	dependencyHints   []DependencyEdge
 	drainTimeout      time.Duration
 	parallelInit      bool
+	plugins           []Plugin
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
@@ -141,6 +142,25 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		}
 	}
 
+	// Process plugins
+	for _, plugin := range b.plugins {
+		for _, mod := range plugin.Modules() {
+			app.RegisterModule(mod)
+		}
+		if withSvc, ok := plugin.(PluginWithServices); ok {
+			for _, svcDef := range withSvc.Services() {
+				if err := app.RegisterService(svcDef.Name, svcDef.Service); err != nil {
+					return nil, fmt.Errorf("plugin %q service %q: %w", plugin.Name(), svcDef.Name, err)
+				}
+			}
+		}
+		if withHooks, ok := plugin.(PluginWithHooks); ok {
+			for _, hook := range withHooks.InitHooks() {
+				app.OnConfigLoaded(hook)
+			}
+		}
+	}
+
 	// Register modules
 	for _, module := range b.modules {
 		app.RegisterModule(module)
@@ -211,6 +231,15 @@ func WithDrainTimeout(d time.Duration) Option {
 func WithParallelInit() Option {
 	return func(b *ApplicationBuilder) error {
 		b.parallelInit = true
+		return nil
+	}
+}
+
+// WithPlugins adds plugins to the application. Each plugin's modules, services,
+// and init hooks are registered during Build().
+func WithPlugins(plugins ...Plugin) Option {
+	return func(b *ApplicationBuilder) error {
+		b.plugins = append(b.plugins, plugins...)
 		return nil
 	}
 }
