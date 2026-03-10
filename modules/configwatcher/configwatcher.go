@@ -1,0 +1,135 @@
+package configwatcher
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// ConfigWatcher watches config files and calls OnChange when modifications are detected.
+type ConfigWatcher struct {
+	paths    []string
+	debounce time.Duration
+	onChange func(paths []string)
+	watcher  *fsnotify.Watcher
+	stopCh   chan struct{}
+	stopOnce sync.Once
+}
+
+// Option configures a ConfigWatcher.
+type Option func(*ConfigWatcher)
+
+func WithPaths(paths ...string) Option {
+	return func(w *ConfigWatcher) { w.paths = append(w.paths, paths...) }
+}
+
+func WithDebounce(d time.Duration) Option {
+	return func(w *ConfigWatcher) { w.debounce = d }
+}
+
+func WithOnChange(fn func(paths []string)) Option {
+	return func(w *ConfigWatcher) { w.onChange = fn }
+}
+
+func New(opts ...Option) *ConfigWatcher {
+	w := &ConfigWatcher{
+		debounce: 500 * time.Millisecond,
+		stopCh:   make(chan struct{}),
+	}
+	for _, opt := range opts {
+		opt(w)
+	}
+	return w
+}
+
+func (w *ConfigWatcher) Name() string { return "configwatcher" }
+
+func (w *ConfigWatcher) Start(ctx context.Context) error {
+	if err := w.startWatching(); err != nil {
+		return err
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			w.stopWatching()
+		case <-w.stopCh:
+		}
+	}()
+	return nil
+}
+
+func (w *ConfigWatcher) Stop(_ context.Context) error {
+	w.stopWatching()
+	return nil
+}
+
+func (w *ConfigWatcher) startWatching() error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	w.watcher = watcher
+	for _, path := range w.paths {
+		if err := watcher.Add(path); err != nil {
+			watcher.Close()
+			return err
+		}
+	}
+	go w.eventLoop()
+	return nil
+}
+
+func (w *ConfigWatcher) stopWatching() {
+	w.stopOnce.Do(func() {
+		close(w.stopCh)
+		if w.watcher != nil {
+			w.watcher.Close()
+		}
+	})
+}
+
+func (w *ConfigWatcher) eventLoop() {
+	var timer *time.Timer
+	changedPaths := make(map[string]struct{})
+	var mu sync.Mutex
+
+	for {
+		select {
+		case event, ok := <-w.watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+				mu.Lock()
+				changedPaths[event.Name] = struct{}{}
+				if timer != nil {
+					timer.Stop()
+				}
+				timer = time.AfterFunc(w.debounce, func() {
+					if w.onChange != nil {
+						mu.Lock()
+						paths := make([]string, 0, len(changedPaths))
+						for p := range changedPaths {
+							paths = append(paths, p)
+						}
+						changedPaths = make(map[string]struct{})
+						mu.Unlock()
+						w.onChange(paths)
+					}
+				})
+				mu.Unlock()
+			}
+		case _, ok := <-w.watcher.Errors:
+			if !ok {
+				return
+			}
+		case <-w.stopCh:
+			if timer != nil {
+				timer.Stop()
+			}
+			return
+		}
+	}
+}
