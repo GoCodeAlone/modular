@@ -35,7 +35,13 @@ func (m *mockReloadable) Reload(_ context.Context, changes []ConfigChange) error
 func (m *mockReloadable) CanReload() bool              { return m.canReload }
 func (m *mockReloadable) ReloadTimeout() time.Duration { return m.timeout }
 
-
+func (m *mockReloadable) getLastChanges() []ConfigChange {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]ConfigChange, len(m.lastChanges))
+	copy(result, m.lastChanges)
+	return result
+}
 
 // reloadTestLogger implements Logger for testing.
 type reloadTestLogger struct {
@@ -70,7 +76,13 @@ func (s *reloadTestSubject) NotifyObservers(_ context.Context, event cloudevents
 	return nil
 }
 
-
+func (s *reloadTestSubject) getEvents() []cloudevents.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]cloudevents.Event, len(s.events))
+	copy(result, s.events)
+	return result
+}
 
 func (s *reloadTestSubject) eventTypes() []string {
 	s.mu.Lock()

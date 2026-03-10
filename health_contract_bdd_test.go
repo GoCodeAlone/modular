@@ -94,7 +94,11 @@ func (s *healthBDDSubject) hasEventType(eventType string) bool {
 	return false
 }
 
-
+func (s *healthBDDSubject) reset() {
+	s.mu.Lock()
+	s.events = nil
+	s.mu.Unlock()
+}
 
 // HealthBDDContext holds state for health contract BDD scenarios.
 type HealthBDDContext struct {

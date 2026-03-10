@@ -78,7 +78,11 @@ func (s *reloadBDDSubject) eventTypes() []string {
 	return types
 }
 
-
+func (s *reloadBDDSubject) reset() {
+	s.mu.Lock()
+	s.events = nil
+	s.mu.Unlock()
+}
 
 // reloadBDDLogger implements Logger for BDD reload contract tests.
 type reloadBDDLogger struct{}
@@ -94,8 +98,8 @@ func bddWaitForEvent(subject *reloadBDDSubject, eventType string, timeout time.D
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if slices.Contains(subject.eventTypes(), eventType) {
-				return true
-			}
+			return true
+		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	return false
@@ -202,8 +206,8 @@ func (rc *ReloadBDDContext) allNModulesShouldReceiveTheChanges(n int) error {
 
 func (rc *ReloadBDDContext) aReloadCompletedEventShouldBeEmitted() error {
 	if slices.Contains(rc.subject.eventTypes(), EventTypeConfigReloadCompleted) {
-			return nil
-		}
+		return nil
+	}
 	return errExpectedCompletedEvent
 }
 
@@ -299,8 +303,8 @@ func (rc *ReloadBDDContext) theFirstModuleShouldBeRolledBack() error {
 
 func (rc *ReloadBDDContext) aReloadFailedEventShouldBeEmitted() error {
 	if slices.Contains(rc.subject.eventTypes(), EventTypeConfigReloadFailed) {
-			return nil
-		}
+		return nil
+	}
 	return errExpectedFailedEvent
 }
 
@@ -368,8 +372,8 @@ func (rc *ReloadBDDContext) aReloadIsRequestedWithNoChanges() error {
 
 func (rc *ReloadBDDContext) aReloadNoopEventShouldBeEmitted() error {
 	if slices.Contains(rc.subject.eventTypes(), EventTypeConfigReloadNoop) {
-			return nil
-		}
+		return nil
+	}
 	return errExpectedNoopEvent
 }
 

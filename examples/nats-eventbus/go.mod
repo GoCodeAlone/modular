@@ -9,13 +9,14 @@ replace github.com/GoCodeAlone/modular => ../../
 replace github.com/GoCodeAlone/modular/modules/eventbus => ../../modules/eventbus
 
 require (
-	github.com/GoCodeAlone/modular v1.11.11
+	github.com/GoCodeAlone/modular v1.12.0
 	github.com/GoCodeAlone/modular/modules/eventbus v1.7.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/DataDog/datadog-go/v5 v5.4.0 // indirect
+	github.com/GoCodeAlone/modular/modules/eventbus/v2 v2.5.1 // indirect
 	github.com/IBM/sarama v1.45.2 // indirect
 	github.com/Microsoft/go-winio v0.5.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.38.0 // indirect

@@ -67,11 +67,11 @@ type ConnectionConfig struct {
 // You can include a placeholder like $TOKEN in the DSN for clarity, but it will be removed:
 //
 //	Example DSN:
-//	  postgresql://chimera_app:$TOKEN@mydb.us-east-1.rds.amazonaws.com:5432/mydb?sslmode=require
+//	  postgresql://myapp_user:$TOKEN@mydb.us-east-1.rds.amazonaws.com:5432/mydb?sslmode=require
 //
 //	The module will:
 //	  1. Strip the "$TOKEN" placeholder from the DSN
-//	  2. Extract the username "chimera_app"
+//	  2. Extract the username "myapp_user"
 //	  3. Use AWS credentials to generate an IAM auth token
 //	  4. Automatically refresh the token before it expires
 //
