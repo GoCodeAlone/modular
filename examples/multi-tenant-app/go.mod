@@ -1,6 +1,6 @@
 module multi-tenant-app
 
-go 1.25
+go 1.26
 
 replace github.com/GoCodeAlone/modular => ../../
 

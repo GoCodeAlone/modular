@@ -1,6 +1,6 @@
 module github.com/GoCodeAlone/modular/examples/base-config-example
 
-go 1.25
+go 1.26
 
 require github.com/GoCodeAlone/modular v1.11.9
 

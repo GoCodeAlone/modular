@@ -1,8 +1,8 @@
 module health-aware-reverse-proxy
 
-go 1.25
+go 1.26
 
-toolchain go1.25.0
+toolchain go1.26.0
 
 require (
 	github.com/GoCodeAlone/modular v1.12.0
