@@ -596,39 +596,41 @@ func (app *StdApplication) computeDepthLevels(order []string) [][]string {
 }
 
 // initModule initializes a single module: injects services, calls Init, registers provided services.
+// Thread-safe: the EnhancedServiceRegistry has its own mutex protecting concurrent access.
 func (app *StdApplication) initModule(appToPass Application, moduleName string) error {
+	app.initMu.Lock()
 	module := app.moduleRegistry[moduleName]
 
 	if _, ok := module.(ServiceAware); ok {
 		var err error
 		app.moduleRegistry[moduleName], err = app.injectServices(module)
 		if err != nil {
+			app.initMu.Unlock()
 			return fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err)
 		}
 		module = app.moduleRegistry[moduleName]
 	}
+	app.initMu.Unlock()
 
 	// Set current module context for service registration tracking
-	app.initMu.Lock()
+	// EnhancedServiceRegistry has its own mutex, safe for concurrent access
 	if app.enhancedSvcRegistry != nil {
 		app.enhancedSvcRegistry.SetCurrentModule(module)
 	}
-	app.initMu.Unlock()
 
 	if err := module.Init(appToPass); err != nil {
-		app.initMu.Lock()
 		if app.enhancedSvcRegistry != nil {
 			app.enhancedSvcRegistry.ClearCurrentModule()
 		}
-		app.initMu.Unlock()
 		return fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err)
 	}
 
-	app.initMu.Lock()
 	if _, ok := module.(ServiceAware); ok {
 		for _, svc := range module.(ServiceAware).ProvidesServices() {
 			if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
-				app.initMu.Unlock()
+				if app.enhancedSvcRegistry != nil {
+					app.enhancedSvcRegistry.ClearCurrentModule()
+				}
 				return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
 			}
 		}
@@ -637,7 +639,6 @@ func (app *StdApplication) initModule(appToPass Application, moduleName string) 
 	if app.enhancedSvcRegistry != nil {
 		app.enhancedSvcRegistry.ClearCurrentModule()
 	}
-	app.initMu.Unlock()
 
 	app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
 	return nil
@@ -908,7 +909,7 @@ func (app *StdApplication) Stop() error {
 // Returns an error if dynamic reload was not enabled via WithDynamicReload().
 func (app *StdApplication) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
 	if app.reloadOrchestrator == nil {
-		return fmt.Errorf("dynamic reload not enabled")
+		return ErrDynamicReloadNotEnabled
 	}
 	return app.reloadOrchestrator.RequestReload(ctx, trigger, diff)
 }

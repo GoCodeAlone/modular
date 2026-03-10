@@ -29,6 +29,32 @@ func ExpandSecrets(ctx context.Context, config map[string]any, resolvers ...Secr
 			if err := ExpandSecrets(ctx, v, resolvers...); err != nil {
 				return err
 			}
+		case []any:
+			if err := expandSecretsSlice(ctx, v, resolvers); err != nil {
+				return fmt.Errorf("resolving %q: %w", key, err)
+			}
+		}
+	}
+	return nil
+}
+
+func expandSecretsSlice(ctx context.Context, slice []any, resolvers []SecretResolver) error {
+	for i, elem := range slice {
+		switch v := elem.(type) {
+		case string:
+			resolved, err := resolveSecretString(ctx, v, resolvers)
+			if err != nil {
+				return err
+			}
+			slice[i] = resolved
+		case map[string]any:
+			if err := ExpandSecrets(ctx, v, resolvers...); err != nil {
+				return err
+			}
+		case []any:
+			if err := expandSecretsSlice(ctx, v, resolvers); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

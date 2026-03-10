@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GoCodeAlone/modular"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -45,6 +46,12 @@ func New(opts ...Option) *ConfigWatcher {
 }
 
 func (w *ConfigWatcher) Name() string { return "configwatcher" }
+
+// Init satisfies the modular.Module interface. No-op since configuration is
+// provided via functional options at construction time.
+func (w *ConfigWatcher) Init(_ modular.Application) error {
+	return nil
+}
 
 func (w *ConfigWatcher) Start(ctx context.Context) error {
 	if err := w.startWatching(); err != nil {

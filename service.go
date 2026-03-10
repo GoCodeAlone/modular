@@ -3,6 +3,7 @@ package modular
 import (
 	"fmt"
 	"reflect"
+	"sync"
 )
 
 // ServiceRegistry allows registration and retrieval of services by name.
@@ -35,6 +36,8 @@ type ServiceRegistryEntry struct {
 // EnhancedServiceRegistry provides enhanced service registry functionality
 // that tracks module associations and handles automatic conflict resolution.
 type EnhancedServiceRegistry struct {
+	mu sync.RWMutex
+
 	// services maps service names to their registry entries
 	services map[string]*ServiceRegistryEntry
 
@@ -64,17 +67,23 @@ func NewEnhancedServiceRegistry() *EnhancedServiceRegistry {
 // SetCurrentModule sets the module that is currently being initialized.
 // This is used to track which module is registering services.
 func (r *EnhancedServiceRegistry) SetCurrentModule(module Module) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.currentModule = module
 }
 
 // ClearCurrentModule clears the current module context.
 func (r *EnhancedServiceRegistry) ClearCurrentModule() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.currentModule = nil
 }
 
 // RegisterService registers a service with automatic conflict resolution.
 // If a service name conflicts, it will automatically append module information.
 func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (string, error) {
+	r.mu.Lock()
+
 	var moduleName string
 	var moduleType reflect.Type
 
@@ -98,12 +107,11 @@ func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (str
 	// Register the service
 	r.services[actualName] = entry
 
-	// Fire readiness callbacks for original and actual names
+	// Collect callbacks to fire outside the lock
+	var callbacksToFire []func(any)
 	for _, cbName := range []string{name, actualName} {
 		if callbacks, ok := r.readyCallbacks[cbName]; ok {
-			for _, cb := range callbacks {
-				cb(service)
-			}
+			callbacksToFire = append(callbacksToFire, callbacks...)
 			delete(r.readyCallbacks, cbName)
 		}
 	}
@@ -113,11 +121,20 @@ func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (str
 		r.moduleServices[moduleName] = append(r.moduleServices[moduleName], actualName)
 	}
 
+	r.mu.Unlock()
+
+	// Fire callbacks outside the lock to avoid deadlocks
+	for _, cb := range callbacksToFire {
+		cb(service)
+	}
+
 	return actualName, nil
 }
 
 // GetService retrieves a service by name.
 func (r *EnhancedServiceRegistry) GetService(name string) (any, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	entry, exists := r.services[name]
 	if !exists {
 		return nil, false
@@ -127,27 +144,37 @@ func (r *EnhancedServiceRegistry) GetService(name string) (any, bool) {
 
 // GetServiceEntry retrieves the full service registry entry.
 func (r *EnhancedServiceRegistry) GetServiceEntry(name string) (*ServiceRegistryEntry, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	entry, exists := r.services[name]
 	return entry, exists
 }
 
 // GetServicesByModule returns all services provided by a specific module.
 func (r *EnhancedServiceRegistry) GetServicesByModule(moduleName string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.moduleServices[moduleName]
 }
 
 // OnServiceReady registers a callback that fires when the named service is registered.
 // If the service is already registered, the callback fires immediately.
 func (r *EnhancedServiceRegistry) OnServiceReady(name string, callback func(any)) {
-	if entry, exists := r.services[name]; exists {
+	r.mu.Lock()
+	entry, exists := r.services[name]
+	if exists {
+		r.mu.Unlock()
 		callback(entry.Service)
 		return
 	}
 	r.readyCallbacks[name] = append(r.readyCallbacks[name], callback)
+	r.mu.Unlock()
 }
 
 // GetServicesByInterface returns all services that implement the given interface.
 func (r *EnhancedServiceRegistry) GetServicesByInterface(interfaceType reflect.Type) []*ServiceRegistryEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var results []*ServiceRegistryEntry
 
 	for _, entry := range r.services {
@@ -165,6 +192,8 @@ func (r *EnhancedServiceRegistry) GetServicesByInterface(interfaceType reflect.T
 
 // AsServiceRegistry returns a backwards-compatible ServiceRegistry view.
 func (r *EnhancedServiceRegistry) AsServiceRegistry() ServiceRegistry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	registry := make(ServiceRegistry)
 	for name, entry := range r.services {
 		registry[name] = entry.Service
