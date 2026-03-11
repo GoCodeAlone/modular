@@ -12,8 +12,10 @@ on:
           - auth
           - cache
           - chimux
+          - configwatcher
           - database
           - eventbus
+          - eventlogger
           - httpclient
           - httpserver
           - jsonschema
