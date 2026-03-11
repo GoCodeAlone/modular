@@ -44,7 +44,7 @@ type ConfigBDDTestContext struct {
 	jsonFile         string
 	environmentVars  map[string]string
 	originalEnvVars  map[string]string
-	configData       interface{}
+	configData       any
 	isValid          bool
 	validationErrors []string
 	fieldTracker     *TestFieldTracker

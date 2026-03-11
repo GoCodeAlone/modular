@@ -103,6 +103,9 @@ const (
 	// Health events
 	EventTypeHealthEvaluated     = "com.modular.health.evaluated"
 	EventTypeHealthStatusChanged = "com.modular.health.status.changed"
+
+	// Phase events
+	EventTypeAppPhaseChanged = "com.modular.application.phase.changed"
 )
 
 // ObservableModule is an optional interface that modules can implement

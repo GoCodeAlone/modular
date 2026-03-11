@@ -62,7 +62,7 @@ func TestModuleEventEmissionWithoutSubject(t *testing.T) {
 }
 
 // testModuleNilSubjectHandling is a helper function that tests nil subject handling for a specific module
-func testModuleNilSubjectHandling(t *testing.T, modulePath, moduleName string) {
+func testModuleNilSubjectHandling(t *testing.T, _, moduleName string) {
 	// Create a mock application for testing
 	app := &mockApplicationForNilSubjectTest{}
 
@@ -85,7 +85,7 @@ func testModuleNilSubjectHandling(t *testing.T, modulePath, moduleName string) {
 	// Test the emitEvent helper pattern - this should not panic and should handle nil subject gracefully
 	// We can't call the actual module's emitEvent helper directly since it's private,
 	// but we can verify the pattern works by testing that no panic occurs
-	testModule.testEmitEventHelper(context.Background(), "test.event.type", map[string]interface{}{
+	testModule.testEmitEventHelper(context.Background(), "test.event.type", map[string]any{
 		"test_key": "test_value",
 	})
 }
@@ -135,7 +135,7 @@ func (t *testObservableModuleForNilSubject) EmitEvent(ctx context.Context, event
 }
 
 // testEmitEventHelper simulates the pattern used by modules' emitEvent helper methods
-func (t *testObservableModuleForNilSubject) testEmitEventHelper(ctx context.Context, eventType string, data map[string]interface{}) {
+func (t *testObservableModuleForNilSubject) testEmitEventHelper(ctx context.Context, eventType string, data map[string]any) {
 	// This simulates the pattern used in modules - check for nil subject first
 	if t.subject == nil {
 		return // Should return silently without error
@@ -162,13 +162,13 @@ type mockTestLogger struct {
 	lastDebugMessage string
 }
 
-func (l *mockTestLogger) Debug(msg string, args ...interface{}) {
+func (l *mockTestLogger) Debug(msg string, args ...any) {
 	l.lastDebugMessage = msg
 }
 
-func (l *mockTestLogger) Info(msg string, args ...interface{})  {}
-func (l *mockTestLogger) Warn(msg string, args ...interface{})  {}
-func (l *mockTestLogger) Error(msg string, args ...interface{}) {}
+func (l *mockTestLogger) Info(msg string, args ...any)  {}
+func (l *mockTestLogger) Warn(msg string, args ...any)  {}
+func (l *mockTestLogger) Error(msg string, args ...any) {}
 
 type mockApplicationForNilSubjectTest struct{}
 

@@ -3,6 +3,7 @@ package modular
 import (
 	"context"
 	"fmt"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
@@ -24,6 +25,11 @@ type ApplicationBuilder struct {
 	configLoadedHooks []func(Application) error // Hooks to run after config loading
 	tenantGuard       *StandardTenantGuard
 	tenantGuardConfig *TenantGuardConfig
+	dependencyHints   []DependencyEdge
+	drainTimeout      time.Duration
+	parallelInit      bool
+	dynamicReload     bool
+	plugins           []Plugin
 }
 
 // ObserverFunc is a functional observer that can be registered with the application
@@ -110,6 +116,73 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		}
 	}
 
+	// Unwrap decorators to find the underlying StdApplication.
+	baseApp := app
+	for {
+		if dec, ok := baseApp.(ApplicationDecorator); ok {
+			if inner := dec.GetInnerApplication(); inner != nil {
+				baseApp = inner
+				continue
+			}
+		}
+		break
+	}
+
+	// Propagate config-driven dependency hints
+	if len(b.dependencyHints) > 0 {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
+			stdApp.dependencyHints = b.dependencyHints
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
+			obsApp.dependencyHints = b.dependencyHints
+		}
+	}
+
+	// Propagate drain timeout
+	if b.drainTimeout > 0 {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
+			stdApp.drainTimeout = b.drainTimeout
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
+			obsApp.drainTimeout = b.drainTimeout
+		}
+	}
+
+	// Propagate dynamic reload
+	if b.dynamicReload {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
+			stdApp.dynamicReload = true
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
+			obsApp.dynamicReload = true
+		}
+	}
+
+	// Propagate parallel init
+	if b.parallelInit {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
+			stdApp.parallelInit = true
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
+			obsApp.parallelInit = true
+		}
+	}
+
+	// Process plugins
+	for _, plugin := range b.plugins {
+		for _, mod := range plugin.Modules() {
+			app.RegisterModule(mod)
+		}
+		if withSvc, ok := plugin.(PluginWithServices); ok {
+			for _, svcDef := range withSvc.Services() {
+				if err := app.RegisterService(svcDef.Name, svcDef.Service); err != nil {
+					return nil, fmt.Errorf("plugin %q service %q: %w", plugin.Name(), svcDef.Name, err)
+				}
+			}
+		}
+		if withHooks, ok := plugin.(PluginWithHooks); ok {
+			for _, hook := range withHooks.InitHooks() {
+				app.OnConfigLoaded(hook)
+			}
+		}
+	}
+
 	// Register modules
 	for _, module := range b.modules {
 		app.RegisterModule(module)
@@ -151,6 +224,53 @@ func WithConfigProvider(provider ConfigProvider) Option {
 func WithModules(modules ...Module) Option {
 	return func(b *ApplicationBuilder) error {
 		b.modules = append(b.modules, modules...)
+		return nil
+	}
+}
+
+// WithModuleDependency declares that module `from` depends on module `to`,
+// injecting an edge into the dependency graph before resolution.
+func WithModuleDependency(from, to string) Option {
+	return func(b *ApplicationBuilder) error {
+		b.dependencyHints = append(b.dependencyHints, DependencyEdge{
+			From: from,
+			To:   to,
+			Type: EdgeTypeModule,
+		})
+		return nil
+	}
+}
+
+// WithDrainTimeout sets the timeout for the pre-stop drain phase during shutdown.
+func WithDrainTimeout(d time.Duration) Option {
+	return func(b *ApplicationBuilder) error {
+		b.drainTimeout = d
+		return nil
+	}
+}
+
+// WithParallelInit enables concurrent module initialization at the same topological depth.
+func WithParallelInit() Option {
+	return func(b *ApplicationBuilder) error {
+		b.parallelInit = true
+		return nil
+	}
+}
+
+// WithDynamicReload enables the ReloadOrchestrator, which coordinates
+// configuration reloading across all registered Reloadable modules.
+func WithDynamicReload() Option {
+	return func(b *ApplicationBuilder) error {
+		b.dynamicReload = true
+		return nil
+	}
+}
+
+// WithPlugins adds plugins to the application. Each plugin's modules, services,
+// and init hooks are registered during Build().
+func WithPlugins(plugins ...Plugin) Option {
+	return func(b *ApplicationBuilder) error {
+		b.plugins = append(b.plugins, plugins...)
 		return nil
 	}
 }

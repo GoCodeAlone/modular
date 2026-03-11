@@ -314,7 +314,7 @@ type Config struct {
 	Feeders []Feeder
 	// StructKeys maps struct identifiers to their configuration objects.
 	// Used internally to track which configuration structures have been processed.
-	StructKeys map[string]interface{}
+	StructKeys map[string]any
 	// VerboseDebug enables detailed logging during configuration processing
 	VerboseDebug bool
 	// Logger is used for verbose debug logging
@@ -336,7 +336,7 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		Feeders:      make([]Feeder, 0),
-		StructKeys:   make(map[string]interface{}),
+		StructKeys:   make(map[string]any),
 		VerboseDebug: false,
 		Logger:       nil,
 		FieldTracker: NewDefaultFieldTracker(),
@@ -396,7 +396,7 @@ func (c *Config) AddFeeder(feeder Feeder) *Config {
 }
 
 // AddStructKey adds a structure with a key to the configuration
-func (c *Config) AddStructKey(key string, target interface{}) *Config {
+func (c *Config) AddStructKey(key string, target any) *Config {
 	c.StructKeys[key] = target
 	return c
 }
@@ -420,7 +420,7 @@ func (c *Config) SetFieldTracker(tracker FieldTracker) *Config {
 
 // FeedWithModuleContext feeds a single configuration structure with module context information
 // This allows module-aware feeders to customize their behavior based on the module name
-func (c *Config) FeedWithModuleContext(target interface{}, moduleName string) error {
+func (c *Config) FeedWithModuleContext(target any, moduleName string) error {
 	if c.VerboseDebug && c.Logger != nil {
 		c.Logger.Debug("Starting module-aware config feed", "targetType", reflect.TypeOf(target), "moduleName", moduleName, "feedersCount", len(c.Feeders))
 	}
@@ -953,7 +953,7 @@ func applyInstanceAwareFeeding(app *StdApplication, tempConfigs map[string]confi
 
 		// Get the config from the temporary config that was just fed with YAML/ENV data
 		configInfo := tempConfigs[sectionKey]
-		var tempConfig interface{}
+		var tempConfig any
 		if configInfo.isPtr {
 			tempConfig = configInfo.tempVal.Interface()
 		} else {
@@ -1032,13 +1032,13 @@ type configInfo struct {
 }
 
 // createTempConfig creates a temporary config for feeding values
-func createTempConfig(cfg any) (interface{}, configInfo, error) {
+func createTempConfig(cfg any) (any, configInfo, error) {
 	if cfg == nil {
 		return nil, configInfo{}, ErrConfigNil
 	}
 
 	cfgValue := reflect.ValueOf(cfg)
-	isPtr := cfgValue.Kind() == reflect.Ptr
+	isPtr := cfgValue.Kind() == reflect.Pointer
 
 	var targetType reflect.Type
 	var sourceValue reflect.Value
@@ -1087,13 +1087,13 @@ func DeepCopyConfig(cfg any) (any, error) {
 //
 // This is useful when you need to ensure that modifications to the temporary config
 // during processing will not affect the original configuration.
-func createTempConfigDeep(cfg any) (interface{}, configInfo, error) {
+func createTempConfigDeep(cfg any) (any, configInfo, error) {
 	if cfg == nil {
 		return nil, configInfo{}, ErrConfigNil
 	}
 
 	cfgValue := reflect.ValueOf(cfg)
-	isPtr := cfgValue.Kind() == reflect.Ptr
+	isPtr := cfgValue.Kind() == reflect.Pointer
 
 	var targetType reflect.Type
 	var sourceValue reflect.Value
@@ -1133,7 +1133,7 @@ func deepCopyValue(dst, src reflect.Value) {
 	}
 
 	switch src.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if src.IsNil() {
 			return
 		}

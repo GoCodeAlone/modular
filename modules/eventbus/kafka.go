@@ -235,7 +235,7 @@ func (k *KafkaEventBus) Start(ctx context.Context) error {
 		return nil
 	}
 
-	k.ctx, k.cancel = context.WithCancel(ctx)
+	k.ctx, k.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in k.cancel and called in Stop()
 	k.isStarted = true
 	return nil
 }

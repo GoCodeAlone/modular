@@ -113,7 +113,7 @@ func (m *MemoryEventBus) Start(ctx context.Context) error {
 		return nil
 	}
 
-	m.ctx, m.cancel = context.WithCancel(ctx)
+	m.ctx, m.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in m.cancel and called in Stop()
 
 	// Initialize worker pool for async event handling.
 	// Buffer size is MaxEventQueueSize so the task queue can absorb bursts

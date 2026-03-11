@@ -45,7 +45,7 @@ func (d *ObservableDecorator) RemoveObserver(observer ObserverFunc) {
 }
 
 // emitEvent emits a CloudEvent to all registered observers
-func (d *ObservableDecorator) emitEvent(ctx context.Context, eventType string, data interface{}, metadata map[string]interface{}) {
+func (d *ObservableDecorator) emitEvent(ctx context.Context, eventType string, data any, metadata map[string]any) {
 	event := NewCloudEvent(eventType, "application", data, metadata)
 
 	d.observerMutex.RLock()
@@ -55,7 +55,6 @@ func (d *ObservableDecorator) emitEvent(ctx context.Context, eventType string, d
 
 	// Notify observers in goroutines to avoid blocking
 	for _, observer := range observers {
-		observer := observer // capture for goroutine
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -77,7 +76,7 @@ func (d *ObservableDecorator) Init() error {
 	ctx := context.Background()
 
 	// Emit before init event
-	d.emitEvent(ctx, "com.modular.application.before.init", nil, map[string]interface{}{
+	d.emitEvent(ctx, "com.modular.application.before.init", nil, map[string]any{
 		"phase":     "before_init",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
@@ -86,9 +85,9 @@ func (d *ObservableDecorator) Init() error {
 
 	if err != nil {
 		// Emit init failed event
-		d.emitEvent(ctx, "com.modular.application.init.failed", map[string]interface{}{
+		d.emitEvent(ctx, "com.modular.application.init.failed", map[string]any{
 			"error": err.Error(),
-		}, map[string]interface{}{
+		}, map[string]any{
 			"phase":     "init_failed",
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
@@ -96,7 +95,7 @@ func (d *ObservableDecorator) Init() error {
 	}
 
 	// Emit after init event
-	d.emitEvent(ctx, "com.modular.application.after.init", nil, map[string]interface{}{
+	d.emitEvent(ctx, "com.modular.application.after.init", nil, map[string]any{
 		"phase":     "after_init",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
@@ -109,7 +108,7 @@ func (d *ObservableDecorator) Start() error {
 	ctx := context.Background()
 
 	// Emit before start event
-	d.emitEvent(ctx, "com.modular.application.before.start", nil, map[string]interface{}{
+	d.emitEvent(ctx, "com.modular.application.before.start", nil, map[string]any{
 		"phase":     "before_start",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
@@ -118,9 +117,9 @@ func (d *ObservableDecorator) Start() error {
 
 	if err != nil {
 		// Emit start failed event
-		d.emitEvent(ctx, "com.modular.application.start.failed", map[string]interface{}{
+		d.emitEvent(ctx, "com.modular.application.start.failed", map[string]any{
 			"error": err.Error(),
-		}, map[string]interface{}{
+		}, map[string]any{
 			"phase":     "start_failed",
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
@@ -128,7 +127,7 @@ func (d *ObservableDecorator) Start() error {
 	}
 
 	// Emit after start event
-	d.emitEvent(ctx, "com.modular.application.after.start", nil, map[string]interface{}{
+	d.emitEvent(ctx, "com.modular.application.after.start", nil, map[string]any{
 		"phase":     "after_start",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
@@ -141,7 +140,7 @@ func (d *ObservableDecorator) Stop() error {
 	ctx := context.Background()
 
 	// Emit before stop event
-	d.emitEvent(ctx, "com.modular.application.before.stop", nil, map[string]interface{}{
+	d.emitEvent(ctx, "com.modular.application.before.stop", nil, map[string]any{
 		"phase":     "before_stop",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
@@ -150,9 +149,9 @@ func (d *ObservableDecorator) Stop() error {
 
 	if err != nil {
 		// Emit stop failed event
-		d.emitEvent(ctx, "com.modular.application.stop.failed", map[string]interface{}{
+		d.emitEvent(ctx, "com.modular.application.stop.failed", map[string]any{
 			"error": err.Error(),
-		}, map[string]interface{}{
+		}, map[string]any{
 			"phase":     "stop_failed",
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
@@ -160,7 +159,7 @@ func (d *ObservableDecorator) Stop() error {
 	}
 
 	// Emit after stop event
-	d.emitEvent(ctx, "com.modular.application.after.stop", nil, map[string]interface{}{
+	d.emitEvent(ctx, "com.modular.application.after.stop", nil, map[string]any{
 		"phase":     "after_stop",
 		"timestamp": time.Now().Format(time.RFC3339),
 	})

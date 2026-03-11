@@ -139,8 +139,8 @@ func Test_loadAppConfig(t *testing.T) {
 				mockLogger := new(MockLogger)
 				mockLogger.On("Debug",
 					"Creating new provider with updated config (original was non-pointer)",
-					[]interface{}(nil)).Return()
-				mockLogger.On("Debug", "Creating new provider for section", []interface{}{"section", "section1"}).Return()
+					[]any(nil)).Return()
+				mockLogger.On("Debug", "Creating new provider for section", []any{"section", "section1"}).Return()
 				mockLogger.On("Debug", "Added main config for loading", mock.Anything).Return()
 				mockLogger.On("Debug", "Added section config for loading", mock.Anything).Return()
 				mockLogger.On("Debug", "Updated main config", mock.Anything).Return()

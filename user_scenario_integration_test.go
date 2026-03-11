@@ -34,7 +34,7 @@ func TestUserScenarioReproduction(t *testing.T) {
 		t.Log("Service entry not found (expected for nil service)")
 	}
 
-	interfaceType := reflect.TypeOf((*TestUserInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[TestUserInterface]()
 	interfaceServices := app.GetServicesByInterface(interfaceType)
 	t.Logf("Services implementing interface: %d", len(interfaceServices))
 
@@ -57,7 +57,7 @@ func TestBackwardsCompatibilityCheck(t *testing.T) {
 		t.Errorf("Expected no entry for nonexistent service, got %v, %v", entry, found)
 	}
 
-	interfaceType := reflect.TypeOf((*TestUserInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[TestUserInterface]()
 	interfaceServices := app.GetServicesByInterface(interfaceType)
 	if len(interfaceServices) != 0 {
 		t.Errorf("Expected no interface services, got %v", interfaceServices)
@@ -92,7 +92,7 @@ func (m *testInterfaceConsumerModule) RequiresServices() []ServiceDependency {
 	return []ServiceDependency{{
 		Name:               "testInterface",
 		MatchByInterface:   true,
-		SatisfiesInterface: reflect.TypeOf((*TestUserInterface)(nil)).Elem(),
+		SatisfiesInterface: reflect.TypeFor[TestUserInterface](),
 		Required:           false, // Optional to avoid initialization failures
 	}}
 }

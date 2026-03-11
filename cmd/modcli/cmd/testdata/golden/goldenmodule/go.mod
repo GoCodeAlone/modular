@@ -1,6 +1,6 @@
 module example.com/goldenmodule
 
-go 1.25
+go 1.26
 
 require (
 	github.com/GoCodeAlone/modular v1.6.0

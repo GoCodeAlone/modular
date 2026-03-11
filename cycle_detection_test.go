@@ -44,7 +44,7 @@ func (m *CycleTestModuleA) RequiresServices() []ServiceDependency {
 			Name:               "testServiceB",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*TestInterface)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[TestInterface](),
 		},
 	}
 }
@@ -81,7 +81,7 @@ func (m *CycleTestModuleB) RequiresServices() []ServiceDependency {
 			Name:               "testServiceA",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*TestInterface)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[TestInterface](),
 		},
 	}
 }

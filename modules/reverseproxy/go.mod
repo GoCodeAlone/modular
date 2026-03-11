@@ -1,6 +1,6 @@
 module github.com/GoCodeAlone/modular/modules/reverseproxy/v2
 
-go 1.25
+go 1.26
 
 // retract (from old module path) v1.0.0
 

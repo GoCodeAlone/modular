@@ -11,6 +11,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// wrapDebugLogger returns a func(string) that calls the logger's Debug method.
+// This indirection avoids go vet false positives about non-constant format strings
+// passed to Debug(msg string, args ...any) interface methods.
+//
+//go:noinline
+func wrapDebugLogger(logger interface{ Debug(msg string, args ...any) }) func(string) {
+	debug := logger.Debug
+	return func(msg string) { debug(msg) }
+}
+
 // parseYAMLTag parses a YAML struct tag and returns the field name and options
 func parseYAMLTag(tag string) (fieldName string, options []string) {
 	if tag == "" {
@@ -46,9 +56,7 @@ func getFieldNameFromTag(fieldType *reflect.StructField) (string, bool) {
 type YamlFeeder struct {
 	Path         string
 	verboseDebug bool
-	logger       interface {
-		Debug(msg string, args ...any)
-	}
+	debugFn      func(string)
 	fieldTracker FieldTracker
 	priority     int
 }
@@ -58,7 +66,7 @@ func NewYamlFeeder(filePath string) *YamlFeeder {
 	return &YamlFeeder{
 		Path:         filePath,
 		verboseDebug: false,
-		logger:       nil,
+		debugFn:      nil,
 		fieldTracker: nil,
 		priority:     0, // Default priority
 	}
@@ -80,9 +88,13 @@ func (y *YamlFeeder) Priority() int {
 // SetVerboseDebug enables or disables verbose debug logging
 func (y *YamlFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg string, args ...any) }) {
 	y.verboseDebug = enabled
-	y.logger = logger
+	if logger != nil {
+		y.debugFn = wrapDebugLogger(logger)
+	} else {
+		y.debugFn = nil
+	}
 	if enabled && logger != nil {
-		y.logger.Debug("Verbose YAML feeder debugging enabled")
+		logger.Debug("Verbose YAML feeder debugging enabled")
 	}
 }
 
@@ -91,21 +103,39 @@ func (y *YamlFeeder) SetFieldTracker(tracker FieldTracker) {
 	y.fieldTracker = tracker
 }
 
+// debugLog logs a debug message with key-value pairs when verbose debugging is enabled.
+// Key-value pairs are formatted into the message string to avoid go vet printf false positives
+// on the Debug(msg string, args ...any) interface method signature.
+func (y *YamlFeeder) debugLog(msg string, keysAndValues ...any) {
+	if !y.verboseDebug || y.debugFn == nil {
+		return
+	}
+	if len(keysAndValues) == 0 {
+		y.debugFn(msg)
+		return
+	}
+	var b strings.Builder
+	b.WriteString(msg)
+	for i := 0; i+1 < len(keysAndValues); i += 2 {
+		fmt.Fprintf(&b, " %v=%v", keysAndValues[i], keysAndValues[i+1])
+	}
+	if len(keysAndValues)%2 != 0 {
+		fmt.Fprintf(&b, " %v", keysAndValues[len(keysAndValues)-1])
+	}
+	y.debugFn(b.String())
+}
+
 // Feed reads the YAML file and populates the provided structure
 func (y *YamlFeeder) Feed(structure interface{}) error {
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Starting feed process", "filePath", y.Path, "structureType", reflect.TypeOf(structure))
-	}
+	y.debugLog("YamlFeeder: Starting feed process", "filePath", y.Path, "structureType", reflect.TypeOf(structure))
 
 	// Always use custom parsing logic for consistency
 	err := y.feedWithTracking(structure)
 
-	if y.verboseDebug && y.logger != nil {
-		if err != nil {
-			y.logger.Debug("YamlFeeder: Feed completed with error", "filePath", y.Path, "error", err)
-		} else {
-			y.logger.Debug("YamlFeeder: Feed completed successfully", "filePath", y.Path)
-		}
+	if err != nil {
+		y.debugLog("YamlFeeder: Feed completed with error", "filePath", y.Path, "error", err)
+	} else {
+		y.debugLog("YamlFeeder: Feed completed successfully", "filePath", y.Path)
 	}
 	if err != nil {
 		return fmt.Errorf("yaml feed error: %w", err)
@@ -115,68 +145,50 @@ func (y *YamlFeeder) Feed(structure interface{}) error {
 
 // FeedKey reads a YAML file and extracts a specific key
 func (y *YamlFeeder) FeedKey(key string, target interface{}) error {
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Starting FeedKey process", "filePath", y.Path, "key", key, "targetType", reflect.TypeOf(target))
-	}
+	y.debugLog("YamlFeeder: Starting FeedKey process", "filePath", y.Path, "key", key, "targetType", reflect.TypeOf(target))
 
 	// Create a temporary map to hold all YAML data
 	var allData map[interface{}]interface{}
 
 	// Use the embedded Yaml feeder to read the file
 	if err := y.Feed(&allData); err != nil {
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Failed to read YAML file", "filePath", y.Path, "error", err)
-		}
+		y.debugLog("YamlFeeder: Failed to read YAML file", "filePath", y.Path, "error", err)
 		return fmt.Errorf("failed to read YAML: %w", err)
 	}
 
 	// Look for the specific key
 	value, exists := allData[key]
 	if !exists {
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Key not found in YAML file", "filePath", y.Path, "key", key)
-		}
+		y.debugLog("YamlFeeder: Key not found in YAML file", "filePath", y.Path, "key", key)
 		return nil
 	}
 
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Found key in YAML file", "filePath", y.Path, "key", key, "valueType", reflect.TypeOf(value))
-	}
+	y.debugLog("YamlFeeder: Found key in YAML file", "filePath", y.Path, "key", key, "valueType", reflect.TypeOf(value))
 
 	// Remarshal and unmarshal to handle type conversions
 	valueBytes, err := yaml.Marshal(value)
 	if err != nil {
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Failed to marshal value", "filePath", y.Path, "key", key, "error", err)
-		}
+		y.debugLog("YamlFeeder: Failed to marshal value", "filePath", y.Path, "key", key, "error", err)
 		return fmt.Errorf("failed to marshal value: %w", err)
 	}
 
 	if err = yaml.Unmarshal(valueBytes, target); err != nil {
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Failed to unmarshal value to target", "filePath", y.Path, "key", key, "error", err)
-		}
+		y.debugLog("YamlFeeder: Failed to unmarshal value to target", "filePath", y.Path, "key", key, "error", err)
 		return fmt.Errorf("failed to unmarshal value to target: %w", err)
 	}
 
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: FeedKey completed successfully", "filePath", y.Path, "key", key)
-	}
+	y.debugLog("YamlFeeder: FeedKey completed successfully", "filePath", y.Path, "key", key)
 	return nil
 }
 
 // feedWithTracking processes YAML data with field tracking support
 func (y *YamlFeeder) feedWithTracking(structure interface{}) error {
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Starting feedWithTracking", "filePath", y.Path, "structureType", reflect.TypeOf(structure))
-	}
+	y.debugLog("YamlFeeder: Starting feedWithTracking", "filePath", y.Path, "structureType", reflect.TypeOf(structure))
 
 	// Read YAML file
 	content, err := os.ReadFile(y.Path)
 	if err != nil {
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Failed to read YAML file", "filePath", y.Path, "error", err)
-		}
+		y.debugLog("YamlFeeder: Failed to read YAML file", "filePath", y.Path, "error", err)
 		return fmt.Errorf("failed to read YAML file: %w", err)
 	}
 
@@ -184,9 +196,7 @@ func (y *YamlFeeder) feedWithTracking(structure interface{}) error {
 	structValue := reflect.ValueOf(structure)
 	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
 		// Not a struct pointer, fall back to standard YAML unmarshaling
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Not a struct pointer, using standard YAML unmarshaling", "structureType", reflect.TypeOf(structure))
-		}
+		y.debugLog("YamlFeeder: Not a struct pointer, using standard YAML unmarshaling", "structureType", reflect.TypeOf(structure))
 		if err := yaml.Unmarshal(content, structure); err != nil {
 			return fmt.Errorf("failed to unmarshal YAML data: %w", err)
 		}
@@ -196,9 +206,7 @@ func (y *YamlFeeder) feedWithTracking(structure interface{}) error {
 	// Parse YAML content
 	data := make(map[string]interface{})
 	if err := yaml.Unmarshal(content, &data); err != nil {
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Failed to parse YAML content", "filePath", y.Path, "error", err)
-		}
+		y.debugLog("YamlFeeder: Failed to parse YAML content", "filePath", y.Path, "error", err)
 		return fmt.Errorf("failed to parse YAML content: %w", err)
 	}
 
@@ -210,9 +218,7 @@ func (y *YamlFeeder) feedWithTracking(structure interface{}) error {
 func (y *YamlFeeder) processStructFields(rv reflect.Value, data map[string]interface{}, parentPath string) error {
 	structType := rv.Type()
 
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Processing struct fields", "structType", structType, "numFields", rv.NumField(), "parentPath", parentPath)
-	}
+	y.debugLog("YamlFeeder: Processing struct fields", "structType", structType, "numFields", rv.NumField(), "parentPath", parentPath)
 
 	for i := 0; i < rv.NumField(); i++ {
 		field := rv.Field(i)
@@ -224,14 +230,10 @@ func (y *YamlFeeder) processStructFields(rv reflect.Value, data map[string]inter
 			fieldPath = parentPath + "." + fieldType.Name
 		}
 
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Processing field", "fieldName", fieldType.Name, "fieldType", fieldType.Type, "fieldPath", fieldPath)
-		}
+		y.debugLog("YamlFeeder: Processing field", "fieldName", fieldType.Name, "fieldType", fieldType.Type, "fieldPath", fieldPath)
 
 		if err := y.processField(field, &fieldType, data, fieldPath); err != nil {
-			if y.verboseDebug && y.logger != nil {
-				y.logger.Debug("YamlFeeder: Field processing failed", "fieldName", fieldType.Name, "error", err)
-			}
+			y.debugLog("YamlFeeder: Field processing failed", "fieldName", fieldType.Name, "error", err)
 			return fmt.Errorf("error in field '%s': %w", fieldType.Name, err)
 		}
 	}
@@ -260,9 +262,7 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 			return y.setArrayFromYAML(field, fieldName, data, fieldType.Name, fieldPath)
 		}
 	case reflect.Map:
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Processing map field", "fieldName", fieldType.Name, "fieldPath", fieldPath)
-		}
+		y.debugLog("YamlFeeder: Processing map field", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 
 		if hasYAMLTag {
 			// Look for map data using the parsed field name
@@ -270,20 +270,14 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 				if mapDataTyped, ok := mapData.(map[string]interface{}); ok {
 					return y.setMapFromYaml(field, mapDataTyped, fieldType.Name, fieldPath)
 				} else {
-					if y.verboseDebug && y.logger != nil {
-						y.logger.Debug("YamlFeeder: Map YAML data is not a map[string]interface{}", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "dataType", reflect.TypeOf(mapData))
-					}
+					y.debugLog("YamlFeeder: Map YAML data is not a map[string]interface{}", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "dataType", reflect.TypeOf(mapData))
 				}
 			} else {
-				if y.verboseDebug && y.logger != nil {
-					y.logger.Debug("YamlFeeder: Map YAML data not found", "fieldName", fieldType.Name, "parsedFieldName", fieldName)
-				}
+				y.debugLog("YamlFeeder: Map YAML data not found", "fieldName", fieldType.Name, "parsedFieldName", fieldName)
 			}
 		}
 	case reflect.Struct:
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Processing nested struct", "fieldName", fieldType.Name, "fieldPath", fieldPath)
-		}
+		y.debugLog("YamlFeeder: Processing nested struct", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 
 		if hasYAMLTag {
 			// Look for nested data using the parsed field name
@@ -291,14 +285,10 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 				if nestedMap, ok := nestedData.(map[string]interface{}); ok {
 					return y.processStructFields(field, nestedMap, fieldPath)
 				} else {
-					if y.verboseDebug && y.logger != nil {
-						y.logger.Debug("YamlFeeder: Nested YAML data is not a map", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "dataType", reflect.TypeOf(nestedData))
-					}
+					y.debugLog("YamlFeeder: Nested YAML data is not a map", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "dataType", reflect.TypeOf(nestedData))
 				}
 			} else {
-				if y.verboseDebug && y.logger != nil {
-					y.logger.Debug("YamlFeeder: Nested YAML data not found", "fieldName", fieldType.Name, "parsedFieldName", fieldName)
-				}
+				y.debugLog("YamlFeeder: Nested YAML data not found", "fieldName", fieldType.Name, "parsedFieldName", fieldName)
 			}
 		} else {
 			// No yaml tag, use the same data map
@@ -310,23 +300,17 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 		reflect.Chan, reflect.Func, reflect.Interface, reflect.String, reflect.UnsafePointer:
 		// Check for yaml tag for primitive types and other non-struct types
 		if hasYAMLTag {
-			if y.verboseDebug && y.logger != nil {
-				y.logger.Debug("YamlFeeder: Found yaml tag", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "fieldPath", fieldPath)
-			}
+			y.debugLog("YamlFeeder: Found yaml tag", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "fieldPath", fieldPath)
 			return y.setFieldFromYaml(field, fieldName, data, fieldType.Name, fieldPath)
-		} else if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: No yaml tag found", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 		}
+		y.debugLog("YamlFeeder: No yaml tag found", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 	default:
 		// Check for yaml tag for primitive types and other non-struct types
 		if hasYAMLTag {
-			if y.verboseDebug && y.logger != nil {
-				y.logger.Debug("YamlFeeder: Found yaml tag", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "fieldPath", fieldPath)
-			}
+			y.debugLog("YamlFeeder: Found yaml tag", "fieldName", fieldType.Name, "parsedFieldName", fieldName, "fieldPath", fieldPath)
 			return y.setFieldFromYaml(field, fieldName, data, fieldType.Name, fieldPath)
-		} else if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: No yaml tag found", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 		}
+		y.debugLog("YamlFeeder: No yaml tag found", "fieldName", fieldType.Name, "fieldPath", fieldPath)
 	}
 
 	return nil
@@ -602,18 +586,14 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 	if value, exists := data[yamlTag]; exists {
 		foundValue = value
 		foundKey = yamlTag
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Found YAML value", "fieldName", fieldName, "yamlKey", yamlTag, "value", value, "fieldPath", fieldPath)
-		}
+		y.debugLog("YamlFeeder: Found YAML value", "fieldName", fieldName, "yamlKey", yamlTag, "value", value, "fieldPath", fieldPath)
 	}
 
 	if foundValue != nil {
 		// Set the field value
 		err := y.setFieldValue(field, foundValue)
 		if err != nil {
-			if y.verboseDebug && y.logger != nil {
-				y.logger.Debug("YamlFeeder: Failed to set field value", "fieldName", fieldName, "yamlKey", yamlTag, "value", foundValue, "error", err, "fieldPath", fieldPath)
-			}
+			y.debugLog("YamlFeeder: Failed to set field value", "fieldName", fieldName, "yamlKey", yamlTag, "value", foundValue, "error", err, "fieldPath", fieldPath)
 			return err
 		}
 
@@ -634,9 +614,7 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 			y.fieldTracker.RecordFieldPopulation(fp)
 		}
 
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: Successfully set field value", "fieldName", fieldName, "yamlKey", yamlTag, "value", foundValue, "fieldPath", fieldPath)
-		}
+		y.debugLog("YamlFeeder: Successfully set field value", "fieldName", fieldName, "yamlKey", yamlTag, "value", foundValue, "fieldPath", fieldPath)
 	} else {
 		// Record that we searched but didn't find
 		if y.fieldTracker != nil {
@@ -655,9 +633,7 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 			y.fieldTracker.RecordFieldPopulation(fp)
 		}
 
-		if y.verboseDebug && y.logger != nil {
-			y.logger.Debug("YamlFeeder: YAML value not found", "fieldName", fieldName, "yamlKey", yamlTag, "fieldPath", fieldPath)
-		}
+		y.debugLog("YamlFeeder: YAML value not found", "fieldName", fieldName, "yamlKey", yamlTag, "fieldPath", fieldPath)
 	}
 
 	return nil
@@ -673,9 +649,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 	keyType := mapType.Key()
 	valueType := mapType.Elem()
 
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Setting map from YAML", "fieldName", fieldName, "mapType", mapType, "keyType", keyType, "valueType", valueType)
-	}
+	y.debugLog("YamlFeeder: Setting map from YAML", "fieldName", fieldName, "mapType", mapType, "keyType", keyType, "valueType", valueType)
 
 	// Create a new map
 	newMap := reflect.MakeMap(mapType)
@@ -698,9 +672,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 				keyValue := reflect.ValueOf(key)
 				newMap.SetMapIndex(keyValue, structValue)
 			} else {
-				if y.verboseDebug && y.logger != nil {
-					y.logger.Debug("YamlFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
-				}
+				y.debugLog("YamlFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
 			}
 		}
 	case reflect.Ptr:
@@ -723,13 +695,9 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 					keyValue := reflect.ValueOf(key)
 					newMap.SetMapIndex(keyValue, ptrValue)
 
-					if y.verboseDebug && y.logger != nil {
-						y.logger.Debug("YamlFeeder: Successfully processed pointer to struct map entry", "key", key, "structType", elemType)
-					}
+					y.debugLog("YamlFeeder: Successfully processed pointer to struct map entry", "key", key, "structType", elemType)
 				} else {
-					if y.verboseDebug && y.logger != nil {
-						y.logger.Debug("YamlFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
-					}
+					y.debugLog("YamlFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
 				}
 			}
 		} else {
@@ -746,9 +714,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 					ptrValue.Elem().Set(convertedValue)
 					newMap.SetMapIndex(keyValue, ptrValue)
 				} else {
-					if y.verboseDebug && y.logger != nil {
-						y.logger.Debug("YamlFeeder: Cannot convert map value for pointer type", "key", key, "valueType", valueReflect.Type(), "targetType", elemType)
-					}
+					y.debugLog("YamlFeeder: Cannot convert map value for pointer type", "key", key, "valueType", valueReflect.Type(), "targetType", elemType)
 				}
 			}
 		}
@@ -766,9 +732,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 				convertedValue := valueReflect.Convert(valueType)
 				newMap.SetMapIndex(keyValue, convertedValue)
 			} else {
-				if y.verboseDebug && y.logger != nil {
-					y.logger.Debug("YamlFeeder: Cannot convert map value", "key", key, "valueType", valueReflect.Type(), "targetType", valueType)
-				}
+				y.debugLog("YamlFeeder: Cannot convert map value", "key", key, "valueType", valueReflect.Type(), "targetType", valueType)
 			}
 		}
 	default:
@@ -781,9 +745,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 				convertedValue := valueReflect.Convert(valueType)
 				newMap.SetMapIndex(keyValue, convertedValue)
 			} else {
-				if y.verboseDebug && y.logger != nil {
-					y.logger.Debug("YamlFeeder: Cannot convert map value", "key", key, "valueType", valueReflect.Type(), "targetType", valueType)
-				}
+				y.debugLog("YamlFeeder: Cannot convert map value", "key", key, "valueType", valueReflect.Type(), "targetType", valueType)
 			}
 		}
 	}
@@ -808,9 +770,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 		y.fieldTracker.RecordFieldPopulation(fp)
 	}
 
-	if y.verboseDebug && y.logger != nil {
-		y.logger.Debug("YamlFeeder: Successfully set map field", "fieldName", fieldName, "mapSize", newMap.Len())
-	}
+	y.debugLog("YamlFeeder: Successfully set map field", "fieldName", fieldName, "mapSize", newMap.Len())
 
 	return nil
 }

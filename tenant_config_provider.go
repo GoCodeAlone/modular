@@ -65,7 +65,7 @@ func (tcp *TenantConfigProvider) SetTenantConfig(tenantID TenantID, section stri
 
 	// Ensure the config is a valid, non-zero value
 	cfgValue := reflect.ValueOf(cfg)
-	if cfgValue.Kind() == reflect.Ptr && cfgValue.IsNil() {
+	if cfgValue.Kind() == reflect.Pointer && cfgValue.IsNil() {
 		return
 	}
 

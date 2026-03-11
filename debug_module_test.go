@@ -22,7 +22,7 @@ func TestModuleReplacementLosesStartable(t *testing.T) {
 	originalModule := &ProblematicModule{name: "test-module"}
 
 	// Verify the original module implements Startable
-	_, implementsStartable := interface{}(originalModule).(Startable)
+	_, implementsStartable := any(originalModule).(Startable)
 	require.True(t, implementsStartable, "Original module should implement Startable")
 
 	// Register the module
@@ -81,7 +81,7 @@ func TestProperModuleConstructorPattern(t *testing.T) {
 	originalModule := &CorrectModule{name: "correct-module"}
 
 	// Verify the original module implements Startable
-	_, implementsStartable := interface{}(originalModule).(Startable)
+	_, implementsStartable := any(originalModule).(Startable)
 	require.True(t, implementsStartable, "Original module should implement Startable")
 
 	// Register the module

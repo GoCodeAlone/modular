@@ -31,7 +31,7 @@ func TestInterfaceDependencies(t *testing.T) {
 	app.RegisterModule(serviceProviderModule)
 
 	// Resolve dependencies
-	order, err := app.resolveDependencies()
+	order, _, err := app.resolveDependencies()
 	if err != nil {
 		t.Fatalf("Failed to resolve dependencies: %v", err)
 	}
@@ -147,7 +147,7 @@ func (m *RouterConsumerModule) RequiresServices() []ServiceDependency {
 			Name:               "router",
 			Required:           true,
 			MatchByInterface:   true,
-			SatisfiesInterface: reflect.TypeOf((*Router)(nil)).Elem(),
+			SatisfiesInterface: reflect.TypeFor[Router](),
 		},
 	}
 }

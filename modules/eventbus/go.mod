@@ -1,8 +1,8 @@
 module github.com/GoCodeAlone/modular/modules/eventbus/v2
 
-go 1.25
+go 1.26
 
-toolchain go1.25.0
+toolchain go1.26.0
 
 require (
 	github.com/DataDog/datadog-go/v5 v5.4.0

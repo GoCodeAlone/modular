@@ -413,9 +413,7 @@ func TestAggregateHealthService_ConcurrentChecks(t *testing.T) {
 	errs := make(chan error, goroutines)
 
 	for range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			result, err := svc.Check(context.Background())
 			if err != nil {
 				errs <- err
@@ -425,7 +423,7 @@ func TestAggregateHealthService_ConcurrentChecks(t *testing.T) {
 				errs <- errors.New("nil result")
 				return
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

@@ -344,7 +344,7 @@ func TestAffixedEnvFeederPriority(t *testing.T) {
 		feeder := feeders.NewAffixedEnvFeeder("PREFIX_", "").WithPriority(100)
 
 		// Verify priority was set
-		prioritized, ok := interface{}(feeder).(PrioritizedFeeder)
+		prioritized, ok := any(feeder).(PrioritizedFeeder)
 		if !ok {
 			t.Fatal("AffixedEnvFeeder does not implement PrioritizedFeeder interface")
 		}
@@ -413,7 +413,7 @@ func TestTenantAffixedEnvFeederPriority(t *testing.T) {
 		tenantFeeder.SetPrefixFunc("tenant1")
 
 		// Test priority was set correctly
-		prioritized, ok := interface{}(tenantFeeder).(PrioritizedFeeder)
+		prioritized, ok := any(tenantFeeder).(PrioritizedFeeder)
 		if !ok {
 			t.Fatal("TenantAffixedEnvFeeder does not implement PrioritizedFeeder interface")
 		}

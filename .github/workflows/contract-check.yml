@@ -16,7 +16,7 @@ permissions:
   actions: read
 
 env:
-  GO_VERSION: '^1.25'
+  GO_VERSION: '^1.26'
 
 jobs:
   contract-check:
@@ -59,7 +59,7 @@ jobs:
 
       - name: Checkout PR branch
         run: |
-          git checkout ${{ github.head_ref }}
+          git checkout ${{ github.event.pull_request.head.sha }}
 
       - name: Extract contracts from PR branch
         run: |

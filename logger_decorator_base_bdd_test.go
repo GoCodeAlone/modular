@@ -13,12 +13,8 @@ var (
 	errPrimaryLoggerNotSet    = errors.New("primary logger not set")
 	errSecondaryLoggerNotSet  = errors.New("secondary logger not set")
 	errDecoratedLoggerNotSet  = errors.New("decorated logger not set")
-	errNoMessagesLogged       = errors.New("no messages logged")
-	errUnexpectedMessageCount = errors.New("unexpected message count")
-	errMessageNotFound        = errors.New("message not found")
-	errArgNotFound            = errors.New("argument not found")
-	errUnexpectedLogLevel     = errors.New("unexpected log level")
-	errServiceLoggerMismatch  = errors.New("service logger mismatch")
+	errNoMessagesLogged      = errors.New("no messages logged")
+	errServiceLoggerMismatch = errors.New("service logger mismatch")
 )
 
 // LoggerDecoratorBDDTestContext holds the test context for logger decorator BDD scenarios
@@ -33,7 +29,7 @@ type LoggerDecoratorBDDTestContext struct {
 	currentLogger    Logger
 	expectedMessages []string
 	expectedArgs     map[string]string
-	filterCriteria   map[string]interface{}
+	filterCriteria   map[string]any
 	levelMappings    map[string]string
 	messageCount     int
 	expectedLevels   []string

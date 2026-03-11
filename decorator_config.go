@@ -25,7 +25,7 @@ type instanceAwareConfigProvider struct {
 }
 
 // GetConfig returns the base configuration
-func (p *instanceAwareConfigProvider) GetConfig() interface{} {
+func (p *instanceAwareConfigProvider) GetConfig() any {
 	return p.base.GetConfig()
 }
 
@@ -54,7 +54,7 @@ type tenantAwareConfigProvider struct {
 }
 
 // GetConfig returns the base configuration
-func (p *tenantAwareConfigProvider) GetConfig() interface{} {
+func (p *tenantAwareConfigProvider) GetConfig() any {
 	return p.base.GetConfig()
 }
 
@@ -62,7 +62,7 @@ func (p *tenantAwareConfigProvider) GetConfig() interface{} {
 var errNoTenantLoaderConfigured = errors.New("no tenant loader configured")
 
 // GetTenantConfig retrieves configuration for a specific tenant
-func (p *tenantAwareConfigProvider) GetTenantConfig(tenantID TenantID) (interface{}, error) {
+func (p *tenantAwareConfigProvider) GetTenantConfig(tenantID TenantID) (any, error) {
 	if p.loader == nil {
 		return nil, errNoTenantLoaderConfigured
 	}

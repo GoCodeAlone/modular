@@ -7,7 +7,7 @@ import (
 // Feeder defines the interface for configuration feeders that provide configuration data.
 type Feeder interface {
 	// Feed gets a struct and feeds it using configuration data.
-	Feed(structure interface{}) error
+	Feed(structure any) error
 }
 
 // ConfigFeeders provides a default set of configuration feeders for common use cases
@@ -18,14 +18,14 @@ var ConfigFeeders = []Feeder{
 // ComplexFeeder extends the basic Feeder interface with additional functionality for complex configuration scenarios
 type ComplexFeeder interface {
 	Feeder
-	FeedKey(string, interface{}) error
+	FeedKey(string, any) error
 }
 
 // InstanceAwareFeeder provides functionality for feeding multiple instances of the same configuration type
 type InstanceAwareFeeder interface {
 	ComplexFeeder
 	// FeedInstances feeds multiple instances from a map[string]ConfigType
-	FeedInstances(instances interface{}) error
+	FeedInstances(instances any) error
 }
 
 // VerboseAwareFeeder provides functionality for verbose debug logging during configuration feeding
@@ -47,7 +47,7 @@ type ModuleAwareFeeder interface {
 	// FeedWithModuleContext feeds configuration with module context information.
 	// The moduleName parameter provides the name of the module whose configuration
 	// is being processed, allowing the feeder to customize its behavior accordingly.
-	FeedWithModuleContext(structure interface{}, moduleName string) error
+	FeedWithModuleContext(structure any, moduleName string) error
 }
 
 // PrioritizedFeeder extends the Feeder interface with priority control.

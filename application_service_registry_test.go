@@ -50,7 +50,7 @@ func Test_GetService(t *testing.T) {
 	tests := []struct {
 		name        string
 		serviceName string
-		target      interface{}
+		target      any
 		wantErr     bool
 		errCheck    func(error) bool
 	}{

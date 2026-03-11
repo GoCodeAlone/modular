@@ -248,7 +248,7 @@ func TestLoadTenantConfigsNonexistentDirectory(t *testing.T) {
 		ConfigDir:       nonExistentDir,
 	}
 
-	log.On("Error", "Tenant config directory does not exist", []interface{}{"directory", nonExistentDir}).Return(nil)
+	log.On("Error", "Tenant config directory does not exist", []any{"directory", nonExistentDir}).Return(nil)
 	err := LoadTenantConfigs(app, tenantService, params)
 	if err == nil || !strings.Contains(err.Error(), "tenant config directory does not exist") {
 		t.Errorf("Expected error for nonexistent directory, got: %v", err)
@@ -323,7 +323,7 @@ func TestTenantConfigProviderSetAndGet(t *testing.T) {
 	}
 
 	// Test nil config
-	nilProviderStruct := &struct{ Config interface{} }{nil}
+	nilProviderStruct := &struct{ Config any }{nil}
 	nilProvider := NewStdConfigProvider(nilProviderStruct.Config)
 	tcp.SetTenantConfig(tenant1ID, "NilConfigSection", nilProvider)
 	if tcp.HasTenantConfig(tenant1ID, "NilConfigSection") {
@@ -403,7 +403,7 @@ func TestCopyStructFields(t *testing.T) {
 	}
 
 	// Test copying map to struct
-	srcMap := map[string]interface{}{
+	srcMap := map[string]any{
 		"Name":        "MapSource",
 		"Environment": "prod",
 		"Features":    map[string]bool{"feature2": true},

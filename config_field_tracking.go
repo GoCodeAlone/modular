@@ -17,16 +17,16 @@ type FieldTracker interface {
 
 // FieldPopulation represents a single field population event
 type FieldPopulation struct {
-	FieldPath   string      // Full path to the field (e.g., "Connections.primary.DSN")
-	FieldName   string      // Name of the field
-	FieldType   string      // Type of the field
-	FeederType  string      // Type of feeder that populated it
-	SourceType  string      // Type of source (env, yaml, etc.)
-	SourceKey   string      // Source key that was used (e.g., "DB_PRIMARY_DSN")
-	Value       interface{} // Value that was set
-	InstanceKey string      // Instance key for instance-aware fields
-	SearchKeys  []string    // All keys that were searched for this field
-	FoundKey    string      // The key that was actually found
+	FieldPath   string   // Full path to the field (e.g., "Connections.primary.DSN")
+	FieldName   string   // Name of the field
+	FieldType   string   // Type of the field
+	FeederType  string   // Type of feeder that populated it
+	SourceType  string   // Type of source (env, yaml, etc.)
+	SourceKey   string   // Source key that was used (e.g., "DB_PRIMARY_DSN")
+	Value       any      // Value that was set
+	InstanceKey string   // Instance key for instance-aware fields
+	SearchKeys  []string // All keys that were searched for this field
+	FoundKey    string   // The key that was actually found
 }
 
 // FieldTrackingFeeder interface allows feeders to support field tracking
@@ -132,8 +132,8 @@ func (t *DefaultFieldTracker) GetPopulationsBySource(sourceType string) []FieldP
 
 // StructStateDiffer captures before/after states to determine field changes
 type StructStateDiffer struct {
-	beforeState map[string]interface{}
-	afterState  map[string]interface{}
+	beforeState map[string]any
+	afterState  map[string]any
 	tracker     FieldTracker
 	logger      Logger
 }
@@ -141,15 +141,15 @@ type StructStateDiffer struct {
 // NewStructStateDiffer creates a new struct state differ
 func NewStructStateDiffer(tracker FieldTracker, logger Logger) *StructStateDiffer {
 	return &StructStateDiffer{
-		beforeState: make(map[string]interface{}),
-		afterState:  make(map[string]interface{}),
+		beforeState: make(map[string]any),
+		afterState:  make(map[string]any),
 		tracker:     tracker,
 		logger:      logger,
 	}
 }
 
 // CaptureBeforeState captures the state before feeder processing
-func (d *StructStateDiffer) CaptureBeforeState(structure interface{}, prefix string) {
+func (d *StructStateDiffer) CaptureBeforeState(structure any, prefix string) {
 	d.captureState(structure, prefix, d.beforeState)
 	if d.logger != nil {
 		d.logger.Debug("Captured before state", "prefix", prefix, "fieldCount", len(d.beforeState))
@@ -157,7 +157,7 @@ func (d *StructStateDiffer) CaptureBeforeState(structure interface{}, prefix str
 }
 
 // CaptureAfterStateAndDiff captures the state after feeder processing and computes diffs
-func (d *StructStateDiffer) CaptureAfterStateAndDiff(structure interface{}, prefix string, feederType, sourceType string) {
+func (d *StructStateDiffer) CaptureAfterStateAndDiff(structure any, prefix string, feederType, sourceType string) {
 	d.captureState(structure, prefix, d.afterState)
 	if d.logger != nil {
 		d.logger.Debug("Captured after state", "prefix", prefix, "fieldCount", len(d.afterState))
@@ -168,9 +168,9 @@ func (d *StructStateDiffer) CaptureAfterStateAndDiff(structure interface{}, pref
 }
 
 // captureState recursively captures all field values in a structure
-func (d *StructStateDiffer) captureState(structure interface{}, prefix string, state map[string]interface{}) {
+func (d *StructStateDiffer) captureState(structure any, prefix string, state map[string]any) {
 	rv := reflect.ValueOf(structure)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return
 		}
@@ -185,7 +185,7 @@ func (d *StructStateDiffer) captureState(structure interface{}, prefix string, s
 }
 
 // captureStructFields recursively captures all field values in a struct
-func (d *StructStateDiffer) captureStructFields(rv reflect.Value, prefix string, state map[string]interface{}) {
+func (d *StructStateDiffer) captureStructFields(rv reflect.Value, prefix string, state map[string]any) {
 	rt := rv.Type()
 
 	for i := 0; i < rv.NumField(); i++ {
@@ -204,7 +204,7 @@ func (d *StructStateDiffer) captureStructFields(rv reflect.Value, prefix string,
 		switch field.Kind() {
 		case reflect.Struct:
 			d.captureStructFields(field, fieldPath, state)
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
 				d.captureStructFields(field.Elem(), fieldPath, state)
 			} else if !field.IsNil() {
@@ -217,7 +217,7 @@ func (d *StructStateDiffer) captureStructFields(rv reflect.Value, prefix string,
 					mapFieldPath := fieldPath + "." + key.String()
 					if mapValue.Kind() == reflect.Struct {
 						d.captureStructFields(mapValue, mapFieldPath, state)
-					} else if mapValue.Kind() == reflect.Ptr && !mapValue.IsNil() && mapValue.Elem().Kind() == reflect.Struct {
+					} else if mapValue.Kind() == reflect.Pointer && !mapValue.IsNil() && mapValue.Elem().Kind() == reflect.Struct {
 						d.captureStructFields(mapValue.Elem(), mapFieldPath, state)
 					} else {
 						state[mapFieldPath] = mapValue.Interface()
@@ -284,6 +284,6 @@ func (d *StructStateDiffer) computeAndRecordDiffs(feederType, sourceType, instan
 
 // Reset clears the captured states for reuse
 func (d *StructStateDiffer) Reset() {
-	d.beforeState = make(map[string]interface{})
-	d.afterState = make(map[string]interface{})
+	d.beforeState = make(map[string]any)
+	d.afterState = make(map[string]any)
 }

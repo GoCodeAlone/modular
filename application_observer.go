@@ -29,10 +29,19 @@ type ObservableApplication struct {
 // all existing functionality.
 func NewObservableApplication(cp ConfigProvider, logger Logger) *ObservableApplication {
 	stdApp := NewStdApplication(cp, logger).(*StdApplication)
-	return &ObservableApplication{
+	obsApp := &ObservableApplication{
 		StdApplication: stdApp,
 		observers:      make(map[string]*observerRegistration),
 	}
+	// Wire phase change hook to emit CloudEvents.
+	stdApp.phaseChangeHook = func(old, new AppPhase) {
+		evt := NewCloudEvent(EventTypeAppPhaseChanged, "application", map[string]any{
+			"old_phase": old.String(),
+			"new_phase": new.String(),
+		}, nil)
+		obsApp.emitEvent(context.Background(), evt)
+	}
+	return obsApp
 }
 
 // RegisterObserver adds an observer to receive notifications from the application.
@@ -93,7 +102,6 @@ func (app *ObservableApplication) NotifyObservers(ctx context.Context, event clo
 	// Otherwise, notify observers in goroutines to avoid blocking.
 	synchronous := IsSynchronousNotification(ctx)
 	for _, registration := range app.observers {
-		registration := registration // capture for goroutine
 
 		// Check if observer is interested in this event type
 		if len(registration.eventTypes) > 0 && !registration.eventTypes[event.Type()] {
@@ -163,7 +171,7 @@ func (app *ObservableApplication) RegisterModule(module Module) {
 
 	// Emit synchronously so tests observing immediate module registration are reliable.
 	ctx := WithSynchronousNotification(context.Background())
-	evt := NewModuleLifecycleEvent("application", "module", module.Name(), "", "registered", map[string]interface{}{
+	evt := NewModuleLifecycleEvent("application", "module", module.Name(), "", "registered", map[string]any{
 		"moduleType": getTypeName(module),
 	})
 	app.emitEvent(ctx, evt)
@@ -176,7 +184,7 @@ func (app *ObservableApplication) RegisterService(name string, service any) erro
 		return err
 	}
 
-	evt := NewCloudEvent(EventTypeServiceRegistered, "application", map[string]interface{}{
+	evt := NewCloudEvent(EventTypeServiceRegistered, "application", map[string]any{
 		"serviceName": name,
 		"serviceType": getTypeName(service),
 	}, nil)
@@ -199,7 +207,7 @@ func (app *ObservableApplication) Init() error {
 	// Historically the framework emitted config loaded/validated events during initialization.
 	// Even though structured lifecycle events now exist, tests (and possibly external observers)
 	// still expect these generic configuration events to appear.
-	cfgLoaded := NewCloudEvent(EventTypeConfigLoaded, "application", map[string]interface{}{"phase": "init"}, nil)
+	cfgLoaded := NewCloudEvent(EventTypeConfigLoaded, "application", map[string]any{"phase": "init"}, nil)
 	app.emitEvent(ctx, cfgLoaded)
 
 	// Register observers for any ObservableModule instances BEFORE calling module Init()
@@ -219,17 +227,17 @@ func (app *ObservableApplication) Init() error {
 	app.logger.Debug("ObservableApplication initializing modules with observable application instance")
 	err := app.InitWithApp(app)
 	if err != nil {
-		failureEvt := NewModuleLifecycleEvent("application", "application", "", "", "failed", map[string]interface{}{"phase": "init", "error": err.Error()})
+		failureEvt := NewModuleLifecycleEvent("application", "application", "", "", "failed", map[string]any{"phase": "init", "error": err.Error()})
 		app.emitEvent(ctx, failureEvt)
 		return err
 	}
 
 	// Backward compatibility: emit legacy config.validated event after successful initialization.
-	cfgValidated := NewCloudEvent(EventTypeConfigValidated, "application", map[string]interface{}{"phase": "init_complete"}, nil)
+	cfgValidated := NewCloudEvent(EventTypeConfigValidated, "application", map[string]any{"phase": "init_complete"}, nil)
 	app.emitEvent(ctx, cfgValidated)
 
 	// Emit initialization complete
-	evtInitComplete := NewModuleLifecycleEvent("application", "application", "", "", "initialized", map[string]interface{}{"phase": "init_complete"})
+	evtInitComplete := NewModuleLifecycleEvent("application", "application", "", "", "initialized", map[string]any{"phase": "init_complete"})
 	app.emitEvent(ctx, evtInitComplete)
 
 	return nil
@@ -241,7 +249,7 @@ func (app *ObservableApplication) Start() error {
 
 	err := app.StdApplication.Start()
 	if err != nil {
-		failureEvt := NewModuleLifecycleEvent("application", "application", "", "", "failed", map[string]interface{}{"phase": "start", "error": err.Error()})
+		failureEvt := NewModuleLifecycleEvent("application", "application", "", "", "failed", map[string]any{"phase": "start", "error": err.Error()})
 		app.emitEvent(ctx, failureEvt)
 		return err
 	}
@@ -259,7 +267,7 @@ func (app *ObservableApplication) Stop() error {
 
 	err := app.StdApplication.Stop()
 	if err != nil {
-		failureEvt := NewModuleLifecycleEvent("application", "application", "", "", "failed", map[string]interface{}{"phase": "stop", "error": err.Error()})
+		failureEvt := NewModuleLifecycleEvent("application", "application", "", "", "failed", map[string]any{"phase": "stop", "error": err.Error()})
 		app.emitEvent(ctx, failureEvt)
 		return err
 	}
@@ -272,7 +280,7 @@ func (app *ObservableApplication) Stop() error {
 }
 
 // getTypeName returns the type name of an interface{} value
-func getTypeName(v interface{}) string {
+func getTypeName(v any) string {
 	if v == nil {
 		return "nil"
 	}

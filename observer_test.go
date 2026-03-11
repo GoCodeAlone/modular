@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"slices"
 	"context"
 	"errors"
 	"testing"
@@ -11,7 +12,7 @@ import (
 
 func TestCloudEvent(t *testing.T) {
 	t.Parallel()
-	metadata := map[string]interface{}{"key": "value"}
+	metadata := map[string]any{"key": "value"}
 	event := NewCloudEvent(
 		"test.event",
 		"test.source",
@@ -195,11 +196,8 @@ func (m *mockSubject) NotifyObservers(ctx context.Context, event cloudevents.Eve
 			_ = registration.observer.OnEvent(ctx, event)
 		} else {
 			// Check if event type matches observer's interests
-			for _, eventType := range registration.eventTypes {
-				if eventType == event.Type() {
-					_ = registration.observer.OnEvent(ctx, event)
-					break
-				}
+			if slices.Contains(registration.eventTypes, event.Type()) {
+				_ = registration.observer.OnEvent(ctx, event)
 			}
 		}
 	}

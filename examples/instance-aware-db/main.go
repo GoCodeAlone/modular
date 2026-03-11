@@ -8,7 +8,7 @@ import (
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/database"
+	"github.com/GoCodeAlone/modular/modules/database/v2"
 
 	// Import SQLite driver
 	_ "github.com/mattn/go-sqlite3"

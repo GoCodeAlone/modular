@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -254,6 +257,21 @@ type Application interface {
 	OnConfigLoaded(hook func(app Application) error)
 }
 
+// PhaseAware is an optional interface for applications that expose lifecycle phase tracking.
+type PhaseAware interface {
+	Phase() AppPhase
+}
+
+// ReloadableApp is an optional interface for applications that support dynamic config reload.
+type ReloadableApp interface {
+	RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error
+}
+
+// MetricsCollector is an optional interface for applications that aggregate module metrics.
+type MetricsCollector interface {
+	CollectAllMetrics(ctx context.Context) []ModuleMetrics
+}
+
 // TenantApplication extends Application with multi-tenant functionality.
 // This interface adds tenant-aware capabilities to the standard Application,
 // allowing the same application instance to serve multiple tenants with
@@ -336,6 +354,14 @@ type StdApplication struct {
 	configFeeders       []Feeder                  // Optional per-application feeders (override global ConfigFeeders if non-nil)
 	startTime           time.Time                 // Tracks when the application was started
 	configLoadedHooks   []func(Application) error // Hooks to run after config loading but before module initialization
+	dependencyHints     []DependencyEdge          // Config-driven dependency edges injected via WithModuleDependency
+	drainTimeout        time.Duration             // Timeout for pre-stop drain phase
+	phase               atomic.Int32              // Current lifecycle phase (AppPhase)
+	parallelInit        bool                      // Enable parallel module initialization at same topo depth
+	initMu              sync.Mutex                // Guards SetCurrentModule/ClearCurrentModule in parallel init
+	dynamicReload       bool                      // Enable dynamic reload orchestrator
+	reloadOrchestrator  *ReloadOrchestrator       // Coordinates config reload across Reloadable modules
+	phaseChangeHook     func(old, new AppPhase)   // Optional hook called on phase transitions (used by ObservableApplication)
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -482,7 +508,7 @@ func (app *StdApplication) GetService(name string, target any) error {
 	}
 
 	targetValue := reflect.ValueOf(target)
-	if targetValue.Kind() != reflect.Ptr || targetValue.IsNil() {
+	if targetValue.Kind() != reflect.Pointer || targetValue.IsNil() {
 		return ErrTargetNotPointer
 	}
 
@@ -517,13 +543,117 @@ func (app *StdApplication) GetService(name string, target any) error {
 	if serviceType.AssignableTo(targetType) {
 		targetValue.Elem().Set(reflect.ValueOf(service))
 		return nil
-	} else if serviceType.Kind() == reflect.Ptr && serviceType.Elem().AssignableTo(targetType) {
+	} else if serviceType.Kind() == reflect.Pointer && serviceType.Elem().AssignableTo(targetType) {
 		targetValue.Elem().Set(reflect.ValueOf(service).Elem())
 		return nil
 	}
 
 	return fmt.Errorf("%w: service '%s' of type %s cannot be assigned to %s",
 		ErrServiceIncompatible, name, serviceType, targetType)
+}
+
+// Phase returns the current lifecycle phase of the application.
+func (app *StdApplication) Phase() AppPhase {
+	return AppPhase(app.phase.Load())
+}
+
+func (app *StdApplication) setPhase(p AppPhase) {
+	old := AppPhase(app.phase.Swap(int32(p)))
+	if app.phaseChangeHook != nil {
+		app.phaseChangeHook(old, p)
+	}
+}
+
+// computeDepthLevels groups module names from a topological order into levels
+// where modules at the same level have no dependencies on each other and can
+// be initialized concurrently. The graph parameter is the fully resolved
+// dependency graph (including implicit service dependencies) from resolveDependencies.
+func computeDepthLevels(order []string, graph map[string][]string) [][]string {
+	// Build dependency set per module from the full resolved graph
+	deps := make(map[string]map[string]bool)
+	for _, name := range order {
+		deps[name] = make(map[string]bool)
+		for _, d := range graph[name] {
+			deps[name][d] = true
+		}
+	}
+
+	placed := make(map[string]bool)
+	var levels [][]string
+
+	for len(placed) < len(order) {
+		var level []string
+		for _, name := range order {
+			if placed[name] {
+				continue
+			}
+			// Check if all deps are placed
+			ready := true
+			for dep := range deps[name] {
+				if !placed[dep] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				level = append(level, name)
+			}
+		}
+		if len(level) == 0 {
+			// No progress — remaining modules have unresolvable dependencies
+			break
+		}
+		for _, name := range level {
+			placed[name] = true
+		}
+		levels = append(levels, level)
+	}
+	return levels
+}
+
+// initModule initializes a single module: injects services, calls Init, registers provided services.
+// Thread-safe for parallel init: uses RegisterServiceForModule to associate services with the
+// correct module without relying on the shared currentModule field.
+func (app *StdApplication) initModule(appToPass Application, moduleName string) error {
+	app.initMu.Lock()
+	module := app.moduleRegistry[moduleName]
+
+	if _, ok := module.(ServiceAware); ok {
+		var err error
+		app.moduleRegistry[moduleName], err = app.injectServices(module)
+		if err != nil {
+			app.initMu.Unlock()
+			return fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err)
+		}
+		module = app.moduleRegistry[moduleName]
+	}
+	app.initMu.Unlock()
+
+	if err := module.Init(appToPass); err != nil {
+		return fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err)
+	}
+
+	// Register provided services with explicit module association (no shared state).
+	if sa, ok := module.(ServiceAware); ok {
+		for _, svc := range sa.ProvidesServices() {
+			if app.enhancedSvcRegistry != nil {
+				actualName, err := app.enhancedSvcRegistry.RegisterServiceForModule(svc.Name, svc.Instance, module)
+				if err != nil {
+					return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
+				}
+				app.initMu.Lock()
+				app.svcRegistry[actualName] = svc.Instance
+				app.initMu.Unlock()
+			} else {
+				if err := app.RegisterService(svc.Name, svc.Instance); err != nil {
+					return fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err)
+				}
+			}
+		}
+	}
+
+	app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, module))
+	return nil
 }
 
 // Init initializes the application with the provided modules
@@ -542,6 +672,8 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 		}
 		return nil
 	}
+
+	app.setPhase(PhaseInitializing)
 
 	errs := make([]error, 0)
 	for name, module := range app.moduleRegistry {
@@ -583,52 +715,44 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	}
 
 	// Build dependency graph
-	moduleOrder, err := app.resolveDependencies()
+	moduleOrder, depGraph, err := app.resolveDependencies()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to resolve module dependencies: %w", err))
 	}
 
 	// Initialize modules in order
-	for _, moduleName := range moduleOrder {
-		module := app.moduleRegistry[moduleName]
-
-		if _, ok := module.(ServiceAware); ok {
-			// Inject required services
-			app.moduleRegistry[moduleName], err = app.injectServices(module)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("failed to inject services for module '%s': %w", moduleName, err))
-				continue
-			}
-			module = app.moduleRegistry[moduleName] // Update reference after injection
-		}
-
-		// Set current module context for service registration tracking
-		if app.enhancedSvcRegistry != nil {
-			app.enhancedSvcRegistry.SetCurrentModule(module)
-		}
-
-		if err = module.Init(appToPass); err != nil {
-			errs = append(errs, fmt.Errorf("module '%s' failed to initialize: %w", moduleName, err))
-			continue
-		}
-
-		if _, ok := module.(ServiceAware); ok {
-			// Register services provided by modules
-			for _, svc := range module.(ServiceAware).ProvidesServices() {
-				if err = app.RegisterService(svc.Name, svc.Instance); err != nil {
-					// Collect registration errors (e.g., duplicates) for reporting
-					errs = append(errs, fmt.Errorf("module '%s' failed to register service '%s': %w", moduleName, svc.Name, err))
-					continue
+	if app.parallelInit {
+		// Parallel init: group modules by topological depth and init each level concurrently
+		levels := computeDepthLevels(moduleOrder, depGraph)
+		for _, level := range levels {
+			if len(level) == 1 {
+				if initErr := app.initModule(appToPass, level[0]); initErr != nil {
+					errs = append(errs, initErr)
 				}
+			} else {
+				var wg sync.WaitGroup
+				var mu sync.Mutex
+				for _, moduleName := range level {
+					wg.Add(1)
+					go func(name string) {
+						defer wg.Done()
+						if initErr := app.initModule(appToPass, name); initErr != nil {
+							mu.Lock()
+							errs = append(errs, initErr)
+							mu.Unlock()
+						}
+					}(moduleName)
+				}
+				wg.Wait()
 			}
 		}
-
-		// Clear current module context
-		if app.enhancedSvcRegistry != nil {
-			app.enhancedSvcRegistry.ClearCurrentModule()
+	} else {
+		// Sequential init (original behavior)
+		for _, moduleName := range moduleOrder {
+			if initErr := app.initModule(appToPass, moduleName); initErr != nil {
+				errs = append(errs, initErr)
+			}
 		}
-
-		app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
 	}
 
 	// Initialize tenant configuration after modules have registered their configurations
@@ -636,9 +760,24 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 		errs = append(errs, fmt.Errorf("failed to initialize tenant configurations: %w", err))
 	}
 
+	// Wire up the ReloadOrchestrator if dynamic reload is enabled
+	if app.dynamicReload {
+		var subject Subject
+		if obsApp, ok := appToPass.(*ObservableApplication); ok {
+			subject = obsApp
+		}
+		app.reloadOrchestrator = NewReloadOrchestrator(app.logger, subject)
+		for name, module := range app.moduleRegistry {
+			if reloadable, ok := module.(Reloadable); ok {
+				app.reloadOrchestrator.RegisterReloadable(name, reloadable)
+			}
+		}
+	}
+
 	// Mark as initialized only after completing Init flow
 	if len(errs) == 0 {
 		app.initialized = true
+		app.setPhase(PhaseInitialized)
 	}
 
 	return errors.Join(errs...)
@@ -676,6 +815,8 @@ func (app *StdApplication) initTenantConfigurations() error {
 
 // Start starts the application
 func (app *StdApplication) Start() error {
+	app.setPhase(PhaseStarting)
+
 	// Record the start time
 	app.startTime = time.Now()
 
@@ -685,7 +826,7 @@ func (app *StdApplication) Start() error {
 	app.cancel = cancel
 
 	// Start modules in dependency order
-	modules, err := app.resolveDependencies()
+	modules, _, err := app.resolveDependencies()
 	if err != nil {
 		return err
 	}
@@ -703,13 +844,24 @@ func (app *StdApplication) Start() error {
 		}
 	}
 
+	if app.reloadOrchestrator != nil {
+		app.reloadOrchestrator.Start(ctx)
+	}
+
+	app.setPhase(PhaseRunning)
 	return nil
 }
 
 // Stop stops the application
 func (app *StdApplication) Stop() error {
+	if app.reloadOrchestrator != nil {
+		app.reloadOrchestrator.Stop()
+	}
+
+	app.setPhase(PhaseDraining)
+
 	// Get modules in reverse dependency order
-	modules, err := app.resolveDependencies()
+	modules, _, err := app.resolveDependencies()
 	if err != nil {
 		return err
 	}
@@ -717,7 +869,27 @@ func (app *StdApplication) Stop() error {
 	// Reverse the slice
 	slices.Reverse(modules)
 
-	// Create timeout context for shutdown
+	// Phase 1: Drain
+	drainTimeout := app.drainTimeout
+	if drainTimeout <= 0 {
+		drainTimeout = defaultDrainTimeout
+	}
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer drainCancel()
+
+	for _, name := range modules {
+		module := app.moduleRegistry[name]
+		if drainable, ok := module.(Drainable); ok {
+			app.logger.Info("Draining module", "module", name)
+			if err := drainable.PreStop(drainCtx); err != nil {
+				app.logger.Error("Error draining module", "module", name, "error", err)
+			}
+		}
+	}
+
+	app.setPhase(PhaseStopping)
+
+	// Phase 2: Stop
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -727,7 +899,6 @@ func (app *StdApplication) Stop() error {
 		module := app.moduleRegistry[name]
 		stoppableModule, ok := module.(Stoppable)
 		if !ok {
-			app.logger.Debug("Module does not implement Stoppable, skipping", "module", name)
 			continue
 		}
 		app.logger.Info("Stopping module", "module", name)
@@ -742,7 +913,17 @@ func (app *StdApplication) Stop() error {
 		app.cancel()
 	}
 
+	app.setPhase(PhaseStopped)
 	return lastErr
+}
+
+// RequestReload enqueues a configuration reload request with the ReloadOrchestrator.
+// Returns an error if dynamic reload was not enabled via WithDynamicReload().
+func (app *StdApplication) RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error {
+	if app.reloadOrchestrator == nil {
+		return ErrDynamicReloadNotEnabled
+	}
+	return app.reloadOrchestrator.RequestReload(ctx, trigger, diff)
 }
 
 // Run starts the application and blocks until termination
@@ -1079,7 +1260,7 @@ func (e EdgeType) String() string {
 }
 
 // resolveDependencies returns modules in initialization order
-func (app *StdApplication) resolveDependencies() ([]string, error) {
+func (app *StdApplication) resolveDependencies() ([]string, map[string][]string, error) {
 	// Create dependency graph and track dependency edges
 	graph := make(map[string][]string)
 	dependencyEdges := make([]DependencyEdge, 0)
@@ -1101,6 +1282,18 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 				Type: EdgeTypeModule,
 			})
 		}
+	}
+
+	// Merge config-driven dependency hints (validate both endpoints exist)
+	for _, hint := range app.dependencyHints {
+		if _, ok := app.moduleRegistry[hint.From]; !ok {
+			return nil, nil, fmt.Errorf("dependency hint from %q: %w", hint.From, ErrModuleDependencyMissing)
+		}
+		if _, ok := app.moduleRegistry[hint.To]; !ok {
+			return nil, nil, fmt.Errorf("dependency hint to %q: %w", hint.To, ErrModuleDependencyMissing)
+		}
+		graph[hint.From] = append(graph[hint.From], hint.To)
+		dependencyEdges = append(dependencyEdges, hint)
 	}
 
 	// Analyze service dependencies to augment the graph with implicit dependencies
@@ -1182,7 +1375,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	for _, node := range nodes {
 		if !visited[node] {
 			if err := visit(node); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
@@ -1190,7 +1383,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	// log result
 	app.logger.Debug("Module initialization order", "order", result)
 
-	return result, nil
+	return result, graph, nil
 }
 
 // constructCyclePath constructs a detailed cycle path showing the dependency chain
@@ -1434,7 +1627,7 @@ func (app *StdApplication) typeImplementsInterface(svcType, interfaceType reflec
 	if svcType.Implements(interfaceType) {
 		return true
 	}
-	if svcType.Kind() == reflect.Ptr {
+	if svcType.Kind() == reflect.Pointer {
 		et := svcType.Elem()
 		if et != nil && et.Implements(interfaceType) {
 			return true
@@ -1496,10 +1689,8 @@ func (app *StdApplication) addNameBasedDependency(
 	}
 
 	// Check if dependency already exists
-	for _, existingDep := range graph[consumerName] {
-		if existingDep == providerModule {
-			return nil // Already exists
-		}
+	if slices.Contains(graph[consumerName], providerModule) {
+		return nil // Already exists
 	}
 
 	// Add the dependency
@@ -1549,10 +1740,8 @@ func (app *StdApplication) addInterfaceBasedDependencyWithTypeInfo(match Interfa
 		app.logger.Debug("Adding required self interface dependency to expose unsatisfiable self-requirement", "module", match.Consumer, "interface", match.InterfaceType.Name(), "service", match.ServiceName)
 	}
 	// Check if this dependency already exists
-	for _, existingDep := range graph[match.Consumer] {
-		if existingDep == match.Provider {
-			return nil
-		}
+	if slices.Contains(graph[match.Consumer], match.Provider) {
+		return nil
 	}
 
 	// Add the dependency (including self-dependencies for cycle detection)
@@ -1644,10 +1833,27 @@ func (app *StdApplication) GetModule(name string) Module {
 // Returns a copy to prevent external modification of the module registry.
 func (app *StdApplication) GetAllModules() map[string]Module {
 	result := make(map[string]Module, len(app.moduleRegistry))
-	for k, v := range app.moduleRegistry {
-		result[k] = v
-	}
+	maps.Copy(result, app.moduleRegistry)
 	return result
+}
+
+// CollectAllMetrics gathers metrics from all modules implementing MetricsProvider.
+func (app *StdApplication) CollectAllMetrics(ctx context.Context) []ModuleMetrics {
+	// Snapshot module registry under lock to avoid races with parallel init.
+	app.initMu.Lock()
+	modules := make([]Module, 0, len(app.moduleRegistry))
+	for _, module := range app.moduleRegistry {
+		modules = append(modules, module)
+	}
+	app.initMu.Unlock()
+
+	var results []ModuleMetrics
+	for _, module := range modules {
+		if mp, ok := module.(MetricsProvider); ok {
+			results = append(results, mp.CollectMetrics(ctx))
+		}
+	}
+	return results
 }
 
 // OnConfigLoaded registers a callback to run after config loading but before module initialization.

@@ -74,7 +74,7 @@ func Test_ResolveDependencies(t *testing.T) {
 			}
 
 			// Resolve dependencies
-			order, err := app.resolveDependencies()
+			order, _, err := app.resolveDependencies()
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveDependencies() error = %v, wantErr %v", err, tt.wantErr)

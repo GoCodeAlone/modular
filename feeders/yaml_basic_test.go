@@ -132,8 +132,8 @@ func TestYamlFeeder_NewYamlFeeder(t *testing.T) {
 	if feeder.verboseDebug {
 		t.Error("Expected verboseDebug to be false by default")
 	}
-	if feeder.logger != nil {
-		t.Error("Expected logger to be nil by default")
+	if feeder.debugFn != nil {
+		t.Error("Expected debugFn to be nil by default")
 	}
 	if feeder.fieldTracker != nil {
 		t.Error("Expected fieldTracker to be nil by default")
@@ -149,8 +149,8 @@ func TestYamlFeeder_SetVerboseDebug(t *testing.T) {
 	if !feeder.verboseDebug {
 		t.Error("Expected verboseDebug to be true")
 	}
-	if feeder.logger != logger {
-		t.Error("Expected logger to be set")
+	if feeder.debugFn == nil {
+		t.Error("Expected debugFn to be set")
 	}
 
 	// Check that debug message was logged

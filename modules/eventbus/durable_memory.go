@@ -216,7 +216,7 @@ func (d *DurableMemoryEventBus) Start(ctx context.Context) error {
 	if d.isStarted {
 		return nil
 	}
-	d.ctx, d.cancel = context.WithCancel(ctx)
+	d.ctx, d.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in d.cancel and called in Stop()
 	d.isStarted = true
 	return nil
 }

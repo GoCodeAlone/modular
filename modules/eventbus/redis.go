@@ -140,7 +140,7 @@ func (r *RedisEventBus) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	r.ctx, r.cancel = context.WithCancel(ctx)
+	r.ctx, r.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in r.cancel and called in Stop()
 	r.isStarted = true
 	return nil
 }

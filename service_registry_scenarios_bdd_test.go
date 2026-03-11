@@ -83,7 +83,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) iQueryForServicesByInterfaceType()
 	}
 
 	// Query for services implementing TestServiceInterface
-	interfaceType := reflect.TypeOf((*TestServiceInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[TestServiceInterface]()
 	ctx.retrievedServices = ctx.app.GetServicesByInterface(interfaceType)
 	return nil
 }
@@ -173,7 +173,7 @@ func (ctx *EnhancedServiceRegistryBDDContext) eachServiceShouldGetAUniqueNameThr
 }
 
 func (ctx *EnhancedServiceRegistryBDDContext) allServicesShouldBeDiscoverableByInterface() error {
-	interfaceType := reflect.TypeOf((*TestServiceInterface)(nil)).Elem()
+	interfaceType := reflect.TypeFor[TestServiceInterface]()
 	services := ctx.app.GetServicesByInterface(interfaceType)
 
 	if len(services) != 3 {

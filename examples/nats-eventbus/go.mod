@@ -1,8 +1,8 @@
 module nats-eventbus
 
-go 1.25
+go 1.26
 
-toolchain go1.25.0
+toolchain go1.26.0
 
 replace github.com/GoCodeAlone/modular => ../../
 

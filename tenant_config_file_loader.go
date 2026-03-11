@@ -482,13 +482,13 @@ func getSectionNames(sections map[string]ConfigProvider) []string {
 
 // cloneConfigWithValues creates a new instance of the originalConfig type
 // and copies values from loadedConfig into it
-func cloneConfigWithValues(originalConfig, loadedConfig interface{}) (interface{}, error) {
+func cloneConfigWithValues(originalConfig, loadedConfig any) (any, error) {
 	if originalConfig == nil || loadedConfig == nil {
 		return nil, ErrOriginalOrLoadedNil
 	}
 
 	origType := reflect.TypeOf(originalConfig)
-	if origType.Kind() == reflect.Ptr {
+	if origType.Kind() == reflect.Pointer {
 		origType = origType.Elem()
 	}
 
@@ -504,21 +504,21 @@ func cloneConfigWithValues(originalConfig, loadedConfig interface{}) (interface{
 }
 
 // copyStructFields copies field values from src to dst
-func copyStructFields(dst, src interface{}) error {
+func copyStructFields(dst, src any) error {
 	dstVal := reflect.ValueOf(dst)
 	srcVal := reflect.ValueOf(src)
 
 	// Ensure we're working with pointers
-	if dstVal.Kind() != reflect.Ptr {
+	if dstVal.Kind() != reflect.Pointer {
 		return ErrDestinationNotPointer
 	}
 
 	// Dereference pointers to get the underlying values
-	if dstVal.Kind() == reflect.Ptr {
+	if dstVal.Kind() == reflect.Pointer {
 		dstVal = dstVal.Elem()
 	}
 
-	if srcVal.Kind() == reflect.Ptr {
+	if srcVal.Kind() == reflect.Pointer {
 		srcVal = srcVal.Elem()
 	}
 
