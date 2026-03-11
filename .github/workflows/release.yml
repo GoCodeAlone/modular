@@ -63,8 +63,9 @@ jobs:
           echo "Latest core tag: ${LATEST_TAG:-<none>}"
           CHANGED=false
           if [ -z "$LATEST_TAG" ]; then
-            # No prior release; treat as changed if any go files or go.mod/go.sum exist (initial release scenario)
-            if git ls-files '*.go' 'go.mod' 'go.sum' | grep -v '^modules/' | head -n1 >/dev/null 2>&1; then CHANGED=true; fi
+            # No prior release; treat as changed if any go files or go.mod exist (initial release scenario).
+            # go.sum is excluded — it's a lockfile that changes on every go mod tidy.
+            if git ls-files '*.go' 'go.mod' | grep -v '^modules/' | head -n1 >/dev/null 2>&1; then CHANGED=true; fi
           else
             DIFF=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v '^modules/' || true)
             RELEVANT=""
@@ -74,7 +75,10 @@ jobs:
                 [[ $f == *.md ]] && continue
                 [[ $f == .github/* ]] && continue
                 [[ $f == examples/* ]] && continue
-                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]] || [[ $f == ./go.mod ]] || [[ $f == ./go.sum ]]; then
+                # Accept .go plus root go.mod (NOT go.sum — it's a lockfile that
+                # changes whenever auto-bump runs go mod tidy and should not
+                # trigger a new core release by itself).
+                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == ./go.mod ]]; then
                   RELEVANT+="$f "
                 fi
               done <<< "$DIFF"

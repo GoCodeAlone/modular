@@ -53,7 +53,6 @@ jobs:
                 [[ $f == *.md ]] && continue
                 [[ $f == .github/* ]] && continue
                 [[ $f == examples/* ]] && continue
-                [[ $f == cmd/* ]] && continue
                 # Accept .go plus root go.mod (NOT go.sum — it's a lockfile that
                 # changes whenever auto-bump runs go mod tidy and should not
                 # trigger a new core release by itself).
