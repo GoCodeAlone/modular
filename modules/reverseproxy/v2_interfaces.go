@@ -2,7 +2,6 @@ package reverseproxy
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/GoCodeAlone/modular"
 )
@@ -48,8 +47,6 @@ func (m *ReverseProxyModule) CollectMetrics(_ context.Context) modular.ModuleMet
 func (m *ReverseProxyModule) PreStop(ctx context.Context) error {
 	if m.app != nil && m.app.Logger() != nil {
 		m.app.Logger().Info("PreStop: draining reverseproxy module")
-	} else {
-		slog.InfoContext(ctx, "PreStop: draining reverseproxy module")
 	}
 
 	// Stop health checker early so backends aren't flapped during drain

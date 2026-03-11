@@ -24,7 +24,9 @@ func (m *HTTPServerModule) PreStop(ctx context.Context) error {
 	m.mu.Lock()
 	m.draining = true
 	m.mu.Unlock()
-	m.logger.Info("HTTP server entering drain phase")
+	if m.logger != nil {
+		m.logger.Info("HTTP server entering drain phase")
+	}
 	return nil
 }
 
@@ -41,8 +43,10 @@ func (m *HTTPServerModule) ReloadTimeout() time.Duration {
 
 // Reload applies configuration changes to the running HTTP server.
 // Supported fields: ReadTimeout, WriteTimeout, IdleTimeout.
-// These fields can be updated on a live http.Server without restart.
-func (m *HTTPServerModule) Reload(ctx context.Context, changes []modular.ConfigChange) error {
+// Note: http.Server timeout fields are not safe for concurrent mutation on a
+// running server, so only the config is updated here. The new values take
+// effect if the server is restarted.
+func (m *HTTPServerModule) Reload(_ context.Context, changes []modular.ConfigChange) error {
 	if !m.started || m.server == nil {
 		return fmt.Errorf("cannot reload: server not started")
 	}
@@ -63,8 +67,6 @@ func (m *HTTPServerModule) Reload(ctx context.Context, changes []modular.ConfigC
 				return fmt.Errorf("invalid ReadTimeout value %q: %w", change.NewValue, err)
 			}
 			m.config.ReadTimeout = d
-			m.server.ReadTimeout = d
-			m.logger.Info("Reloaded ReadTimeout", "value", d)
 
 		case "writetimeout", "write_timeout":
 			d, err := time.ParseDuration(change.NewValue)
@@ -72,8 +74,6 @@ func (m *HTTPServerModule) Reload(ctx context.Context, changes []modular.ConfigC
 				return fmt.Errorf("invalid WriteTimeout value %q: %w", change.NewValue, err)
 			}
 			m.config.WriteTimeout = d
-			m.server.WriteTimeout = d
-			m.logger.Info("Reloaded WriteTimeout", "value", d)
 
 		case "idletimeout", "idle_timeout":
 			d, err := time.ParseDuration(change.NewValue)
@@ -81,11 +81,6 @@ func (m *HTTPServerModule) Reload(ctx context.Context, changes []modular.ConfigC
 				return fmt.Errorf("invalid IdleTimeout value %q: %w", change.NewValue, err)
 			}
 			m.config.IdleTimeout = d
-			m.server.IdleTimeout = d
-			m.logger.Info("Reloaded IdleTimeout", "value", d)
-
-		default:
-			m.logger.Debug("Ignoring unsupported config change", "field", change.FieldPath)
 		}
 	}
 

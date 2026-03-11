@@ -81,7 +81,7 @@ func TestHTTPServerModule_Reloadable(t *testing.T) {
 		assert.Equal(t, 5*time.Second, m.ReloadTimeout())
 	})
 
-	t.Run("Reload updates server timeouts", func(t *testing.T) {
+	t.Run("Reload updates config timeouts", func(t *testing.T) {
 		m := newTestModule(t)
 		m.started = true
 		m.server = &http.Server{
@@ -99,14 +99,11 @@ func TestHTTPServerModule_Reloadable(t *testing.T) {
 		err := m.Reload(context.Background(), changes)
 		require.NoError(t, err)
 
+		// Config is updated; server fields are not mutated to avoid data races
+		// on a running http.Server (new values take effect on restart).
 		assert.Equal(t, 30*time.Second, m.config.ReadTimeout)
-		assert.Equal(t, 30*time.Second, m.server.ReadTimeout)
-
 		assert.Equal(t, 25*time.Second, m.config.WriteTimeout)
-		assert.Equal(t, 25*time.Second, m.server.WriteTimeout)
-
 		assert.Equal(t, 120*time.Second, m.config.IdleTimeout)
-		assert.Equal(t, 120*time.Second, m.server.IdleTimeout)
 	})
 
 	t.Run("Reload rejects invalid duration", func(t *testing.T) {

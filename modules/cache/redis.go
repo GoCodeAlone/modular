@@ -191,15 +191,18 @@ func (c *RedisCache) DeleteMulti(ctx context.Context, keys []string) error {
 	return nil
 }
 
-// Stats returns redis cache metrics.
-func (c *RedisCache) Stats(ctx context.Context) map[string]float64 {
-	connected := 0.0
-	if c.client != nil {
-		if err := c.client.Ping(ctx).Err(); err == nil {
-			connected = 1.0
-		}
+// Stats returns redis cache metrics using pool statistics (no network round-trip).
+func (c *RedisCache) Stats(_ context.Context) map[string]float64 {
+	if c.client == nil {
+		return map[string]float64{"connected": 0}
 	}
+	ps := c.client.PoolStats()
 	return map[string]float64{
-		"connected": connected,
+		"connected":   1,
+		"pool_hits":   float64(ps.Hits),
+		"pool_misses": float64(ps.Misses),
+		"total_conns": float64(ps.TotalConns),
+		"idle_conns":  float64(ps.IdleConns),
+		"stale_conns": float64(ps.StaleConns),
 	}
 }

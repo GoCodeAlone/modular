@@ -61,15 +61,13 @@ func TestCacheModule_Reloadable(t *testing.T) {
 	assert.True(t, reloadable.CanReload())
 	assert.Equal(t, 5*time.Second, reloadable.ReloadTimeout())
 
-	// Verify reload updates config
+	// Verify reload updates config (cleanupInterval is not reloadable)
 	changes := []modular.ConfigChange{
 		{FieldPath: "defaultTTL", NewValue: "600s"},
 		{FieldPath: "maxItems", NewValue: "5000"},
-		{FieldPath: "cleanupInterval", NewValue: "30s"},
 	}
 	require.NoError(t, reloadable.Reload(ctx, changes))
 
 	assert.Equal(t, 600*time.Second, module.config.DefaultTTL)
 	assert.Equal(t, 5000, module.config.MaxItems)
-	assert.Equal(t, 30*time.Second, module.config.CleanupInterval)
 }
