@@ -257,6 +257,21 @@ type Application interface {
 	OnConfigLoaded(hook func(app Application) error)
 }
 
+// PhaseAware is an optional interface for applications that expose lifecycle phase tracking.
+type PhaseAware interface {
+	Phase() AppPhase
+}
+
+// ReloadableApp is an optional interface for applications that support dynamic config reload.
+type ReloadableApp interface {
+	RequestReload(ctx context.Context, trigger ReloadTrigger, diff ConfigDiff) error
+}
+
+// MetricsCollector is an optional interface for applications that aggregate module metrics.
+type MetricsCollector interface {
+	CollectAllMetrics(ctx context.Context) []ModuleMetrics
+}
+
 // TenantApplication extends Application with multi-tenant functionality.
 // This interface adds tenant-aware capabilities to the standard Application,
 // allowing the same application instance to serve multiple tenants with
@@ -346,6 +361,7 @@ type StdApplication struct {
 	initMu              sync.Mutex                // Guards SetCurrentModule/ClearCurrentModule in parallel init
 	dynamicReload       bool                      // Enable dynamic reload orchestrator
 	reloadOrchestrator  *ReloadOrchestrator       // Coordinates config reload across Reloadable modules
+	phaseChangeHook     func(old, new AppPhase)   // Optional hook called on phase transitions (used by ObservableApplication)
 }
 
 // NewStdApplication creates a new application instance with the provided configuration and logger.
@@ -542,7 +558,10 @@ func (app *StdApplication) Phase() AppPhase {
 }
 
 func (app *StdApplication) setPhase(p AppPhase) {
-	app.phase.Store(int32(p))
+	old := AppPhase(app.phase.Swap(int32(p)))
+	if app.phaseChangeHook != nil {
+		app.phaseChangeHook(old, p)
+	}
 }
 
 // computeDepthLevels groups module names from a topological order into levels
@@ -633,7 +652,7 @@ func (app *StdApplication) initModule(appToPass Application, moduleName string) 
 		}
 	}
 
-	app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, app.moduleRegistry[moduleName]))
+	app.logger.Info(fmt.Sprintf("Initialized module %s of type %T", moduleName, module))
 	return nil
 }
 
@@ -1817,8 +1836,16 @@ func (app *StdApplication) GetAllModules() map[string]Module {
 
 // CollectAllMetrics gathers metrics from all modules implementing MetricsProvider.
 func (app *StdApplication) CollectAllMetrics(ctx context.Context) []ModuleMetrics {
-	var results []ModuleMetrics
+	// Snapshot module registry under lock to avoid races with parallel init.
+	app.initMu.Lock()
+	modules := make([]Module, 0, len(app.moduleRegistry))
 	for _, module := range app.moduleRegistry {
+		modules = append(modules, module)
+	}
+	app.initMu.Unlock()
+
+	var results []ModuleMetrics
+	for _, module := range modules {
 		if mp, ok := module.(MetricsProvider); ok {
 			results = append(results, mp.CollectMetrics(ctx))
 		}

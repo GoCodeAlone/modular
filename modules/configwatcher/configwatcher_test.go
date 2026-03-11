@@ -47,7 +47,9 @@ func TestConfigWatcher_DetectsFileChange(t *testing.T) {
 func TestConfigWatcher_Debounces(t *testing.T) {
 	dir := t.TempDir()
 	cfgFile := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgFile, []byte("v1"), 0644)
+	if err := os.WriteFile(cfgFile, []byte("v1"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 
 	var changeCount atomic.Int32
 	w := New(
@@ -62,7 +64,9 @@ func TestConfigWatcher_Debounces(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	for i := range 5 {
-		os.WriteFile(cfgFile, []byte("v"+string(rune('2'+i))), 0644)
+		if err := os.WriteFile(cfgFile, []byte("v"+string(rune('2'+i))), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	time.Sleep(500 * time.Millisecond)

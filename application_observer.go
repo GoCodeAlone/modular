@@ -29,10 +29,19 @@ type ObservableApplication struct {
 // all existing functionality.
 func NewObservableApplication(cp ConfigProvider, logger Logger) *ObservableApplication {
 	stdApp := NewStdApplication(cp, logger).(*StdApplication)
-	return &ObservableApplication{
+	obsApp := &ObservableApplication{
 		StdApplication: stdApp,
 		observers:      make(map[string]*observerRegistration),
 	}
+	// Wire phase change hook to emit CloudEvents.
+	stdApp.phaseChangeHook = func(old, new AppPhase) {
+		evt := NewCloudEvent(EventTypeAppPhaseChanged, "application", map[string]any{
+			"old_phase": old.String(),
+			"new_phase": new.String(),
+		}, nil)
+		obsApp.emitEvent(context.Background(), evt)
+	}
+	return obsApp
 }
 
 // RegisterObserver adds an observer to receive notifications from the application.

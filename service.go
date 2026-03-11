@@ -83,42 +83,38 @@ func (r *EnhancedServiceRegistry) ClearCurrentModule() {
 // bypassing the shared currentModule field. This is safe for concurrent use
 // during parallel module initialization.
 func (r *EnhancedServiceRegistry) RegisterServiceForModule(name string, service any, module Module) (string, error) {
-	r.mu.Lock()
-
 	var moduleName string
 	var moduleType reflect.Type
-
 	if module != nil {
 		moduleName = module.Name()
 		moduleType = reflect.TypeOf(module)
 	}
-
-	return r.registerServiceLocked(name, service, moduleName, moduleType)
+	return r.registerAndNotify(name, service, moduleName, moduleType)
 }
 
 // RegisterService registers a service with automatic conflict resolution.
 // If a service name conflicts, it will automatically append module information.
 func (r *EnhancedServiceRegistry) RegisterService(name string, service any) (string, error) {
-	r.mu.Lock()
-
 	var moduleName string
 	var moduleType reflect.Type
 
+	r.mu.Lock()
 	if r.currentModule != nil {
 		moduleName = r.currentModule.Name()
 		moduleType = reflect.TypeOf(r.currentModule)
 	}
+	r.mu.Unlock()
 
-	return r.registerServiceLocked(name, service, moduleName, moduleType)
+	return r.registerAndNotify(name, service, moduleName, moduleType)
 }
 
-// registerServiceLocked performs service registration. Caller must hold r.mu.
-// The lock is released before firing callbacks to avoid deadlocks.
-func (r *EnhancedServiceRegistry) registerServiceLocked(name string, service any, moduleName string, moduleType reflect.Type) (string, error) {
+// registerAndNotify performs service registration under the lock,
+// then fires readiness callbacks outside the lock to avoid deadlocks.
+func (r *EnhancedServiceRegistry) registerAndNotify(name string, service any, moduleName string, moduleType reflect.Type) (string, error) {
+	r.mu.Lock()
 	callbacksToFire, actualName := r.registerServiceInner(name, service, moduleName, moduleType)
 	r.mu.Unlock()
 
-	// Fire callbacks outside the lock to avoid deadlocks
 	for _, cb := range callbacksToFire {
 		cb(service)
 	}

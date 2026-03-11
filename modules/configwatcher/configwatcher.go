@@ -18,6 +18,7 @@ type ConfigWatcher struct {
 	watcher  *fsnotify.Watcher
 	stopCh   chan struct{}
 	stopOnce sync.Once
+	logger   modular.Logger
 }
 
 // Option configures a ConfigWatcher.
@@ -35,6 +36,10 @@ func WithOnChange(fn func(paths []string)) Option {
 	return func(w *ConfigWatcher) { w.onChange = fn }
 }
 
+func WithLogger(l modular.Logger) Option {
+	return func(w *ConfigWatcher) { w.logger = l }
+}
+
 func New(opts ...Option) *ConfigWatcher {
 	w := &ConfigWatcher{
 		debounce: 500 * time.Millisecond,
@@ -48,9 +53,12 @@ func New(opts ...Option) *ConfigWatcher {
 
 func (w *ConfigWatcher) Name() string { return "configwatcher" }
 
-// Init satisfies the modular.Module interface. No-op since configuration is
-// provided via functional options at construction time.
-func (w *ConfigWatcher) Init(_ modular.Application) error {
+// Init satisfies the modular.Module interface. Captures the application logger
+// if one was not provided via WithLogger.
+func (w *ConfigWatcher) Init(app modular.Application) error {
+	if w.logger == nil {
+		w.logger = app.Logger()
+	}
 	return nil
 }
 
@@ -119,6 +127,13 @@ func (w *ConfigWatcher) eventLoop() {
 					timer.Stop()
 				}
 				timer = time.AfterFunc(w.debounce, func() {
+					// Check stopCh before invoking callback to avoid
+					// firing onChange after shutdown.
+					select {
+					case <-w.stopCh:
+						return
+					default:
+					}
 					if w.onChange != nil {
 						mu.Lock()
 						paths := make([]string, 0, len(changedPaths))
@@ -132,9 +147,12 @@ func (w *ConfigWatcher) eventLoop() {
 				})
 				mu.Unlock()
 			}
-		case _, ok := <-w.watcher.Errors:
+		case err, ok := <-w.watcher.Errors:
 			if !ok {
 				return
+			}
+			if w.logger != nil {
+				w.logger.Error("file watcher error", "error", err)
 			}
 		case <-w.stopCh:
 			if timer != nil {
