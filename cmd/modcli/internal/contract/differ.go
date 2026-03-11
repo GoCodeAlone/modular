@@ -294,7 +294,7 @@ func (d *Differ) compareStructFields(old, new TypeContract, diff *ContractDiff) 
 	// Check for modified fields (breaking change)
 	for fieldName, newField := range newFields {
 		if oldField, exists := oldFields[fieldName]; exists {
-			if oldField.Type != newField.Type {
+			if normalizeType(oldField.Type) != normalizeType(newField.Type) {
 				diff.BreakingChanges = append(diff.BreakingChanges, BreakingChange{
 					Type:        "changed_field_type",
 					Item:        fmt.Sprintf("%s.%s", new.Name, fieldName),
@@ -455,7 +455,7 @@ func (d *Differ) compareVariables(old, new []VariableContract, diff *ContractDif
 	// Check for modified variable types (breaking change)
 	for name, newVar := range newMap {
 		if oldVar, exists := oldMap[name]; exists {
-			if oldVar.Type != newVar.Type {
+			if normalizeType(oldVar.Type) != normalizeType(newVar.Type) {
 				diff.BreakingChanges = append(diff.BreakingChanges, BreakingChange{
 					Type:        "changed_variable_type",
 					Item:        name,
@@ -506,7 +506,7 @@ func (d *Differ) compareConstants(old, new []ConstantContract, diff *ContractDif
 	// Check for modified constants
 	for name, newConst := range newMap {
 		if oldConst, exists := oldMap[name]; exists {
-			if oldConst.Type != newConst.Type {
+			if normalizeType(oldConst.Type) != normalizeType(newConst.Type) {
 				diff.BreakingChanges = append(diff.BreakingChanges, BreakingChange{
 					Type:        "changed_constant_type",
 					Item:        name,
@@ -570,7 +570,7 @@ func (d *Differ) receiversEqual(old, new *ReceiverInfo) bool {
 	if old == nil || new == nil {
 		return false
 	}
-	return old.Type == new.Type && old.Pointer == new.Pointer
+	return normalizeType(old.Type) == normalizeType(new.Type) && old.Pointer == new.Pointer
 }
 
 func (d *Differ) parametersEqual(old, new []ParameterInfo) bool {
@@ -580,13 +580,20 @@ func (d *Differ) parametersEqual(old, new []ParameterInfo) bool {
 
 	for i, oldParam := range old {
 		newParam := new[i]
-		if oldParam.Type != newParam.Type {
+		if normalizeType(oldParam.Type) != normalizeType(newParam.Type) {
 			return false
 		}
 		// Note: Parameter names can change without breaking compatibility
 	}
 
 	return true
+}
+
+// normalizeType canonicalizes type strings so that aliases
+// (e.g. "interface{}" vs "any") are treated as identical.
+func normalizeType(t string) string {
+	t = strings.ReplaceAll(t, "interface{}", "any")
+	return t
 }
 
 // Signature formatting methods
