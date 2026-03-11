@@ -102,9 +102,9 @@ type testSubject struct {
 	events []cloudevents.Event
 }
 
-func (s *testSubject) RegisterObserver(_ Observer, _ ...string) error   { return nil }
-func (s *testSubject) UnregisterObserver(_ Observer) error               { return nil }
-func (s *testSubject) GetObservers() []ObserverInfo                      { return nil }
+func (s *testSubject) RegisterObserver(_ Observer, _ ...string) error { return nil }
+func (s *testSubject) UnregisterObserver(_ Observer) error            { return nil }
+func (s *testSubject) GetObservers() []ObserverInfo                   { return nil }
 func (s *testSubject) NotifyObservers(_ context.Context, event cloudevents.Event) error {
 	s.mu.Lock()
 	s.events = append(s.events, event)

@@ -1,10 +1,10 @@
 package modular
 
 import (
-	"slices"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"

@@ -1,8 +1,8 @@
 package modular
 
 import (
-	"maps"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"

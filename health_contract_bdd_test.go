@@ -14,16 +14,16 @@ import (
 
 // Static errors for health contract BDD tests.
 var (
-	errExpectedOverallHealthy       = errors.New("expected overall status to be healthy")
-	errExpectedOverallUnhealthy     = errors.New("expected overall status to be unhealthy")
-	errExpectedReadinessHealthy     = errors.New("expected readiness to be healthy")
-	errExpectedReadinessUnhealthy   = errors.New("expected readiness to be unhealthy")
-	errExpectedPanicUnhealthy       = errors.New("expected panicking provider to report unhealthy")
+	errExpectedOverallHealthy        = errors.New("expected overall status to be healthy")
+	errExpectedOverallUnhealthy      = errors.New("expected overall status to be unhealthy")
+	errExpectedReadinessHealthy      = errors.New("expected readiness to be healthy")
+	errExpectedReadinessUnhealthy    = errors.New("expected readiness to be unhealthy")
+	errExpectedPanicUnhealthy        = errors.New("expected panicking provider to report unhealthy")
 	errExpectedOtherProvidersChecked = errors.New("expected other providers to still be checked")
-	errExpectedDegradedStatus       = errors.New("expected provider status to be degraded")
-	errExpectedSingleCall           = errors.New("expected provider to be called only once")
-	errExpectedRefreshCall          = errors.New("expected provider to be called again on refresh")
-	errExpectedStatusChangedEvent   = errors.New("expected health status changed event")
+	errExpectedDegradedStatus        = errors.New("expected provider status to be degraded")
+	errExpectedSingleCall            = errors.New("expected provider to be called only once")
+	errExpectedRefreshCall           = errors.New("expected provider to be called again on refresh")
+	errExpectedStatusChangedEvent    = errors.New("expected health status changed event")
 )
 
 // healthBDDProvider is a configurable mock HealthProvider for BDD tests.
@@ -102,11 +102,11 @@ func (s *healthBDDSubject) reset() {
 
 // HealthBDDContext holds state for health contract BDD scenarios.
 type HealthBDDContext struct {
-	service    *AggregateHealthService
-	subject    *healthBDDSubject
-	providers  map[string]*healthBDDProvider
-	result     *AggregatedHealth
-	checkErr   error
+	service   *AggregateHealthService
+	subject   *healthBDDSubject
+	providers map[string]*healthBDDProvider
+	result    *AggregatedHealth
+	checkErr  error
 }
 
 func (hc *HealthBDDContext) reset() {
