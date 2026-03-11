@@ -42,7 +42,7 @@ jobs:
           echo "Latest core tag: $LATEST_TAG"
           HAS_CHANGES=false
           if [ -z "$LATEST_TAG" ]; then
-            FILE=$(find . -maxdepth 1 -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) | head -1 || true)
+            FILE=$(find . -maxdepth 1 -type f \( -name '*.go' -o -name 'go.mod' \) | head -1 || true)
             if [ -n "$FILE" ]; then HAS_CHANGES=true; fi
           else
             CHANGED=$(git diff --name-only ${LATEST_TAG}..HEAD | grep -v '^modules/' || true)
@@ -53,8 +53,10 @@ jobs:
                 [[ $f == *.md ]] && continue
                 [[ $f == .github/* ]] && continue
                 [[ $f == examples/* ]] && continue
-                # Accept .go plus root go.mod/go.sum (allow optional leading ./)
-                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == go.sum ]] || [[ $f == ./go.mod ]] || [[ $f == ./go.sum ]]; then
+                # Accept .go plus root go.mod (NOT go.sum — it's a lockfile that
+                # changes whenever auto-bump runs go mod tidy and should not
+                # trigger a new core release by itself).
+                if [[ $f == *.go ]] || [[ $f == go.mod ]] || [[ $f == ./go.mod ]]; then
                   RELEVANT+="$f "
                 fi
               done <<< "$CHANGED"
