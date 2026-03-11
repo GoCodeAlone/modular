@@ -48,8 +48,8 @@ func publishN(t *testing.T, module *EventBusModule, topic string, n int) int {
 // durable engine the publisher blocks until the subscriber processes each batch.
 func TestDurableMemoryNoEventLoss(t *testing.T) {
 	const (
-		topic     = "durable.no-loss"
-		total     = 200
+		topic      = "durable.no-loss"
+		total      = 200
 		queueDepth = 20 // intentionally small to exercise backpressure
 	)
 

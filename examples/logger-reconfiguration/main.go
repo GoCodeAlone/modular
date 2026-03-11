@@ -30,7 +30,7 @@ func main() {
 
 			// Create a new logger based on configuration settings
 			var handler slog.Handler
-			
+
 			// Configure handler based on log format
 			switch cfg.LogFormat {
 			case "json":
@@ -49,10 +49,10 @@ func main() {
 
 			// Create new logger with configuration-based settings
 			newLogger := slog.New(handler)
-			
+
 			// Replace the logger before modules initialize
 			app.SetLogger(newLogger)
-			
+
 			newLogger.Info("Logger reconfigured from configuration",
 				"format", cfg.LogFormat,
 				"level", cfg.LogLevel)
@@ -154,11 +154,11 @@ func (m *ServiceModule) Init(app modular.Application) error {
 	// This module also caches the logger
 	m.logger = app.Logger()
 	m.logger.Info("ServiceModule initialized", "module", m.Name(), "status", "ready")
-	
+
 	// Demonstrate that the logger has the correct configuration
-	m.logger.Debug("Service module debug information", 
+	m.logger.Debug("Service module debug information",
 		"feature", "logger_reconfiguration",
 		"working", true)
-	
+
 	return nil
 }

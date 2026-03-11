@@ -22,7 +22,7 @@ func TestWorkerPoolBufferSize(t *testing.T) {
 	app := newMockApp()
 	cfg := &EventBusConfig{
 		Engine:                 "memory",
-		WorkerCount:            1,  // only one worker — intentionally slow
+		WorkerCount:            1, // only one worker — intentionally slow
 		DefaultEventBufferSize: 64,
 		MaxEventQueueSize:      50, // queue depth for the worker pool task queue
 		DeliveryMode:           "drop",
