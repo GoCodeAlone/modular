@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.12.0
+	github.com/GoCodeAlone/modular v1.12.1
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
@@ -30,3 +30,5 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/GoCodeAlone/modular => ../../
