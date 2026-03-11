@@ -565,6 +565,74 @@ func (m *SchedulerModule) emitEvent(ctx context.Context, eventType string, data 
 	}
 }
 
+// CollectMetrics implements the modular.MetricsProvider interface.
+// It returns operational metrics for the scheduler module including running state,
+// worker count, total job count, and pending job count.
+func (m *SchedulerModule) CollectMetrics(ctx context.Context) modular.ModuleMetrics {
+	m.schedulerLock.Lock()
+	running := m.running
+	m.schedulerLock.Unlock()
+
+	values := map[string]float64{
+		"running": 0.0,
+	}
+	if running {
+		values["running"] = 1.0
+	}
+
+	if m.config != nil {
+		values["worker_count"] = float64(m.config.WorkerCount)
+	}
+
+	if m.jobStore != nil {
+		jobs, err := m.jobStore.GetJobs()
+		if err == nil {
+			values["job_count"] = float64(len(jobs))
+			pending := 0
+			for _, j := range jobs {
+				if j.Status == JobStatusPending {
+					pending++
+				}
+			}
+			values["pending_jobs"] = float64(pending)
+		}
+	}
+
+	return modular.ModuleMetrics{
+		Name:   m.name,
+		Values: values,
+	}
+}
+
+// PreStop implements the modular.Drainable interface.
+// It persists jobs if persistence is enabled and signals the scheduler to stop
+// dispatching new jobs. Actual worker shutdown happens in Stop().
+func (m *SchedulerModule) PreStop(ctx context.Context) error {
+	m.schedulerLock.Lock()
+	defer m.schedulerLock.Unlock()
+
+	if m.logger != nil {
+		m.logger.Info("Scheduler drain phase starting")
+	}
+
+	// Save jobs if persistence is enabled
+	if m.config != nil && m.config.PersistenceBackend != PersistenceBackendNone {
+		if err := m.savePersistedJobs(); err != nil {
+			if m.logger != nil {
+				m.logger.Warn("PreStop: failed to save jobs", "error", err)
+			}
+		}
+	}
+
+	// Stop dispatching new jobs by cancelling the scheduler's context.
+	// Workers will finish in-flight jobs; Stop() handles the full shutdown.
+	if m.scheduler != nil && m.scheduler.cancel != nil {
+		m.scheduler.cancel()
+	}
+
+	return nil
+}
+
 // GetRegisteredEventTypes implements the ObservableModule interface.
 // Returns all event types that this scheduler module can emit.
 func (m *SchedulerModule) GetRegisteredEventTypes() []string {
