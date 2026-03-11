@@ -116,38 +116,50 @@ func (b *ApplicationBuilder) Build() (Application, error) {
 		}
 	}
 
+	// Unwrap decorators to find the underlying StdApplication.
+	baseApp := app
+	for {
+		if dec, ok := baseApp.(ApplicationDecorator); ok {
+			if inner := dec.GetInnerApplication(); inner != nil {
+				baseApp = inner
+				continue
+			}
+		}
+		break
+	}
+
 	// Propagate config-driven dependency hints
 	if len(b.dependencyHints) > 0 {
-		if stdApp, ok := app.(*StdApplication); ok {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
 			stdApp.dependencyHints = b.dependencyHints
-		} else if obsApp, ok := app.(*ObservableApplication); ok {
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
 			obsApp.dependencyHints = b.dependencyHints
 		}
 	}
 
 	// Propagate drain timeout
 	if b.drainTimeout > 0 {
-		if stdApp, ok := app.(*StdApplication); ok {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
 			stdApp.drainTimeout = b.drainTimeout
-		} else if obsApp, ok := app.(*ObservableApplication); ok {
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
 			obsApp.drainTimeout = b.drainTimeout
 		}
 	}
 
 	// Propagate dynamic reload
 	if b.dynamicReload {
-		if stdApp, ok := app.(*StdApplication); ok {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
 			stdApp.dynamicReload = true
-		} else if obsApp, ok := app.(*ObservableApplication); ok {
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
 			obsApp.dynamicReload = true
 		}
 	}
 
 	// Propagate parallel init
 	if b.parallelInit {
-		if stdApp, ok := app.(*StdApplication); ok {
+		if stdApp, ok := baseApp.(*StdApplication); ok {
 			stdApp.parallelInit = true
-		} else if obsApp, ok := app.(*ObservableApplication); ok {
+		} else if obsApp, ok := baseApp.(*ObservableApplication); ok {
 			obsApp.parallelInit = true
 		}
 	}

@@ -1284,10 +1284,13 @@ func (app *StdApplication) resolveDependencies() ([]string, map[string][]string,
 		}
 	}
 
-	// Merge config-driven dependency hints
+	// Merge config-driven dependency hints (validate both endpoints exist)
 	for _, hint := range app.dependencyHints {
-		if graph[hint.From] == nil {
-			graph[hint.From] = nil
+		if _, ok := app.moduleRegistry[hint.From]; !ok {
+			return nil, nil, fmt.Errorf("dependency hint references unknown module %q", hint.From)
+		}
+		if _, ok := app.moduleRegistry[hint.To]; !ok {
+			return nil, nil, fmt.Errorf("dependency hint references unknown module %q", hint.To)
 		}
 		graph[hint.From] = append(graph[hint.From], hint.To)
 		dependencyEdges = append(dependencyEdges, hint)
