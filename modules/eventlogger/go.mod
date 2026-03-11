@@ -5,11 +5,13 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.12.0
+	github.com/GoCodeAlone/modular v1.12.1
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1
 	github.com/stretchr/testify v1.11.1
 )
+
+replace github.com/GoCodeAlone/modular => ../../
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect

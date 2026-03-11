@@ -377,6 +377,28 @@ func (m *EventLoggerModule) emitStartupOperationalEvents(ctx context.Context, sy
 	}
 }
 
+// PreStop implements the modular.Drainable interface.
+// It signals the event logger to flush pending events before the full Stop phase.
+func (m *EventLoggerModule) PreStop(ctx context.Context) error {
+	m.mutex.RLock()
+	started := m.started
+	logger := m.logger
+	m.mutex.RUnlock()
+
+	if !started {
+		return nil
+	}
+
+	if logger != nil {
+		logger.Info("Event logger drain phase starting")
+	}
+
+	// Flush all output targets to ensure buffered data is written
+	m.flushOutputs()
+
+	return nil
+}
+
 // Stop stops the event logger processing.
 func (m *EventLoggerModule) Stop(ctx context.Context) error {
 	m.mutex.Lock()
