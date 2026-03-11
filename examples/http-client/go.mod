@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.12.0
+	github.com/GoCodeAlone/modular v1.12.2
 	github.com/GoCodeAlone/modular/modules/chimux v1.1.0
 	github.com/GoCodeAlone/modular/modules/httpclient v0.1.0
 	github.com/GoCodeAlone/modular/modules/httpserver v0.1.1
