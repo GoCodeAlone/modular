@@ -9,7 +9,7 @@ type metricsTestModule struct {
 	name string
 }
 
-func (m *metricsTestModule) Name() string              { return m.name }
+func (m *metricsTestModule) Name() string               { return m.name }
 func (m *metricsTestModule) Init(app Application) error { return nil }
 func (m *metricsTestModule) CollectMetrics(ctx context.Context) ModuleMetrics {
 	return ModuleMetrics{
@@ -22,7 +22,7 @@ type nonMetricsModule struct {
 	name string
 }
 
-func (m *nonMetricsModule) Name() string              { return m.name }
+func (m *nonMetricsModule) Name() string               { return m.name }
 func (m *nonMetricsModule) Init(app Application) error { return nil }
 
 func TestCollectAllMetrics(t *testing.T) {

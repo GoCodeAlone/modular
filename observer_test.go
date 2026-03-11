@@ -1,9 +1,9 @@
 package modular
 
 import (
-	"slices"
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
