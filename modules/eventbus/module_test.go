@@ -375,6 +375,7 @@ func TestEventBusServiceProvider(t *testing.T) {
 	required := module.RequiresServices()
 	assert.Empty(t, required)
 }
+
 func TestPublishEvent_RoutesPreBuiltCloudEvent(t *testing.T) {
 	// Setup: create and start the module (same pattern as TestEventBusOperations)
 	module := NewModule().(*EventBusModule)
