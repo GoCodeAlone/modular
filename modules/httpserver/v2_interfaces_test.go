@@ -126,8 +126,7 @@ func TestHTTPServerModule_Reloadable(t *testing.T) {
 		err := m.Reload(context.Background(), []modular.ConfigChange{
 			{FieldPath: "ReadTimeout", NewValue: "10s"},
 		})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "server not started")
+		assert.ErrorIs(t, err, ErrServerNotStarted)
 	})
 
 	t.Run("Reload ignores unknown fields", func(t *testing.T) {

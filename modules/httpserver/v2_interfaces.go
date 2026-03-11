@@ -48,7 +48,7 @@ func (m *HTTPServerModule) ReloadTimeout() time.Duration {
 // effect if the server is restarted.
 func (m *HTTPServerModule) Reload(_ context.Context, changes []modular.ConfigChange) error {
 	if !m.started || m.server == nil {
-		return fmt.Errorf("cannot reload: server not started")
+		return ErrServerNotStarted
 	}
 
 	for _, change := range changes {
