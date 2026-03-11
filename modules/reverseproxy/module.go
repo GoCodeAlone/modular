@@ -1600,7 +1600,7 @@ func (m *ReverseProxyModule) SetEmptyResponsePolicy(pattern string, policy Empty
 
 // createReverseProxyForBackend creates a reverse proxy for a specific backend with per-backend configuration.
 func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, target *url.URL, backendID string, endpoint string) *httputil.ReverseProxy {
-	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy := &httputil.ReverseProxy{}
 
 	// Emit proxy created event
 	m.emitEvent(ctx, EventTypeProxyCreated, map[string]interface{}{
@@ -1698,7 +1698,6 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 			}
 		}
 	}
-	proxy.Director = nil //nolint:staticcheck // SA1019: explicitly nil Director when using Rewrite per Go docs
 
 	// Set up error handler to return proper HTTP status codes for connection failures
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -2557,6 +2556,7 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 
 			// Create a copy of the proxy with the timeout transport
 			proxyCopy := &httputil.ReverseProxy{
+				Director:       proxy.Director, //nolint:staticcheck // SA1019: preserve Director for backwards compatibility with legacy proxy creation
 				Rewrite:        proxy.Rewrite,
 				Transport:      timeoutTransport,
 				FlushInterval:  proxy.FlushInterval,
@@ -2753,6 +2753,7 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 			// No circuit breaker, use the proxy directly but capture status and apply timeout
 			// Create a request-specific proxy to avoid race conditions on shared Transport field
 			proxyForRequest := &httputil.ReverseProxy{
+				Director:       proxy.Director, //nolint:staticcheck // SA1019: preserve Director for backwards compatibility with legacy proxy creation
 				Rewrite:        proxy.Rewrite,
 				Transport:      proxy.Transport, // Start with the original transport
 				FlushInterval:  proxy.FlushInterval,
@@ -3011,6 +3012,7 @@ func (m *ReverseProxyModule) createBackendProxyHandlerForTenant(tenantID modular
 
 				// Create a copy of the proxy with the original transport
 				proxyCopy := &httputil.ReverseProxy{
+					Director:       proxy.Director, //nolint:staticcheck // SA1019: preserve Director for backwards compatibility with legacy proxy creation
 					Rewrite:        proxy.Rewrite,
 					Transport:      originalTransport,
 					FlushInterval:  proxy.FlushInterval,
