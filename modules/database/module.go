@@ -406,6 +406,7 @@ func (l *lazyDefaultService) SetEventEmitter(emitter EventEmitter) {
 type Module struct {
 	config      *Config
 	connections map[string]*sql.DB
+	connMu      sync.RWMutex // Protects connections map
 	services    map[string]DatabaseService
 	subject     modular.Subject // For event observation
 	subjectMu   sync.RWMutex    // Protects subject field from race conditions

@@ -22,6 +22,7 @@ var (
 func (m *Module) CollectMetrics(_ context.Context) modular.ModuleMetrics {
 	values := make(map[string]float64)
 
+	m.connMu.RLock()
 	multipleConns := len(m.connections) > 1
 
 	for name, db := range m.connections {
@@ -37,6 +38,7 @@ func (m *Module) CollectMetrics(_ context.Context) modular.ModuleMetrics {
 		values[prefix+"wait_duration_ms"] = float64(stats.WaitDuration.Milliseconds())
 		values[prefix+"max_open"] = float64(stats.MaxOpenConnections)
 	}
+	m.connMu.RUnlock()
 
 	return modular.ModuleMetrics{
 		Name:   Name,
@@ -45,15 +47,25 @@ func (m *Module) CollectMetrics(_ context.Context) modular.ModuleMetrics {
 }
 
 // PreStop implements modular.Drainable.
-// It sets max open connections to 0 on all connections to prevent new connections,
-// then waits briefly for active queries to finish.
+// It caps max open connections to the current in-use count (minimum 1) to
+// allow active queries to finish while preventing new connections, then waits
+// for active queries to complete.
+// Note: SetMaxOpenConns(0) means unlimited in database/sql, so we use
+// max(stats.InUse, 1) to actually restrict the pool.
 func (m *Module) PreStop(ctx context.Context) error {
+	m.connMu.RLock()
 	m.logger.Info("Draining database connections", "count", len(m.connections))
 
 	for name, db := range m.connections {
-		db.SetMaxOpenConns(0)
-		m.logger.Info("Set max open connections to 0", "connection", name)
+		stats := db.Stats()
+		cap := stats.InUse
+		if cap < 1 {
+			cap = 1
+		}
+		db.SetMaxOpenConns(cap)
+		m.logger.Info("Capped max open connections for drain", "connection", name, "cap", cap)
 	}
+	m.connMu.RUnlock()
 
 	// Wait for active queries to finish, respecting context deadline.
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -61,12 +73,14 @@ func (m *Module) PreStop(ctx context.Context) error {
 
 	for {
 		allIdle := true
+		m.connMu.RLock()
 		for _, db := range m.connections {
 			if db.Stats().InUse > 0 {
 				allIdle = false
 				break
 			}
 		}
+		m.connMu.RUnlock()
 		if allIdle {
 			m.logger.Info("All database connections drained")
 			return nil

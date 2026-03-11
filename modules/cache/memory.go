@@ -205,10 +205,11 @@ func (c *MemoryCache) DeleteMulti(ctx context.Context, keys []string) error {
 func (c *MemoryCache) Stats(_ context.Context) map[string]float64 {
 	c.mutex.RLock()
 	count := float64(len(c.items))
+	maxItems := float64(c.config.MaxItems)
 	c.mutex.RUnlock()
 	return map[string]float64{
 		"item_count": count,
-		"max_items":  float64(c.config.MaxItems),
+		"max_items":  maxItems,
 	}
 }
 

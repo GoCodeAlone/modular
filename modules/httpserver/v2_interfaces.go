@@ -33,6 +33,8 @@ func (m *HTTPServerModule) PreStop(ctx context.Context) error {
 // CanReload reports whether the module can currently accept a reload.
 // Returns true only when the server has been started and is running.
 func (m *HTTPServerModule) CanReload() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.started
 }
 
@@ -47,9 +49,12 @@ func (m *HTTPServerModule) ReloadTimeout() time.Duration {
 // running server, so only the config is updated here. The new values take
 // effect if the server is restarted.
 func (m *HTTPServerModule) Reload(_ context.Context, changes []modular.ConfigChange) error {
+	m.mu.RLock()
 	if !m.started || m.server == nil {
+		m.mu.RUnlock()
 		return ErrServerNotStarted
 	}
+	m.mu.RUnlock()
 
 	for _, change := range changes {
 		field := change.FieldPath
@@ -66,21 +71,27 @@ func (m *HTTPServerModule) Reload(_ context.Context, changes []modular.ConfigCha
 			if err != nil {
 				return fmt.Errorf("invalid ReadTimeout value %q: %w", change.NewValue, err)
 			}
+			m.mu.Lock()
 			m.config.ReadTimeout = d
+			m.mu.Unlock()
 
 		case "writetimeout", "write_timeout":
 			d, err := time.ParseDuration(change.NewValue)
 			if err != nil {
 				return fmt.Errorf("invalid WriteTimeout value %q: %w", change.NewValue, err)
 			}
+			m.mu.Lock()
 			m.config.WriteTimeout = d
+			m.mu.Unlock()
 
 		case "idletimeout", "idle_timeout":
 			d, err := time.ParseDuration(change.NewValue)
 			if err != nil {
 				return fmt.Errorf("invalid IdleTimeout value %q: %w", change.NewValue, err)
 			}
+			m.mu.Lock()
 			m.config.IdleTimeout = d
+			m.mu.Unlock()
 		}
 	}
 
@@ -88,16 +99,17 @@ func (m *HTTPServerModule) Reload(_ context.Context, changes []modular.ConfigCha
 }
 
 // CollectMetrics returns operational metrics for the HTTP server module.
-func (m *HTTPServerModule) CollectMetrics(ctx context.Context) modular.ModuleMetrics {
+func (m *HTTPServerModule) CollectMetrics(_ context.Context) modular.ModuleMetrics {
+	m.mu.RLock()
 	started := 0.0
 	if m.started {
 		started = 1.0
 	}
-
 	port := 0.0
 	if m.config != nil {
 		port = float64(m.config.Port)
 	}
+	m.mu.RUnlock()
 
 	return modular.ModuleMetrics{
 		Name: ModuleName,
