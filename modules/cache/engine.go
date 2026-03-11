@@ -97,4 +97,8 @@ type CacheEngine interface {
 	//
 	// The context can be used for operation timeouts.
 	DeleteMulti(ctx context.Context, keys []string) error
+
+	// Stats returns engine-specific metrics as key-value pairs.
+	// Used by the MetricsProvider interface to collect operational metrics.
+	Stats(ctx context.Context) map[string]float64
 }
