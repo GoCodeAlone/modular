@@ -116,7 +116,7 @@ func TestSanitizeForFilename(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := sanitizeForFilename(tt.input)
-			
+
 			// For the long URL test, we need to check length separately
 			if tt.name == "very long URL" {
 				assert.LessOrEqual(t, len(result), 100, "result should be at most 100 characters")

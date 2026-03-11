@@ -102,6 +102,7 @@ const ServiceName = "cache.provider"
 type CacheModule struct {
 	name        string
 	config      *CacheConfig
+	configMu    sync.RWMutex // protects config field reads/writes during reload
 	logger      modular.Logger
 	cacheEngine CacheEngine
 	// subject is the observable subject used for event emission. It can be written
@@ -377,7 +378,9 @@ func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 //	err := cache.Set(ctx, "session:abc", sessionData, time.Hour)
 func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	if ttl == 0 {
+		m.configMu.RLock()
 		ttl = m.config.DefaultTTL
+		m.configMu.RUnlock()
 	}
 
 	if err := m.cacheEngine.Set(ctx, key, value, ttl); err != nil {
@@ -511,7 +514,9 @@ func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]i
 //	err := cache.SetMulti(ctx, items, time.Minute*30)
 func (m *CacheModule) SetMulti(ctx context.Context, items map[string]interface{}, ttl time.Duration) error {
 	if ttl == 0 {
+		m.configMu.RLock()
 		ttl = m.config.DefaultTTL
+		m.configMu.RUnlock()
 	}
 	if err := m.cacheEngine.SetMulti(ctx, items, ttl); err != nil {
 		return fmt.Errorf("failed to set multiple cache items: %w", err)

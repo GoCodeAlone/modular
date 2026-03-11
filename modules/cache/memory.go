@@ -201,6 +201,18 @@ func (c *MemoryCache) DeleteMulti(ctx context.Context, keys []string) error {
 	return nil
 }
 
+// Stats returns memory cache metrics.
+func (c *MemoryCache) Stats(_ context.Context) map[string]float64 {
+	c.mutex.RLock()
+	count := float64(len(c.items))
+	maxItems := float64(c.config.MaxItems)
+	c.mutex.RUnlock()
+	return map[string]float64{
+		"item_count": count,
+		"max_items":  maxItems,
+	}
+}
+
 // startCleanupTimer starts the cleanup timer for expired items
 func (c *MemoryCache) startCleanupTimer(ctx context.Context) {
 	// Run cleanup immediately on start

@@ -118,8 +118,9 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithMetadataInclusionEna
 		return err
 	}
 
-	// Create config with metadata inclusion enabled (already enabled in console config)
-	config := ctx.createConsoleConfig(10)
+	// Create config with metadata inclusion enabled (already enabled in console config).
+	// Buffer must be large enough to absorb framework lifecycle events during Init/Start.
+	config := ctx.createConsoleConfig(50)
 
 	// Create application with the config
 	err = ctx.createApplicationWithConfig(config)

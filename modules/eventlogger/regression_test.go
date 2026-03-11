@@ -155,7 +155,7 @@ func TestEventLogger_EarlyLifecycleEventsDoNotError(t *testing.T) {
 func TestEventLogger_SynchronousStartupConfigFlag(t *testing.T) {
 	logger := &capturingLogger{}
 	app := modular.NewObservableApplication(modular.NewStdConfigProvider(struct{}{}), logger)
-	cfg := &EventLoggerConfig{Enabled: true, LogLevel: "INFO", Format: "structured", BufferSize: 5, FlushInterval: 100 * time.Millisecond, StartupSync: true, OutputTargets: []OutputTargetConfig{{Type: "console", Level: "INFO", Format: "structured", Console: &ConsoleTargetConfig{UseColor: false, Timestamps: false}}}}
+	cfg := &EventLoggerConfig{Enabled: true, LogLevel: "INFO", Format: "structured", BufferSize: 50, FlushInterval: 100 * time.Millisecond, StartupSync: true, OutputTargets: []OutputTargetConfig{{Type: "console", Level: "INFO", Format: "structured", Console: &ConsoleTargetConfig{UseColor: false, Timestamps: false}}}}
 	app.RegisterConfigSection(ModuleName, modular.NewStdConfigProvider(cfg))
 	mod := NewModule().(*EventLoggerModule)
 	app.RegisterModule(mod)
@@ -165,7 +165,9 @@ func TestEventLogger_SynchronousStartupConfigFlag(t *testing.T) {
 	if err := app.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
-	// Without sleep, attempt to emit a test event and ensure no ErrLoggerNotStarted
+	// Without sleep, attempt to emit a test event and ensure no ErrLoggerNotStarted.
+	// BufferSize must be large enough to absorb framework lifecycle events
+	// (phase changes, service registrations, etc.) that are emitted during Init/Start.
 	evt := modular.NewCloudEvent("sync.startup.test", "test", nil, nil)
 	if err := mod.OnEvent(context.Background(), evt); err != nil {
 		t.Fatalf("OnEvent failed unexpectedly: %v", err)

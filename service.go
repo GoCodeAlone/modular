@@ -253,7 +253,10 @@ func (r *EnhancedServiceRegistry) generateUniqueName(originalName, moduleName st
 
 	// Still conflicts - try with module type name
 	if moduleType != nil {
-		typeName := moduleType.Elem().Name()
+		var typeName string
+		if moduleType.Kind() == reflect.Ptr {
+			typeName = moduleType.Elem().Name()
+		}
 		if typeName == "" {
 			typeName = moduleType.String()
 		}

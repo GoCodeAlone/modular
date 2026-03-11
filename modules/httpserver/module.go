@@ -93,6 +93,7 @@ type HTTPServerModule struct {
 	started            bool
 	certificateService CertificateService
 	subject            modular.Subject // For event observation (guarded by mu)
+	draining           bool            // Set by PreStop to signal drain phase
 	mu                 sync.RWMutex
 }
 
