@@ -3,7 +3,7 @@ module logmasker-example
 go 1.26
 
 require (
-	github.com/GoCodeAlone/modular v1.12.0
+	github.com/GoCodeAlone/modular v1.12.2
 	github.com/GoCodeAlone/modular/modules/logmasker v0.0.0
 )
 

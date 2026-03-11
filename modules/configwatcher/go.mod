@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/configwatcher
 go 1.26
 
 require (
-	github.com/GoCodeAlone/modular v1.12.1
+	github.com/GoCodeAlone/modular v1.12.2
 	github.com/fsnotify/fsnotify v1.9.0
 )
 

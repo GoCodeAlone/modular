@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.12.0
+	github.com/GoCodeAlone/modular v1.12.2
 	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/reverseproxy v0.0.0-00010101000000-000000000000
