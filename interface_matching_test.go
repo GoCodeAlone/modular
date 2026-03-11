@@ -30,7 +30,7 @@ func TestInterfaceMatching(t *testing.T) {
 	app.RegisterModule(providerModule)
 
 	// Resolve dependencies
-	order, err := app.resolveDependencies()
+	order, _, err := app.resolveDependencies()
 	if err != nil {
 		t.Fatalf("Failed to resolve dependencies: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestDependencyOrderWithInterfaceMatching(t *testing.T) {
 
 	// With the improved dependency resolution, the provider should come before consumer
 	// even though we registered them in the opposite order
-	order, err := app.resolveDependencies()
+	order, _, err := app.resolveDependencies()
 	if err != nil {
 		t.Fatalf("Failed to resolve dependencies: %v", err)
 	}

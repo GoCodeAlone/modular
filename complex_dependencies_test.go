@@ -36,7 +36,7 @@ func TestComplexDependencies(t *testing.T) {
 	app.RegisterModule(databaseModule) // No dependencies
 
 	// Resolve dependencies
-	order, err := app.resolveDependencies()
+	order, _, err := app.resolveDependencies()
 	if err != nil {
 		t.Fatalf("Failed to resolve dependencies: %v", err)
 	}

@@ -547,23 +547,15 @@ func (app *StdApplication) setPhase(p AppPhase) {
 
 // computeDepthLevels groups module names from a topological order into levels
 // where modules at the same level have no dependencies on each other and can
-// be initialized concurrently.
-func (app *StdApplication) computeDepthLevels(order []string) [][]string {
-	// Build dependency set per module
+// be initialized concurrently. The graph parameter is the fully resolved
+// dependency graph (including implicit service dependencies) from resolveDependencies.
+func computeDepthLevels(order []string, graph map[string][]string) [][]string {
+	// Build dependency set per module from the full resolved graph
 	deps := make(map[string]map[string]bool)
 	for _, name := range order {
 		deps[name] = make(map[string]bool)
-		module := app.moduleRegistry[name]
-		if da, ok := module.(DependencyAware); ok {
-			for _, d := range da.Dependencies() {
-				deps[name][d] = true
-			}
-		}
-	}
-	// Add config-driven hints
-	for _, hint := range app.dependencyHints {
-		if deps[hint.From] != nil {
-			deps[hint.From][hint.To] = true
+		for _, d := range graph[name] {
+			deps[name][d] = true
 		}
 	}
 
@@ -704,7 +696,7 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	}
 
 	// Build dependency graph
-	moduleOrder, err := app.resolveDependencies()
+	moduleOrder, depGraph, err := app.resolveDependencies()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to resolve module dependencies: %w", err))
 	}
@@ -712,7 +704,7 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 	// Initialize modules in order
 	if app.parallelInit {
 		// Parallel init: group modules by topological depth and init each level concurrently
-		levels := app.computeDepthLevels(moduleOrder)
+		levels := computeDepthLevels(moduleOrder, depGraph)
 		for _, level := range levels {
 			if len(level) == 1 {
 				if initErr := app.initModule(appToPass, level[0]); initErr != nil {
@@ -815,7 +807,7 @@ func (app *StdApplication) Start() error {
 	app.cancel = cancel
 
 	// Start modules in dependency order
-	modules, err := app.resolveDependencies()
+	modules, _, err := app.resolveDependencies()
 	if err != nil {
 		return err
 	}
@@ -850,7 +842,7 @@ func (app *StdApplication) Stop() error {
 	app.setPhase(PhaseDraining)
 
 	// Get modules in reverse dependency order
-	modules, err := app.resolveDependencies()
+	modules, _, err := app.resolveDependencies()
 	if err != nil {
 		return err
 	}
@@ -1249,7 +1241,7 @@ func (e EdgeType) String() string {
 }
 
 // resolveDependencies returns modules in initialization order
-func (app *StdApplication) resolveDependencies() ([]string, error) {
+func (app *StdApplication) resolveDependencies() ([]string, map[string][]string, error) {
 	// Create dependency graph and track dependency edges
 	graph := make(map[string][]string)
 	dependencyEdges := make([]DependencyEdge, 0)
@@ -1361,7 +1353,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	for _, node := range nodes {
 		if !visited[node] {
 			if err := visit(node); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
@@ -1369,7 +1361,7 @@ func (app *StdApplication) resolveDependencies() ([]string, error) {
 	// log result
 	app.logger.Debug("Module initialization order", "order", result)
 
-	return result, nil
+	return result, graph, nil
 }
 
 // constructCyclePath constructs a detailed cycle path showing the dependency chain
