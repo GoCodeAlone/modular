@@ -12,9 +12,9 @@ type reloadableTestModule struct {
 	reloadCount atomic.Int32
 }
 
-func (m *reloadableTestModule) Name() string                { return m.name }
-func (m *reloadableTestModule) Init(app Application) error  { return nil }
-func (m *reloadableTestModule) CanReload() bool             { return true }
+func (m *reloadableTestModule) Name() string                 { return m.name }
+func (m *reloadableTestModule) Init(app Application) error   { return nil }
+func (m *reloadableTestModule) CanReload() bool              { return true }
 func (m *reloadableTestModule) ReloadTimeout() time.Duration { return 5 * time.Second }
 func (m *reloadableTestModule) Reload(ctx context.Context, changes []ConfigChange) error {
 	m.reloadCount.Add(1)

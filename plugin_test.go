@@ -8,9 +8,9 @@ type testPlugin struct {
 	hookRan  bool
 }
 
-func (p *testPlugin) Name() string                    { return "test-plugin" }
-func (p *testPlugin) Modules() []Module               { return p.modules }
-func (p *testPlugin) Services() []ServiceDefinition   { return p.services }
+func (p *testPlugin) Name() string                  { return "test-plugin" }
+func (p *testPlugin) Modules() []Module             { return p.modules }
+func (p *testPlugin) Services() []ServiceDefinition { return p.services }
 func (p *testPlugin) InitHooks() []func(Application) error {
 	return []func(Application) error{
 		func(app Application) error {

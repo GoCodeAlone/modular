@@ -1,10 +1,10 @@
 package modular
 
 import (
-	"slices"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,7 +49,7 @@ func (m *reloadBDDMockReloadable) Reload(_ context.Context, changes []ConfigChan
 	return m.reloadErr
 }
 
-func (m *reloadBDDMockReloadable) CanReload() bool            { return m.canReload }
+func (m *reloadBDDMockReloadable) CanReload() bool              { return m.canReload }
 func (m *reloadBDDMockReloadable) ReloadTimeout() time.Duration { return m.timeout }
 
 // reloadBDDSubject captures events for BDD reload contract tests.

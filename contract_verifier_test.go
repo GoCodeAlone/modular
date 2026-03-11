@@ -17,7 +17,7 @@ func (w *wellBehavedReloadable) Reload(ctx context.Context, _ []ConfigChange) er
 	}
 	return nil
 }
-func (w *wellBehavedReloadable) CanReload() bool            { return true }
+func (w *wellBehavedReloadable) CanReload() bool              { return true }
 func (w *wellBehavedReloadable) ReloadTimeout() time.Duration { return 5 * time.Second }
 
 // zeroTimeoutReloadable returns a zero timeout.

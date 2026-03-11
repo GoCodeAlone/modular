@@ -8,11 +8,11 @@ import (
 
 // Static errors for logger decorator BDD tests
 var (
-	errLoggerNotSet           = errors.New("logger not set")
-	errBaseLoggerNotSet       = errors.New("base logger not set")
-	errPrimaryLoggerNotSet    = errors.New("primary logger not set")
-	errSecondaryLoggerNotSet  = errors.New("secondary logger not set")
-	errDecoratedLoggerNotSet  = errors.New("decorated logger not set")
+	errLoggerNotSet          = errors.New("logger not set")
+	errBaseLoggerNotSet      = errors.New("base logger not set")
+	errPrimaryLoggerNotSet   = errors.New("primary logger not set")
+	errSecondaryLoggerNotSet = errors.New("secondary logger not set")
+	errDecoratedLoggerNotSet = errors.New("decorated logger not set")
 	errNoMessagesLogged      = errors.New("no messages logged")
 	errServiceLoggerMismatch = errors.New("service logger mismatch")
 )
