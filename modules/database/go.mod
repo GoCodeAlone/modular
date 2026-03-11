@@ -2,8 +2,6 @@ module github.com/GoCodeAlone/modular/modules/database/v2
 
 go 1.26
 
-replace github.com/GoCodeAlone/modular => ../../
-
 require (
 	github.com/GoCodeAlone/modular v1.12.1
 	github.com/aws/aws-sdk-go-v2/config v1.31.0

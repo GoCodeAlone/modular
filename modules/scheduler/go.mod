@@ -13,8 +13,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 )
 
-replace github.com/GoCodeAlone/modular => ../../
-
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
