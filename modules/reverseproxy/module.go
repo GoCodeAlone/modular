@@ -1784,9 +1784,13 @@ func (m *ReverseProxyModule) createReverseProxyForBackend(ctx context.Context, t
 			}
 			if err := m.responseHeaderModifier(resp, backendID, tenantID); err != nil {
 				if m.app != nil && m.app.Logger() != nil {
-					// Sanitize tenantID before logging to prevent log forging via newlines
-					safeTenantID := strings.ReplaceAll(strings.ReplaceAll(string(tenantID), "\n", ""), "\r", "")
-					m.app.Logger().Error("Response header modifier error", "backend", backendID, "tenant", safeTenantID, "error", err.Error())
+					// Log a hashed representation of the tenant ID to avoid exposing it in clear text
+					tenantHashStr := ""
+					if hasTenant {
+						sum := sha256.Sum256([]byte(tenantID))
+						tenantHashStr = hex.EncodeToString(sum[:])
+					}
+					m.app.Logger().Error("Response header modifier error", "backend", backendID, "tenant_hash", tenantHashStr, "error", err.Error())
 				}
 				return err
 			}
