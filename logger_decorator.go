@@ -272,6 +272,35 @@ func (d *LevelModifierLoggerDecorator) Debug(msg string, args ...any) {
 	d.logWithLevel("debug", msg, args...)
 }
 
+// sanitizeLogArgs masks potentially sensitive values in structured log arguments.
+// It assumes key/value pairs (key at even index, value at odd index).
+func sanitizeLogArgs(args []any) []any {
+	if len(args) == 0 {
+		return args
+	}
+
+	// Work on a shallow copy to avoid surprising callers that reuse the slice.
+	sanitized := make([]any, len(args))
+	copy(sanitized, args)
+
+	for i := 0; i < len(sanitized); i += 2 {
+		key, ok := sanitized[i].(string)
+		if !ok {
+			continue
+		}
+
+		// Mask values for known potentially sensitive keys.
+		if key == "tenant" || key == "requestId" {
+			valueIndex := i + 1
+			if valueIndex < len(sanitized) {
+				sanitized[valueIndex] = "***"
+			}
+		}
+	}
+
+	return sanitized
+}
+
 // PrefixLoggerDecorator adds a prefix to all log messages.
 // This decorator automatically prepends a configured prefix to every log message.
 type PrefixLoggerDecorator struct {
@@ -300,17 +329,21 @@ func (d *PrefixLoggerDecorator) formatMessage(msg string) string {
 }
 
 func (d *PrefixLoggerDecorator) Info(msg string, args ...any) {
-	d.inner.Info(d.formatMessage(msg), args...)
+	safeArgs := sanitizeLogArgs(args)
+	d.inner.Info(d.formatMessage(msg), safeArgs...)
 }
 
 func (d *PrefixLoggerDecorator) Error(msg string, args ...any) {
-	d.inner.Error(d.formatMessage(msg), args...)
+	safeArgs := sanitizeLogArgs(args)
+	d.inner.Error(d.formatMessage(msg), safeArgs...)
 }
 
 func (d *PrefixLoggerDecorator) Warn(msg string, args ...any) {
-	d.inner.Warn(d.formatMessage(msg), args...)
+	safeArgs := sanitizeLogArgs(args)
+	d.inner.Warn(d.formatMessage(msg), safeArgs...)
 }
 
 func (d *PrefixLoggerDecorator) Debug(msg string, args ...any) {
-	d.inner.Debug(d.formatMessage(msg), args...)
+	safeArgs := sanitizeLogArgs(args)
+	d.inner.Debug(d.formatMessage(msg), safeArgs...)
 }
