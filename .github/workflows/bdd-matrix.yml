@@ -64,7 +64,7 @@ jobs:
           export GORACE=halt_on_error=1
           go test -race -v -coverprofile=core-bdd-coverage.txt -covermode=atomic -run 'TestApplicationLifecycle|TestConfigurationManagement|TestBaseConfigBDDFeatures|TestLoggerDecorator' .
       - name: Upload core BDD coverage
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
@@ -124,7 +124,7 @@ jobs:
           fi
       - name: Upload module BDD coverage
         if: always()
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
@@ -200,7 +200,7 @@ jobs:
           echo "Merged (fallback) into $OUT from ${#FILES[@]} files" >&2
       - name: Upload merged BDD coverage
         if: always()
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
