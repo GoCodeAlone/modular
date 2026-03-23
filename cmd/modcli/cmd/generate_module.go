@@ -421,6 +421,94 @@ func promptForModuleInfo(options *ModuleOptions) error {
 	return nil
 }
 
+// promptForFields interactively collects a list of ConfigField values.
+// It is called for top-level config fields and recursively for nested struct fields.
+func promptForFields() ([]ConfigField, error) {
+	var fields []ConfigField
+	addFields := true
+
+	for addFields {
+		field := ConfigField{}
+
+		nameQuestion := &survey.Input{
+			Message: "Field name (CamelCase):",
+			Help:    "The name of the configuration field (e.g., ServerAddress)",
+		}
+		if err := survey.AskOne(nameQuestion, &field.Name, survey.WithValidator(survey.Required), SurveyStdio.WithStdio()); err != nil {
+			return nil, fmt.Errorf("failed to get field name: %w", err)
+		}
+
+		typeQuestion := &survey.Select{
+			Message: "Field type:",
+			Options: []string{"string", "int", "bool", "float64", "[]string", "[]int", "map[string]string", "struct (nested)"},
+			Default: "string",
+		}
+
+		var fieldType string
+		if err := survey.AskOne(typeQuestion, &fieldType, SurveyStdio.WithStdio()); err != nil {
+			return nil, fmt.Errorf("failed to get field type: %w", err)
+		}
+
+		switch fieldType {
+		case "struct (nested)":
+			field.IsNested = true
+			field.Type = field.Name + "Config"
+			fmt.Printf("  Configuring nested struct fields for %s:\n", field.Type)
+			nestedFields, err := promptForFields()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get nested fields for %s: %w", field.Name, err)
+			}
+			field.NestedFields = nestedFields
+		case "[]string", "[]int":
+			field.IsArray = true
+			field.Type = fieldType
+		case "map[string]string":
+			field.IsMap = true
+			field.Type = fieldType
+			field.KeyType = "string"
+			field.ValueType = "string"
+		default:
+			field.Type = fieldType
+		}
+
+		requiredQuestion := &survey.Confirm{
+			Message: "Is this field required?",
+			Default: false,
+		}
+		if err := survey.AskOne(requiredQuestion, &field.IsRequired, SurveyStdio.WithStdio()); err != nil {
+			return nil, fmt.Errorf("failed to get field required preference: %w", err)
+		}
+
+		defaultQuestion := &survey.Input{
+			Message: "Default value (leave empty for none):",
+			Help:    "The default value for this field, if any",
+		}
+		if err := survey.AskOne(defaultQuestion, &field.DefaultValue, SurveyStdio.WithStdio()); err != nil {
+			return nil, fmt.Errorf("failed to get field default value: %w", err)
+		}
+
+		descQuestion := &survey.Input{
+			Message: "Description:",
+			Help:    "A brief description of what this field is used for",
+		}
+		if err := survey.AskOne(descQuestion, &field.Description, SurveyStdio.WithStdio()); err != nil {
+			return nil, fmt.Errorf("failed to get field description: %w", err)
+		}
+
+		fields = append(fields, field)
+
+		addMoreQuestion := &survey.Confirm{
+			Message: "Add another field?",
+			Default: true,
+		}
+		if err := survey.AskOne(addMoreQuestion, &addFields, SurveyStdio.WithStdio()); err != nil {
+			return nil, fmt.Errorf("failed to get add another field preference: %w", err)
+		}
+	}
+
+	return fields, nil
+}
+
 // promptForModuleConfigInfo collects configuration field details for a module
 func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 	// Ask about the config format (YAML, JSON, TOML, etc.)
@@ -445,90 +533,11 @@ func promptForModuleConfigInfo(configOptions *ConfigOptions) error {
 	}
 
 	// Collect configuration fields
-	configOptions.Fields = []ConfigField{}
-	addFields := true
-
-	for addFields {
-		field := ConfigField{}
-
-		// Ask for the field name
-		nameQuestion := &survey.Input{
-			Message: "Field name (CamelCase):",
-			Help:    "The name of the configuration field (e.g., ServerAddress)",
-		}
-		if err := survey.AskOne(nameQuestion, &field.Name, survey.WithValidator(survey.Required), SurveyStdio.WithStdio()); err != nil {
-			return fmt.Errorf("failed to get field name: %w", err)
-		}
-
-		// Ask for the field type
-		typeQuestion := &survey.Select{
-			Message: "Field type:",
-			Options: []string{"string", "int", "bool", "float64", "[]string", "[]int", "map[string]string", "struct (nested)"},
-			Default: "string",
-		}
-
-		var fieldType string
-		if err := survey.AskOne(typeQuestion, &fieldType, SurveyStdio.WithStdio()); err != nil {
-			return fmt.Errorf("failed to get field type: %w", err)
-		}
-
-		// Set field type and special flags based on selection
-		switch fieldType {
-		case "struct (nested)":
-			field.IsNested = true
-			field.Type = field.Name + "Config" // Create a type name based on the field name
-			// TODO: Add prompts for nested fields
-		case "[]string", "[]int":
-			field.IsArray = true
-			field.Type = fieldType
-		case "map[string]string":
-			field.IsMap = true
-			field.Type = fieldType
-			field.KeyType = "string"
-			field.ValueType = "string"
-		default:
-			field.Type = fieldType
-		}
-
-		// Ask if this field is required
-		requiredQuestion := &survey.Confirm{
-			Message: "Is this field required?",
-			Default: false,
-		}
-		if err := survey.AskOne(requiredQuestion, &field.IsRequired, SurveyStdio.WithStdio()); err != nil {
-			return fmt.Errorf("failed to get field required preference: %w", err)
-		}
-
-		// Ask for a default value
-		defaultQuestion := &survey.Input{
-			Message: "Default value (leave empty for none):",
-			Help:    "The default value for this field, if any",
-		}
-		if err := survey.AskOne(defaultQuestion, &field.DefaultValue, SurveyStdio.WithStdio()); err != nil {
-			return fmt.Errorf("failed to get field default value: %w", err)
-		}
-
-		// Ask for a description
-		descQuestion := &survey.Input{
-			Message: "Description:",
-			Help:    "A brief description of what this field is used for",
-		}
-		if err := survey.AskOne(descQuestion, &field.Description, SurveyStdio.WithStdio()); err != nil {
-			return fmt.Errorf("failed to get field description: %w", err)
-		}
-
-		// Add the field
-		configOptions.Fields = append(configOptions.Fields, field)
-
-		// Ask if more fields should be added
-		addMoreQuestion := &survey.Confirm{
-			Message: "Add another field?",
-			Default: true,
-		}
-		if err := survey.AskOne(addMoreQuestion, &addFields, SurveyStdio.WithStdio()); err != nil {
-			return fmt.Errorf("failed to get add another field preference: %w", err)
-		}
+	fields, err := promptForFields()
+	if err != nil {
+		return fmt.Errorf("failed to collect config fields: %w", err)
 	}
+	configOptions.Fields = fields
 
 	return nil
 }
