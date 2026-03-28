@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/eventlogger"
+	"github.com/GoCodeAlone/modular/eventlogger"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 

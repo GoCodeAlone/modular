@@ -102,7 +102,7 @@ jobs:
           export GORACE=halt_on_error=1
           set -euo pipefail
           # Modules expected to contain BDD tests (update as coverage grows)
-          EXPECTED_BDD_MODULES=(reverseproxy httpserver scheduler cache auth database eventbus)
+          EXPECTED_BDD_MODULES=(reverseproxy cache auth database eventbus)
           expected=false
           for m in "${EXPECTED_BDD_MODULES[@]}"; do
             if [ "$m" = "${{ matrix.module }}" ]; then expected=true; break; fi

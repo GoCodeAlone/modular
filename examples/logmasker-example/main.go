@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/logmasker"
+	"github.com/GoCodeAlone/modular/logmasker"
 )
 
 // SimpleLogger implements modular.Logger for demonstration

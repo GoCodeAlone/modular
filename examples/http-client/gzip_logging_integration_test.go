@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/GoCodeAlone/modular"
-	"github.com/GoCodeAlone/modular/modules/httpclient"
+	"github.com/GoCodeAlone/modular/httpclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -2,10 +2,7 @@ module logmasker-example
 
 go 1.26
 
-require (
-	github.com/GoCodeAlone/modular v1.12.3
-	github.com/GoCodeAlone/modular/modules/logmasker v0.0.0
-)
+require github.com/GoCodeAlone/modular v1.12.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
@@ -21,5 +18,3 @@ require (
 )
 
 replace github.com/GoCodeAlone/modular => ../../
-
-replace github.com/GoCodeAlone/modular/modules/logmasker => ../../modules/logmasker

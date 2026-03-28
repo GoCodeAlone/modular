@@ -11,18 +11,11 @@ on:
         options:
           - auth
           - cache
-          - chimux
-          - configwatcher
           - database
           - eventbus
-          - eventlogger
-          - httpclient
-          - httpserver
           - jsonschema
           - letsencrypt
-          - logmasker
           - reverseproxy
-          - scheduler
       version:
         description: 'Version to release (leave blank for auto-increment)'
         required: false

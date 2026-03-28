@@ -6,8 +6,6 @@ toolchain go1.26.0
 
 require (
 	github.com/GoCodeAlone/modular v1.12.3
-	github.com/GoCodeAlone/modular/modules/chimux v0.0.0-00010101000000-000000000000
-	github.com/GoCodeAlone/modular/modules/httpserver v0.0.0-00010101000000-000000000000
 	github.com/GoCodeAlone/modular/modules/reverseproxy v0.0.0-00010101000000-000000000000
 )
 
@@ -29,9 +27,5 @@ require (
 replace github.com/GoCodeAlone/modular => ../..
 
 replace github.com/GoCodeAlone/modular/modules/reverseproxy => ../../modules/reverseproxy
-
-replace github.com/GoCodeAlone/modular/modules/chimux => ../../modules/chimux
-
-replace github.com/GoCodeAlone/modular/modules/httpserver => ../../modules/httpserver
 
 replace github.com/GoCodeAlone/modular/feeders => ../../feeders

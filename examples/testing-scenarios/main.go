@@ -18,8 +18,8 @@ import (
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/chimux"
-	"github.com/GoCodeAlone/modular/modules/httpserver"
+	"github.com/GoCodeAlone/modular/chimux"
+	"github.com/GoCodeAlone/modular/httpserver"
 	"github.com/GoCodeAlone/modular/modules/reverseproxy"
 )
 

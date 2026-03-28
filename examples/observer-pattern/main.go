@@ -9,7 +9,7 @@ import (
 
 	"github.com/GoCodeAlone/modular"
 	"github.com/GoCodeAlone/modular/feeders"
-	"github.com/GoCodeAlone/modular/modules/eventlogger"
+	"github.com/GoCodeAlone/modular/eventlogger"
 )
 
 func main() {
