@@ -9,7 +9,7 @@ replace github.com/GoCodeAlone/modular => ../../
 replace github.com/GoCodeAlone/modular/modules/eventbus => ../../modules/eventbus
 
 require (
-	github.com/GoCodeAlone/modular v1.12.3
+	github.com/GoCodeAlone/modular v1.12.5
 	github.com/GoCodeAlone/modular/modules/eventbus v1.7.0
 )
 
