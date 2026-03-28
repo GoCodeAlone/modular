@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -40,7 +41,7 @@ func TestFeatureFlagEvaluatorIntegration(t *testing.T) {
 
 	// Create evaluator
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(app, logger)
+	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(context.Background(), app, logger)
 	if err != nil {
 		t.Fatalf("Failed to create evaluator: %v", err)
 	}
@@ -104,7 +105,7 @@ func BenchmarkFeatureFlagEvaluation(b *testing.B) {
 	app.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(config))
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(app, logger)
+	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(context.Background(), app, logger)
 	if err != nil {
 		b.Fatalf("Failed to create evaluator: %v", err)
 	}
@@ -143,7 +144,7 @@ func TestFeatureFlagEvaluatorConcurrency(t *testing.T) {
 	app.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(config))
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(app, logger)
+	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(context.Background(), app, logger)
 	if err != nil {
 		t.Fatalf("Failed to create evaluator: %v", err)
 	}
@@ -204,7 +205,7 @@ func TestTenantSpecificFeatureFlags(t *testing.T) {
 	app.RegisterConfigSection("reverseproxy", modular.NewStdConfigProvider(config))
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(app, logger)
+	evaluator, err := reverseproxy.NewFileBasedFeatureFlagEvaluator(context.Background(), app, logger)
 	if err != nil {
 		t.Fatalf("Failed to create evaluator: %v", err)
 	}
