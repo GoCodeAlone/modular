@@ -3,7 +3,7 @@ module github.com/GoCodeAlone/modular/modules/letsencrypt
 go 1.26
 
 require (
-	github.com/GoCodeAlone/modular v1.12.3
+	github.com/GoCodeAlone/modular v1.13.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1
 	github.com/go-acme/lego/v4 v4.26.0
@@ -84,5 +84,3 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/GoCodeAlone/modular => ../../

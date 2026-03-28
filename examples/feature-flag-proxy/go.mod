@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.12.3
+	github.com/GoCodeAlone/modular v1.13.0
 	github.com/GoCodeAlone/modular/modules/reverseproxy v1.1.2
 )
 
