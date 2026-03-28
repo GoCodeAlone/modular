@@ -360,6 +360,11 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 	started := make(chan struct{})
 	m.wg.Add(1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("handleEvents panic recovered", "error", r, "topic", sub.topic)
+			}
+		}()
 		close(started) // Signal that the goroutine has started
 		m.handleEvents(sub)
 	}()

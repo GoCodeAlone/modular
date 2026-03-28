@@ -339,6 +339,11 @@ func (d *DurableMemoryEventBus) subscribe(_ context.Context, topic string, handl
 	started := make(chan struct{})
 	d.wg.Add(1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("handleEvents panic recovered", "error", r, "topic", sub.topic)
+			}
+		}()
 		close(started)
 		d.handleEvents(sub)
 	}()

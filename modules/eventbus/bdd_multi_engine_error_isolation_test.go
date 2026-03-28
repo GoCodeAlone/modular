@@ -30,7 +30,7 @@ func (ctx *EventBusBDDTestContext) oneEngineEncountersAnError() error {
 	}
 
 	// Ensure service is started before trying to publish
-	if !ctx.service.isStarted {
+	if !ctx.service.isStarted.Load() {
 		err := ctx.service.Start(context.Background())
 		if err != nil {
 			return fmt.Errorf("failed to start eventbus: %w", err)

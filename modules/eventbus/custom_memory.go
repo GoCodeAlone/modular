@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,7 +20,7 @@ type CustomMemoryEventBus struct {
 	topicMutex    sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
-	isStarted     bool
+	isStarted     atomic.Bool
 	eventMetrics  *EventMetrics
 	eventFilters  []EventFilter
 }
@@ -189,7 +190,7 @@ func NewCustomMemoryEventBus(config map[string]interface{}) (EventBus, error) {
 
 // Start initializes the custom memory event bus
 func (c *CustomMemoryEventBus) Start(ctx context.Context) error {
-	if c.isStarted {
+	if c.isStarted.Load() {
 		return nil
 	}
 
@@ -200,7 +201,7 @@ func (c *CustomMemoryEventBus) Start(ctx context.Context) error {
 		go c.metricsCollector()
 	}
 
-	c.isStarted = true
+	c.isStarted.Store(true)
 	slog.Info("Custom memory event bus started with enhanced features",
 		"metricsEnabled", c.config.EnableMetrics,
 		"filterCount", len(c.eventFilters))
@@ -209,7 +210,7 @@ func (c *CustomMemoryEventBus) Start(ctx context.Context) error {
 
 // Stop shuts down the custom memory event bus
 func (c *CustomMemoryEventBus) Stop(ctx context.Context) error {
-	if !c.isStarted {
+	if !c.isStarted.Load() {
 		return nil
 	}
 
@@ -227,7 +228,7 @@ func (c *CustomMemoryEventBus) Stop(ctx context.Context) error {
 	}
 	c.topicMutex.Unlock()
 
-	c.isStarted = false
+	c.isStarted.Store(false)
 	slog.Info("Custom memory event bus stopped",
 		"totalEvents", c.eventMetrics.TotalEvents,
 		"topics", len(c.eventMetrics.EventsPerTopic))
@@ -236,7 +237,7 @@ func (c *CustomMemoryEventBus) Stop(ctx context.Context) error {
 
 // Publish sends an event to the specified topic with custom filtering and metrics
 func (c *CustomMemoryEventBus) Publish(ctx context.Context, event Event) error {
-	if !c.isStarted {
+	if !c.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -309,7 +310,7 @@ func (c *CustomMemoryEventBus) SubscribeAsync(ctx context.Context, topic string,
 
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (c *CustomMemoryEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !c.isStarted {
+	if !c.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 
@@ -347,7 +348,7 @@ func (c *CustomMemoryEventBus) subscribe(ctx context.Context, topic string, hand
 
 // Unsubscribe removes a subscription
 func (c *CustomMemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !c.isStarted {
+	if !c.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 

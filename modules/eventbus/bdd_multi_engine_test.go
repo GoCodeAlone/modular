@@ -136,7 +136,7 @@ func (ctx *EventBusBDDTestContext) iPublishAnEventToTopic(topic string) error {
 	ctx.publishedTopics[topic] = true
 
 	// Start the service if not already started
-	if !ctx.service.isStarted {
+	if !ctx.service.isStarted.Load() {
 		err := ctx.service.Start(context.Background())
 		if err != nil {
 			return fmt.Errorf("failed to start eventbus: %w", err)

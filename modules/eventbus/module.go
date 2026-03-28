@@ -111,6 +111,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
@@ -146,7 +147,7 @@ type EventBusModule struct {
 	logger    modular.Logger
 	router    *EngineRouter
 	mutex     sync.RWMutex
-	isStarted bool
+	isStarted atomic.Bool
 	subject   modular.Subject // For event observation (guarded by mutex)
 }
 
@@ -290,7 +291,7 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	if m.isStarted {
+	if m.isStarted.Load() {
 		return nil
 	}
 
@@ -300,7 +301,7 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 		return fmt.Errorf("starting engine router: %w", err)
 	}
 
-	m.isStarted = true
+	m.isStarted.Store(true)
 	if m.config.IsMultiEngine() {
 		m.logger.Info("Event bus started with multiple engines",
 			"engines", m.router.GetEngineNames())
@@ -358,7 +359,7 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 
 	m.mutex.Lock()
 
-	if !m.isStarted {
+	if !m.isStarted.Load() {
 		m.mutex.Unlock()
 		return nil
 	}
@@ -370,7 +371,7 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 		return fmt.Errorf("stopping engine router: %w", err)
 	}
 
-	m.isStarted = false
+	m.isStarted.Store(false)
 	engineName := "unknown"
 	if m.config != nil {
 		engineName = m.config.Engine
