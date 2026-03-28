@@ -2,7 +2,7 @@ module github.com/GoCodeAlone/modular/examples/base-config-example
 
 go 1.26
 
-require github.com/GoCodeAlone/modular v1.11.9
+require github.com/GoCodeAlone/modular v1.13.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect

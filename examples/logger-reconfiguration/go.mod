@@ -4,7 +4,7 @@ go 1.26
 
 replace github.com/GoCodeAlone/modular => ../../
 
-require github.com/GoCodeAlone/modular v1.11.9-00010101000000-000000000000
+require github.com/GoCodeAlone/modular v1.13.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect

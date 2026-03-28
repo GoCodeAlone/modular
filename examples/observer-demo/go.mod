@@ -7,7 +7,7 @@ toolchain go1.26.0
 replace github.com/GoCodeAlone/modular => ../..
 
 require (
-	github.com/GoCodeAlone/modular v1.12.3
+	github.com/GoCodeAlone/modular v1.13.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 )
 
