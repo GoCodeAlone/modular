@@ -519,6 +519,11 @@ func (m *HTTPClientModule) emitEvent(ctx context.Context, eventType string, data
 
 	// Emit in background to avoid blocking HTTP operations
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := m.EmitEvent(ctx, event); err != nil {
 			// Use the logger to avoid blocking
 			m.logger.Debug("Failed to emit HTTP client event", "error", err, "event_type", eventType)

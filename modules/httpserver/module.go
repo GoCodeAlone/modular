@@ -681,6 +681,13 @@ func (m *HTTPServerModule) EmitEvent(ctx context.Context, event cloudevents.Even
 		return nil
 	}
 	go func(s modular.Subject, e cloudevents.Event) {
+		defer func() {
+			if r := recover(); r != nil {
+				if m.logger != nil {
+					m.logger.Error("observer panic", "error", r)
+				}
+			}
+		}()
 		if err := s.NotifyObservers(ctx, e); err != nil && m.logger != nil {
 			m.logger.Debug("Failed to notify observers", "error", err, "event_type", e.Type())
 		}

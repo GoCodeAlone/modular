@@ -22,7 +22,7 @@ import (
 // pre-started so Publish() can be called immediately.
 func newTestKinesisEventBus(client KinesisClient) *KinesisEventBus {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &KinesisEventBus{
+	bus := &KinesisEventBus{
 		config: &KinesisConfig{
 			StreamName:   "test-stream",
 			ShardCount:   1,
@@ -33,8 +33,9 @@ func newTestKinesisEventBus(client KinesisClient) *KinesisEventBus {
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
+	return bus
 }
 
 func TestKinesisPublishPartitionKey(t *testing.T) {
@@ -154,7 +155,7 @@ func TestKinesisStart(t *testing.T) {
 
 		err := bus.Start(context.Background())
 		require.NoError(t, err)
-		assert.True(t, bus.isStarted)
+		assert.True(t, bus.isStarted.Load())
 	})
 
 	t.Run("returns nil when already started", func(t *testing.T) {
@@ -204,7 +205,7 @@ func TestKinesisStart(t *testing.T) {
 		err := bus.Start(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "access denied")
-		assert.False(t, bus.isStarted)
+		assert.False(t, bus.isStarted.Load())
 	})
 }
 
@@ -229,7 +230,7 @@ func TestKinesisStop(t *testing.T) {
 
 		err := bus.Stop(context.Background())
 		require.NoError(t, err)
-		assert.False(t, bus.isStarted)
+		assert.False(t, bus.isStarted.Load())
 		assert.Empty(t, bus.subscriptions)
 	})
 
@@ -325,7 +326,7 @@ func newReadShardTestBus(t *testing.T, client KinesisClient, subs map[string]map
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	return &KinesisEventBus{
+	bus := &KinesisEventBus{
 		config: &KinesisConfig{
 			StreamName:   "test-stream",
 			ShardCount:   1,
@@ -336,8 +337,9 @@ func newReadShardTestBus(t *testing.T, client KinesisClient, subs map[string]map
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
+	return bus
 }
 
 func TestKinesisReadShardCloudEvent(t *testing.T) {
@@ -754,8 +756,8 @@ func TestKinesisReadShardExpiredIteratorRecovery(t *testing.T) {
 			activeShards:  make(map[string]struct{}),
 			ctx:           ctx,
 			cancel:        cancel,
-			isStarted:     true,
 		}
+		bus.isStarted.Store(true)
 		subs["order.placed"]["test-sub"].bus = bus
 
 		initialIter := "shard-iter-1"
@@ -818,8 +820,8 @@ func TestKinesisStartShardReadersSkipsActiveShards(t *testing.T) {
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
 
 	shardID := "shardId-000000000000"
 
@@ -883,8 +885,8 @@ func TestKinesisStartShardReadersDescribeStreamError(t *testing.T) {
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
 
 	describeCalled := make(chan struct{}, 1)
 
@@ -940,8 +942,8 @@ func TestKinesisStartShardReadersNilStreamDescription(t *testing.T) {
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
 
 	describeCalled := make(chan struct{}, 1)
 
@@ -996,8 +998,8 @@ func TestKinesisStartShardReadersExitsOnContextCancel(t *testing.T) {
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
 
 	// Cancel immediately before scanner can call DescribeStream
 	cancel()
@@ -1194,8 +1196,8 @@ func TestKinesisReadShardUsesConfiguredPollInterval(t *testing.T) {
 		activeShards:  make(map[string]struct{}),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
 
 	iterStr := "shard-iter-1"
 	mockClient.EXPECT().

@@ -19,7 +19,7 @@ import (
 // pre-started so Publish() can be called immediately.
 func newTestKafkaEventBus(producer sarama.SyncProducer) *KafkaEventBus {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &KafkaEventBus{
+	bus := &KafkaEventBus{
 		config: &KafkaConfig{
 			Brokers: []string{"localhost:9092"},
 			GroupID: "test-group",
@@ -28,8 +28,9 @@ func newTestKafkaEventBus(producer sarama.SyncProducer) *KafkaEventBus {
 		subscriptions: make(map[string]map[string]*kafkaSubscription),
 		ctx:           ctx,
 		cancel:        cancel,
-		isStarted:     true,
 	}
+	bus.isStarted.Store(true)
+	return bus
 }
 
 func TestKafkaPublishPartitionKey(t *testing.T) {
@@ -151,7 +152,7 @@ func TestKafkaStart(t *testing.T) {
 
 		err := bus.Start(context.Background())
 		require.NoError(t, err)
-		assert.True(t, bus.isStarted)
+		assert.True(t, bus.isStarted.Load())
 	})
 
 	t.Run("returns nil when already started", func(t *testing.T) {
@@ -192,15 +193,15 @@ func TestKafkaStop(t *testing.T) {
 			subscriptions: make(map[string]map[string]*kafkaSubscription),
 			ctx:           ctx,
 			cancel:        cancel,
-			isStarted:     true,
 		}
+		bus.isStarted.Store(true)
 
 		producer.EXPECT().Close().Return(nil)
 		consumerGroup.EXPECT().Close().Return(nil)
 
 		err := bus.Stop(context.Background())
 		require.NoError(t, err)
-		assert.False(t, bus.isStarted)
+		assert.False(t, bus.isStarted.Load())
 	})
 
 	t.Run("propagates producer close error", func(t *testing.T) {
@@ -216,8 +217,8 @@ func TestKafkaStop(t *testing.T) {
 			subscriptions: make(map[string]map[string]*kafkaSubscription),
 			ctx:           ctx,
 			cancel:        cancel,
-			isStarted:     true,
 		}
+		bus.isStarted.Store(true)
 
 		producer.EXPECT().Close().Return(fmt.Errorf("producer close failed"))
 
@@ -239,8 +240,8 @@ func TestKafkaStop(t *testing.T) {
 			subscriptions: make(map[string]map[string]*kafkaSubscription),
 			ctx:           ctx,
 			cancel:        cancel,
-			isStarted:     true,
 		}
+		bus.isStarted.Store(true)
 
 		producer.EXPECT().Close().Return(nil)
 		consumerGroup.EXPECT().Close().Return(fmt.Errorf("consumer group close failed"))
@@ -261,8 +262,8 @@ func TestKafkaStop(t *testing.T) {
 			subscriptions: make(map[string]map[string]*kafkaSubscription),
 			ctx:           ctx,
 			cancel:        cancel,
-			isStarted:     true,
 		}
+		bus.isStarted.Store(true)
 
 		// Add a wait group entry that never completes
 		bus.wg.Add(1)

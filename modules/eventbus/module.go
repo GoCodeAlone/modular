@@ -325,6 +325,11 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		// Use helper to silence benign missing-subject cases
 		m.emitEvent(ctx, EventTypeBusStarted, map[string]interface{}{
 			"engine":  event.Extensions()["engine"],
@@ -378,6 +383,11 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		m.emitEvent(ctx, EventTypeBusStopped, map[string]interface{}{
 			"engine": event.Extensions()["engine"],
 		})

@@ -520,11 +520,11 @@ func (hc *HealthChecker) performHTTPCheck(ctx context.Context, backendID, baseUR
 // updateHealthStatus updates the health status for a backend.
 func (hc *HealthChecker) updateHealthStatus(backendID string, healthy bool, responseTime time.Duration, dnsResolved bool, resolvedIPs []string, dnsErr, httpErr error) {
 	hc.statusMutex.Lock()
-	defer hc.statusMutex.Unlock()
 
 	// INSERTED: capture previous healthy state
 	status, exists := hc.healthStatus[backendID]
 	if !exists {
+		hc.statusMutex.Unlock()
 		return
 	}
 	prevHealthy := status.Healthy
@@ -563,12 +563,18 @@ func (hc *HealthChecker) updateHealthStatus(backendID string, healthy bool, resp
 		}
 	}
 
-	// After computing status.Healthy, emit events on transitions
-	if hc.eventEmitter != nil && prevHealthy != status.Healthy {
-		if status.Healthy {
+	// Snapshot data needed for callback before releasing the lock
+	needsCallback := hc.eventEmitter != nil && prevHealthy != status.Healthy
+	isNowHealthy := status.Healthy
+	lastError := status.LastError
+	hc.statusMutex.Unlock()
+
+	// Call eventEmitter outside the lock to avoid holding the mutex during external callbacks
+	if needsCallback {
+		if isNowHealthy {
 			hc.eventEmitter(EventTypeBackendHealthy, map[string]interface{}{"backend_id": backendID})
 		} else {
-			hc.eventEmitter(EventTypeBackendUnhealthy, map[string]interface{}{"backend_id": backendID, "error": status.LastError})
+			hc.eventEmitter(EventTypeBackendUnhealthy, map[string]interface{}{"backend_id": backendID, "error": lastError})
 		}
 	}
 }

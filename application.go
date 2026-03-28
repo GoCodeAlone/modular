@@ -736,6 +736,13 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 					wg.Add(1)
 					go func(name string) {
 						defer wg.Done()
+						defer func() {
+							if r := recover(); r != nil {
+								mu.Lock()
+								errs = append(errs, fmt.Errorf("panic initializing module %s: %v", name, r))
+								mu.Unlock()
+							}
+						}()
 						if initErr := app.initModule(appToPass, name); initErr != nil {
 							mu.Lock()
 							errs = append(errs, initErr)

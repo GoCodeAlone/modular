@@ -581,6 +581,11 @@ func (m *EventLoggerModule) emitOperationalEvent(ctx context.Context, eventType 
 	} else {
 		// Emit in background to avoid blocking operations and prevent infinite loops
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.Error("observer panic", "error", r)
+				}
+			}()
 			if err := m.EmitEvent(ctx, event); err != nil {
 				// Use the regular logger to avoid recursion
 				m.logger.Debug("Failed to emit operational event", "error", err, "event_type", eventType)

@@ -20,7 +20,7 @@ type MemoryEventBus struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
-	isStarted      bool
+	isStarted      atomic.Bool
 	eventHistory   map[string][]Event
 	historyMutex   sync.RWMutex
 	retentionTimer *time.Timer
@@ -99,6 +99,11 @@ func (m *MemoryEventBus) emitEvent(ctx context.Context, eventType, source string
 	if m.module != nil {
 		event := modular.NewCloudEvent(eventType, source, data, nil)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("observer panic in eventbus emit", "error", r)
+				}
+			}()
 			if err := m.module.EmitEvent(ctx, event); err != nil {
 				// Log but don't fail the operation
 				slog.Debug("Failed to emit event", "type", eventType, "error", err)
@@ -109,7 +114,7 @@ func (m *MemoryEventBus) emitEvent(ctx context.Context, eventType, source string
 
 // Start initializes the event bus
 func (m *MemoryEventBus) Start(ctx context.Context) error {
-	if m.isStarted {
+	if m.isStarted.Load() {
 		return nil
 	}
 
@@ -127,13 +132,13 @@ func (m *MemoryEventBus) Start(ctx context.Context) error {
 	// Start retention timer to clean up old events
 	m.startRetentionTimer()
 
-	m.isStarted = true
+	m.isStarted.Store(true)
 	return nil
 }
 
 // Stop shuts down the event bus
 func (m *MemoryEventBus) Stop(ctx context.Context) error {
-	if !m.isStarted {
+	if !m.isStarted.Load() {
 		return nil
 	}
 
@@ -161,7 +166,7 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 		return ErrEventBusShutdownTimeout
 	}
 
-	m.isStarted = false
+	m.isStarted.Store(false)
 	return nil
 }
 
@@ -184,7 +189,7 @@ func matchesTopic(eventTopic, subscriptionTopic string) bool {
 
 // Publish sends an event to the specified topic
 func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
-	if !m.isStarted {
+	if !m.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -314,7 +319,7 @@ func (m *MemoryEventBus) SubscribeAsync(ctx context.Context, topic string, handl
 
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !m.isStarted {
+	if !m.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 
@@ -367,7 +372,7 @@ func (m *MemoryEventBus) subscribe(ctx context.Context, topic string, handler Ev
 
 // Unsubscribe removes a subscription
 func (m *MemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !m.isStarted {
+	if !m.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -552,8 +557,6 @@ func (m *MemoryEventBus) startRetentionTimer() {
 		m.cleanupOldEvents()
 
 		// Restart timer only if the bus context is still live.
-		// Using the context avoids a data race on m.isStarted (which is not
-		// guarded by an atomic inside the timer callback goroutine).
 		select {
 		case <-m.ctx.Done():
 			// Bus is stopping; do not reschedule.

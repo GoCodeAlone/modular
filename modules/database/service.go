@@ -356,6 +356,11 @@ func (s *databaseServiceImpl) CommitTransaction(ctx context.Context, tx *sql.Tx)
 	// Emit transaction committed event
 	if s.eventEmitter != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("panic in emit transaction committed event goroutine: %v", r)
+				}
+			}()
 			event := modular.NewCloudEvent(EventTypeTransactionCommitted, "database-service", map[string]interface{}{
 				"connection":   "default",
 				"committed_at": startTime.Format(time.RFC3339),
@@ -388,6 +393,11 @@ func (s *databaseServiceImpl) RollbackTransaction(ctx context.Context, tx *sql.T
 	// Emit transaction rolled back event
 	if s.eventEmitter != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("panic in emit transaction rolled back event goroutine: %v", r)
+				}
+			}()
 			event := modular.NewCloudEvent(EventTypeTransactionRolledBack, "database-service", map[string]interface{}{
 				"connection":     "default",
 				"rolled_back_at": startTime.Format(time.RFC3339),

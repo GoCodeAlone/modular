@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/IBM/sarama"
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ type KafkaEventBus struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
-	isStarted       bool
+	isStarted       atomic.Bool
 	consumerGroupID string
 }
 
@@ -231,18 +232,18 @@ func NewKafkaEventBus(config map[string]interface{}) (EventBus, error) {
 
 // Start initializes the Kafka event bus
 func (k *KafkaEventBus) Start(ctx context.Context) error {
-	if k.isStarted {
+	if k.isStarted.Load() {
 		return nil
 	}
 
 	k.ctx, k.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in k.cancel and called in Stop()
-	k.isStarted = true
+	k.isStarted.Store(true)
 	return nil
 }
 
 // Stop shuts down the Kafka event bus
 func (k *KafkaEventBus) Stop(ctx context.Context) error {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return nil
 	}
 
@@ -283,13 +284,13 @@ func (k *KafkaEventBus) Stop(ctx context.Context) error {
 		return fmt.Errorf("error closing Kafka consumer group: %w", err)
 	}
 
-	k.isStarted = false
+	k.isStarted.Store(false)
 	return nil
 }
 
 // Publish sends an event to the specified topic using Kafka
 func (k *KafkaEventBus) Publish(ctx context.Context, event Event) error {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -330,7 +331,7 @@ func (k *KafkaEventBus) SubscribeAsync(ctx context.Context, topic string, handle
 
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (k *KafkaEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 
@@ -400,7 +401,7 @@ func (k *KafkaEventBus) startConsumerGroup() {
 
 // Unsubscribe removes a subscription
 func (k *KafkaEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 

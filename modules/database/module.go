@@ -208,6 +208,11 @@ func (l *lazyDefaultService) QueryContext(ctx context.Context, query string, arg
 		}, nil)
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					l.module.logger.Error("panic in emit query error event goroutine", "error", r)
+				}
+			}()
 			if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
 				l.module.logger.Error("Failed to emit query error event", "error", emitErr)
 			}
@@ -225,6 +230,11 @@ func (l *lazyDefaultService) QueryContext(ctx context.Context, query string, arg
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				l.module.logger.Error("panic in emit query success event goroutine", "error", r)
+			}
+		}()
 		if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
 			l.module.logger.Error("Failed to emit query success event", "error", emitErr)
 		}
@@ -284,6 +294,11 @@ func (l *lazyDefaultService) BeginTx(ctx context.Context, opts *sql.TxOptions) (
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				l.module.logger.Error("panic in emit transaction event goroutine", "error", r)
+			}
+		}()
 		if emitErr := l.module.EmitEvent(ctx, event); emitErr != nil {
 			l.module.logger.Error("Failed to emit transaction event", "error", emitErr)
 		}
@@ -310,6 +325,11 @@ func (l *lazyDefaultService) Begin() (*sql.Tx, error) {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				l.module.logger.Error("panic in emit transaction started event goroutine", "error", r)
+			}
+		}()
 		if emitErr := l.module.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
 			l.module.logger.Error("Failed to emit transaction started event", "error", emitErr)
 		}
@@ -512,6 +532,11 @@ func (m *Module) Init(app modular.Application) error {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("panic in emit config loaded event goroutine", "error", r)
+			}
+		}()
 		if emitErr := m.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
 			m.logger.Error("Failed to emit config loaded event", "error", emitErr)
 		}
@@ -530,7 +555,13 @@ func (m *Module) Init(app modular.Application) error {
 // to ensure they are ready for use by other modules.
 func (m *Module) Start(ctx context.Context) error {
 	// Test connections to make sure they're still alive
+	m.connMu.RLock()
+	conns := make(map[string]*sql.DB, len(m.connections))
 	for name, db := range m.connections {
+		conns[name] = db
+	}
+	m.connMu.RUnlock()
+	for name, db := range conns {
 		if err := db.PingContext(ctx); err != nil {
 			return fmt.Errorf("failed to ping database connection '%s': %w", name, err)
 		}
@@ -542,8 +573,15 @@ func (m *Module) Start(ctx context.Context) error {
 // This method gracefully closes all database connections and services,
 // ensuring proper cleanup during application shutdown.
 func (m *Module) Stop(ctx context.Context) error {
-	// Close all database services
+	// Snapshot services under read lock
+	m.connMu.RLock()
+	services := make(map[string]DatabaseService, len(m.services))
 	for name, service := range m.services {
+		services[name] = service
+	}
+	m.connMu.RUnlock()
+
+	for name, service := range services {
 		if err := service.Close(); err != nil {
 			// Emit disconnection error event but continue cleanup
 			event := modular.NewCloudEvent(EventTypeConnectionError, "database-service", map[string]interface{}{
@@ -552,11 +590,9 @@ func (m *Module) Stop(ctx context.Context) error {
 				"error":           err.Error(),
 			}, nil)
 
-			go func() {
-				if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-					m.logger.Error("Failed to emit database close error event", "error", emitErr)
-				}
-			}()
+			if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+				m.logger.Error("Failed to emit database close error event", "error", emitErr)
+			}
 
 			return fmt.Errorf("failed to close database service '%s': %w", name, err)
 		}
@@ -566,16 +602,16 @@ func (m *Module) Stop(ctx context.Context) error {
 			"connection_name": name,
 		}, nil)
 
-		go func() {
-			if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
-				m.logger.Error("Failed to emit database disconnected event", "error", emitErr)
-			}
-		}()
+		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
+			m.logger.Error("Failed to emit database disconnected event", "error", emitErr)
+		}
 	}
 
-	// Clear the maps
+	// Clear the maps under write lock
+	m.connMu.Lock()
 	m.connections = make(map[string]*sql.DB)
 	m.services = make(map[string]DatabaseService)
+	m.connMu.Unlock()
 	return nil
 }
 
@@ -641,6 +677,8 @@ func (m *Module) Constructor() modular.ModuleConstructor {
 //	    // Use the primary database connection
 //	}
 func (m *Module) GetConnection(name string) (*sql.DB, bool) {
+	m.connMu.RLock()
+	defer m.connMu.RUnlock()
 	if db, exists := m.connections[name]; exists {
 		return db, true
 	}
@@ -658,6 +696,9 @@ func (m *Module) GetDefaultConnection() *sql.DB {
 		return nil
 	}
 
+	m.connMu.RLock()
+	defer m.connMu.RUnlock()
+
 	if db, exists := m.connections[m.config.Default]; exists {
 		return db
 	}
@@ -673,6 +714,8 @@ func (m *Module) GetDefaultConnection() *sql.DB {
 // GetConnections returns a list of all available connection names.
 // This is useful for discovery and diagnostic purposes.
 func (m *Module) GetConnections() []string {
+	m.connMu.RLock()
+	defer m.connMu.RUnlock()
 	connections := make([]string, 0, len(m.connections))
 	for name := range m.connections {
 		connections = append(connections, name)
@@ -684,11 +727,17 @@ func (m *Module) GetConnections() []string {
 // Similar to GetDefaultConnection, but returns a DatabaseService
 // interface that provides additional functionality beyond the raw sql.DB.
 func (m *Module) GetDefaultService() DatabaseService {
-	m.logger.Debug("Getting default database service", "config_default", m.config.Default, "available_services", len(m.services))
+	m.connMu.RLock()
+	svcCount := len(m.services)
+	m.connMu.RUnlock()
+	m.logger.Debug("Getting default database service", "config_default", m.config.Default, "available_services", svcCount)
 	if m.config == nil || m.config.Default == "" {
 		m.logger.Debug("No default database service configured")
 		return nil
 	}
+
+	m.connMu.RLock()
+	defer m.connMu.RUnlock()
 
 	if service, exists := m.services[m.config.Default]; exists {
 		m.logger.Debug("Found default database service", "service_name", m.config.Default)
@@ -711,6 +760,8 @@ func (m *Module) GetDefaultService() DatabaseService {
 // Database services provide a higher-level interface than raw database
 // connections, including connection management and additional utilities.
 func (m *Module) GetService(name string) (DatabaseService, bool) {
+	m.connMu.RLock()
+	defer m.connMu.RUnlock()
 	if service, exists := m.services[name]; exists {
 		return service, true
 	}
@@ -759,13 +810,20 @@ func (m *Module) initializeConnections(app modular.Application) error {
 			}, nil)
 
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						m.logger.Error("panic in emit database connected event goroutine", "error", r)
+					}
+				}()
 				if emitErr := m.EmitEvent(modular.WithSynchronousNotification(context.Background()), event); emitErr != nil {
 					m.logger.Error("Failed to emit database connected event", "error", emitErr)
 				}
 			}()
 
+			m.connMu.Lock()
 			m.connections[name] = dbService.DB()
 			m.services[name] = dbService
+			m.connMu.Unlock()
 		}
 	}
 
@@ -796,6 +854,11 @@ func (m *Module) EmitEvent(ctx context.Context, event cloudevents.Event) error {
 
 	// Use a goroutine to prevent blocking database operations with event emission
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := subject.NotifyObservers(ctx, event); err != nil {
 			// Log error but don't fail the operation
 			// This ensures event emission issues don't affect database functionality

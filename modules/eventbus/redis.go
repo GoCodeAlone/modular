@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -21,7 +22,7 @@ type RedisEventBus struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
-	isStarted     bool
+	isStarted     atomic.Bool
 }
 
 // RedisConfig holds Redis-specific configuration
@@ -130,7 +131,7 @@ func NewRedisEventBus(config map[string]interface{}) (EventBus, error) {
 
 // Start initializes the Redis event bus
 func (r *RedisEventBus) Start(ctx context.Context) error {
-	if r.isStarted {
+	if r.isStarted.Load() {
 		return nil
 	}
 
@@ -141,13 +142,13 @@ func (r *RedisEventBus) Start(ctx context.Context) error {
 	}
 
 	r.ctx, r.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in r.cancel and called in Stop()
-	r.isStarted = true
+	r.isStarted.Store(true)
 	return nil
 }
 
 // Stop shuts down the Redis event bus
 func (r *RedisEventBus) Stop(ctx context.Context) error {
-	if !r.isStarted {
+	if !r.isStarted.Load() {
 		return nil
 	}
 
@@ -185,13 +186,13 @@ func (r *RedisEventBus) Stop(ctx context.Context) error {
 		return fmt.Errorf("error closing Redis client: %w", err)
 	}
 
-	r.isStarted = false
+	r.isStarted.Store(false)
 	return nil
 }
 
 // Publish sends an event to the specified topic using Redis pub/sub
 func (r *RedisEventBus) Publish(ctx context.Context, event Event) error {
-	if !r.isStarted {
+	if !r.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -221,7 +222,7 @@ func (r *RedisEventBus) SubscribeAsync(ctx context.Context, topic string, handle
 
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (r *RedisEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !r.isStarted {
+	if !r.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 
@@ -268,7 +269,7 @@ func (r *RedisEventBus) subscribe(ctx context.Context, topic string, handler Eve
 
 // Unsubscribe removes a subscription
 func (r *RedisEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !r.isStarted {
+	if !r.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 

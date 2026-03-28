@@ -231,6 +231,11 @@ func (m *CacheModule) Start(ctx context.Context) error {
 		}, nil)
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.Error("observer panic", "error", r)
+				}
+			}()
 			if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
 				m.logger.Debug("Failed to emit cache error event", "error", emitErr)
 			}
@@ -245,6 +250,11 @@ func (m *CacheModule) Start(ctx context.Context) error {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
 			m.logger.Debug("Failed to emit cache connected event", "error", emitErr)
 		}
@@ -273,6 +283,11 @@ func (m *CacheModule) Stop(ctx context.Context) error {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if emitErr := m.EmitEvent(ctx, event); emitErr != nil {
 			m.logger.Debug("Failed to emit cache disconnected event", "error", emitErr)
 		}
@@ -338,6 +353,11 @@ func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 	}, nil)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := m.EmitEvent(ctx, getEvent); err != nil {
 			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheGet)
 		}
@@ -357,6 +377,11 @@ func (m *CacheModule) Get(ctx context.Context, key string) (interface{}, bool) {
 
 	// Emit event in background to avoid blocking cache operations
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := m.EmitEvent(ctx, event); err != nil {
 			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", eventType)
 		}
@@ -396,6 +421,11 @@ func (m *CacheModule) Set(ctx context.Context, key string, value interface{}, tt
 
 	// Emit event in background to avoid blocking cache operations
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := m.EmitEvent(ctx, event); err != nil {
 			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheSet)
 		}
@@ -426,6 +456,11 @@ func (m *CacheModule) Delete(ctx context.Context, key string) error {
 
 	// Emit event in background to avoid blocking cache operations
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := m.EmitEvent(ctx, event); err != nil {
 			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheDelete)
 		}
@@ -456,6 +491,11 @@ func (m *CacheModule) Flush(ctx context.Context) error {
 
 	// Emit event in background to avoid blocking cache operations
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
+			}
+		}()
 		if err := m.EmitEvent(ctx, event); err != nil {
 			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheFlush)
 		}
@@ -484,19 +524,23 @@ func (m *CacheModule) GetMulti(ctx context.Context, keys []string) (map[string]i
 		return nil, fmt.Errorf("failed to get multiple cache items: %w", err)
 	}
 
-	// Emit a cache get event for each requested key (best-effort; non-blocking)
-	for _, key := range keys {
-		getEvent := modular.NewCloudEvent(EventTypeCacheGet, "cache-service", map[string]interface{}{
-			"cache_key": key,
-			"engine":    m.config.Engine,
-			"batch":     true,
-		}, nil)
-		go func(ev cloudevents.Event) {
-			if err := m.EmitEvent(ctx, ev); err != nil {
-				m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheGet)
+	// Emit a single batch get event (best-effort; non-blocking)
+	batchEvent := modular.NewCloudEvent(EventTypeCacheGet, "cache-service", map[string]interface{}{
+		"cache_keys": keys,
+		"engine":     m.config.Engine,
+		"batch":      true,
+		"count":      len(keys),
+	}, nil)
+	go func(ev cloudevents.Event) {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("observer panic", "error", r)
 			}
-		}(getEvent)
-	}
+		}()
+		if err := m.EmitEvent(ctx, ev); err != nil {
+			m.logger.Debug("Failed to emit cache event", "error", err, "event_type", EventTypeCacheGet)
+		}
+	}(batchEvent)
 	return result, nil
 }
 

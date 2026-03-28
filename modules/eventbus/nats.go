@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,7 +23,7 @@ type NatsEventBus struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
-	isStarted     bool
+	isStarted     atomic.Bool
 }
 
 // NatsConfig holds NATS-specific configuration
@@ -168,7 +169,7 @@ func NewNatsEventBus(config map[string]interface{}) (EventBus, error) {
 
 // Start initializes the NATS event bus
 func (n *NatsEventBus) Start(ctx context.Context) error {
-	if n.isStarted {
+	if n.isStarted.Load() {
 		return nil
 	}
 
@@ -178,13 +179,13 @@ func (n *NatsEventBus) Start(ctx context.Context) error {
 	}
 
 	n.ctx, n.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in n.cancel and called in Stop()
-	n.isStarted = true
+	n.isStarted.Store(true)
 	return nil
 }
 
 // Stop shuts down the NATS event bus
 func (n *NatsEventBus) Stop(ctx context.Context) error {
-	if !n.isStarted {
+	if !n.isStarted.Load() {
 		return nil
 	}
 
@@ -220,13 +221,13 @@ func (n *NatsEventBus) Stop(ctx context.Context) error {
 	// Close NATS connection
 	n.conn.Close()
 
-	n.isStarted = false
+	n.isStarted.Store(false)
 	return nil
 }
 
 // Publish sends an event to the specified topic using NATS
 func (n *NatsEventBus) Publish(ctx context.Context, event Event) error {
-	if !n.isStarted {
+	if !n.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -259,7 +260,7 @@ func (n *NatsEventBus) SubscribeAsync(ctx context.Context, topic string, handler
 
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (n *NatsEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !n.isStarted {
+	if !n.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 
@@ -305,6 +306,11 @@ func (n *NatsEventBus) subscribe(ctx context.Context, topic string, handler Even
 			n.wg.Add(1)
 			go func() {
 				defer n.wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("nats subscription panic", "error", r)
+					}
+				}()
 				n.processEvent(sub, event)
 			}()
 		} else {
@@ -332,7 +338,7 @@ func (n *NatsEventBus) subscribe(ctx context.Context, topic string, handler Even
 
 // Unsubscribe removes a subscription
 func (n *NatsEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !n.isStarted {
+	if !n.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 

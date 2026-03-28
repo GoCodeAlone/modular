@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/GoCodeAlone/modular"
@@ -96,7 +97,7 @@ type Scheduler struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
-	isStarted      bool
+	isStarted      atomic.Bool
 	schedulerMutex sync.Mutex
 }
 
@@ -186,7 +187,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	s.schedulerMutex.Lock()
 	defer s.schedulerMutex.Unlock()
 
-	if s.isStarted {
+	if s.isStarted.Load() {
 		return nil
 	}
 
@@ -221,7 +222,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	dbg("Start: running initial due-jobs dispatch (checkInterval=%s)", s.checkInterval.String())
 	s.checkAndDispatchJobs()
 
-	s.isStarted = true
+	s.isStarted.Store(true)
 
 	// Emit scheduler started event
 	s.emitEvent(context.WithValue(ctx, schedulerKey, "started"), EventTypeSchedulerStarted, map[string]interface{}{
@@ -238,7 +239,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 	s.schedulerMutex.Lock()
 	defer s.schedulerMutex.Unlock()
 
-	if !s.isStarted {
+	if !s.isStarted.Load() {
 		return nil
 	}
 
@@ -278,7 +279,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 		}
 	}
 
-	s.isStarted = false
+	s.isStarted.Store(false)
 
 	// Emit scheduler stopped event
 	s.emitEvent(context.WithValue(ctx, schedulerKey, "stopped"), EventTypeSchedulerStopped, map[string]interface{}{
@@ -331,6 +332,12 @@ func (s *Scheduler) worker(id int) {
 
 // executeJob runs a job and records its execution
 func (s *Scheduler) executeJob(job Job) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("job panic", "error", r)
+		}
+	}()
+
 	if s.logger != nil {
 		s.logger.Debug("Executing job", "id", job.ID, "name", job.Name)
 	}
@@ -545,7 +552,7 @@ func (s *Scheduler) ScheduleJob(job Job) (string, error) {
 	}
 
 	// Register with cron if recurring
-	if job.IsRecurring && s.isStarted {
+	if job.IsRecurring && s.isStarted.Load() {
 		s.registerWithCron(job)
 	}
 
@@ -728,7 +735,7 @@ func (s *Scheduler) ResumeRecurringJob(job Job) (string, error) {
 	}
 
 	// Register with cron if running
-	if s.isStarted {
+	if s.isStarted.Load() {
 		s.registerWithCron(job)
 	}
 

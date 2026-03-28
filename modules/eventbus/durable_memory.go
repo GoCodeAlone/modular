@@ -171,7 +171,7 @@ type DurableMemoryEventBus struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
-	isStarted      bool
+	isStarted      atomic.Bool
 	module         *EventBusModule
 	deliveredCount uint64
 }
@@ -213,11 +213,11 @@ func (d *DurableMemoryEventBus) SetModule(module *EventBusModule) {
 
 // Start initialises the durable memory event bus.
 func (d *DurableMemoryEventBus) Start(ctx context.Context) error {
-	if d.isStarted {
+	if d.isStarted.Load() {
 		return nil
 	}
 	d.ctx, d.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in d.cancel and called in Stop()
-	d.isStarted = true
+	d.isStarted.Store(true)
 	return nil
 }
 
@@ -225,7 +225,7 @@ func (d *DurableMemoryEventBus) Start(ctx context.Context) error {
 // All active subscriber goroutines are signalled to stop and the method waits
 // until they exit (or ctx expires).
 func (d *DurableMemoryEventBus) Stop(ctx context.Context) error {
-	if !d.isStarted {
+	if !d.isStarted.Load() {
 		return nil
 	}
 
@@ -245,7 +245,7 @@ func (d *DurableMemoryEventBus) Stop(ctx context.Context) error {
 		return ErrEventBusShutdownTimeout
 	}
 
-	d.isStarted = false
+	d.isStarted.Store(false)
 	return nil
 }
 
@@ -263,7 +263,7 @@ func (d *DurableMemoryEventBus) queueDepth() int {
 // until space is available (backpressure), then continues to the next subscriber.
 // Returns ctx.Err() if the context is cancelled before all subscribers are reached.
 func (d *DurableMemoryEventBus) Publish(ctx context.Context, event Event) error {
-	if !d.isStarted {
+	if !d.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -312,7 +312,7 @@ func (d *DurableMemoryEventBus) SubscribeAsync(ctx context.Context, topic string
 }
 
 func (d *DurableMemoryEventBus) subscribe(_ context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !d.isStarted {
+	if !d.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 	if handler == nil {
@@ -349,7 +349,7 @@ func (d *DurableMemoryEventBus) subscribe(_ context.Context, topic string, handl
 
 // Unsubscribe cancels a subscription and removes it from the bus.
 func (d *DurableMemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !d.isStarted {
+	if !d.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 

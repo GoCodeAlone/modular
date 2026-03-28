@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -43,7 +44,7 @@ type KinesisEventBus struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
-	isStarted     bool
+	isStarted     atomic.Bool
 	shardScanOnce sync.Once
 	activeShards  map[string]struct{}
 	shardMutex    sync.Mutex
@@ -171,7 +172,7 @@ func NewKinesisEventBus(config map[string]interface{}) (EventBus, error) {
 
 // Start initializes the Kinesis event bus
 func (k *KinesisEventBus) Start(ctx context.Context) error {
-	if k.isStarted {
+	if k.isStarted.Load() {
 		return nil
 	}
 
@@ -211,13 +212,13 @@ func (k *KinesisEventBus) Start(ctx context.Context) error {
 		k.config.PollInterval = DefaultKinesisPollInterval
 	}
 	k.ctx, k.cancel = context.WithCancel(ctx) //nolint:gosec // G118: cancel is stored in k.cancel and called in Stop()
-	k.isStarted = true
+	k.isStarted.Store(true)
 	return nil
 }
 
 // Stop shuts down the Kinesis event bus
 func (k *KinesisEventBus) Stop(ctx context.Context) error {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return nil
 	}
 
@@ -256,13 +257,13 @@ func (k *KinesisEventBus) Stop(ctx context.Context) error {
 	k.shardMutex.Unlock()
 	k.shardScanOnce = sync.Once{}
 
-	k.isStarted = false
+	k.isStarted.Store(false)
 	return nil
 }
 
 // Publish sends an event to the specified topic using Kinesis
 func (k *KinesisEventBus) Publish(ctx context.Context, event Event) error {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
@@ -302,7 +303,7 @@ func (k *KinesisEventBus) SubscribeAsync(ctx context.Context, topic string, hand
 
 // subscribe is the internal implementation for both Subscribe and SubscribeAsync
 func (k *KinesisEventBus) subscribe(ctx context.Context, topic string, handler EventHandler, isAsync bool) (Subscription, error) {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return nil, ErrEventBusNotStarted
 	}
 
@@ -541,7 +542,7 @@ func isExpiredIteratorError(err error) bool {
 
 // Unsubscribe removes a subscription
 func (k *KinesisEventBus) Unsubscribe(ctx context.Context, subscription Subscription) error {
-	if !k.isStarted {
+	if !k.isStarted.Load() {
 		return ErrEventBusNotStarted
 	}
 
