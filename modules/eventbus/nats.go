@@ -198,7 +198,9 @@ func (n *NatsEventBus) Stop(ctx context.Context) error {
 	n.topicMutex.Lock()
 	for _, subs := range n.subscriptions {
 		for _, sub := range subs {
-			_ = sub.Cancel() // Ignore error during shutdown
+			if err := sub.Cancel(); err != nil {
+				slog.Warn("failed to cancel NATS subscription during shutdown", "error", err)
+			}
 		}
 	}
 	n.subscriptions = make(map[string]map[string]*natsSubscription)

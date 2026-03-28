@@ -231,7 +231,9 @@ func (k *KinesisEventBus) Stop(ctx context.Context) error {
 	k.topicMutex.Lock()
 	for _, subs := range k.subscriptions {
 		for _, sub := range subs {
-			_ = sub.Cancel() // Ignore error during shutdown
+			if err := sub.Cancel(); err != nil {
+				slog.Warn("failed to cancel Kinesis subscription during shutdown", "error", err)
+			}
 		}
 	}
 	k.subscriptions = make(map[string]map[string]*kinesisSubscription)

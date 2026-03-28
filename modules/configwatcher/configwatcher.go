@@ -18,6 +18,7 @@ type ConfigWatcher struct {
 	watcher  *fsnotify.Watcher
 	stopCh   chan struct{}
 	stopOnce sync.Once
+	wg       sync.WaitGroup
 	logger   modular.Logger
 }
 
@@ -66,7 +67,9 @@ func (w *ConfigWatcher) Start(ctx context.Context) error {
 	if err := w.startWatching(); err != nil {
 		return err
 	}
+	w.wg.Add(1)
 	go func() {
+		defer w.wg.Done()
 		select {
 		case <-ctx.Done():
 			_ = w.stopWatching()
@@ -77,7 +80,9 @@ func (w *ConfigWatcher) Start(ctx context.Context) error {
 }
 
 func (w *ConfigWatcher) Stop(_ context.Context) error {
-	return w.stopWatching()
+	err := w.stopWatching()
+	w.wg.Wait()
+	return err
 }
 
 func (w *ConfigWatcher) startWatching() error {
@@ -92,6 +97,7 @@ func (w *ConfigWatcher) startWatching() error {
 			return fmt.Errorf("watching path %q: %w", path, err)
 		}
 	}
+	w.wg.Add(1)
 	go w.eventLoop()
 	return nil
 }
@@ -110,6 +116,7 @@ func (w *ConfigWatcher) stopWatching() error {
 }
 
 func (w *ConfigWatcher) eventLoop() {
+	defer w.wg.Done()
 	var timer *time.Timer
 	changedPaths := make(map[string]struct{})
 	var mu sync.Mutex

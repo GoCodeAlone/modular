@@ -189,6 +189,7 @@ type LetsEncryptModule struct {
 	certMutex     sync.RWMutex
 	shutdownChan  chan struct{}
 	renewalTicker *time.Ticker
+	renewalWg     sync.WaitGroup
 	rootCAs       *x509.CertPool      // Certificate authority root certificates
 	subject       modular.Subject     // Added for event observation
 	subjectMu     sync.RWMutex        // Protects subject publication & reads during emission
@@ -420,6 +421,7 @@ func (m *LetsEncryptModule) Stop(ctx context.Context) error {
 	if m.renewalTicker != nil {
 		m.renewalTicker.Stop()
 		close(m.shutdownChan)
+		m.renewalWg.Wait()
 	}
 
 	// Emit service stopped event
@@ -706,7 +708,9 @@ func (m *LetsEncryptModule) startRenewalTimer(ctx context.Context) {
 	// Check certificates daily
 	m.renewalTicker = time.NewTicker(24 * time.Hour)
 
+	m.renewalWg.Add(1)
 	go func() {
+		defer m.renewalWg.Done()
 		for {
 			select {
 			case <-m.renewalTicker.C:

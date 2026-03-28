@@ -153,9 +153,17 @@ func (d *DryRunHandler) ProcessDryRun(ctx context.Context, req *http.Request, pr
 		secondaryChan <- response
 	}()
 
-	// Collect responses
-	result.PrimaryResponse = <-primaryChan
-	result.SecondaryResponse = <-secondaryChan
+	// Collect responses, respecting context cancellation.
+	select {
+	case result.PrimaryResponse = <-primaryChan:
+	case <-ctx.Done():
+		result.PrimaryResponse = ResponseInfo{Error: ctx.Err().Error()}
+	}
+	select {
+	case result.SecondaryResponse = <-secondaryChan:
+	case <-ctx.Done():
+		result.SecondaryResponse = ResponseInfo{Error: ctx.Err().Error()}
+	}
 
 	// Calculate timing
 	result.Duration = DurationInfo{

@@ -357,41 +357,32 @@ func (m *EventBusModule) Stop(ctx context.Context) error {
 	m.logger.Info("Stopping event bus module")
 
 	m.mutex.Lock()
-	defer m.mutex.Unlock()
 
 	if !m.isStarted {
+		m.mutex.Unlock()
 		return nil
 	}
 
 	// Stop the engine router (which stops all engines)
 	err := m.router.Stop(ctx)
 	if err != nil {
+		m.mutex.Unlock()
 		return fmt.Errorf("stopping engine router: %w", err)
 	}
 
 	m.isStarted = false
+	engineName := "unknown"
+	if m.config != nil {
+		engineName = m.config.Engine
+	}
+	m.mutex.Unlock()
+
 	m.logger.Info("Event bus stopped")
 
-	// Emit bus stopped event
-	event := modular.NewCloudEvent(EventTypeBusStopped, "eventbus-service", map[string]interface{}{
-		"engine": func() string {
-			if m.config != nil {
-				return m.config.Engine
-			}
-			return "unknown"
-		}(),
-	}, nil)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				m.logger.Error("observer panic", "error", r)
-			}
-		}()
-		m.emitEvent(ctx, EventTypeBusStopped, map[string]interface{}{
-			"engine": event.Extensions()["engine"],
-		})
-	}()
+	// Emit bus stopped event synchronously now that the mutex is released.
+	m.emitEvent(ctx, EventTypeBusStopped, map[string]interface{}{
+		"engine": engineName,
+	})
 
 	return nil
 }

@@ -399,9 +399,11 @@ func (m *MemoryEventBus) Unsubscribe(ctx context.Context, subscription Subscript
 	m.topicMutex.Unlock()
 
 	// Wait (briefly) for handler goroutine to terminate to avoid post-unsubscribe deliveries
+	t := time.NewTimer(100 * time.Millisecond)
+	defer t.Stop()
 	select {
 	case <-sub.finished:
-	case <-time.After(100 * time.Millisecond):
+	case <-t.C:
 	}
 
 	if topicDeleted {

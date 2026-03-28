@@ -372,9 +372,11 @@ func (d *DurableMemoryEventBus) Unsubscribe(ctx context.Context, subscription Su
 	d.topicMutex.Unlock()
 
 	// Brief wait for the handler goroutine to exit before returning.
+	t := time.NewTimer(100 * time.Millisecond)
+	defer t.Stop()
 	select {
 	case <-sub.finished:
-	case <-time.After(100 * time.Millisecond):
+	case <-t.C:
 	}
 
 	return nil
