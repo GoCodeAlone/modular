@@ -57,7 +57,7 @@ type YamlFeeder struct {
 	Path         string
 	verboseDebug bool
 	debugFn      func(string)
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 	priority     int
 }
 
@@ -67,7 +67,6 @@ func NewYamlFeeder(filePath string) *YamlFeeder {
 		Path:         filePath,
 		verboseDebug: false,
 		debugFn:      nil,
-		fieldTracker: nil,
 		priority:     0, // Default priority
 	}
 }
@@ -100,7 +99,7 @@ func (y *YamlFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg s
 
 // SetFieldTracker sets the field tracker for recording field populations
 func (y *YamlFeeder) SetFieldTracker(tracker FieldTracker) {
-	y.fieldTracker = tracker
+	y.ft.Set(tracker)
 }
 
 // debugLog logs a debug message with key-value pairs when verbose debugging is enabled.
@@ -323,21 +322,18 @@ func (y *YamlFeeder) setPointerFromYAML(field reflect.Value, yamlTag string, dat
 
 	if !exists {
 		// Record that we searched but didn't find
-		if y.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:   fieldPath,
-				FieldName:   fieldName,
-				FieldType:   field.Type().String(),
-				FeederType:  "*feeders.YamlFeeder",
-				SourceType:  "yaml",
-				SourceKey:   "",
-				Value:       nil,
-				InstanceKey: "",
-				SearchKeys:  []string{yamlTag},
-				FoundKey:    "",
-			}
-			y.fieldTracker.RecordFieldPopulation(fp)
-		}
+		y.ft.Record(FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   "",
+			Value:       nil,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    "",
+		})
 		return nil
 	}
 
@@ -346,21 +342,18 @@ func (y *YamlFeeder) setPointerFromYAML(field reflect.Value, yamlTag string, dat
 		field.Set(reflect.Zero(field.Type()))
 
 		// Record field population
-		if y.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:   fieldPath,
-				FieldName:   fieldName,
-				FieldType:   field.Type().String(),
-				FeederType:  "*feeders.YamlFeeder",
-				SourceType:  "yaml",
-				SourceKey:   yamlTag,
-				Value:       nil,
-				InstanceKey: "",
-				SearchKeys:  []string{yamlTag},
-				FoundKey:    yamlTag,
-			}
-			y.fieldTracker.RecordFieldPopulation(fp)
-		}
+		y.ft.Record(FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   yamlTag,
+			Value:       nil,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    yamlTag,
+		})
 		return nil
 	}
 
@@ -389,21 +382,18 @@ func (y *YamlFeeder) setPointerFromYAML(field reflect.Value, yamlTag string, dat
 	}
 
 	// Record field population
-	if y.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:   fieldPath,
-			FieldName:   fieldName,
-			FieldType:   field.Type().String(),
-			FeederType:  "*feeders.YamlFeeder",
-			SourceType:  "yaml",
-			SourceKey:   yamlTag,
-			Value:       foundValue,
-			InstanceKey: "",
-			SearchKeys:  []string{yamlTag},
-			FoundKey:    yamlTag,
-		}
-		y.fieldTracker.RecordFieldPopulation(fp)
-	}
+	y.ft.Record(FieldPopulation{
+		FieldPath:   fieldPath,
+		FieldName:   fieldName,
+		FieldType:   field.Type().String(),
+		FeederType:  "*feeders.YamlFeeder",
+		SourceType:  "yaml",
+		SourceKey:   yamlTag,
+		Value:       foundValue,
+		InstanceKey: "",
+		SearchKeys:  []string{yamlTag},
+		FoundKey:    yamlTag,
+	})
 	return nil
 }
 
@@ -414,21 +404,18 @@ func (y *YamlFeeder) setSliceFromYAML(field reflect.Value, yamlTag string, data 
 
 	if !exists {
 		// Record that we searched but didn't find
-		if y.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:   fieldPath,
-				FieldName:   fieldName,
-				FieldType:   field.Type().String(),
-				FeederType:  "*feeders.YamlFeeder",
-				SourceType:  "yaml",
-				SourceKey:   "",
-				Value:       nil,
-				InstanceKey: "",
-				SearchKeys:  []string{yamlTag},
-				FoundKey:    "",
-			}
-			y.fieldTracker.RecordFieldPopulation(fp)
-		}
+		y.ft.Record(FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   "",
+			Value:       nil,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    "",
+		})
 		return nil
 	}
 
@@ -492,21 +479,18 @@ func (y *YamlFeeder) setSliceFromYAML(field reflect.Value, yamlTag string, data 
 	field.Set(newSlice)
 
 	// Record field population for the slice
-	if y.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:   fieldPath,
-			FieldName:   fieldName,
-			FieldType:   field.Type().String(),
-			FeederType:  "*feeders.YamlFeeder",
-			SourceType:  "yaml",
-			SourceKey:   yamlTag,
-			Value:       foundValue,
-			InstanceKey: "",
-			SearchKeys:  []string{yamlTag},
-			FoundKey:    yamlTag,
-		}
-		y.fieldTracker.RecordFieldPopulation(fp)
-	}
+	y.ft.Record(FieldPopulation{
+		FieldPath:   fieldPath,
+		FieldName:   fieldName,
+		FieldType:   field.Type().String(),
+		FeederType:  "*feeders.YamlFeeder",
+		SourceType:  "yaml",
+		SourceKey:   yamlTag,
+		Value:       foundValue,
+		InstanceKey: "",
+		SearchKeys:  []string{yamlTag},
+		FoundKey:    yamlTag,
+	})
 
 	return nil
 }
@@ -518,21 +502,18 @@ func (y *YamlFeeder) setArrayFromYAML(field reflect.Value, yamlTag string, data 
 
 	if !exists {
 		// Record that we searched but didn't find
-		if y.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:   fieldPath,
-				FieldName:   fieldName,
-				FieldType:   field.Type().String(),
-				FeederType:  "*feeders.YamlFeeder",
-				SourceType:  "yaml",
-				SourceKey:   "",
-				Value:       nil,
-				InstanceKey: "",
-				SearchKeys:  []string{yamlTag},
-				FoundKey:    "",
-			}
-			y.fieldTracker.RecordFieldPopulation(fp)
-		}
+		y.ft.Record(FieldPopulation{
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   "",
+			Value:       nil,
+			InstanceKey: "",
+			SearchKeys:  []string{yamlTag},
+			FoundKey:    "",
+		})
 		return nil
 	}
 
@@ -557,21 +538,18 @@ func (y *YamlFeeder) setArrayFromYAML(field reflect.Value, yamlTag string, data 
 	}
 
 	// Record field population for the array
-	if y.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:   fieldPath,
-			FieldName:   fieldName,
-			FieldType:   field.Type().String(),
-			FeederType:  "*feeders.YamlFeeder",
-			SourceType:  "yaml",
-			SourceKey:   yamlTag,
-			Value:       foundValue,
-			InstanceKey: "",
-			SearchKeys:  []string{yamlTag},
-			FoundKey:    yamlTag,
-		}
-		y.fieldTracker.RecordFieldPopulation(fp)
-	}
+	y.ft.Record(FieldPopulation{
+		FieldPath:   fieldPath,
+		FieldName:   fieldName,
+		FieldType:   field.Type().String(),
+		FeederType:  "*feeders.YamlFeeder",
+		SourceType:  "yaml",
+		SourceKey:   yamlTag,
+		Value:       foundValue,
+		InstanceKey: "",
+		SearchKeys:  []string{yamlTag},
+		FoundKey:    yamlTag,
+	})
 
 	return nil
 }
@@ -598,8 +576,7 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 		}
 
 		// Record field population if tracker is available
-		if y.fieldTracker != nil {
-			fp := FieldPopulation{
+		y.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -610,15 +587,12 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
 				FoundKey:    foundKey,
-			}
-			y.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		y.debugLog("YamlFeeder: Successfully set field value", "fieldName", fieldName, "yamlKey", yamlTag, "value", foundValue, "fieldPath", fieldPath)
 	} else {
 		// Record that we searched but didn't find
-		if y.fieldTracker != nil {
-			fp := FieldPopulation{
+		y.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -629,9 +603,7 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
 				FoundKey:    "",
-			}
-			y.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		y.debugLog("YamlFeeder: YAML value not found", "fieldName", fieldName, "yamlKey", yamlTag, "fieldPath", fieldPath)
 	}
@@ -754,21 +726,18 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 	field.Set(newMap)
 
 	// Record field population if tracker is available
-	if y.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:   fieldPath,
-			FieldName:   fieldName,
-			FieldType:   field.Type().String(),
-			FeederType:  "*feeders.YamlFeeder",
-			SourceType:  "yaml",
-			SourceKey:   fieldName, // For maps, use the field name as the source key
-			Value:       field.Interface(),
-			InstanceKey: "",
-			SearchKeys:  []string{fieldName},
-			FoundKey:    fieldName,
-		}
-		y.fieldTracker.RecordFieldPopulation(fp)
-	}
+	y.ft.Record(FieldPopulation{
+		FieldPath:   fieldPath,
+		FieldName:   fieldName,
+		FieldType:   field.Type().String(),
+		FeederType:  "*feeders.YamlFeeder",
+		SourceType:  "yaml",
+		SourceKey:   fieldName, // For maps, use the field name as the source key
+		Value:       field.Interface(),
+		InstanceKey: "",
+		SearchKeys:  []string{fieldName},
+		FoundKey:    fieldName,
+	})
 
 	y.debugLog("YamlFeeder: Successfully set map field", "fieldName", fieldName, "mapSize", newMap.Len())
 

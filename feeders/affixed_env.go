@@ -29,7 +29,7 @@ type AffixedEnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 	priority     int
 }
 
@@ -40,7 +40,6 @@ func NewAffixedEnvFeeder(prefix, suffix string) *AffixedEnvFeeder {
 		Suffix:       suffix,
 		verboseDebug: false,
 		logger:       nil,
-		fieldTracker: nil,
 		priority:     0, // Default priority
 	}
 }
@@ -69,7 +68,7 @@ func (f *AffixedEnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug
 
 // SetFieldTracker sets the field tracker for recording field populations
 func (f *AffixedEnvFeeder) SetFieldTracker(tracker FieldTracker) {
-	f.fieldTracker = tracker
+	f.ft.Set(tracker)
 }
 
 // Feed reads environment variables and populates the provided structure
@@ -209,21 +208,18 @@ func (f *AffixedEnvFeeder) setFieldFromEnv(field reflect.Value, fieldType *refle
 		}
 
 		// Record field population
-		if f.fieldTracker != nil {
-			convertedValue, _ := cast.FromType(envValue, field.Type())
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldType.Name,
-				FieldType:  field.Type().String(),
-				FeederType: "AffixedEnvFeeder",
-				SourceType: "env_affixed",
-				SourceKey:  envName,
-				Value:      convertedValue,
-				SearchKeys: []string{envName},
-				FoundKey:   envName,
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+		convertedValue, _ := cast.FromType(envValue, field.Type())
+		f.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldType.Name,
+			FieldType:  field.Type().String(),
+			FeederType: "AffixedEnvFeeder",
+			SourceType: "env_affixed",
+			SourceKey:  envName,
+			Value:      convertedValue,
+			SearchKeys: []string{envName},
+			FoundKey:   envName,
+		})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("AffixedEnvFeeder: Successfully set field value", "envName", envName, "envValue", envValue)

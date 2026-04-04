@@ -18,7 +18,7 @@ type BaseConfigFeeder struct {
 	Environment  string // Environment name (e.g., "prod", "staging", "dev")
 	verboseDebug bool
 	logger       interface{ Debug(msg string, args ...any) }
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 }
 
 // NewBaseConfigFeeder creates a new base configuration feeder
@@ -30,7 +30,6 @@ func NewBaseConfigFeeder(baseDir, environment string) *BaseConfigFeeder {
 		Environment:  environment,
 		verboseDebug: false,
 		logger:       nil,
-		fieldTracker: nil,
 	}
 }
 
@@ -45,7 +44,7 @@ func (b *BaseConfigFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug
 
 // SetFieldTracker sets the field tracker for recording field populations
 func (b *BaseConfigFeeder) SetFieldTracker(tracker FieldTracker) {
-	b.fieldTracker = tracker
+	b.ft.Set(tracker)
 }
 
 // Feed loads and merges base configuration with environment-specific overrides

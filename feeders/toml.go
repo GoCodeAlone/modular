@@ -17,7 +17,7 @@ type TomlFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 	priority     int
 }
 
@@ -27,7 +27,6 @@ func NewTomlFeeder(filePath string) *TomlFeeder {
 		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
-		fieldTracker: nil,
 		priority:     0, // Default priority
 	}
 }
@@ -56,7 +55,7 @@ func (t *TomlFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg s
 
 // SetFieldTracker sets the field tracker for recording field populations
 func (t *TomlFeeder) SetFieldTracker(tracker FieldTracker) {
-	t.fieldTracker = tracker
+	t.ft.Set(tracker)
 }
 
 // Feed reads the TOML file and populates the provided structure
@@ -228,20 +227,17 @@ func (t *TomlFeeder) setPointerFromTOML(field reflect.Value, value interface{}, 
 		field.Set(reflect.Zero(field.Type()))
 
 		// Record field population
-		if t.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "TomlFeeder",
-				SourceType: "toml_file",
-				SourceKey:  fieldPath,
-				Value:      nil,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			t.fieldTracker.RecordFieldPopulation(fp)
-		}
+		t.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "TomlFeeder",
+			SourceType: "toml_file",
+			SourceKey:  fieldPath,
+			Value:      nil,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 		return nil
 	}
 
@@ -287,20 +283,17 @@ func (t *TomlFeeder) setPointerFromTOML(field reflect.Value, value interface{}, 
 	}
 
 	// Record field population
-	if t.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:  fieldPath,
-			FieldName:  fieldPath,
-			FieldType:  field.Type().String(),
-			FeederType: "TomlFeeder",
-			SourceType: "toml_file",
-			SourceKey:  fieldPath,
-			Value:      value,
-			SearchKeys: []string{fieldPath},
-			FoundKey:   fieldPath,
-		}
-		t.fieldTracker.RecordFieldPopulation(fp)
-	}
+	t.ft.Record(FieldPopulation{
+		FieldPath:  fieldPath,
+		FieldName:  fieldPath,
+		FieldType:  field.Type().String(),
+		FeederType: "TomlFeeder",
+		SourceType: "toml_file",
+		SourceKey:  fieldPath,
+		Value:      value,
+		SearchKeys: []string{fieldPath},
+		FoundKey:   fieldPath,
+	})
 	return nil
 }
 
@@ -328,20 +321,17 @@ func (t *TomlFeeder) setArrayFromTOML(field reflect.Value, value interface{}, fi
 		}
 
 		// Record field population for the array
-		if t.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "TomlFeeder",
-				SourceType: "toml_file",
-				SourceKey:  fieldPath,
-				Value:      value,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			t.fieldTracker.RecordFieldPopulation(fp)
-		}
+		t.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "TomlFeeder",
+			SourceType: "toml_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 
 		return nil
 	}
@@ -361,20 +351,17 @@ func (t *TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fi
 			field.Set(reflect.ValueOf(duration))
 
 			// Record field population
-			if t.fieldTracker != nil {
-				fp := FieldPopulation{
-					FieldPath:  fieldPath,
-					FieldName:  fieldPath,
-					FieldType:  field.Type().String(),
-					FeederType: "TomlFeeder",
-					SourceType: "toml_file",
-					SourceKey:  fieldPath,
-					Value:      duration,
-					SearchKeys: []string{fieldPath},
-					FoundKey:   fieldPath,
-				}
-				t.fieldTracker.RecordFieldPopulation(fp)
-			}
+			t.ft.Record(FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldPath,
+				FieldType:  field.Type().String(),
+				FeederType: "TomlFeeder",
+				SourceType: "toml_file",
+				SourceKey:  fieldPath,
+				Value:      duration,
+				SearchKeys: []string{fieldPath},
+				FoundKey:   fieldPath,
+			})
 			return nil
 		}
 		return wrapTomlConvertError(value, field.Type().String(), fieldPath)
@@ -386,20 +373,17 @@ func (t *TomlFeeder) setFieldFromTOML(field reflect.Value, value interface{}, fi
 		field.Set(convertedValue.Convert(field.Type()))
 
 		// Record field population
-		if t.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "TomlFeeder",
-				SourceType: "toml_file",
-				SourceKey:  fieldPath,
-				Value:      value,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			t.fieldTracker.RecordFieldPopulation(fp)
-		}
+		t.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "TomlFeeder",
+			SourceType: "toml_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 
 		return nil
 	}
@@ -485,20 +469,17 @@ func (t *TomlFeeder) setSliceFromTOML(field reflect.Value, value interface{}, fi
 	field.Set(newSlice)
 
 	// Record field population for the slice
-	if t.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:  fieldPath,
-			FieldName:  fieldPath,
-			FieldType:  field.Type().String(),
-			FeederType: "TomlFeeder",
-			SourceType: "toml_file",
-			SourceKey:  fieldPath,
-			Value:      value,
-			SearchKeys: []string{fieldPath},
-			FoundKey:   fieldPath,
-		}
-		t.fieldTracker.RecordFieldPopulation(fp)
-	}
+	t.ft.Record(FieldPopulation{
+		FieldPath:  fieldPath,
+		FieldName:  fieldPath,
+		FieldType:  field.Type().String(),
+		FeederType: "TomlFeeder",
+		SourceType: "toml_file",
+		SourceKey:  fieldPath,
+		Value:      value,
+		SearchKeys: []string{fieldPath},
+		FoundKey:   fieldPath,
+	})
 
 	return nil
 }
@@ -645,21 +626,18 @@ func (t *TomlFeeder) setMapFromTOML(field reflect.Value, tomlData map[string]int
 	field.Set(newMap)
 
 	// Record field population if tracker is available
-	if t.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:   fieldPath,
-			FieldName:   fieldName,
-			FieldType:   field.Type().String(),
-			FeederType:  "TomlFeeder",
-			SourceType:  "toml_file",
-			SourceKey:   fieldName, // For maps, use the field name as the source key
-			Value:       field.Interface(),
-			InstanceKey: "",
-			SearchKeys:  []string{fieldName},
-			FoundKey:    fieldName,
-		}
-		t.fieldTracker.RecordFieldPopulation(fp)
-	}
+	t.ft.Record(FieldPopulation{
+		FieldPath:   fieldPath,
+		FieldName:   fieldName,
+		FieldType:   field.Type().String(),
+		FeederType:  "TomlFeeder",
+		SourceType:  "toml_file",
+		SourceKey:   fieldName, // For maps, use the field name as the source key
+		Value:       field.Interface(),
+		InstanceKey: "",
+		SearchKeys:  []string{fieldName},
+		FoundKey:    fieldName,
+	})
 
 	if t.verboseDebug && t.logger != nil {
 		t.logger.Debug("TomlFeeder: Successfully set map field", "fieldName", fieldName, "mapSize", newMap.Len())

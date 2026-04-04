@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 // FieldTracker interface allows feeders to report which fields they populate
@@ -37,6 +38,7 @@ type FieldTrackingFeeder interface {
 
 // DefaultFieldTracker is a basic implementation of FieldTracker
 type DefaultFieldTracker struct {
+	mu               sync.Mutex
 	FieldPopulations []FieldPopulation
 	logger           Logger
 }
@@ -50,9 +52,12 @@ func NewDefaultFieldTracker() *DefaultFieldTracker {
 
 // RecordFieldPopulation records a field population event
 func (t *DefaultFieldTracker) RecordFieldPopulation(fp FieldPopulation) {
+	t.mu.Lock()
 	t.FieldPopulations = append(t.FieldPopulations, fp)
-	if t.logger != nil {
-		t.logger.Debug("Field populated",
+	logger := t.logger
+	t.mu.Unlock()
+	if logger != nil {
+		logger.Debug("Field populated",
 			"fieldPath", fp.FieldPath,
 			"fieldName", fp.FieldName,
 			"fieldType", fp.FieldType,
@@ -69,15 +74,20 @@ func (t *DefaultFieldTracker) RecordFieldPopulation(fp FieldPopulation) {
 
 // SetLogger sets the logger for the tracker
 func (t *DefaultFieldTracker) SetLogger(logger Logger) {
+	t.mu.Lock()
 	t.logger = logger
+	t.mu.Unlock()
 }
 
 // GetFieldPopulation returns the population info for a specific field path
 // It returns the first population found for the given field path
 func (t *DefaultFieldTracker) GetFieldPopulation(fieldPath string) *FieldPopulation {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for _, fp := range t.FieldPopulations {
 		if fp.FieldPath == fieldPath {
-			return &fp
+			fpCopy := fp
+			return &fpCopy
 		}
 	}
 	return nil
@@ -86,6 +96,8 @@ func (t *DefaultFieldTracker) GetFieldPopulation(fieldPath string) *FieldPopulat
 // GetMostRelevantFieldPopulation returns the population info for a specific field path
 // It returns the last population that actually set a non-nil value
 func (t *DefaultFieldTracker) GetMostRelevantFieldPopulation(fieldPath string) *FieldPopulation {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var lastPopulation *FieldPopulation
 	var lastValuedPopulation *FieldPopulation
 
@@ -110,6 +122,8 @@ func (t *DefaultFieldTracker) GetMostRelevantFieldPopulation(fieldPath string) *
 
 // GetPopulationsByFeeder returns all field populations by a specific feeder type
 func (t *DefaultFieldTracker) GetPopulationsByFeeder(feederType string) []FieldPopulation {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var result []FieldPopulation
 	for _, fp := range t.FieldPopulations {
 		if fp.FeederType == feederType {
@@ -121,6 +135,8 @@ func (t *DefaultFieldTracker) GetPopulationsByFeeder(feederType string) []FieldP
 
 // GetPopulationsBySource returns all field populations by a specific source type
 func (t *DefaultFieldTracker) GetPopulationsBySource(sourceType string) []FieldPopulation {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var result []FieldPopulation
 	for _, fp := range t.FieldPopulations {
 		if fp.SourceType == sourceType {

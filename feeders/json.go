@@ -57,7 +57,7 @@ type JSONFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 	priority     int
 }
 
@@ -67,7 +67,6 @@ func NewJSONFeeder(filePath string) *JSONFeeder {
 		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
-		fieldTracker: nil,
 		priority:     0, // Default priority
 	}
 }
@@ -136,7 +135,7 @@ func (j *JSONFeeder) FeedKey(key string, target interface{}) error {
 
 // SetFieldTracker sets the field tracker for recording field populations
 func (j *JSONFeeder) SetFieldTracker(tracker FieldTracker) {
-	j.fieldTracker = tracker
+	j.ft.Set(tracker)
 }
 
 // feedWithTracking reads the JSON file and populates the provided structure with field tracking
@@ -273,20 +272,17 @@ func (j *JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fi
 			field.Set(reflect.ValueOf(duration))
 
 			// Record field population
-			if j.fieldTracker != nil {
-				fp := FieldPopulation{
-					FieldPath:  fieldPath,
-					FieldName:  fieldPath,
-					FieldType:  field.Type().String(),
-					FeederType: "JSONFeeder",
-					SourceType: "json_file",
-					SourceKey:  fieldPath,
-					Value:      duration,
-					SearchKeys: []string{fieldPath},
-					FoundKey:   fieldPath,
-				}
-				j.fieldTracker.RecordFieldPopulation(fp)
-			}
+			j.ft.Record(FieldPopulation{
+				FieldPath:  fieldPath,
+				FieldName:  fieldPath,
+				FieldType:  field.Type().String(),
+				FeederType: "JSONFeeder",
+				SourceType: "json_file",
+				SourceKey:  fieldPath,
+				Value:      duration,
+				SearchKeys: []string{fieldPath},
+				FoundKey:   fieldPath,
+			})
 			return nil
 		}
 		return wrapJSONConvertError(value, field.Type().String(), fieldPath)
@@ -298,20 +294,17 @@ func (j *JSONFeeder) setFieldFromJSON(field reflect.Value, value interface{}, fi
 		field.Set(convertedValue.Convert(field.Type()))
 
 		// Record field population
-		if j.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "JSONFeeder",
-				SourceType: "json_file",
-				SourceKey:  fieldPath,
-				Value:      value,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			j.fieldTracker.RecordFieldPopulation(fp)
-		}
+		j.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "JSONFeeder",
+			SourceType: "json_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 
 		return nil
 	}
@@ -326,20 +319,17 @@ func (j *JSONFeeder) setPointerFromJSON(field reflect.Value, value interface{}, 
 		field.Set(reflect.Zero(field.Type()))
 
 		// Record field population
-		if j.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "JSONFeeder",
-				SourceType: "json_file",
-				SourceKey:  fieldPath,
-				Value:      nil,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			j.fieldTracker.RecordFieldPopulation(fp)
-		}
+		j.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "JSONFeeder",
+			SourceType: "json_file",
+			SourceKey:  fieldPath,
+			Value:      nil,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 		return nil
 	}
 
@@ -385,20 +375,17 @@ func (j *JSONFeeder) setPointerFromJSON(field reflect.Value, value interface{}, 
 	}
 
 	// Record field population
-	if j.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:  fieldPath,
-			FieldName:  fieldPath,
-			FieldType:  field.Type().String(),
-			FeederType: "JSONFeeder",
-			SourceType: "json_file",
-			SourceKey:  fieldPath,
-			Value:      value,
-			SearchKeys: []string{fieldPath},
-			FoundKey:   fieldPath,
-		}
-		j.fieldTracker.RecordFieldPopulation(fp)
-	}
+	j.ft.Record(FieldPopulation{
+		FieldPath:  fieldPath,
+		FieldName:  fieldPath,
+		FieldType:  field.Type().String(),
+		FeederType: "JSONFeeder",
+		SourceType: "json_file",
+		SourceKey:  fieldPath,
+		Value:      value,
+		SearchKeys: []string{fieldPath},
+		FoundKey:   fieldPath,
+	})
 	return nil
 }
 
@@ -426,20 +413,17 @@ func (j *JSONFeeder) setArrayFromJSON(field reflect.Value, value interface{}, fi
 		}
 
 		// Record field population for the array
-		if j.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "JSONFeeder",
-				SourceType: "json_file",
-				SourceKey:  fieldPath,
-				Value:      value,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			j.fieldTracker.RecordFieldPopulation(fp)
-		}
+		j.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "JSONFeeder",
+			SourceType: "json_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 
 		return nil
 	}
@@ -511,20 +495,17 @@ func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fi
 		field.Set(newSlice)
 
 		// Record field population for the slice
-		if j.fieldTracker != nil {
-			fp := FieldPopulation{
-				FieldPath:  fieldPath,
-				FieldName:  fieldPath,
-				FieldType:  field.Type().String(),
-				FeederType: "JSONFeeder",
-				SourceType: "json_file",
-				SourceKey:  fieldPath,
-				Value:      value,
-				SearchKeys: []string{fieldPath},
-				FoundKey:   fieldPath,
-			}
-			j.fieldTracker.RecordFieldPopulation(fp)
-		}
+		j.ft.Record(FieldPopulation{
+			FieldPath:  fieldPath,
+			FieldName:  fieldPath,
+			FieldType:  field.Type().String(),
+			FeederType: "JSONFeeder",
+			SourceType: "json_file",
+			SourceKey:  fieldPath,
+			Value:      value,
+			SearchKeys: []string{fieldPath},
+			FoundKey:   fieldPath,
+		})
 
 		return nil
 	}
@@ -674,21 +655,18 @@ func (j *JSONFeeder) setMapFromJSON(field reflect.Value, jsonData map[string]int
 	field.Set(newMap)
 
 	// Record field population if tracker is available
-	if j.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:   fieldPath,
-			FieldName:   fieldName,
-			FieldType:   field.Type().String(),
-			FeederType:  "JSONFeeder",
-			SourceType:  "json_file",
-			SourceKey:   fieldName, // For maps, use the field name as the source key
-			Value:       field.Interface(),
-			InstanceKey: "",
-			SearchKeys:  []string{fieldName},
-			FoundKey:    fieldName,
-		}
-		j.fieldTracker.RecordFieldPopulation(fp)
-	}
+	j.ft.Record(FieldPopulation{
+		FieldPath:   fieldPath,
+		FieldName:   fieldName,
+		FieldType:   field.Type().String(),
+		FeederType:  "JSONFeeder",
+		SourceType:  "json_file",
+		SourceKey:   fieldName, // For maps, use the field name as the source key
+		Value:       field.Interface(),
+		InstanceKey: "",
+		SearchKeys:  []string{fieldName},
+		FoundKey:    fieldName,
+	})
 
 	if j.verboseDebug && j.logger != nil {
 		j.logger.Debug("JSONFeeder: Successfully set map field", "fieldName", fieldName, "mapSize", newMap.Len())

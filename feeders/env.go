@@ -12,7 +12,7 @@ type EnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 	priority     int
 }
 
@@ -49,7 +49,7 @@ func (f *EnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg st
 
 // SetFieldTracker sets the field tracker for this feeder
 func (f *EnvFeeder) SetFieldTracker(tracker FieldTracker) {
-	f.fieldTracker = tracker
+	f.ft.Set(tracker)
 	if f.verboseDebug && f.logger != nil {
 		f.logger.Debug("EnvFeeder: Field tracker set", "hasTracker", tracker != nil)
 	}
@@ -230,8 +230,7 @@ func (f *EnvFeeder) setFieldFromEnvWithModule(field reflect.Value, envTag, prefi
 		}
 
 		// Record field population if tracker is available
-		if f.fieldTracker != nil {
-			fp := FieldPopulation{
+		f.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -242,17 +241,14 @@ func (f *EnvFeeder) setFieldFromEnvWithModule(field reflect.Value, envTag, prefi
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
 				FoundKey:    foundKey,
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: Successfully set field value", "fieldName", fieldName, "foundKey", foundKey, "envValue", envValue, "fieldPath", fieldPath)
 		}
 	} else {
 		// Record that we searched but didn't find
-		if f.fieldTracker != nil {
-			fp := FieldPopulation{
+		f.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -263,9 +259,7 @@ func (f *EnvFeeder) setFieldFromEnvWithModule(field reflect.Value, envTag, prefi
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
 				FoundKey:    "",
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: Environment variable not found or empty", "fieldName", fieldName, "searchKeys", searchKeys, "fieldPath", fieldPath)
@@ -351,8 +345,7 @@ func (f *EnvFeeder) setPointerFieldFromEnvWithModule(field reflect.Value, envTag
 		field.Set(newValue)
 
 		// Record field population if tracker is available
-		if f.fieldTracker != nil {
-			fp := FieldPopulation{
+		f.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -363,17 +356,14 @@ func (f *EnvFeeder) setPointerFieldFromEnvWithModule(field reflect.Value, envTag
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
 				FoundKey:    foundKey,
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: Successfully set pointer field", "fieldName", fieldName, "foundKey", foundKey, "fieldPath", fieldPath)
 		}
 	} else {
 		// Record that we searched but didn't find
-		if f.fieldTracker != nil {
-			fp := FieldPopulation{
+		f.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -384,9 +374,7 @@ func (f *EnvFeeder) setPointerFieldFromEnvWithModule(field reflect.Value, envTag
 				InstanceKey: "",
 				SearchKeys:  searchKeys,
 				FoundKey:    "",
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("EnvFeeder: Environment variable not found or empty for pointer field", "fieldName", fieldName, "searchKeys", searchKeys, "fieldPath", fieldPath)

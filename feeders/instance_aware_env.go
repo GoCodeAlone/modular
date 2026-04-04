@@ -22,7 +22,7 @@ type InstanceAwareEnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 }
 
 // Ensure InstanceAwareEnvFeeder implements all required interfaces
@@ -53,7 +53,7 @@ func (f *InstanceAwareEnvFeeder) SetVerboseDebug(enabled bool, logger interface{
 
 // SetFieldTracker sets the field tracker for this feeder
 func (f *InstanceAwareEnvFeeder) SetFieldTracker(tracker FieldTracker) {
-	f.fieldTracker = tracker
+	f.ft.Set(tracker)
 	if f.verboseDebug && f.logger != nil {
 		f.logger.Debug("InstanceAwareEnvFeeder: Field tracker set", "hasTracker", tracker != nil)
 	}
@@ -343,8 +343,7 @@ func (f *InstanceAwareEnvFeeder) setFieldFromEnvWithPrefix(field reflect.Value, 
 		}
 
 		// Record field population if tracker is available
-		if f.fieldTracker != nil {
-			fp := FieldPopulation{
+		f.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -355,17 +354,14 @@ func (f *InstanceAwareEnvFeeder) setFieldFromEnvWithPrefix(field reflect.Value, 
 				InstanceKey: instanceKey,
 				SearchKeys:  searchKeys,
 				FoundKey:    envName,
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("InstanceAwareEnvFeeder: Successfully set field value", "envName", envName, "envValue", envValue, "fieldPath", fieldPath, "instanceKey", instanceKey)
 		}
 	} else {
 		// Record that we searched but didn't find
-		if f.fieldTracker != nil {
-			fp := FieldPopulation{
+		f.ft.Record(FieldPopulation{
 				FieldPath:   fieldPath,
 				FieldName:   fieldName,
 				FieldType:   field.Type().String(),
@@ -376,9 +372,7 @@ func (f *InstanceAwareEnvFeeder) setFieldFromEnvWithPrefix(field reflect.Value, 
 				InstanceKey: instanceKey,
 				SearchKeys:  searchKeys,
 				FoundKey:    "",
-			}
-			f.fieldTracker.RecordFieldPopulation(fp)
-		}
+			})
 
 		if f.verboseDebug && f.logger != nil {
 			f.logger.Debug("InstanceAwareEnvFeeder: Environment variable not found or empty", "envName", envName, "fieldPath", fieldPath, "instanceKey", instanceKey)

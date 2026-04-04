@@ -16,7 +16,7 @@ type DotEnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	fieldTracker FieldTracker
+	ft FieldTrackerHolder
 	envVars      map[string]string // in-memory storage of parsed .env variables
 	priority     int
 }
@@ -27,7 +27,6 @@ func NewDotEnvFeeder(filePath string) *DotEnvFeeder {
 		Path:         filePath,
 		verboseDebug: false,
 		logger:       nil,
-		fieldTracker: nil,
 		envVars:      make(map[string]string),
 		priority:     0, // Default priority
 	}
@@ -57,7 +56,7 @@ func (f *DotEnvFeeder) SetVerboseDebug(enabled bool, logger interface{ Debug(msg
 
 // SetFieldTracker sets the field tracker for recording field populations
 func (f *DotEnvFeeder) SetFieldTracker(tracker FieldTracker) {
-	f.fieldTracker = tracker
+	f.ft.Set(tracker)
 }
 
 // Feed reads the .env file and populates the provided structure directly
@@ -255,20 +254,17 @@ func (f *DotEnvFeeder) setFieldValue(field reflect.Value, fieldType reflect.Stru
 	field.Set(reflect.ValueOf(convertedValue))
 
 	// Record field population
-	if f.fieldTracker != nil {
-		fp := FieldPopulation{
-			FieldPath:  fieldPath,
-			FieldName:  fieldType.Name,
-			FieldType:  field.Type().String(),
-			FeederType: "DotEnvFeeder",
-			SourceType: "dot_env_file",
-			SourceKey:  envKey,
-			Value:      convertedValue,
-			SearchKeys: []string{envKey},
-			FoundKey:   envKey,
-		}
-		f.fieldTracker.RecordFieldPopulation(fp)
-	}
+	f.ft.Record(FieldPopulation{
+		FieldPath:  fieldPath,
+		FieldName:  fieldType.Name,
+		FieldType:  field.Type().String(),
+		FeederType: "DotEnvFeeder",
+		SourceType: "dot_env_file",
+		SourceKey:  envKey,
+		Value:      convertedValue,
+		SearchKeys: []string{envKey},
+		FoundKey:   envKey,
+	})
 
 	return nil
 }

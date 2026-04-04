@@ -135,8 +135,8 @@ func TestYamlFeeder_NewYamlFeeder(t *testing.T) {
 	if feeder.debugFn != nil {
 		t.Error("Expected debugFn to be nil by default")
 	}
-	if feeder.fieldTracker != nil {
-		t.Error("Expected fieldTracker to be nil by default")
+	if feeder.ft.Has() {
+		t.Error("Expected field tracker holder to be empty by default")
 	}
 }
 
@@ -166,7 +166,7 @@ func TestYamlFeeder_SetFieldTracker(t *testing.T) {
 
 	feeder.SetFieldTracker(tracker)
 
-	if feeder.fieldTracker != tracker {
-		t.Error("Expected fieldTracker to be set")
+	if !feeder.ft.Has() {
+		t.Error("Expected field tracker to be set")
 	}
 }
