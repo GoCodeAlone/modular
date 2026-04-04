@@ -209,6 +209,11 @@ func (n *NatsEventBus) Stop(ctx context.Context) error {
 	// Wait for all workers to finish
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in NATS eventbus shutdown waiter", "error", r)
+			}
+		}()
 		n.wg.Wait()
 		close(done)
 	}()

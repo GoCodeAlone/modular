@@ -128,6 +128,11 @@ func (v *StandardContractVerifier) runReloadWithGuard(module Reloadable, label s
 	type result struct{ err error }
 	ch := make(chan result, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- result{err: fmt.Errorf("Reload panicked: %v", r)}
+			}
+		}()
 		ch <- result{err: module.Reload(ctx, nil)}
 	}()
 
@@ -170,6 +175,11 @@ func (v *StandardContractVerifier) VerifyHealthContract(provider HealthProvider)
 	}
 	ch := make(chan result, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- result{err: fmt.Errorf("HealthCheck panicked: %v", r)}
+			}
+		}()
 		reports, err := provider.HealthCheck(ctx)
 		ch <- result{reports, err}
 	}()

@@ -222,6 +222,11 @@ func (hc *HealthChecker) Stop(ctx context.Context) {
 	// Wait for all goroutines to finish with timeout
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				hc.logger.Error("panic recovered in health checker shutdown waiter", "error", r)
+			}
+		}()
 		hc.wg.Wait()
 		close(done)
 	}()
@@ -332,6 +337,11 @@ func (hc *HealthChecker) initializeBackendStatus(backendID, baseURL string) {
 // runPeriodicHealthCheck runs periodic health checks for a backend.
 func (hc *HealthChecker) runPeriodicHealthCheck(backendID, baseURL string) {
 	defer hc.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			hc.logger.Error("panic recovered in periodic health check", "error", r, "backend", backendID)
+		}
+	}()
 
 	// Get the context from the health checker (set during Start)
 	hc.runningMutex.RLock()

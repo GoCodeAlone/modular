@@ -235,6 +235,11 @@ func (d *DurableMemoryEventBus) Stop(ctx context.Context) error {
 
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in durable memory eventbus shutdown waiter", "error", r)
+			}
+		}()
 		d.wg.Wait()
 		close(done)
 	}()

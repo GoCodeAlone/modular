@@ -664,6 +664,13 @@ func (m *EventBusModule) EmitEvent(ctx context.Context, event cloudevents.Event)
 	}
 	// Use a goroutine to prevent blocking eventbus operations with event emission
 	go func(s modular.Subject, e cloudevents.Event) {
+		defer func() {
+			if r := recover(); r != nil {
+				if m.logger != nil {
+					m.logger.Error("panic recovered in eventbus observer notification", "error", r, "event_type", e.Type())
+				}
+			}
+		}()
 		if err := s.NotifyObservers(ctx, e); err != nil {
 			if m.logger != nil {
 				m.logger.Debug("Failed to notify observers", "error", err, "event_type", e.Type())
@@ -678,6 +685,13 @@ func (m *EventBusModule) EmitEvent(ctx context.Context, event cloudevents.Event)
 // If no subject is available for event emission, it silently skips the event emission
 // to avoid noisy error messages in tests and non-observable applications.
 func (m *EventBusModule) emitEvent(ctx context.Context, eventType string, data map[string]interface{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			if m.logger != nil {
+				m.logger.Error("panic recovered in eventbus event emission", "error", r, "event_type", eventType)
+			}
+		}
+	}()
 	// Skip event emission if no subject is available (non-observable application)
 	m.mutex.RLock()
 	subj := m.subject

@@ -427,6 +427,11 @@ func (c *CustomMemoryEventBus) matchesTopic(eventTopic, subscriptionTopic string
 
 // handleEvents processes events for a custom subscription
 func (c *CustomMemoryEventBus) handleEvents(sub *customMemorySubscription) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in custom memory event handler", "error", r, "topic", sub.topic)
+		}
+	}()
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -469,6 +474,11 @@ func (c *CustomMemoryEventBus) handleEvents(sub *customMemorySubscription) {
 
 // metricsCollector periodically logs metrics
 func (c *CustomMemoryEventBus) metricsCollector() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in custom memory eventbus metrics collector", "error", r)
+		}
+	}()
 	ticker := time.NewTicker(c.config.MetricsInterval)
 	defer ticker.Stop()
 

@@ -2583,6 +2583,11 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 			go func() {
 				defer close(done)
 				defer proxyCancel() // Ensure context is cancelled when goroutine exits
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("panic recovered in reverse proxy circuit breaker request", "error", r)
+					}
+				}()
 
 				// Use a buffering response writer to prevent writing to actual response until timeout check
 				bufWriter := &bufferingResponseWriter{
@@ -2807,6 +2812,11 @@ func (m *ReverseProxyModule) createBackendProxyHandler(backend string) http.Hand
 			go func() {
 				defer close(done)
 				defer proxyCancel() // Ensure context is cancelled when goroutine exits
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("panic recovered in reverse proxy direct request", "error", r)
+					}
+				}()
 
 				swMutex.Lock()
 				sw = &statusCapturingResponseWriter{ResponseWriter: w, status: http.StatusOK}

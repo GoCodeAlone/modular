@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -76,6 +77,11 @@ func (c *MemoryCache) Connect(ctx context.Context) error {
 	// Start cleanup goroutine with derived context
 	c.cleanupCtx, c.cancelFunc = context.WithCancel(ctx)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in cache cleanup goroutine", "error", r)
+			}
+		}()
 		c.startCleanupTimer(c.cleanupCtx)
 	}()
 	return nil

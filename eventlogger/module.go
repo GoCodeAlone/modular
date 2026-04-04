@@ -340,6 +340,13 @@ func (m *EventLoggerModule) Start(ctx context.Context) error {
 
 // emitStartupOperationalEvents performs the operational event emission without holding the Start mutex.
 func (m *EventLoggerModule) emitStartupOperationalEvents(ctx context.Context, sync bool, outputsLen, bufferLen int, targetConfigs []OutputTargetConfig) {
+	defer func() {
+		if r := recover(); r != nil {
+			if m.logger != nil {
+				m.logger.Error("panic recovered in event logger startup event emission", "error", r)
+			}
+		}
+	}()
 	// Protect field reads with RLock to avoid race with Stop() which writes m.started under Lock
 	m.mutex.RLock()
 	logger := m.logger
@@ -431,6 +438,13 @@ func (m *EventLoggerModule) Stop(ctx context.Context) error {
 	// Wait for processing with optional timeout
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if m.logger != nil {
+					m.logger.Error("panic recovered in event logger shutdown waiter", "error", r)
+				}
+			}
+		}()
 		m.wg.Wait()
 		close(done)
 	}()
@@ -759,6 +773,13 @@ func (m *EventLoggerModule) ObserverID() string {
 // processEvents processes events from both event channels.
 func (m *EventLoggerModule) processEvents(ctx context.Context) {
 	defer m.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			if m.logger != nil {
+				m.logger.Error("panic recovered in event logger processing loop", "error", r)
+			}
+		}
+	}()
 
 	flushTicker := time.NewTicker(m.config.FlushInterval)
 	defer flushTicker.Stop()

@@ -70,6 +70,11 @@ func (w *ConfigWatcher) Start(ctx context.Context) error {
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				w.logger.Error("panic recovered in config watcher context listener", "error", r)
+			}
+		}()
 		select {
 		case <-ctx.Done():
 			_ = w.stopWatching()
@@ -117,6 +122,11 @@ func (w *ConfigWatcher) stopWatching() error {
 
 func (w *ConfigWatcher) eventLoop() {
 	defer w.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("panic recovered in config watcher event loop", "error", r)
+		}
+	}()
 	var timer *time.Timer
 	changedPaths := make(map[string]struct{})
 	var mu sync.Mutex

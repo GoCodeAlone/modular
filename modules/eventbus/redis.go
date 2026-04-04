@@ -172,6 +172,11 @@ func (r *RedisEventBus) Stop(ctx context.Context) error {
 	// Wait for all workers to finish
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in Redis eventbus shutdown waiter", "error", r)
+			}
+		}()
 		r.wg.Wait()
 		close(done)
 	}()
@@ -328,6 +333,11 @@ func (r *RedisEventBus) SubscriberCount(topic string) int {
 // handleMessages processes messages for a Redis subscription
 func (r *RedisEventBus) handleMessages(sub *redisSubscription) {
 	defer r.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in Redis message handler", "error", r, "topic", sub.topic)
+		}
+	}()
 
 	ch := sub.pubsub.Channel()
 
@@ -374,5 +384,10 @@ func (r *RedisEventBus) processEvent(sub *redisSubscription, event Event) {
 
 // processEventAsync processes an event asynchronously
 func (r *RedisEventBus) processEventAsync(sub *redisSubscription, event Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in Redis async event handler", "error", r, "topic", event.Type())
+		}
+	}()
 	r.processEvent(sub, event)
 }

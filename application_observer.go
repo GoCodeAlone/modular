@@ -134,6 +134,11 @@ func (app *ObservableApplication) NotifyObservers(ctx context.Context, event clo
 func (app *ObservableApplication) emitEvent(ctx context.Context, event cloudevents.Event) {
 	// Use a separate goroutine to avoid blocking application operations
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				app.logger.Error("panic recovered in application event emission", "error", r)
+			}
+		}()
 		if err := app.NotifyObservers(ctx, event); err != nil {
 			app.logger.Error("Failed to notify observers", "event", event.Type(), "error", err)
 		}

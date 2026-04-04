@@ -139,6 +139,12 @@ func (d *DryRunHandler) ProcessDryRun(ctx context.Context, req *http.Request, pr
 
 	// Send request to primary backend
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				d.logger.Error("panic recovered in dry-run primary request", "error", r)
+				primaryChan <- ResponseInfo{Error: fmt.Sprintf("panic: %v", r)}
+			}
+		}()
 		primaryStart := time.Now()
 		response := d.sendRequest(ctx, req, primaryBackend, requestBody)
 		response.ResponseTime = time.Since(primaryStart)
@@ -147,6 +153,12 @@ func (d *DryRunHandler) ProcessDryRun(ctx context.Context, req *http.Request, pr
 
 	// Send request to secondary backend
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				d.logger.Error("panic recovered in dry-run secondary request", "error", r)
+				secondaryChan <- ResponseInfo{Error: fmt.Sprintf("panic: %v", r)}
+			}
+		}()
 		secondaryStart := time.Now()
 		response := d.sendRequest(ctx, req, secondaryBackend, requestBody)
 		response.ResponseTime = time.Since(secondaryStart)

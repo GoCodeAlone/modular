@@ -113,6 +113,11 @@ func (o *ReloadOrchestrator) RequestReload(ctx context.Context, trigger ReloadTr
 // Start begins the background goroutine that drains the reload request queue.
 func (o *ReloadOrchestrator) Start(ctx context.Context) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				o.logger.Error("panic recovered in reload orchestrator loop", "error", r)
+			}
+		}()
 		for {
 			select {
 			case <-ctx.Done():
@@ -150,6 +155,11 @@ func (o *ReloadOrchestrator) handleReload(parentCtx context.Context, req ReloadR
 		// Propagate cancellation from the request context. When req.Ctx is
 		// cancelled, cancel rctx so module Reload calls see cancellation.
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					o.logger.Error("panic recovered in reload cancellation propagator", "error", r)
+				}
+			}()
 			select {
 			case <-req.Ctx.Done():
 				cancel()

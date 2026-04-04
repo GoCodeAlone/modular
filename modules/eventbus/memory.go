@@ -155,6 +155,11 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 	// Wait for all workers to finish
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in memory eventbus shutdown waiter", "error", r)
+			}
+		}()
 		m.wg.Wait()
 		close(done)
 	}()
@@ -525,6 +530,11 @@ func (m *MemoryEventBus) queueEventHandler(sub *memorySubscription, event Event)
 // worker is a goroutine that processes events from the worker pool
 func (m *MemoryEventBus) worker() {
 	defer m.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in memory eventbus worker", "error", r)
+		}
+	}()
 
 	for {
 		select {

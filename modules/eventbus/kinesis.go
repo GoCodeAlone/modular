@@ -242,6 +242,11 @@ func (k *KinesisEventBus) Stop(ctx context.Context) error {
 	// Wait for all workers to finish
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in Kinesis eventbus shutdown waiter", "error", r)
+			}
+		}()
 		k.wg.Wait()
 		close(done)
 	}()
@@ -401,6 +406,11 @@ func (k *KinesisEventBus) readShard(shardID string) {
 		k.shardMutex.Lock()
 		delete(k.activeShards, shardID)
 		k.shardMutex.Unlock()
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in Kinesis shard reader", "error", r, "shard", shardID)
+		}
 	}()
 
 	// Get shard iterator
@@ -608,5 +618,10 @@ func (k *KinesisEventBus) processEvent(sub *kinesisSubscription, event Event) {
 
 // processEventAsync processes an event asynchronously
 func (k *KinesisEventBus) processEventAsync(sub *kinesisSubscription, event Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in Kinesis async event handler", "error", r, "topic", event.Type())
+		}
+	}()
 	k.processEvent(sub, event)
 }

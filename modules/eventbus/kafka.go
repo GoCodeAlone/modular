@@ -267,6 +267,11 @@ func (k *KafkaEventBus) Stop(ctx context.Context) error {
 	// Wait for all workers to finish
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in Kafka eventbus shutdown waiter", "error", r)
+			}
+		}()
 		k.wg.Wait()
 		close(done)
 	}()
@@ -368,6 +373,11 @@ func (k *KafkaEventBus) subscribe(ctx context.Context, topic string, handler Eve
 
 // startConsumerGroup starts the Kafka consumer group
 func (k *KafkaEventBus) startConsumerGroup() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in Kafka consumer group", "error", r)
+		}
+	}()
 	handler := &KafkaConsumerGroupHandler{
 		eventBus:      k,
 		subscriptions: make(map[string]*kafkaSubscription),
@@ -467,5 +477,10 @@ func (k *KafkaEventBus) processEvent(sub *kafkaSubscription, event Event) {
 
 // processEventAsync processes an event asynchronously
 func (k *KafkaEventBus) processEventAsync(sub *kafkaSubscription, event Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic recovered in Kafka async event handler", "error", r, "topic", event.Type())
+		}
+	}()
 	k.processEvent(sub, event)
 }

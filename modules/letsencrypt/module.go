@@ -711,6 +711,11 @@ func (m *LetsEncryptModule) startRenewalTimer(ctx context.Context) {
 	m.renewalWg.Add(1)
 	go func() {
 		defer m.renewalWg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.Error("panic recovered in certificate renewal goroutine", "error", r)
+			}
+		}()
 		for {
 			select {
 			case <-m.renewalTicker.C:

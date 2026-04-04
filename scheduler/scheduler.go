@@ -258,6 +258,13 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 	// Wait for all workers to finish with a timeout
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if s.logger != nil {
+					s.logger.Error("panic recovered in scheduler shutdown waiter", "error", r)
+				}
+			}
+		}()
 		s.wg.Wait()
 		close(done)
 	}()
@@ -446,6 +453,13 @@ func (s *Scheduler) executeJob(job Job) {
 // dispatchPendingJobs checks for and dispatches pending jobs
 func (s *Scheduler) dispatchPendingJobs() {
 	defer s.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			if s.logger != nil {
+				s.logger.Error("panic recovered in scheduler job dispatcher", "error", r)
+			}
+		}
+	}()
 
 	ticker := time.NewTicker(s.checkInterval)
 	defer ticker.Stop()

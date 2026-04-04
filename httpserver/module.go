@@ -285,6 +285,11 @@ func (m *HTTPServerModule) Start(ctx context.Context) error {
 
 // runServer starts the HTTP server with appropriate TLS configuration
 func (m *HTTPServerModule) runServer(ctx context.Context, addr string) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.logger.Error("panic recovered in HTTP server", "error", r)
+		}
+	}()
 	m.logger.Info("Starting HTTP server", "address", addr)
 	var err error
 
