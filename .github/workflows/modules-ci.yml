@@ -134,7 +134,7 @@ jobs:
   # BDD tests moved to dedicated module-bdd matrix job
 
       - name: Upload coverage for ${{ matrix.module }}
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.0 pinned
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5.5.0 pinned
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: GoCodeAlone/modular
