@@ -188,7 +188,7 @@ func (f *InstanceAwareEnvFeeder) FeedInstances(instances interface{}) error {
 		var needsMapUpdate bool
 
 		// Handle both pointer and non-pointer map values
-		if instance.Kind() == reflect.Ptr {
+		if instance.Kind() == reflect.Pointer {
 			// Map values are already pointers - use them directly
 			instancePtr = instance.Interface()
 			needsMapUpdate = false // No need to update map since we're modifying the original pointer

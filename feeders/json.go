@@ -220,7 +220,7 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 	fieldKind := field.Kind()
 
 	switch fieldKind {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Handle pointer types
 		return j.setPointerFromJSON(field, value, fieldPath)
 
@@ -454,7 +454,7 @@ func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fi
 				} else {
 					return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
 				}
-			case reflect.Ptr:
+			case reflect.Pointer:
 				// Handle slice of pointers
 				if item == nil {
 					// Set nil pointer
@@ -553,7 +553,7 @@ func (j *JSONFeeder) setMapFromJSON(field reflect.Value, jsonData map[string]int
 				}
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Map of pointers to structs, like map[string]*DBConnection
 		elemType := valueType.Elem()
 		if elemType.Kind() == reflect.Struct {
