@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -95,6 +96,25 @@ func TestWithParallelInit_RespectsDepOrder(t *testing.T) {
 	}
 }
 
+func TestWithParallelInit_RecoversModulePanic(t *testing.T) {
+	var initCount, maxPar, curPar atomic.Int32
+	okModule := &parallelInitModule{name: "ok", initDelay: time.Millisecond, initCount: &initCount, maxPar: &maxPar, curPar: &curPar}
+
+	app, err := NewApplication(
+		WithLogger(nopLogger{}),
+		WithModules(okModule, &panicInitModule{name: "panic"}),
+		WithParallelInit(),
+	)
+	if err != nil {
+		t.Fatalf("NewApplication: %v", err)
+	}
+
+	err = app.Init()
+	if !errors.Is(err, ErrModuleInitializationPanic) {
+		t.Fatalf("expected ErrModuleInitializationPanic, got %v", err)
+	}
+}
+
 type simpleOrderModule struct {
 	name  string
 	deps  []string
@@ -109,4 +129,14 @@ func (m *simpleOrderModule) Init(app Application) error {
 	*m.order = append(*m.order, m.name)
 	m.mu.Unlock()
 	return nil
+}
+
+type panicInitModule struct {
+	name string
+}
+
+func (m *panicInitModule) Name() string           { return m.name }
+func (m *panicInitModule) Dependencies() []string { return nil }
+func (m *panicInitModule) Init(Application) error {
+	panic("init boom")
 }
