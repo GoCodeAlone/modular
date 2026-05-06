@@ -739,7 +739,7 @@ func (app *StdApplication) InitWithApp(appToPass Application) error {
 						defer func() {
 							if r := recover(); r != nil {
 								mu.Lock()
-								errs = append(errs, fmt.Errorf("panic initializing module %s: %v", name, r))
+								errs = append(errs, fmt.Errorf("%w %s: %v", ErrModuleInitializationPanic, name, r))
 								mu.Unlock()
 							}
 						}()

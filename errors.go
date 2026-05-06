@@ -87,12 +87,13 @@ var (
 	ErrTenantIsolationViolation = errors.New("tenant isolation violation")
 
 	// Reload errors
-	ErrReloadCircuitBreakerOpen = errors.New("reload circuit breaker is open; backing off")
-	ErrReloadChannelFull        = errors.New("reload request channel is full")
-	ErrReloadInProgress         = errors.New("reload already in progress")
-	ErrReloadStopped            = errors.New("reload orchestrator is stopped")
-	ErrReloadTimeout            = errors.New("reload timed out waiting for module")
-	ErrDynamicReloadNotEnabled  = errors.New("dynamic reload not enabled")
+	ErrReloadCircuitBreakerOpen  = errors.New("reload circuit breaker is open; backing off")
+	ErrReloadChannelFull         = errors.New("reload request channel is full")
+	ErrReloadInProgress          = errors.New("reload already in progress")
+	ErrReloadStopped             = errors.New("reload orchestrator is stopped")
+	ErrReloadTimeout             = errors.New("reload timed out waiting for module")
+	ErrDynamicReloadNotEnabled   = errors.New("dynamic reload not enabled")
+	ErrModuleInitializationPanic = errors.New("panic initializing module")
 
 	// Observer/Event emission errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")
