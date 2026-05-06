@@ -130,7 +130,7 @@ func (v *StandardContractVerifier) runReloadWithGuard(module Reloadable, label s
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				ch <- result{err: fmt.Errorf("Reload panicked: %v", r)}
+				ch <- result{err: fmt.Errorf("%w: %v", ErrReloadPanic, r)}
 			}
 		}()
 		ch <- result{err: module.Reload(ctx, nil)}
@@ -177,7 +177,7 @@ func (v *StandardContractVerifier) VerifyHealthContract(provider HealthProvider)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				ch <- result{err: fmt.Errorf("HealthCheck panicked: %v", r)}
+				ch <- result{err: fmt.Errorf("%w: %v", ErrHealthCheckPanic, r)}
 			}
 		}()
 		reports, err := provider.HealthCheck(ctx)

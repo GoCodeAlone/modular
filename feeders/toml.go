@@ -17,8 +17,8 @@ type TomlFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	ft FieldTrackerHolder
-	priority     int
+	ft       FieldTrackerHolder
+	priority int
 }
 
 // NewTomlFeeder creates a new TomlFeeder that reads from the specified TOML file
@@ -113,7 +113,7 @@ func (t *TomlFeeder) feedWithTracking(structure interface{}) error {
 
 	// Check if we're dealing with a struct pointer
 	structValue := reflect.ValueOf(structure)
-	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+	if structValue.Kind() != reflect.Pointer || structValue.Elem().Kind() != reflect.Struct {
 		// Not a struct pointer, fall back to standard TOML unmarshaling
 		if t.verboseDebug && t.logger != nil {
 			t.logger.Debug("TomlFeeder: Not a struct pointer, using standard TOML unmarshaling", "structureType", reflect.TypeOf(structure))
@@ -180,7 +180,7 @@ func (t *TomlFeeder) processField(field reflect.Value, fieldType reflect.StructF
 	fieldKind := field.Kind()
 
 	switch fieldKind {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Handle pointer types
 		return t.setPointerFromTOML(field, value, fieldPath)
 
@@ -428,7 +428,7 @@ func (t *TomlFeeder) setSliceFromTOML(field reflect.Value, value interface{}, fi
 			} else {
 				return wrapTomlSliceElementError(item, elemType.String(), fieldPath, i)
 			}
-		case reflect.Ptr:
+		case reflect.Pointer:
 			// Handle slice of pointers
 			if item == nil {
 				// Set nil pointer
@@ -524,7 +524,7 @@ func (t *TomlFeeder) setMapFromTOML(field reflect.Value, tomlData map[string]int
 				}
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Map of pointers to structs, like map[string]*DBConnection
 		elemType := valueType.Elem()
 		if elemType.Kind() == reflect.Struct {

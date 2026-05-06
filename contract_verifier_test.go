@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,6 +30,15 @@ func (z *zeroTimeoutReloadable) ReloadTimeout() time.Duration { return 0 }
 type panickyReloadable struct{ wellBehavedReloadable }
 
 func (p *panickyReloadable) CanReload() bool { panic("boom") }
+
+type reloadPanicReloadable struct{ wellBehavedReloadable }
+
+func (p *reloadPanicReloadable) Reload(ctx context.Context, _ []ConfigChange) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	panic("reload boom")
+}
 
 // --- Mock HealthProviders for contract tests ---
 
@@ -81,6 +91,15 @@ func (c *cancelIgnoringHealthProvider) HealthCheck(_ context.Context) ([]HealthR
 	}, nil
 }
 
+type panicOnActiveHealthProvider struct{}
+
+func (p *panicOnActiveHealthProvider) HealthCheck(ctx context.Context) ([]HealthReport, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	panic("health boom")
+}
+
 // --- Tests ---
 
 func TestContractVerifier_ReloadWellBehaved(t *testing.T) {
@@ -123,6 +142,23 @@ func TestContractVerifier_ReloadPanicsOnCanReload(t *testing.T) {
 	}
 }
 
+func TestContractVerifier_ReloadPanicUsesSentinelError(t *testing.T) {
+	verifier := NewStandardContractVerifier()
+	violations := verifier.VerifyReloadContract(&reloadPanicReloadable{})
+
+	found := false
+	for _, v := range violations {
+		if v.Rule == "empty-reload-must-be-idempotent" &&
+			strings.Contains(v.Description, ErrReloadPanic.Error()) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected reload panic sentinel in violations, got: %+v", violations)
+	}
+}
+
 func TestContractVerifier_HealthWellBehaved(t *testing.T) {
 	verifier := NewStandardContractVerifier()
 	violations := verifier.VerifyHealthContract(&wellBehavedHealthProvider{})
@@ -161,4 +197,13 @@ func TestContractVerifier_HealthIgnoresCancellation(t *testing.T) {
 	if !found {
 		t.Fatalf("expected violation for ignoring cancellation, got: %+v", violations)
 	}
+}
+
+func TestContractVerifier_HealthPanicIsGuarded(t *testing.T) {
+	verifier := NewStandardContractVerifier()
+
+	// The first HealthCheck call panics and is recovered by the verifier. The
+	// cancellation check returns ctx.Err, so the test only fails if the guard is
+	// not active.
+	_ = verifier.VerifyHealthContract(&panicOnActiveHealthProvider{})
 }

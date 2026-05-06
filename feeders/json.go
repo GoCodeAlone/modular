@@ -57,8 +57,8 @@ type JSONFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	ft FieldTrackerHolder
-	priority     int
+	ft       FieldTrackerHolder
+	priority int
 }
 
 // NewJSONFeeder creates a new JSONFeeder that reads from the specified JSON file
@@ -153,7 +153,7 @@ func (j *JSONFeeder) feedWithTracking(structure interface{}) error {
 
 	// Check if we're dealing with a struct pointer
 	structValue := reflect.ValueOf(structure)
-	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+	if structValue.Kind() != reflect.Pointer || structValue.Elem().Kind() != reflect.Struct {
 		// Not a struct pointer, fall back to standard JSON unmarshaling
 		if j.verboseDebug && j.logger != nil {
 			j.logger.Debug("JSONFeeder: Not a struct pointer, using standard JSON unmarshaling", "structureType", reflect.TypeOf(structure))
@@ -220,7 +220,7 @@ func (j *JSONFeeder) processField(field reflect.Value, fieldType reflect.StructF
 	fieldKind := field.Kind()
 
 	switch fieldKind {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Handle pointer types
 		return j.setPointerFromJSON(field, value, fieldPath)
 
@@ -454,7 +454,7 @@ func (j *JSONFeeder) setSliceFromJSON(field reflect.Value, value interface{}, fi
 				} else {
 					return wrapJSONSliceElementError(item, elemType.String(), fieldPath, i)
 				}
-			case reflect.Ptr:
+			case reflect.Pointer:
 				// Handle slice of pointers
 				if item == nil {
 					// Set nil pointer
@@ -553,7 +553,7 @@ func (j *JSONFeeder) setMapFromJSON(field reflect.Value, jsonData map[string]int
 				}
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Map of pointers to structs, like map[string]*DBConnection
 		elemType := valueType.Elem()
 		if elemType.Kind() == reflect.Struct {

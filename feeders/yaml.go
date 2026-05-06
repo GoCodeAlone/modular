@@ -57,7 +57,7 @@ type YamlFeeder struct {
 	Path         string
 	verboseDebug bool
 	debugFn      func(string)
-	ft FieldTrackerHolder
+	ft           FieldTrackerHolder
 	priority     int
 }
 
@@ -193,7 +193,7 @@ func (y *YamlFeeder) feedWithTracking(structure interface{}) error {
 
 	// Check if we're dealing with a struct pointer
 	structValue := reflect.ValueOf(structure)
-	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+	if structValue.Kind() != reflect.Pointer || structValue.Elem().Kind() != reflect.Struct {
 		// Not a struct pointer, fall back to standard YAML unmarshaling
 		y.debugLog("YamlFeeder: Not a struct pointer, using standard YAML unmarshaling", "structureType", reflect.TypeOf(structure))
 		if err := yaml.Unmarshal(content, structure); err != nil {
@@ -245,7 +245,7 @@ func (y *YamlFeeder) processField(field reflect.Value, fieldType *reflect.Struct
 	fieldName, hasYAMLTag := getFieldNameFromTag(fieldType)
 
 	switch field.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Handle pointer types
 		if hasYAMLTag {
 			return y.setPointerFromYAML(field, fieldName, data, fieldType.Name, fieldPath)
@@ -444,7 +444,7 @@ func (y *YamlFeeder) setSliceFromYAML(field reflect.Value, yamlTag string, data 
 			} else {
 				return wrapYamlExpectedMapForSliceError(fieldPath, i, item)
 			}
-		case reflect.Ptr:
+		case reflect.Pointer:
 			// Handle slice of pointers
 			if item == nil {
 				// Set nil pointer
@@ -577,33 +577,33 @@ func (y *YamlFeeder) setFieldFromYaml(field reflect.Value, yamlTag string, data 
 
 		// Record field population if tracker is available
 		y.ft.Record(FieldPopulation{
-				FieldPath:   fieldPath,
-				FieldName:   fieldName,
-				FieldType:   field.Type().String(),
-				FeederType:  "*feeders.YamlFeeder",
-				SourceType:  "yaml",
-				SourceKey:   foundKey,
-				Value:       field.Interface(),
-				InstanceKey: "",
-				SearchKeys:  searchKeys,
-				FoundKey:    foundKey,
-			})
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   foundKey,
+			Value:       field.Interface(),
+			InstanceKey: "",
+			SearchKeys:  searchKeys,
+			FoundKey:    foundKey,
+		})
 
 		y.debugLog("YamlFeeder: Successfully set field value", "fieldName", fieldName, "yamlKey", yamlTag, "value", foundValue, "fieldPath", fieldPath)
 	} else {
 		// Record that we searched but didn't find
 		y.ft.Record(FieldPopulation{
-				FieldPath:   fieldPath,
-				FieldName:   fieldName,
-				FieldType:   field.Type().String(),
-				FeederType:  "*feeders.YamlFeeder",
-				SourceType:  "yaml",
-				SourceKey:   "",
-				Value:       nil,
-				InstanceKey: "",
-				SearchKeys:  searchKeys,
-				FoundKey:    "",
-			})
+			FieldPath:   fieldPath,
+			FieldName:   fieldName,
+			FieldType:   field.Type().String(),
+			FeederType:  "*feeders.YamlFeeder",
+			SourceType:  "yaml",
+			SourceKey:   "",
+			Value:       nil,
+			InstanceKey: "",
+			SearchKeys:  searchKeys,
+			FoundKey:    "",
+		})
 
 		y.debugLog("YamlFeeder: YAML value not found", "fieldName", fieldName, "yamlKey", yamlTag, "fieldPath", fieldPath)
 	}
@@ -647,7 +647,7 @@ func (y *YamlFeeder) setMapFromYaml(field reflect.Value, yamlData map[string]int
 				y.debugLog("YamlFeeder: Map entry is not a map", "key", key, "valueType", reflect.TypeOf(value))
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Map of pointers to structs, like map[string]*DBConnection
 		elemType := valueType.Elem()
 		if elemType.Kind() == reflect.Struct {
@@ -815,7 +815,7 @@ func (y *YamlFeeder) setFieldValue(field reflect.Value, value interface{}) error
 			}
 		case reflect.Invalid, reflect.Uintptr, reflect.Complex64, reflect.Complex128,
 			reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-			reflect.Ptr, reflect.Slice, reflect.Struct, reflect.UnsafePointer:
+			reflect.Pointer, reflect.Slice, reflect.Struct, reflect.UnsafePointer:
 			return wrapYamlUnsupportedFieldTypeError(field.Type().String())
 		default:
 			return wrapYamlUnsupportedFieldTypeError(field.Type().String())
