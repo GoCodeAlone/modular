@@ -438,29 +438,22 @@ jobs:
         if: steps.skipcheck.outputs.changed == 'true' && steps.check_module_path.outputs.needs_update != 'true'
         id: create_release
         run: |
-          gh release create ${{ steps.version.outputs.tag }} \
-            --title "${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}" \
+          TAG='${{ steps.version.outputs.tag }}'
+          TITLE='${{ steps.version.outputs.module }} ${{ steps.version.outputs.next_version }}'
+          REPO='${{ github.repository }}'
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
             --notes-file changelog.md \
-            --repo ${{ github.repository }} \
+            --repo "$REPO" \
             --latest=false
-          # Attach module-only source archive
-          MOD=${{ steps.version.outputs.module }}
-          VERSION=${{ steps.version.outputs.next_version }}
-          ARCHIVE=${MOD}-${VERSION}.tar.gz
-          tar -czf "$ARCHIVE" modules/${MOD}
-          gh release upload ${{ steps.version.outputs.tag }} "$ARCHIVE" --repo ${{ github.repository }} --clobber
           
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
-          
-          # Get all assets of the release and delete each one
-          gh release view ${{ steps.version.outputs.tag }} --json assets --jq '.assets[].name' | while read asset; do
-            echo "Deleting asset: $asset"
-            gh release delete-asset ${{ steps.version.outputs.tag }} "$asset" -y
-          done
+          git tag "$TAG"
+          git push origin "$TAG"
+
           # Capture URL for display step
-          RELEASE_URL=$(gh release view ${{ steps.version.outputs.tag }} --json url --jq .url)
-          echo "html_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          RELEASE_URL=$(gh release view "$TAG" --json url --jq .url)
+          echo "html_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -486,4 +479,3 @@ jobs:
           GOPROXY=proxy.golang.org go list -m ${MODULE_NAME}@${VERSION}
           
           echo "✓ Announced version ${MODULE}@${VERSION} to Go proxy"
-
