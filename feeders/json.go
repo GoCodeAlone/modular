@@ -57,8 +57,8 @@ type JSONFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	ft FieldTrackerHolder
-	priority     int
+	ft       FieldTrackerHolder
+	priority int
 }
 
 // NewJSONFeeder creates a new JSONFeeder that reads from the specified JSON file
@@ -153,7 +153,7 @@ func (j *JSONFeeder) feedWithTracking(structure interface{}) error {
 
 	// Check if we're dealing with a struct pointer
 	structValue := reflect.ValueOf(structure)
-	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+	if structValue.Kind() != reflect.Pointer || structValue.Elem().Kind() != reflect.Struct {
 		// Not a struct pointer, fall back to standard JSON unmarshaling
 		if j.verboseDebug && j.logger != nil {
 			j.logger.Debug("JSONFeeder: Not a struct pointer, using standard JSON unmarshaling", "structureType", reflect.TypeOf(structure))
