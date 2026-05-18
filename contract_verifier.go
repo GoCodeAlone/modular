@@ -2,9 +2,15 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
+)
+
+var (
+	ErrReloadPanicked      = errors.New("reload panicked")
+	ErrHealthCheckPanicked = errors.New("health check panicked")
 )
 
 // ContractViolation describes a single violation found during contract verification.
@@ -130,7 +136,7 @@ func (v *StandardContractVerifier) runReloadWithGuard(module Reloadable, label s
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				ch <- result{err: fmt.Errorf("Reload panicked: %v", r)}
+				ch <- result{err: fmt.Errorf("%w: %v", ErrReloadPanicked, r)}
 			}
 		}()
 		ch <- result{err: module.Reload(ctx, nil)}
@@ -177,7 +183,7 @@ func (v *StandardContractVerifier) VerifyHealthContract(provider HealthProvider)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				ch <- result{err: fmt.Errorf("HealthCheck panicked: %v", r)}
+				ch <- result{err: fmt.Errorf("%w: %v", ErrHealthCheckPanicked, r)}
 			}
 		}()
 		reports, err := provider.HealthCheck(ctx)

@@ -29,8 +29,8 @@ type AffixedEnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	ft FieldTrackerHolder
-	priority     int
+	ft       FieldTrackerHolder
+	priority int
 }
 
 // NewAffixedEnvFeeder creates a new AffixedEnvFeeder with the specified prefix and suffix
@@ -79,7 +79,7 @@ func (f *AffixedEnvFeeder) Feed(structure interface{}) error {
 
 	inputType := reflect.TypeOf(structure)
 	if inputType != nil {
-		if inputType.Kind() == reflect.Ptr {
+		if inputType.Kind() == reflect.Pointer {
 			if inputType.Elem().Kind() == reflect.Struct {
 				return f.fillStruct(reflect.ValueOf(structure).Elem(), f.Prefix, f.Suffix)
 			}

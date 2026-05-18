@@ -16,9 +16,9 @@ type DotEnvFeeder struct {
 	logger       interface {
 		Debug(msg string, args ...any)
 	}
-	ft FieldTrackerHolder
-	envVars      map[string]string // in-memory storage of parsed .env variables
-	priority     int
+	ft       FieldTrackerHolder
+	envVars  map[string]string // in-memory storage of parsed .env variables
+	priority int
 }
 
 // NewDotEnvFeeder creates a new DotEnvFeeder that reads from the specified .env file
@@ -170,7 +170,7 @@ func (f *DotEnvFeeder) parseEnvLine(line string, lineNum int) error {
 // populateStructFromCatalog populates struct fields from the global environment catalog
 func (f *DotEnvFeeder) populateStructFromCatalog(structure interface{}, prefix string) error {
 	structValue := reflect.ValueOf(structure)
-	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
+	if structValue.Kind() != reflect.Pointer || structValue.Elem().Kind() != reflect.Struct {
 		return wrapDotEnvStructureError(structure)
 	}
 
@@ -300,7 +300,7 @@ func (f *DotEnvFeeder) convertStringToType(value string, targetType reflect.Type
 		return boolVal, nil
 	case reflect.Invalid, reflect.Uintptr, reflect.Complex64, reflect.Complex128,
 		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Ptr, reflect.Slice, reflect.Struct, reflect.UnsafePointer:
+		reflect.Pointer, reflect.Slice, reflect.Struct, reflect.UnsafePointer:
 		return nil, wrapDotEnvUnsupportedTypeError(targetType.Kind().String())
 	default:
 		return nil, wrapDotEnvUnsupportedTypeError(targetType.Kind().String())

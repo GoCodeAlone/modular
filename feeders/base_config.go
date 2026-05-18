@@ -18,7 +18,7 @@ type BaseConfigFeeder struct {
 	Environment  string // Environment name (e.g., "prod", "staging", "dev")
 	verboseDebug bool
 	logger       interface{ Debug(msg string, args ...any) }
-	ft FieldTrackerHolder
+	ft           FieldTrackerHolder
 }
 
 // NewBaseConfigFeeder creates a new base configuration feeder
