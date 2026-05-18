@@ -7,7 +7,7 @@ replace github.com/GoCodeAlone/modular => ../..
 replace github.com/GoCodeAlone/modular/modules/database/v2 => ../../modules/database
 
 require (
-	github.com/GoCodeAlone/modular v1.13.0
+	github.com/GoCodeAlone/modular v1.13.3
 	github.com/GoCodeAlone/modular/modules/database/v2 v2.2.0
 	github.com/mattn/go-sqlite3 v1.14.32
 )

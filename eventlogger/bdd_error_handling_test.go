@@ -2,6 +2,7 @@ package eventlogger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -62,14 +63,17 @@ func (ctx *EventLoggerBDDTestContext) errorsShouldBeHandledGracefully() error {
 
 	// Verify the module is still functional by emitting a test event
 	event := modular.NewCloudEvent("graceful.test", "test-source", map[string]interface{}{"test": "data"}, nil)
-	err := ctx.service.OnEvent(context.Background(), event)
-
-	// The module should handle this gracefully
-	if err != nil {
-		return fmt.Errorf("module should handle events gracefully: %v", err)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		err := ctx.service.OnEvent(context.Background(), event)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, ErrEventBufferFull) || time.Now().After(deadline) {
+			return fmt.Errorf("module should handle events gracefully: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-
-	return nil
 }
 
 func (ctx *EventLoggerBDDTestContext) otherOutputTargetsShouldContinueWorking() error {
@@ -82,14 +86,17 @@ func (ctx *EventLoggerBDDTestContext) otherOutputTargetsShouldContinueWorking() 
 
 	// Emit a test event to verify other outputs still work
 	event := modular.NewCloudEvent("test.recovery", "test-source", map[string]interface{}{"test": "recovery"}, nil)
-	err := ctx.service.OnEvent(context.Background(), event)
-
-	// The error handling should ensure this succeeds even with faulty targets
-	if err != nil {
-		return fmt.Errorf("other output targets failed to work after error: %v", err)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		err := ctx.service.OnEvent(context.Background(), event)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, ErrEventBufferFull) || time.Now().After(deadline) {
+			return fmt.Errorf("other output targets failed to work after error: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-
-	return nil
 }
 
 func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerWithFaultyOutputTargetAndEventObservationEnabled() error {

@@ -195,4 +195,4 @@ jobs:
           slug: GoCodeAlone/modular
           files: total-coverage.txt
           flags: total
-          fail_ci_if_error: true
+          fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}

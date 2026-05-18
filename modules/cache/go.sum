@@ -1,7 +1,7 @@
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/GoCodeAlone/modular v1.13.0 h1:UfsegfAmPWcPYQOqYZFsw/LNySBmMDcthiOQe5bscqE=
-github.com/GoCodeAlone/modular v1.13.0/go.mod h1:b06Pvgcc8HsGxvl30iO39zGH2jIWz467QEj2+OQL2Do=
+github.com/GoCodeAlone/modular v1.13.3 h1:BgGW7gmuzrqV+ZxlgZ3u7OefZPhStOZMCwqY0KBcgkk=
+github.com/GoCodeAlone/modular v1.13.3/go.mod h1:N0F29npNLAevhDQbdv6Ry5eyY3OTisoVCbfbsFfr0Og=
 github.com/alicebob/miniredis/v2 v2.35.0 h1:QwLphYqCEAo1eu1TqPRN2jgVMPBweeQcR21jeqDCONI=
 github.com/alicebob/miniredis/v2 v2.35.0/go.mod h1:TcL7YfarKPGDAthEtl5NBeHZfeUQj6OXMm/+iu5cLMM=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

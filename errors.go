@@ -94,6 +94,8 @@ var (
 	ErrReloadTimeout             = errors.New("reload timed out waiting for module")
 	ErrDynamicReloadNotEnabled   = errors.New("dynamic reload not enabled")
 	ErrModuleInitializationPanic = errors.New("panic initializing module")
+	ErrReloadPanic               = errors.New("reload panicked")
+	ErrHealthCheckPanic          = errors.New("health check panicked")
 
 	// Observer/Event emission errors
 	ErrNoSubjectForEventEmission = errors.New("no subject available for event emission")

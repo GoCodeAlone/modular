@@ -378,7 +378,7 @@ func (m *ChiMuxModule) setupMiddleware(app modular.Application) error {
 		middlewareProviderType := reflect.TypeOf((*MiddlewareProvider)(nil)).Elem()
 
 		if serviceType.Implements(middlewareProviderType) ||
-			(serviceType.Kind() == reflect.Ptr && serviceType.Elem().Implements(middlewareProviderType)) {
+			(serviceType.Kind() == reflect.Pointer && serviceType.Elem().Implements(middlewareProviderType)) {
 			if provider, ok := service.(MiddlewareProvider); ok {
 				middlewareProviders = append(middlewareProviders, provider)
 				m.logger.Debug("Found middleware provider", "name", name)

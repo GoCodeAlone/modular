@@ -185,6 +185,11 @@ func TestModule_CustomMiddleware(t *testing.T) {
 	err = mockApp.RegisterService("test.middleware.provider", middlewareProvider)
 	require.NoError(t, err)
 
+	// Register a pointer service that does not implement MiddlewareProvider so
+	// setupMiddleware exercises its pointer-kind interface check.
+	err = mockApp.RegisterService("test.non.middleware", &struct{ Name string }{Name: "not-middleware"})
+	require.NoError(t, err)
+
 	// Register observers before Init
 	err = module.RegisterObservers(mockApp)
 	require.NoError(t, err)
