@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -29,6 +30,13 @@ func (z *zeroTimeoutReloadable) ReloadTimeout() time.Duration { return 0 }
 type panickyReloadable struct{ wellBehavedReloadable }
 
 func (p *panickyReloadable) CanReload() bool { panic("boom") }
+
+// reloadPanickyReloadable panics when Reload is called.
+type reloadPanickyReloadable struct{ wellBehavedReloadable }
+
+func (r *reloadPanickyReloadable) Reload(_ context.Context, _ []ConfigChange) error {
+	panic("reload boom")
+}
 
 // --- Mock HealthProviders for contract tests ---
 
@@ -79,6 +87,13 @@ func (c *cancelIgnoringHealthProvider) HealthCheck(_ context.Context) ([]HealthR
 			CheckedAt: time.Now(),
 		},
 	}, nil
+}
+
+// panickyHealthProvider panics when HealthCheck is called.
+type panickyHealthProvider struct{}
+
+func (p *panickyHealthProvider) HealthCheck(_ context.Context) ([]HealthReport, error) {
+	panic("health check boom")
 }
 
 // --- Tests ---
@@ -160,5 +175,41 @@ func TestContractVerifier_HealthIgnoresCancellation(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected violation for ignoring cancellation, got: %+v", violations)
+	}
+}
+
+// TestContractVerifier_ReloadPanicWrapsErrReloadPanic verifies that a panic inside
+// Reload is captured and the resulting violation error wraps ErrReloadPanic.
+func TestContractVerifier_ReloadPanicWrapsErrReloadPanic(t *testing.T) {
+	verifier := NewStandardContractVerifier()
+	violations := verifier.VerifyReloadContract(&reloadPanickyReloadable{})
+
+	found := false
+	for _, v := range violations {
+		if v.Rule == "reload-must-not-panic" && errors.Is(v.Err, ErrReloadPanic) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected violation with ErrReloadPanic, got: %+v", violations)
+	}
+}
+
+// TestContractVerifier_HealthPanicWrapsErrHealthCheckPanic verifies that a panic inside
+// HealthCheck is captured and the resulting violation error wraps ErrHealthCheckPanic.
+func TestContractVerifier_HealthPanicWrapsErrHealthCheckPanic(t *testing.T) {
+	verifier := NewStandardContractVerifier()
+	violations := verifier.VerifyHealthContract(&panickyHealthProvider{})
+
+	found := false
+	for _, v := range violations {
+		if v.Rule == "health-check-must-not-panic" && errors.Is(v.Err, ErrHealthCheckPanic) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected violation with ErrHealthCheckPanic, got: %+v", violations)
 	}
 }

@@ -1,6 +1,7 @@
 package modular
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -109,4 +110,40 @@ func (m *simpleOrderModule) Init(app Application) error {
 	*m.order = append(*m.order, m.name)
 	m.mu.Unlock()
 	return nil
+}
+
+// panicOnInitModule panics during Init to exercise the panic-recovery path.
+type panicOnInitModule struct {
+	name string
+}
+
+func (m *panicOnInitModule) Name() string           { return m.name }
+func (m *panicOnInitModule) Dependencies() []string { return nil }
+func (m *panicOnInitModule) Init(_ Application) error {
+	panic("intentional panic during init")
+}
+
+// TestWithParallelInit_PanicWrapsErrModuleInitializationPanic verifies that a panic
+// during parallel module initialisation is wrapped with ErrModuleInitializationPanic.
+func TestWithParallelInit_PanicWrapsErrModuleInitializationPanic(t *testing.T) {
+	// Register two panic-on-init modules at the same depth so they run concurrently.
+	modA := &panicOnInitModule{name: "panic-a"}
+	modB := &panicOnInitModule{name: "panic-b"}
+
+	app, err := NewApplication(
+		WithLogger(nopLogger{}),
+		WithModules(modA, modB),
+		WithParallelInit(),
+	)
+	if err != nil {
+		t.Fatalf("NewApplication: %v", err)
+	}
+
+	initErr := app.Init()
+	if initErr == nil {
+		t.Fatal("expected Init to return an error after panic, got nil")
+	}
+	if !errors.Is(initErr, ErrModuleInitializationPanic) {
+		t.Errorf("expected error to wrap ErrModuleInitializationPanic, got: %v", initErr)
+	}
 }
