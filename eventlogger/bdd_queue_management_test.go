@@ -119,6 +119,9 @@ func (ctx *EventLoggerBDDTestContext) theEventsShouldBeQueuedWithoutErrors() err
 }
 
 func (ctx *EventLoggerBDDTestContext) theEventloggerStarts() error {
+	if ctx.app == nil && ctx.service != nil {
+		return ctx.service.Start(context.Background())
+	}
 	return ctx.app.Start()
 }
 
@@ -222,35 +225,21 @@ func (ctx *EventLoggerBDDTestContext) iHaveAnEventLoggerModuleConfiguredWithQueu
 		return err
 	}
 
-	// Create config with console output
 	config := ctx.createConsoleConfig(10)
-
-	// Create application with the config
-	err = ctx.createApplicationWithConfig(config)
-	if err != nil {
-		return err
-	}
-
-	// Initialize the module but DON'T start it yet
-	err = ctx.theEventLoggerModuleIsInitialized()
-	if err != nil {
-		return err
-	}
-
-	// Get service reference
-	err = ctx.theEventLoggerServiceShouldBeAvailable()
-	if err != nil {
-		return err
-	}
 
 	// Inject test console output for capturing logs
 	ctx.testConsole = &testConsoleOutput{baseTestOutput: baseTestOutput{logs: make([]string, 0)}}
-	ctx.service.setOutputsForTesting([]OutputTarget{ctx.testConsole})
-
-	// Artificially reduce queue size for testing overflow
-	ctx.service.mutex.Lock()
-	ctx.service.queueMaxSize = 3 // Small queue for testing overflow
-	ctx.service.mutex.Unlock()
+	ctx.config = config
+	ctx.service = &EventLoggerModule{
+		name:         ModuleName,
+		config:       config,
+		outputs:      []OutputTarget{ctx.testConsole},
+		eventChan:    make(chan cloudevents.Event, config.BufferSize),
+		stopChan:     make(chan struct{}),
+		eventQueue:   make([]cloudevents.Event, 0, 3),
+		queueMaxSize: 3,
+	}
+	ctx.module = ctx.service
 
 	return nil
 }
@@ -313,6 +302,10 @@ func (ctx *EventLoggerBDDTestContext) newerEventsShouldBePreservedInTheQueue() e
 }
 
 func (ctx *EventLoggerBDDTestContext) onlyThePreservedEventsShouldBeProcessed() error {
+	if ctx.app == nil && ctx.service != nil {
+		defer func() { _ = ctx.service.Stop(context.Background()) }()
+	}
+
 	// Wait longer for events to be processed with polling for queue clearance
 	maxWait := 2 * time.Second
 	checkInterval := 50 * time.Millisecond

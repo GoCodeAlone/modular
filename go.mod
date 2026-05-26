@@ -8,7 +8,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/golobby/cast v1.3.3
 	github.com/google/uuid v1.6.0

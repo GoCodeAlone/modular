@@ -232,6 +232,23 @@ func TestDebugDependenciesCommand(t *testing.T) {
 	}
 }
 
+func TestDebugInterfaceCommandUnknownPatternShowsPointerKindCheck(t *testing.T) {
+	cmd := NewDebugInterfaceCommand()
+
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{
+		"--type", "unknown.Service",
+		"--interface", "unknown.Interface",
+	})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "serviceType.Kind() == reflect.Pointer")
+}
+
 func TestDebugConfigTreeStructure(t *testing.T) {
 	tmpDir := createTestProject(t)
 	defer os.RemoveAll(tmpDir)

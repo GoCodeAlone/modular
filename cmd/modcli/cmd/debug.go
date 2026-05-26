@@ -207,7 +207,7 @@ func runDebugInterface(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "1. Load type '%s' using reflection\n", typeName)
 		fmt.Fprintf(cmd.OutOrStdout(), "2. Load interface '%s' using reflection\n", interfaceName)
 		fmt.Fprintf(cmd.OutOrStdout(), "3. Check: serviceType.Implements(interfaceType)\n")
-		fmt.Fprintf(cmd.OutOrStdout(), "4. Check: serviceType.Kind() == reflect.Ptr && serviceType.Elem().Implements(interfaceType)\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "4. Check: serviceType.Kind() == reflect.Pointer && serviceType.Elem().Implements(interfaceType)\n")
 		fmt.Fprintln(cmd.OutOrStdout())
 	}
 

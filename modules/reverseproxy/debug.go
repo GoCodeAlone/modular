@@ -241,7 +241,7 @@ func (d *DebugHandler) HandleInfo(w http.ResponseWriter, r *http.Request) {
 
 			// Add additional circuit breaker details if available via reflection
 			// This is safe because we control the CircuitBreaker implementation
-			if cbVal := reflect.ValueOf(cb); cbVal.Kind() == reflect.Ptr && !cbVal.IsNil() {
+			if cbVal := reflect.ValueOf(cb); cbVal.Kind() == reflect.Pointer && !cbVal.IsNil() {
 				elem := cbVal.Elem()
 				if elem.Kind() == reflect.Struct {
 					if thresholdField := elem.FieldByName("failureThreshold"); thresholdField.IsValid() && thresholdField.CanInterface() {
@@ -373,7 +373,7 @@ func (d *DebugHandler) HandleCircuitBreakers(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Add internal details via reflection for comprehensive debugging
-		if cbVal := reflect.ValueOf(cb); cbVal.Kind() == reflect.Ptr && !cbVal.IsNil() {
+		if cbVal := reflect.ValueOf(cb); cbVal.Kind() == reflect.Pointer && !cbVal.IsNil() {
 			elem := cbVal.Elem()
 			if elem.Kind() == reflect.Struct {
 				if thresholdField := elem.FieldByName("failureThreshold"); thresholdField.IsValid() && thresholdField.CanInterface() {

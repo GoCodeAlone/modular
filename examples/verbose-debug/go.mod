@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.13.0
+	github.com/GoCodeAlone/modular v1.13.3
 	github.com/GoCodeAlone/modular/modules/database/v2 v2.2.0
 	modernc.org/sqlite v1.38.0
 )
@@ -42,7 +42,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgtype v1.14.4 // indirect
 	github.com/jackc/pgx/v4 v4.18.3 // indirect
-	github.com/jackc/pgx/v5 v5.7.5 // indirect
+	github.com/jackc/pgx/v5 v5.9.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/lib/pq v1.10.9 // indirect
