@@ -2,7 +2,7 @@ package modular
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
 	"time"
 )
@@ -148,8 +148,7 @@ func TestContractVerifier_ReloadPanicUsesSentinelError(t *testing.T) {
 
 	found := false
 	for _, v := range violations {
-		if v.Rule == "empty-reload-must-be-idempotent" &&
-			strings.Contains(v.Description, ErrReloadPanic.Error()) {
+		if v.Rule == "reload-must-not-panic" && errors.Is(v.Err, ErrReloadPanic) {
 			found = true
 			break
 		}
@@ -206,4 +205,36 @@ func TestContractVerifier_HealthPanicIsGuarded(t *testing.T) {
 	// cancellation check returns ctx.Err, so the test only fails if the guard is
 	// not active.
 	_ = verifier.VerifyHealthContract(&panicOnActiveHealthProvider{})
+}
+
+func TestContractVerifier_ReloadPanicWrapsErrReloadPanic(t *testing.T) {
+	verifier := NewStandardContractVerifier()
+	violations := verifier.VerifyReloadContract(&reloadPanicReloadable{})
+
+	found := false
+	for _, v := range violations {
+		if v.Rule == "reload-must-not-panic" && errors.Is(v.Err, ErrReloadPanic) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected violation with ErrReloadPanic, got: %+v", violations)
+	}
+}
+
+func TestContractVerifier_HealthPanicWrapsErrHealthCheckPanic(t *testing.T) {
+	verifier := NewStandardContractVerifier()
+	violations := verifier.VerifyHealthContract(&panicOnActiveHealthProvider{})
+
+	found := false
+	for _, v := range violations {
+		if v.Rule == "health-check-must-not-panic" && errors.Is(v.Err, ErrHealthCheckPanic) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected violation with ErrHealthCheckPanic, got: %+v", violations)
+	}
 }

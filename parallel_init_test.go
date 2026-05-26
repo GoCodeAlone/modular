@@ -115,6 +115,28 @@ func TestWithParallelInit_RecoversModulePanic(t *testing.T) {
 	}
 }
 
+func TestWithParallelInit_ConcurrentPanicsWrapErrModuleInitializationPanic(t *testing.T) {
+	modA := &panicInitModule{name: "panic-a"}
+	modB := &panicInitModule{name: "panic-b"}
+
+	app, err := NewApplication(
+		WithLogger(nopLogger{}),
+		WithModules(modA, modB),
+		WithParallelInit(),
+	)
+	if err != nil {
+		t.Fatalf("NewApplication: %v", err)
+	}
+
+	initErr := app.Init()
+	if initErr == nil {
+		t.Fatal("expected Init to return an error after panic, got nil")
+	}
+	if !errors.Is(initErr, ErrModuleInitializationPanic) {
+		t.Fatalf("expected error to wrap ErrModuleInitializationPanic, got: %v", initErr)
+	}
+}
+
 type simpleOrderModule struct {
 	name  string
 	deps  []string

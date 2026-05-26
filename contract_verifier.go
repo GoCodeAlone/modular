@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ type ContractViolation struct {
 	Rule        string // e.g., "must-return-positive-timeout"
 	Description string
 	Severity    string // "error" or "warning"
+	Err         error  // underlying error, if applicable
 }
 
 // ContractVerifier verifies that implementations of Reloadable and HealthProvider
@@ -60,11 +62,16 @@ func (v *StandardContractVerifier) VerifyReloadContract(module Reloadable) []Con
 
 	// 3. Reload with empty changes should be idempotent.
 	if err := v.checkReloadIdempotent(module); err != nil {
+		rule := "empty-reload-must-be-idempotent"
+		if errors.Is(err, ErrReloadPanic) {
+			rule = "reload-must-not-panic"
+		}
 		violations = append(violations, ContractViolation{
 			Contract:    "reload",
-			Rule:        "empty-reload-must-be-idempotent",
+			Rule:        rule,
 			Description: fmt.Sprintf("Reload() with empty changes failed: %v", err),
 			Severity:    "warning",
+			Err:         err,
 		})
 	}
 
@@ -149,10 +156,17 @@ func (v *StandardContractVerifier) runReloadWithGuard(module Reloadable, label s
 
 // checkReloadRespectsCancel calls Reload with an already-cancelled context and
 // returns true if Reload returned an error (i.e., it respected the cancellation).
-func (v *StandardContractVerifier) checkReloadRespectsCancel(module Reloadable) bool {
+// A panic from Reload is treated as "respected cancellation" (error path).
+func (v *StandardContractVerifier) checkReloadRespectsCancel(module Reloadable) (respected bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
+	defer func() {
+		if r := recover(); r != nil {
+			// A panic counts as a non-nil error path.
+			respected = true
+		}
+	}()
 	err := module.Reload(ctx, nil)
 	return err != nil
 }
@@ -195,6 +209,17 @@ func (v *StandardContractVerifier) VerifyHealthContract(provider HealthProvider)
 		// Can't check fields if we timed out.
 		return violations
 	case res := <-ch:
+		if errors.Is(res.err, ErrHealthCheckPanic) {
+			violations = append(violations, ContractViolation{
+				Contract:    "health",
+				Rule:        "health-check-must-not-panic",
+				Description: fmt.Sprintf("HealthCheck() panicked: %v", res.err),
+				Severity:    "error",
+				Err:         res.err,
+			})
+			// Skip further checks since the provider panics.
+			return violations
+		}
 		if res.err == nil {
 			for _, report := range res.reports {
 				if report.Module == "" {
