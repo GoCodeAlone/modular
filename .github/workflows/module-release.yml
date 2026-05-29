@@ -44,9 +44,13 @@ on:
         required: true
         type: string
 
+permissions: {}
+
 jobs:
   prepare-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read       # checkout repository to detect module changes and list modules
     outputs:
       modules: ${{ steps.get-modules.outputs.modules }}
     steps:
@@ -104,6 +108,9 @@ jobs:
     needs: prepare-release
     runs-on: ubuntu-latest
     if: needs.prepare-release.outputs.modules && needs.prepare-release.result == 'success'
+    permissions:
+      contents: write      # create GitHub release, push tags, push branch for module-path PR
+      pull-requests: write # create PR for module path update (v2+ scenario)
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
