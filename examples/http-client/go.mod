@@ -14,7 +14,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.16.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/go-chi/chi/v5 v5.2.2 // indirect
+	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golobby/cast v1.3.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
