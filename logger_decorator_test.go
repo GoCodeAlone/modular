@@ -409,6 +409,148 @@ func TestDecoratorComposition(t *testing.T) {
 	})
 }
 
+// TestSanitizeLogArgs_BroadSensitiveKeys verifies that the strengthened sanitizeLogArgs
+// masks all known sensitive key patterns (go/clear-text-logging).
+func TestSanitizeLogArgs_BroadSensitiveKeys(t *testing.T) {
+	t.Parallel()
+
+	sensitiveKeys := []string{
+		"password", "Password", "PASSWORD",
+		"passwd", "Passwd",
+		"secret", "Secret", "SECRET",
+		"token", "Token", "TOKEN",
+		"authorization", "Authorization", "AUTHORIZATION",
+		"auth", "Auth", "AUTH",
+		"apikey", "ApiKey", "APIKEY",
+		"api_key", "Api_Key", "API_KEY",
+		"accesskey", "AccessKey",
+		"access_key", "Access_Key",
+		"credential", "Credential",
+		"cookie", "Cookie", "COOKIE",
+		"set-cookie", "Set-Cookie",
+		"private_key", "Private_Key",
+		"privatekey", "PrivateKey",
+		"session", "Session", "SESSION",
+		"bearer", "Bearer", "BEARER",
+	}
+
+	for _, key := range sensitiveKeys {
+		key := key
+		t.Run("masks_"+key, func(t *testing.T) {
+			t.Parallel()
+			args := []any{key, "super-secret-value", "safe_key", "safe-value"}
+			result := sanitizeLogArgs(args)
+			assert.Equal(t, "***", result[1], "value for key %q should be masked", key)
+			assert.Equal(t, "safe-value", result[3], "non-sensitive key should pass through")
+		})
+	}
+}
+
+// TestSanitizeLogArgs_NonSensitivePassThrough verifies benign keys are not masked.
+func TestSanitizeLogArgs_NonSensitivePassThrough(t *testing.T) {
+	t.Parallel()
+	args := []any{"service", "my-service", "version", "1.2.3", "requestId", "abc123"}
+	result := sanitizeLogArgs(args)
+	assert.Equal(t, "my-service", result[1])
+	assert.Equal(t, "1.2.3", result[3])
+	// requestId is masked in existing behavior
+	assert.Equal(t, "***", result[5])
+}
+
+// TestDecorators_SensitiveArgsAreMasked verifies each decorator sanitizes sensitive args
+// before forwarding to the inner logger (go/clear-text-logging fix).
+func TestDecorators_SensitiveArgsAreMasked(t *testing.T) {
+	t.Parallel()
+
+	sensitiveArgs := []any{"password", "hunter2", "safe", "value"}
+
+	t.Run("BaseLoggerDecorator is a pure passthrough (subclasses own masking)", func(t *testing.T) {
+		// BaseLoggerDecorator intentionally does NOT sanitize — it is a foundation
+		// type used by MaskingLogger and others that own their own redaction pipeline.
+		// Sanitization is applied by the higher-level decorators (DualWriter, Filter, etc.).
+		t.Parallel()
+		inner := NewTestLogger()
+		dec := NewBaseLoggerDecorator(inner)
+		dec.Info("msg", sensitiveArgs...)
+		require.Len(t, inner.entries, 1)
+		// Passthrough: value is NOT masked by base (masking comes from the caller layer)
+		m := argsToMap(inner.entries[0].Args)
+		assert.Equal(t, "hunter2", m["password"], "BaseLoggerDecorator passes args through unchanged")
+	})
+
+	t.Run("DualWriterLoggerDecorator masks sensitive args in both inner and secondary", func(t *testing.T) {
+		t.Parallel()
+		primary := NewTestLogger()
+		secondary := NewTestLogger()
+		dec := NewDualWriterLoggerDecorator(primary, secondary)
+		dec.Error("msg", sensitiveArgs...)
+		require.Len(t, primary.entries, 1)
+		require.Len(t, secondary.entries, 1)
+		pm := argsToMap(primary.entries[0].Args)
+		sm := argsToMap(secondary.entries[0].Args)
+		assert.Equal(t, "***", pm["password"])
+		assert.Equal(t, "***", sm["password"])
+		assert.Equal(t, "value", pm["safe"])
+		assert.Equal(t, "value", sm["safe"])
+	})
+
+	t.Run("ValueInjectionLoggerDecorator masks sensitive args in combined args", func(t *testing.T) {
+		t.Parallel()
+		inner := NewTestLogger()
+		dec := NewValueInjectionLoggerDecorator(inner, "service", "svc")
+		dec.Warn("msg", sensitiveArgs...)
+		require.Len(t, inner.entries, 1)
+		m := argsToMap(inner.entries[0].Args)
+		assert.Equal(t, "***", m["password"])
+		assert.Equal(t, "svc", m["service"])
+		assert.Equal(t, "value", m["safe"])
+	})
+
+	t.Run("FilterLoggerDecorator masks sensitive args that pass filter", func(t *testing.T) {
+		t.Parallel()
+		inner := NewTestLogger()
+		dec := NewFilterLoggerDecorator(inner, nil, nil, nil)
+		dec.Info("msg", sensitiveArgs...)
+		require.Len(t, inner.entries, 1)
+		m := argsToMap(inner.entries[0].Args)
+		assert.Equal(t, "***", m["password"])
+		assert.Equal(t, "value", m["safe"])
+	})
+
+	t.Run("LevelModifierLoggerDecorator masks sensitive args", func(t *testing.T) {
+		t.Parallel()
+		inner := NewTestLogger()
+		dec := NewLevelModifierLoggerDecorator(inner, map[string]string{"info": "debug"})
+		dec.Info("msg", sensitiveArgs...)
+		require.Len(t, inner.entries, 1)
+		m := argsToMap(inner.entries[0].Args)
+		assert.Equal(t, "***", m["password"])
+		assert.Equal(t, "value", m["safe"])
+	})
+
+	t.Run("Authorization key is masked across decorators", func(t *testing.T) {
+		t.Parallel()
+		inner := NewTestLogger()
+		dec := NewDualWriterLoggerDecorator(inner, NewTestLogger())
+		dec.Info("request", "authorization", "Bearer abc123", "method", "GET")
+		require.Len(t, inner.entries, 1)
+		m := argsToMap(inner.entries[0].Args)
+		assert.Equal(t, "***", m["authorization"])
+		assert.Equal(t, "GET", m["method"])
+	})
+
+	t.Run("Token key is masked in ValueInjection decorator", func(t *testing.T) {
+		t.Parallel()
+		inner := NewTestLogger()
+		dec := NewValueInjectionLoggerDecorator(inner, "env", "prod")
+		dec.Debug("auth", "token", "secret-token-value", "user", "alice")
+		require.Len(t, inner.entries, 1)
+		m := argsToMap(inner.entries[0].Args)
+		assert.Equal(t, "***", m["token"])
+		assert.Equal(t, "alice", m["user"])
+	})
+}
+
 // Test the SetLogger/Service integration fix
 func TestSetLoggerServiceIntegration(t *testing.T) {
 	t.Parallel()

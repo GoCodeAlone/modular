@@ -302,3 +302,74 @@ func TestNoUselessDotDotDotLogs(t *testing.T) {
 	// Ensure we actually have some log entries to test
 	assert.GreaterOrEqual(t, len(entries), 2, "Should have generated some log entries to test")
 }
+
+// TestSensitiveHeadersRedacted verifies that Authorization and other sensitive headers are
+// redacted in both request and response important_headers logging (go/clear-text-logging fix).
+func TestSensitiveHeadersRedacted(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Set-Cookie", "session=abc123; HttpOnly")
+		w.Header().Set("Authorization", "Bearer server-token") // unusual but tests redaction
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	testLogger := &TestLogger{}
+
+	// Use non-detailed logging path (LogHeaders=false, LogBody=false) so the
+	// important_headers map is populated and can be inspected.
+	transport := &loggingTransport{
+		Transport:  http.DefaultTransport,
+		Logger:     testLogger,
+		LogHeaders: false,
+		LogBody:    false,
+		LogToFile:  false,
+	}
+	client := &http.Client{Transport: transport}
+
+	req, err := http.NewRequestWithContext(context.Background(), "GET", server.URL+"/", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer secret-token-value")
+	req.Header.Set("Cookie", "session=hunter2")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	entries := testLogger.GetEntries()
+	require.GreaterOrEqual(t, len(entries), 2)
+
+	// Find request entry
+	var reqEntry, respEntry *LogEntry
+	for i := range entries {
+		if strings.Contains(entries[i].Message, "Outgoing request") {
+			reqEntry = &entries[i]
+		}
+		if strings.Contains(entries[i].Message, "Received response") {
+			respEntry = &entries[i]
+		}
+	}
+
+	// Check request headers: Authorization and Cookie must be redacted
+	require.NotNil(t, reqEntry, "must have request log entry")
+	reqHeaders, ok := reqEntry.KeyVals["important_headers"]
+	require.True(t, ok, "request entry must have important_headers key")
+	reqHeadersStr := fmt.Sprintf("%v", reqHeaders)
+	assert.NotContains(t, reqHeadersStr, "secret-token-value", "Authorization value must not appear in logs")
+	assert.NotContains(t, reqHeadersStr, "hunter2", "Cookie value must not appear in logs")
+	// The key name may appear (that's fine), but the value must be masked
+	if strings.Contains(reqHeadersStr, "Authorization") || strings.Contains(reqHeadersStr, "authorization") {
+		assert.Contains(t, reqHeadersStr, "***", "masked sentinel must be present")
+	}
+
+	// Check response headers: Set-Cookie must be redacted
+	require.NotNil(t, respEntry, "must have response log entry")
+	respHeaders, ok := respEntry.KeyVals["important_headers"]
+	require.True(t, ok, "response entry must have important_headers key")
+	respHeadersStr := fmt.Sprintf("%v", respHeaders)
+	assert.NotContains(t, respHeadersStr, "abc123", "Set-Cookie value must not appear in logs")
+}

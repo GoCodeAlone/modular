@@ -696,7 +696,7 @@ func (t *loggingTransport) logRequest(id string, req *http.Request) {
 			"id", id,
 			"request", basicInfo,
 			"content_length", req.ContentLength,
-			"important_headers", headers,
+			"important_headers", redactHeaders(headers),
 		)
 	}
 }
@@ -829,7 +829,7 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response, dura
 			"url", url,
 			"duration_ms", duration.Milliseconds(),
 			"content_length", resp.ContentLength,
-			"important_headers", headers,
+			"important_headers", redactHeaders(headers),
 		)
 	}
 }
@@ -942,6 +942,37 @@ func (t *loggingTransport) smartTruncateResponse(dump string, maxSize int) strin
 
 	// Fallback: just truncate
 	return dump[:maxSize]
+}
+
+// sensitiveHeaderPatterns lists lowercase substrings that identify headers whose values
+// must be redacted before logging (go/clear-text-logging).
+var sensitiveHeaderPatterns = []string{
+	"authorization", "proxy-authorization", "cookie", "set-cookie",
+	"x-api-key", "x-auth-token", "token", "secret", "password", "apikey",
+}
+
+// isSensitiveHeader reports whether a header's value must be redacted.
+func isSensitiveHeader(name string) bool {
+	lower := strings.ToLower(name)
+	for _, pat := range sensitiveHeaderPatterns {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+	return false
+}
+
+// redactHeaders returns a new map with sensitive header values replaced by "***".
+func redactHeaders(headers map[string]string) map[string]string {
+	redacted := make(map[string]string, len(headers))
+	for k, v := range headers {
+		if isSensitiveHeader(k) {
+			redacted[k] = "***"
+		} else {
+			redacted[k] = v
+		}
+	}
+	return redacted
 }
 
 // isImportantHeader determines if a header is important enough to show
