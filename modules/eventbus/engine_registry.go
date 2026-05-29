@@ -265,14 +265,24 @@ func (r *EngineRouter) GetEngineForTopic(topic string) string {
 	return r.getEngineForTopic(topic)
 }
 
-// CollectStats aggregates delivery statistics from engines that expose them.
-// At present only the in-memory engine exposes Stats(). Engines that don't
-// implement Stats() are simply skipped. This keeps the method safe to call in
-// multi-engine configurations mixing different backend types.
+// statsProvider is implemented by any engine that exposes delivery statistics
+// as a (delivered, dropped) pair. Routing over this interface (rather than a
+// concrete type) lets every stats-bearing engine — memory, custom, and any
+// future engine — participate in module-level aggregation. Engines that do not
+// implement it (e.g. DurableMemoryEventBus, whose Stats() has a different arity)
+// are simply skipped.
+type statsProvider interface {
+	Stats() (delivered uint64, dropped uint64)
+}
+
+// CollectStats aggregates delivery statistics from engines that expose them
+// via the statsProvider interface. Engines that don't implement it are skipped,
+// keeping the method safe to call in multi-engine configurations mixing
+// different backend types.
 func (r *EngineRouter) CollectStats() (delivered uint64, dropped uint64) {
 	for _, engine := range r.engines {
-		if mem, ok := engine.(*MemoryEventBus); ok {
-			d, dr := mem.Stats()
+		if sp, ok := engine.(statsProvider); ok {
+			d, dr := sp.Stats()
 			delivered += d
 			dropped += dr
 		}
@@ -288,8 +298,8 @@ func (r *EngineRouter) CollectStats() (delivered uint64, dropped uint64) {
 func (r *EngineRouter) CollectPerEngineStats() map[string]DeliveryStats {
 	stats := make(map[string]DeliveryStats)
 	for name, engine := range r.engines {
-		if mem, ok := engine.(*MemoryEventBus); ok {
-			d, dr := mem.Stats()
+		if sp, ok := engine.(statsProvider); ok {
+			d, dr := sp.Stats()
 			stats[name] = DeliveryStats{Delivered: d, Dropped: dr}
 		}
 	}

@@ -342,16 +342,18 @@ func (m *EventBusModule) Start(ctx context.Context) error {
 }
 
 // Stop performs shutdown logic for the module.
-// This method gracefully shuts down all event bus engines, ensuring all in-flight
-// events are processed and all subscriptions are properly cleaned up.
+// This method gracefully shuts down all event bus engines and cleans up all
+// subscriptions. Delivery is at-most-once across teardown: an event already in
+// a handler runs to completion, but events still buffered in subscriber queues
+// are counted as dropped (visible via Stats()) rather than delivered or lost
+// silently.
 //
 // The shutdown process:
 //  1. Checks if already stopped (idempotent)
-//  2. Stops accepting new events
-//  3. Waits for in-flight events to complete
-//  4. Cancels all active subscriptions
-//  5. Shuts down worker pools
-//  6. Closes all underlying event bus engines
+//  2. Cancels all active subscriptions and signals engines to stop
+//  3. Waits for handler/worker goroutines to exit (bounded by ctx)
+//  4. Counts any still-buffered or still-queued events as dropped
+//  5. Closes all underlying event bus engines
 //
 // This method is thread-safe and can be called multiple times safely.
 func (m *EventBusModule) Stop(ctx context.Context) error {
