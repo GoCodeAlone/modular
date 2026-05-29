@@ -11,6 +11,12 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
+# Least-privilege default: both jobs only check out and build/test the example
+# modules, so read access to repository contents is sufficient (CodeQL
+# actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 env:
   GO_VERSION: '^1.26'
 
