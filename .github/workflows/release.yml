@@ -41,9 +41,14 @@ on:
         description: 'Version tag produced by the release job'
         value: ${{ jobs.release.outputs.released_version }}
 
+permissions: {}
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create GitHub release, upload release asset, push branch for module-path PR
+      pull-requests: write # create PR for module path update (v2+ scenario)
     outputs:
       released_version: ${{ steps.version.outputs.next_version }}
       core_changed: ${{ steps.detect.outputs.core_changed }}
@@ -440,6 +445,11 @@ jobs:
   bump-modules:
     needs: release
     if: needs.release.result == 'success' && needs.release.outputs.core_changed == 'true' && inputs.skipModuleBump != true
+    permissions:
+      contents: write      # callee (auto-bump-modules) commits, pushes branch, merges PR
+      pull-requests: write # callee creates and merges the bump PR
+      actions: read        # callee reads workflow run status
+      checks: write        # callee writes check results
     uses: ./.github/workflows/auto-bump-modules.yml
     with:
       coreVersion: ${{ needs.release.outputs.released_version }}
