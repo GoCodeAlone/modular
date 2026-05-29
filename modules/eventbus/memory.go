@@ -166,13 +166,32 @@ func (m *MemoryEventBus) Stop(ctx context.Context) error {
 
 	select {
 	case <-done:
-		// All workers exited gracefully
+		// All workers and handler goroutines have exited. Nothing can now send
+		// to or receive from the worker pool, so any tasks still queued were
+		// dequeued from subscriber channels but never executed — count them as
+		// dropped so Stats() conservation holds for async subscriptions (#112).
+		m.drainWorkerPool()
 	case <-ctx.Done():
 		return ErrEventBusShutdownTimeout
 	}
 
 	m.isStarted.Store(false)
 	return nil
+}
+
+// drainWorkerPool counts any async handler tasks still queued in the worker
+// pool as dropped. It MUST be called only after m.wg.Wait() has completed (no
+// concurrent senders from handleEvents, no concurrent receivers in worker), so
+// the non-blocking drain is race-free.
+func (m *MemoryEventBus) drainWorkerPool() {
+	for {
+		select {
+		case <-m.workerPool:
+			atomic.AddUint64(&m.droppedCount, 1)
+		default:
+			return
+		}
+	}
 }
 
 // matchesTopic checks if an event topic matches a subscription topic pattern
@@ -288,8 +307,16 @@ func (m *MemoryEventBus) Publish(ctx context.Context, event Event) error {
 					// timeout drop
 				case <-ctx.Done():
 				}
+				// Race-free, version-safe drain. On Go 1.23+ timer channels are
+				// unbuffered, so the legacy unconditional `<-deadline.C` blocks
+				// forever once the timer has fired and the select consumed the
+				// tick (issue #112). The non-blocking select covers both the
+				// timer-fired and ctx-cancelled exit branches.
 				if !deadline.Stop() {
-					<-deadline.C
+					select {
+					case <-deadline.C:
+					default:
+					}
 				}
 			}
 		default: // "drop"
@@ -453,6 +480,10 @@ func (m *MemoryEventBus) SubscriberCount(topic string) int {
 func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 	defer m.wg.Done()
 	defer close(sub.finished)
+	// Runs first (LIFO), before finished is closed: on every exit path, count
+	// events still buffered in the subscriber channel as dropped (at-most-once
+	// teardown contract, #112). Placed as a defer so no exit return can skip it.
+	defer m.drainSubscription(sub)
 
 	for {
 		// Fast path: if subscription cancelled, exit before selecting (avoids processing backlog after unsubscribe)
@@ -467,6 +498,9 @@ func (m *MemoryEventBus) handleEvents(sub *memorySubscription) {
 		case event := <-sub.eventCh:
 			// Re-check cancellation after dequeue to avoid processing additional events post-unsubscribe.
 			if sub.isCancelled() {
+				// This event was dequeued but will not be handled — count it as
+				// dropped (the deferred drain handles the rest of the buffer).
+				atomic.AddUint64(&m.droppedCount, 1)
 				return
 			}
 			if sub.isAsync {
@@ -542,6 +576,21 @@ func (m *MemoryEventBus) worker() {
 			return
 		case task := <-m.workerPool:
 			task()
+		}
+	}
+}
+
+// drainSubscription counts any events still buffered in the subscriber channel
+// as dropped (at-most-once teardown contract, #112). It is safe only when
+// called from the owning handler goroutine on exit — that goroutine is the sole
+// reader of sub.eventCh, so there is no concurrent receiver to double-drain.
+func (m *MemoryEventBus) drainSubscription(sub *memorySubscription) {
+	for {
+		select {
+		case <-sub.eventCh:
+			atomic.AddUint64(&m.droppedCount, 1)
+		default:
+			return
 		}
 	}
 }

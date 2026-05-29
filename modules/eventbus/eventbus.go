@@ -91,7 +91,12 @@ type EventBus interface {
 	// Stop shuts down the event bus.
 	// This method is called during module shutdown and should cleanup
 	// all resources, close connections, and stop background processes.
-	// It should ensure all in-flight events are processed before returning.
+	//
+	// Delivery is at-most-once across teardown: an event already being handled
+	// runs to completion, but events still buffered in a subscriber's queue at
+	// Stop are NOT delivered — the in-memory engines count them as dropped so
+	// the loss is visible via Stats() rather than silent. Stop returns once
+	// background goroutines have exited (or the context deadline elapses).
 	Stop(ctx context.Context) error
 
 	// Publish sends an event to the specified topic.

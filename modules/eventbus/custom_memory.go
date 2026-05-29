@@ -15,14 +15,17 @@ import (
 // memory engine, this one includes additional features like event metrics collection,
 // custom event filtering, and enhanced subscription management.
 type CustomMemoryEventBus struct {
-	config        *CustomMemoryConfig
-	subscriptions map[string]map[string]*customMemorySubscription
-	topicMutex    sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
-	isStarted     atomic.Bool
-	eventMetrics  *EventMetrics
-	eventFilters  []EventFilter
+	config         *CustomMemoryConfig
+	subscriptions  map[string]map[string]*customMemorySubscription
+	topicMutex     sync.RWMutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	isStarted      atomic.Bool
+	eventMetrics   *EventMetrics
+	eventFilters   []EventFilter
+	wg             sync.WaitGroup // tracks handler goroutines for deterministic shutdown
+	deliveredCount uint64         // stats
+	droppedCount   uint64         // stats
 }
 
 // CustomMemoryConfig holds configuration for the custom memory engine
@@ -80,10 +83,19 @@ type customMemorySubscription struct {
 	isAsync          bool
 	eventCh          chan Event
 	done             chan struct{}
+	finished         chan struct{} // closed when the handler goroutine exits
 	cancelled        bool
 	mutex            sync.RWMutex
 	subscriptionTime time.Time
 	processedEvents  int64
+}
+
+// isCancelled reports whether the subscription has been cancelled, without
+// exposing the lock.
+func (s *customMemorySubscription) isCancelled() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.cancelled
 }
 
 // Topic returns the topic of the subscription
@@ -228,6 +240,31 @@ func (c *CustomMemoryEventBus) Stop(ctx context.Context) error {
 	}
 	c.topicMutex.Unlock()
 
+	// Wait for handler goroutines to exit (and run their teardown drains) so
+	// Stats() is final and accurate by the time Stop returns. Bounded by the
+	// caller's context, mirroring MemoryEventBus.Stop.
+	done := make(chan struct{})
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic recovered in custom memory eventbus shutdown waiter", "error", r)
+			}
+		}()
+		c.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All handler goroutines exited gracefully.
+	case <-ctx.Done():
+		// Shutdown deadline elapsed with handlers still running. isStarted is
+		// intentionally left true (matching MemoryEventBus) so callers do not
+		// treat a timed-out bus as cleanly stopped; the waiter goroutine exits
+		// once wg drains after cancel.
+		return ErrEventBusShutdownTimeout
+	}
+
 	c.isStarted.Store(false)
 	slog.Info("Custom memory event bus stopped",
 		"totalEvents", c.eventMetrics.TotalEvents,
@@ -289,7 +326,9 @@ func (c *CustomMemoryEventBus) Publish(ctx context.Context, event Event) error {
 		case sub.eventCh <- event:
 			// Event sent to subscriber
 		default:
-			// Channel is full, log warning
+			// Channel is full — drop and count it so the drop is observable via
+			// Stats() instead of vanishing silently (#112).
+			atomic.AddUint64(&c.droppedCount, 1)
 			slog.Warn("Subscription channel full, dropping event",
 				"topic", event.Type(), "subscriptionID", sub.id)
 		}
@@ -326,6 +365,7 @@ func (c *CustomMemoryEventBus) subscribe(ctx context.Context, topic string, hand
 		isAsync:          isAsync,
 		eventCh:          make(chan Event, c.config.DefaultEventBufferSize),
 		done:             make(chan struct{}),
+		finished:         make(chan struct{}),
 		cancelled:        false,
 		subscriptionTime: time.Now(),
 		processedEvents:  0,
@@ -339,7 +379,8 @@ func (c *CustomMemoryEventBus) subscribe(ctx context.Context, topic string, hand
 	c.subscriptions[topic][sub.id] = sub
 	c.topicMutex.Unlock()
 
-	// Start event handler goroutine
+	// Start event handler goroutine (tracked so Stop can wait for it to drain).
+	c.wg.Add(1)
 	go c.handleEvents(sub)
 
 	slog.Debug("Created custom subscription", "topic", topic, "id", sub.id, "async", isAsync)
@@ -370,15 +411,24 @@ func (c *CustomMemoryEventBus) Unsubscribe(ctx context.Context, subscription Sub
 		return err
 	}
 
-	// Remove from subscriptions map
+	// Remove from subscriptions map. Release the lock BEFORE waiting on the
+	// handler goroutine so a draining handler cannot stall other topic ops.
 	c.topicMutex.Lock()
-	defer c.topicMutex.Unlock()
-
 	if subs, ok := c.subscriptions[sub.topic]; ok {
 		delete(subs, sub.id)
 		if len(subs) == 0 {
 			delete(c.subscriptions, sub.topic)
 		}
+	}
+	c.topicMutex.Unlock()
+
+	// Wait (briefly) for the handler goroutine to terminate so its teardown
+	// drain is reflected in Stats() and no post-unsubscribe delivery occurs.
+	t := time.NewTimer(100 * time.Millisecond)
+	defer t.Stop()
+	select {
+	case <-sub.finished:
+	case <-t.C:
 	}
 
 	return nil
@@ -427,18 +477,38 @@ func (c *CustomMemoryEventBus) matchesTopic(eventTopic, subscriptionTopic string
 
 // handleEvents processes events for a custom subscription
 func (c *CustomMemoryEventBus) handleEvents(sub *customMemorySubscription) {
+	defer c.wg.Done()
+	defer close(sub.finished)
+	// LIFO defer order: recover (registered last) runs first to absorb a handler
+	// panic, THEN drainSubscription runs, THEN finished is closed, THEN wg.Done.
+	// So a goroutine waiting on finished (Unsubscribe) or wg (Stop) always sees
+	// the final dropped count. drainSubscription counts any events still buffered
+	// in the subscriber channel as dropped on every exit path (at-most-once
+	// teardown contract, #112).
+	defer c.drainSubscription(sub)
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("panic recovered in custom memory event handler", "error", r, "topic", sub.topic)
 		}
 	}()
 	for {
+		// Fast path: if cancelled between events, exit before selecting so the
+		// deferred drain runs deterministically (no race with a ready eventCh).
+		if sub.isCancelled() {
+			return
+		}
 		select {
 		case <-c.ctx.Done():
 			return
 		case <-sub.done:
 			return
 		case event := <-sub.eventCh:
+			// Re-check cancellation after dequeue; a dequeued-but-unhandled
+			// event is counted as dropped (the deferred drain handles the rest).
+			if sub.isCancelled() {
+				atomic.AddUint64(&c.droppedCount, 1)
+				return
+			}
 			startTime := time.Now()
 
 			// Process the event
@@ -468,8 +538,31 @@ func (c *CustomMemoryEventBus) handleEvents(sub *customMemorySubscription) {
 					"subscriptionID", sub.id,
 					"processingDuration", processingDuration)
 			}
+			// Count as delivered after processing (success or failure), mirroring
+			// the standard memory engine.
+			atomic.AddUint64(&c.deliveredCount, 1)
 		}
 	}
+}
+
+// drainSubscription counts events still buffered in the subscriber channel as
+// dropped (at-most-once teardown contract, #112). Safe only when called from
+// the owning handler goroutine on exit — the sole reader of sub.eventCh.
+func (c *CustomMemoryEventBus) drainSubscription(sub *customMemorySubscription) {
+	for {
+		select {
+		case <-sub.eventCh:
+			atomic.AddUint64(&c.droppedCount, 1)
+		default:
+			return
+		}
+	}
+}
+
+// Stats returns delivery statistics for monitoring/testing, mirroring
+// MemoryEventBus.Stats so the engine participates in router-level aggregation.
+func (c *CustomMemoryEventBus) Stats() (delivered uint64, dropped uint64) {
+	return atomic.LoadUint64(&c.deliveredCount), atomic.LoadUint64(&c.droppedCount)
 }
 
 // metricsCollector periodically logs metrics
