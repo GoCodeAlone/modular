@@ -282,21 +282,35 @@ func (d *LevelModifierLoggerDecorator) Debug(msg string, args ...any) {
 	d.logWithLevel("debug", msg, args...)
 }
 
-// sensitiveKeyPatterns lists lowercase substrings; a key is sensitive if any pattern
-// is contained in strings.ToLower(key). This broad match catches variants like
-// "Authorization", "X-Api-Key", "db_password", etc.
-var sensitiveKeyPatterns = []string{
-	"password", "passwd", "secret", "token", "authorization", "auth",
-	"apikey", "api_key", "accesskey", "access_key", "credential",
-	"cookie", "set-cookie", "private_key", "privatekey", "session", "bearer",
-	// existing keys kept for compatibility
-	"tenant", "requestid",
+// sensitiveKeySubstrings lists lowercase substrings that mark a key as sensitive when
+// contained in strings.ToLower(key). The list is deliberately PRECISE: it only contains
+// substrings that do not collide with innocent observability keys. For example, bare
+// "auth"/"token"/"key" are intentionally excluded because they would over-mask
+// author/authority/authenticated/token_count/primary_key. Compound forms
+// (authorization, access_token, ...) are listed explicitly instead.
+var sensitiveKeySubstrings = []string{
+	"password", "passwd", "secret", "credential",
+	"apikey", "api_key", "api-key", "accesskey", "access_key", "access-key",
+	"privatekey", "private_key", "private-key", "authorization", "cookie", "bearer",
+	"access_token", "refresh_token", "id_token", "session_token", "auth_token",
+	"access-token", "refresh-token", "id-token", "session-token", "auth-token",
+}
+
+// sensitiveKeyExact lists lowercase key names that are masked only on an exact match.
+// These are kept exact (not Contains) so that observability keys like "tenantID",
+// "tenantName", or "tenantCount" are NOT masked — only the bare "tenant"/"requestId".
+var sensitiveKeyExact = map[string]struct{}{
+	"tenant":    {},
+	"requestid": {},
 }
 
 // isSensitiveKey reports whether a structured-log key name should have its value masked.
 func isSensitiveKey(key string) bool {
 	lower := strings.ToLower(key)
-	for _, pattern := range sensitiveKeyPatterns {
+	if _, ok := sensitiveKeyExact[lower]; ok {
+		return true
+	}
+	for _, pattern := range sensitiveKeySubstrings {
 		if strings.Contains(lower, pattern) {
 			return true
 		}

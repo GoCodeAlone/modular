@@ -178,7 +178,10 @@ func TestLoggingImprovements(t *testing.T) {
 
 				details := fmt.Sprintf("%v", requestEntry.KeyVals["details"])
 				assert.Contains(t, details, "POST", "Should show method")
-				assert.Contains(t, details, "Authorization", "Should show authorization header")
+				// The Authorization header NAME should still be visible for observability,
+				// but its secret VALUE must be redacted (go/clear-text-logging).
+				assert.Contains(t, details, "Authorization", "Should show authorization header name")
+				assert.NotContains(t, details, "token123", "Authorization secret value must be redacted")
 
 			case "truncated_with_content":
 				// Should show truncated content with [truncated] marker
@@ -372,4 +375,76 @@ func TestSensitiveHeadersRedacted(t *testing.T) {
 	require.True(t, ok, "response entry must have important_headers key")
 	respHeadersStr := fmt.Sprintf("%v", respHeaders)
 	assert.NotContains(t, respHeadersStr, "abc123", "Set-Cookie value must not appear in logs")
+}
+
+// TestSensitiveHeadersRedactedInDetailedDump verifies that when detailed logging is
+// enabled (LogHeaders=true), the raw HTTP dump emitted as "details" has sensitive
+// header VALUES redacted while header names and the body remain intact
+// (go/clear-text-logging fix for the detailed-logging path).
+func TestSensitiveHeadersRedactedInDetailedDump(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Set-Cookie", "session=resp-secret-cookie; HttpOnly")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"message": "Hello, World!"}`))
+	}))
+	defer server.Close()
+
+	testLogger := &TestLogger{}
+
+	// Detailed logging enabled: dumps the full request/response including headers.
+	transport := &loggingTransport{
+		Transport:      http.DefaultTransport,
+		Logger:         testLogger,
+		LogHeaders:     true,
+		LogBody:        true,
+		MaxBodyLogSize: 4096, // large enough to avoid truncation
+		LogToFile:      false,
+	}
+	client := &http.Client{Transport: transport}
+
+	reqBody := bytes.NewBufferString(`{"test": "data"}`)
+	req, err := http.NewRequestWithContext(context.Background(), "POST", server.URL+"/api/test", reqBody)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer secret-token-value")
+	req.Header.Set("Cookie", "session=req-secret-cookie")
+	req.Header.Set("X-Api-Key", "my-api-key-secret")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	entries := testLogger.GetEntries()
+	var reqEntry, respEntry *LogEntry
+	for i := range entries {
+		if strings.Contains(entries[i].Message, "Outgoing request") {
+			reqEntry = &entries[i]
+		}
+		if strings.Contains(entries[i].Message, "Received response") {
+			respEntry = &entries[i]
+		}
+	}
+
+	require.NotNil(t, reqEntry, "must have request log entry")
+	reqDetails := fmt.Sprintf("%v", reqEntry.KeyVals["details"])
+
+	// Secret VALUES must never appear in the dump.
+	assert.NotContains(t, reqDetails, "secret-token-value", "Authorization bearer token must be redacted in dump")
+	assert.NotContains(t, reqDetails, "req-secret-cookie", "Cookie value must be redacted in dump")
+	assert.NotContains(t, reqDetails, "my-api-key-secret", "X-Api-Key value must be redacted in dump")
+
+	// Header NAMES and the body should still be present (observability preserved).
+	assert.Contains(t, reqDetails, "Authorization", "Authorization header name should remain")
+	assert.Contains(t, reqDetails, "***", "redaction sentinel must be present")
+	assert.Contains(t, reqDetails, `{"test": "data"}`, "request body must be preserved")
+	assert.Contains(t, reqDetails, "POST /api/test HTTP/1.1", "request line must be preserved")
+
+	require.NotNil(t, respEntry, "must have response log entry")
+	respDetails := fmt.Sprintf("%v", respEntry.KeyVals["details"])
+	assert.NotContains(t, respDetails, "resp-secret-cookie", "Set-Cookie value must be redacted in dump")
+	assert.Contains(t, respDetails, "Set-Cookie", "Set-Cookie header name should remain")
+	assert.Contains(t, respDetails, `{"message": "Hello, World!"}`, "response body must be preserved")
 }
