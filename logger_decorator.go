@@ -31,7 +31,11 @@ func (d *BaseLoggerDecorator) GetInnerLogger() Logger {
 	return d.inner
 }
 
-// Forward all Logger interface methods to the inner logger
+// Forward all Logger interface methods to the inner logger.
+// NOTE: BaseLoggerDecorator is a pure passthrough; callers that need
+// sanitization (e.g. DualWriterLoggerDecorator) apply it themselves so that
+// subclasses (e.g. MaskingLogger in the logmasker package) can control
+// the full redaction pipeline without double-masking.
 
 func (d *BaseLoggerDecorator) Info(msg string, args ...any) {
 	d.inner.Info(msg, args...)
@@ -65,23 +69,27 @@ func NewDualWriterLoggerDecorator(primary, secondary Logger) *DualWriterLoggerDe
 }
 
 func (d *DualWriterLoggerDecorator) Info(msg string, args ...any) {
-	d.inner.Info(msg, args...)
-	d.secondary.Info(msg, args...)
+	safe := sanitizeLogArgs(args)
+	d.inner.Info(msg, safe...)
+	d.secondary.Info(msg, safe...)
 }
 
 func (d *DualWriterLoggerDecorator) Error(msg string, args ...any) {
-	d.inner.Error(msg, args...)
-	d.secondary.Error(msg, args...)
+	safe := sanitizeLogArgs(args)
+	d.inner.Error(msg, safe...)
+	d.secondary.Error(msg, safe...)
 }
 
 func (d *DualWriterLoggerDecorator) Warn(msg string, args ...any) {
-	d.inner.Warn(msg, args...)
-	d.secondary.Warn(msg, args...)
+	safe := sanitizeLogArgs(args)
+	d.inner.Warn(msg, safe...)
+	d.secondary.Warn(msg, safe...)
 }
 
 func (d *DualWriterLoggerDecorator) Debug(msg string, args ...any) {
-	d.inner.Debug(msg, args...)
-	d.secondary.Debug(msg, args...)
+	safe := sanitizeLogArgs(args)
+	d.inner.Debug(msg, safe...)
+	d.secondary.Debug(msg, safe...)
 }
 
 // ValueInjectionLoggerDecorator automatically injects key-value pairs into all log events.
@@ -113,19 +121,19 @@ func (d *ValueInjectionLoggerDecorator) combineArgs(originalArgs []any) []any {
 }
 
 func (d *ValueInjectionLoggerDecorator) Info(msg string, args ...any) {
-	d.inner.Info(msg, d.combineArgs(args)...)
+	d.inner.Info(msg, sanitizeLogArgs(d.combineArgs(args))...)
 }
 
 func (d *ValueInjectionLoggerDecorator) Error(msg string, args ...any) {
-	d.inner.Error(msg, d.combineArgs(args)...)
+	d.inner.Error(msg, sanitizeLogArgs(d.combineArgs(args))...)
 }
 
 func (d *ValueInjectionLoggerDecorator) Warn(msg string, args ...any) {
-	d.inner.Warn(msg, d.combineArgs(args)...)
+	d.inner.Warn(msg, sanitizeLogArgs(d.combineArgs(args))...)
 }
 
 func (d *ValueInjectionLoggerDecorator) Debug(msg string, args ...any) {
-	d.inner.Debug(msg, d.combineArgs(args)...)
+	d.inner.Debug(msg, sanitizeLogArgs(d.combineArgs(args))...)
 }
 
 // FilterLoggerDecorator filters log events based on configurable criteria.
@@ -189,25 +197,25 @@ func (d *FilterLoggerDecorator) shouldLog(level, msg string, args ...any) bool {
 
 func (d *FilterLoggerDecorator) Info(msg string, args ...any) {
 	if d.shouldLog("info", msg, args...) {
-		d.inner.Info(msg, args...)
+		d.inner.Info(msg, sanitizeLogArgs(args)...)
 	}
 }
 
 func (d *FilterLoggerDecorator) Error(msg string, args ...any) {
 	if d.shouldLog("error", msg, args...) {
-		d.inner.Error(msg, args...)
+		d.inner.Error(msg, sanitizeLogArgs(args)...)
 	}
 }
 
 func (d *FilterLoggerDecorator) Warn(msg string, args ...any) {
 	if d.shouldLog("warn", msg, args...) {
-		d.inner.Warn(msg, args...)
+		d.inner.Warn(msg, sanitizeLogArgs(args)...)
 	}
 }
 
 func (d *FilterLoggerDecorator) Debug(msg string, args ...any) {
 	if d.shouldLog("debug", msg, args...) {
-		d.inner.Debug(msg, args...)
+		d.inner.Debug(msg, sanitizeLogArgs(args)...)
 	}
 }
 
@@ -232,26 +240,28 @@ func (d *LevelModifierLoggerDecorator) logWithLevel(originalLevel, msg string, a
 		targetLevel = mapped
 	}
 
+	safe := sanitizeLogArgs(args)
+
 	switch targetLevel {
 	case "debug":
-		d.inner.Debug(msg, args...)
+		d.inner.Debug(msg, safe...)
 	case "info":
-		d.inner.Info(msg, args...)
+		d.inner.Info(msg, safe...)
 	case "warn":
-		d.inner.Warn(msg, args...)
+		d.inner.Warn(msg, safe...)
 	case "error":
-		d.inner.Error(msg, args...)
+		d.inner.Error(msg, safe...)
 	default:
 		// If unknown level, use original
 		switch originalLevel {
 		case "debug":
-			d.inner.Debug(msg, args...)
+			d.inner.Debug(msg, safe...)
 		case "info":
-			d.inner.Info(msg, args...)
+			d.inner.Info(msg, safe...)
 		case "warn":
-			d.inner.Warn(msg, args...)
+			d.inner.Warn(msg, safe...)
 		case "error":
-			d.inner.Error(msg, args...)
+			d.inner.Error(msg, safe...)
 		}
 	}
 }
@@ -272,8 +282,45 @@ func (d *LevelModifierLoggerDecorator) Debug(msg string, args ...any) {
 	d.logWithLevel("debug", msg, args...)
 }
 
+// sensitiveKeySubstrings lists lowercase substrings that mark a key as sensitive when
+// contained in strings.ToLower(key). The list is deliberately PRECISE: it only contains
+// substrings that do not collide with innocent observability keys. For example, bare
+// "auth"/"token"/"key" are intentionally excluded because they would over-mask
+// author/authority/authenticated/token_count/primary_key. Compound forms
+// (authorization, access_token, ...) are listed explicitly instead.
+var sensitiveKeySubstrings = []string{
+	"password", "passwd", "secret", "credential",
+	"apikey", "api_key", "api-key", "accesskey", "access_key", "access-key",
+	"privatekey", "private_key", "private-key", "authorization", "cookie", "bearer",
+	"access_token", "refresh_token", "id_token", "session_token", "auth_token",
+	"access-token", "refresh-token", "id-token", "session-token", "auth-token",
+}
+
+// sensitiveKeyExact lists lowercase key names that are masked only on an exact match.
+// These are kept exact (not Contains) so that observability keys like "tenantID",
+// "tenantName", or "tenantCount" are NOT masked — only the bare "tenant"/"requestId".
+var sensitiveKeyExact = map[string]struct{}{
+	"tenant":    {},
+	"requestid": {},
+}
+
+// isSensitiveKey reports whether a structured-log key name should have its value masked.
+func isSensitiveKey(key string) bool {
+	lower := strings.ToLower(key)
+	if _, ok := sensitiveKeyExact[lower]; ok {
+		return true
+	}
+	for _, pattern := range sensitiveKeySubstrings {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // sanitizeLogArgs masks potentially sensitive values in structured log arguments.
 // It assumes key/value pairs (key at even index, value at odd index).
+// The check is broad and case-insensitive to catch all variants of sensitive keys.
 func sanitizeLogArgs(args []any) []any {
 	if len(args) == 0 {
 		return args
@@ -289,8 +336,7 @@ func sanitizeLogArgs(args []any) []any {
 			continue
 		}
 
-		// Mask values for known potentially sensitive keys.
-		if key == "tenant" || key == "requestId" {
+		if isSensitiveKey(key) {
 			valueIndex := i + 1
 			if valueIndex < len(sanitized) {
 				sanitized[valueIndex] = "***"

@@ -664,9 +664,11 @@ func (t *loggingTransport) logRequest(id string, req *http.Request) {
 					)
 				}
 			} else {
-				// Log to application logger with smart truncation
-				dumpStr := string(reqDump)
-				if t.MaxBodyLogSize > 0 && len(reqDump) > t.MaxBodyLogSize {
+				// Log to application logger with smart truncation.
+				// Redact sensitive header values in the raw dump before logging so
+				// Authorization/Cookie/etc. are not emitted in clear text.
+				dumpStr := redactDump(string(reqDump))
+				if t.MaxBodyLogSize > 0 && len(dumpStr) > t.MaxBodyLogSize {
 					// Smart truncation: try to include the request line and headers
 					truncated := t.smartTruncateRequest(dumpStr, t.MaxBodyLogSize)
 					t.Logger.Info("Outgoing request",
@@ -696,7 +698,7 @@ func (t *loggingTransport) logRequest(id string, req *http.Request) {
 			"id", id,
 			"request", basicInfo,
 			"content_length", req.ContentLength,
-			"important_headers", headers,
+			"important_headers", redactHeaders(headers),
 		)
 	}
 }
@@ -791,9 +793,11 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response, dura
 					)
 				}
 			} else {
-				// Log to application logger with smart truncation
-				dumpStr := string(respDump)
-				if t.MaxBodyLogSize > 0 && len(respDump) > t.MaxBodyLogSize {
+				// Log to application logger with smart truncation.
+				// Redact sensitive header values in the raw dump before logging so
+				// Set-Cookie/Authorization/etc. are not emitted in clear text.
+				dumpStr := redactDump(string(respDump))
+				if t.MaxBodyLogSize > 0 && len(dumpStr) > t.MaxBodyLogSize {
 					// Smart truncation: try to include the status line and headers
 					truncated := t.smartTruncateResponse(dumpStr, t.MaxBodyLogSize)
 					t.Logger.Info("Received response",
@@ -829,7 +833,7 @@ func (t *loggingTransport) logResponse(id, url string, resp *http.Response, dura
 			"url", url,
 			"duration_ms", duration.Milliseconds(),
 			"content_length", resp.ContentLength,
-			"important_headers", headers,
+			"important_headers", redactHeaders(headers),
 		)
 	}
 }
@@ -942,6 +946,81 @@ func (t *loggingTransport) smartTruncateResponse(dump string, maxSize int) strin
 
 	// Fallback: just truncate
 	return dump[:maxSize]
+}
+
+// sensitiveHeaderPatterns lists lowercase substrings that identify headers whose values
+// must be redacted before logging (go/clear-text-logging).
+var sensitiveHeaderPatterns = []string{
+	"authorization", "proxy-authorization", "cookie", "set-cookie",
+	"x-api-key", "x-auth-token", "token", "secret", "password", "apikey",
+}
+
+// isSensitiveHeader reports whether a header's value must be redacted.
+func isSensitiveHeader(name string) bool {
+	lower := strings.ToLower(name)
+	for _, pat := range sensitiveHeaderPatterns {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+	return false
+}
+
+// redactHeaders returns a new map with sensitive header values replaced by "***".
+func redactHeaders(headers map[string]string) map[string]string {
+	redacted := make(map[string]string, len(headers))
+	for k, v := range headers {
+		if isSensitiveHeader(k) {
+			redacted[k] = "***"
+		} else {
+			redacted[k] = v
+		}
+	}
+	return redacted
+}
+
+// redactDump scrubs sensitive header values from a raw HTTP request/response dump
+// (as produced by httputil.DumpRequestOut / DumpResponse) before it is logged.
+// It scans the header section (everything up to the first blank line that separates
+// headers from the body) line by line; for any line of the form "Name: value" whose
+// header name matches isSensitiveHeader, the value is replaced with "***" while the
+// header name and the rest of the dump (including the body) are left intact.
+func redactDump(dump string) string {
+	if dump == "" {
+		return dump
+	}
+
+	// Preserve the original line endings (dumps use CRLF). Split on "\n" and
+	// strip a trailing "\r" per line so we can match, then re-attach it.
+	lines := strings.Split(dump, "\n")
+	for i, line := range lines {
+		// Stop at the blank line separating headers from the body. A blank line
+		// is "" or just "\r".
+		trimmed := strings.TrimRight(line, "\r")
+		if trimmed == "" {
+			break
+		}
+
+		colon := strings.Index(trimmed, ":")
+		if colon <= 0 {
+			// Request/status line (e.g. "GET / HTTP/1.1") has no leading "Name:".
+			continue
+		}
+
+		name := trimmed[:colon]
+		if !isSensitiveHeader(name) {
+			continue
+		}
+
+		// Rebuild as "Name: ***", preserving the original CRLF if present.
+		suffix := ""
+		if strings.HasSuffix(line, "\r") {
+			suffix = "\r"
+		}
+		lines[i] = name + ": ***" + suffix
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // isImportantHeader determines if a header is important enough to show
