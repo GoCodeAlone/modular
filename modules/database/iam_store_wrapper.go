@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davepgreene/go-db-credential-refresh/driver"
+	"github.com/GoCodeAlone/go-db-credential-refresh/driver"
 )
 
 // IAMTokenTTL is the lifetime of an AWS RDS IAM authentication token

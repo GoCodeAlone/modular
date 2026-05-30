@@ -1,8 +1,37 @@
 # 2. Accept risk: pgx/v4 + pgproto3/v2 vulnerabilities (no upstream fix)
 
 Date: 2026-05-29
-Status: Accepted
+Status: Superseded by the fix below (2026-05-29)
 Context: GitHub Dependabot alerts #23–#25 (high) and #54–#56 (low)
+
+## Superseded — fixed by removing pgx/v4 entirely (2026-05-29)
+
+The risk-acceptance below is no longer in force: the vulnerable packages have
+been **removed from the dependency graph**, not merely accepted.
+
+Root cause: `go-db-credential-refresh@v1.2.1`'s `driver` package imports
+`github.com/jackc/pgx/v4/stdlib` unconditionally (for an optional `"pgxv4"`
+driver) even though the `database` module only ever uses the `"pgx"` driver,
+which the library already maps to **pgx/v5**. So pgx/v4 + pgproto3/v2 were
+dead-but-linked.
+
+Fix: forked the library to `github.com/GoCodeAlone/go-db-credential-refresh`
+(tag `v1.3.0` + nested `store/awsrds/v1.3.0`), dropping the `"pgxv4"` driver and
+its v4 import (pgx/v5, mysql, pq drivers retained). The `database` module + the
+`verbose-debug` / `instance-aware-db` examples now import the fork directly
+(direct require, not `replace` — `replace` does not propagate to consumers).
+`go mod tidy` then drops pgx/v4 + pgproto3/v2 entirely; repo-wide grep confirms
+neither remains in any go.mod/go.sum. Build + tests pass.
+
+Note on `exclude`: a go.mod `exclude` of the vulnerable versions does NOT help
+on its own — every pgx/v4 (≤4.18.3) and pgproto3/v2 (≤2.3.3) version is
+vulnerable, so `exclude` merely forces a *downgrade* to another vulnerable
+version while the package is still imported. Removing the importer (the fork) is
+what eliminates them; no `exclude` is used.
+
+---
+
+## (Historical) original risk-acceptance
 
 ## Context
 

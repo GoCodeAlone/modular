@@ -18,7 +18,7 @@ func TestIAMAuthDiagnosis(t *testing.T) {
 	t.Log("Current Implementation Analysis:")
 	t.Log("")
 	t.Log("1. Token Generation:")
-	t.Log("   - Library: github.com/davepgreene/go-db-credential-refresh")
+	t.Log("   - Library: github.com/GoCodeAlone/go-db-credential-refresh")
 	t.Log("   - Store: awsrds.NewStore() creates token generator")
 	t.Log("   - Method: Store should call AWS RDS GenerateAuthToken API")
 	t.Log("")
@@ -237,7 +237,7 @@ func TestExpectedTokenRotationFlow(t *testing.T) {
 func TestLibraryVersionCheck(t *testing.T) {
 	t.Log("=== Library Version Information ===")
 	t.Log("")
-	t.Log("Library: github.com/davepgreene/go-db-credential-refresh")
+	t.Log("Library: github.com/GoCodeAlone/go-db-credential-refresh")
 	t.Log("")
 	t.Log("Expected Behavior:")
 	t.Log("  - Implements driver.Connector interface")
