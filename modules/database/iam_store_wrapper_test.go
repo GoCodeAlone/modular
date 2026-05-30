@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davepgreene/go-db-credential-refresh/driver"
+	"github.com/GoCodeAlone/go-db-credential-refresh/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
