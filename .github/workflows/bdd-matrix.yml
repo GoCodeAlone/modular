@@ -31,7 +31,7 @@ jobs:
       modules: ${{ steps.set-matrix.outputs.modules }}
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: set-matrix
@@ -50,7 +50,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -87,7 +87,7 @@ jobs:
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
     name: BDD ${{ matrix.module }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository (for merge script)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Summarize
         run: |
           echo '# BDD Matrix Summary' >> $GITHUB_STEP_SUMMARY
