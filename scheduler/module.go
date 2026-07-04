@@ -256,6 +256,7 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 		m.schedulerLock.Unlock()
 		return nil
 	}
+	m.running = false
 	m.schedulerLock.Unlock()
 
 	// Create a context with timeout for graceful shutdown
@@ -286,10 +287,6 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	m.schedulerLock.Lock()
-	m.running = false
-	m.schedulerLock.Unlock()
 
 	// Emit module stopped event
 	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{

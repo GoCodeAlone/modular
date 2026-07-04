@@ -209,7 +209,6 @@ func (ts *StandardTenantService) RegisterTenantConfigSection(
 	provider ConfigProvider,
 ) error {
 	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
 
 	tenantCfg, exists := ts.tenantConfigs[tenantID]
 	if !exists {

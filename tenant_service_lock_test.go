@@ -2,6 +2,7 @@ package modular
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -111,5 +112,26 @@ func TestTenantLifecycleCallbacksDoNotStarveTenantReaders(t *testing.T) {
 				t.Fatalf("lifecycle call: %v", err)
 			}
 		})
+	}
+}
+
+func TestRegisterTenantConfigSectionRejectsNilProviderWithoutUnlockPanic(t *testing.T) {
+	ts := NewStandardTenantService(slog.Default())
+
+	err := ts.RegisterTenantConfigSection(TenantID("tenant-a"), "app", nil)
+	if !errors.Is(err, ErrTenantRegisterNilConfig) {
+		t.Fatalf("expected ErrTenantRegisterNilConfig, got %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = ts.GetTenantConfig(TenantID("tenant-a"), "app")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("tenant service mutex remained locked after nil provider error")
 	}
 }
