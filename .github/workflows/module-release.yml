@@ -55,7 +55,7 @@ jobs:
       modules: ${{ steps.get-modules.outputs.modules }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -113,7 +113,7 @@ jobs:
       pull-requests: write # create PR for module path update (v2+ scenario)
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Skip if no changes

@@ -252,11 +252,12 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 	m.logger.Info("Stopping scheduler module")
 
 	m.schedulerLock.Lock()
-	defer m.schedulerLock.Unlock()
-
 	if !m.running {
+		m.schedulerLock.Unlock()
 		return nil
 	}
+	m.running = false
+	m.schedulerLock.Unlock()
 
 	// Create a context with timeout for graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(ctx, m.config.ShutdownTimeout)
@@ -286,8 +287,6 @@ func (m *SchedulerModule) Stop(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	m.running = false
 
 	// Emit module stopped event
 	m.emitEvent(ctx, EventTypeModuleStopped, map[string]interface{}{
@@ -609,14 +608,16 @@ func (m *SchedulerModule) CollectMetrics(ctx context.Context) modular.ModuleMetr
 // dispatching new jobs. Actual worker shutdown happens in Stop().
 func (m *SchedulerModule) PreStop(ctx context.Context) error {
 	m.schedulerLock.Lock()
-	defer m.schedulerLock.Unlock()
+	scheduler := m.scheduler
+	config := m.config
+	m.schedulerLock.Unlock()
 
 	if m.logger != nil {
 		m.logger.Info("Scheduler drain phase starting")
 	}
 
 	// Save jobs if persistence is enabled
-	if m.config != nil && m.config.PersistenceBackend != PersistenceBackendNone {
+	if config != nil && config.PersistenceBackend != PersistenceBackendNone {
 		if err := m.savePersistedJobs(); err != nil {
 			if m.logger != nil {
 				m.logger.Warn("PreStop: failed to save jobs", "error", err)
@@ -626,8 +627,8 @@ func (m *SchedulerModule) PreStop(ctx context.Context) error {
 
 	// Stop dispatching new jobs by cancelling the scheduler's context.
 	// Workers will finish in-flight jobs; Stop() handles the full shutdown.
-	if m.scheduler != nil && m.scheduler.cancel != nil {
-		m.scheduler.cancel()
+	if scheduler != nil && scheduler.cancel != nil {
+		scheduler.cancel()
 	}
 
 	return nil

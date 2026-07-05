@@ -18,6 +18,11 @@ type StandardTenantService struct {
 	moduleNotifications map[TenantAwareModule]map[TenantID]bool
 }
 
+type tenantModuleNotification struct {
+	module   TenantAwareModule
+	tenantID TenantID
+}
+
 // NewStandardTenantService creates a new tenant service
 func NewStandardTenantService(logger Logger) *StandardTenantService {
 	return &StandardTenantService{
@@ -63,7 +68,6 @@ func (ts *StandardTenantService) GetTenants() []TenantID {
 // RegisterTenant registers a new tenant with optional initial configs
 func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[string]ConfigProvider) error {
 	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
 
 	// Check if tenant already exists and update existing configs instead of returning an error
 	if existingConfig, exists := ts.tenantConfigs[tenantID]; exists {
@@ -80,6 +84,7 @@ func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[s
 				existingConfig.SetTenantConfig(tenantID, section, provider)
 			}
 		}
+		ts.mutex.Unlock()
 		return nil
 	}
 
@@ -104,57 +109,68 @@ func (ts *StandardTenantService) RegisterTenant(tenantID TenantID, configs map[s
 
 	ts.logger.Info("Registered tenant", "tenantID", tenantID)
 
-	// Notify tenant-aware modules
-	for _, module := range ts.tenantAwareModules {
-		ts.notifyModuleAboutTenant(module, tenantID)
-	}
+	notifications := ts.prepareTenantNotificationsLocked(tenantID, ts.tenantAwareModules)
+	ts.mutex.Unlock()
+	ts.notifyModulesAboutTenants(notifications, "Notified module about tenant")
 
 	return nil
 }
 
-// notifyModuleAboutTenant safely notifies a module about a tenant if it hasn't been notified before
-func (ts *StandardTenantService) notifyModuleAboutTenant(module TenantAwareModule, tenantID TenantID) {
-	// Initialize the notification map for this module if it doesn't exist
-	if _, exists := ts.moduleNotifications[module]; !exists {
-		ts.moduleNotifications[module] = make(map[TenantID]bool)
+// prepareTenantNotificationsLocked records pending tenant notifications while ts.mutex is held.
+func (ts *StandardTenantService) prepareTenantNotificationsLocked(
+	tenantID TenantID,
+	modules []TenantAwareModule,
+) []tenantModuleNotification {
+	notifications := make([]tenantModuleNotification, 0, len(modules))
+	for _, module := range modules {
+		if _, exists := ts.moduleNotifications[module]; !exists {
+			ts.moduleNotifications[module] = make(map[TenantID]bool)
+		}
+		if ts.moduleNotifications[module][tenantID] {
+			ts.logger.Debug("Module already notified about tenant",
+				"module", fmt.Sprintf("%T", module), "tenantID", tenantID)
+			continue
+		}
+		ts.moduleNotifications[module][tenantID] = true
+		notifications = append(notifications, tenantModuleNotification{module: module, tenantID: tenantID})
 	}
+	return notifications
+}
 
-	// Check if this module has already been notified about this tenant
-	if ts.moduleNotifications[module][tenantID] {
-		ts.logger.Debug("Module already notified about tenant",
-			"module", fmt.Sprintf("%T", module), "tenantID", tenantID)
-		return
+func (ts *StandardTenantService) notifyModulesAboutTenants(notifications []tenantModuleNotification, message string) {
+	for _, notification := range notifications {
+		notification.module.OnTenantRegistered(notification.tenantID)
+		ts.logger.Debug(message,
+			"module", fmt.Sprintf("%T", notification.module), "tenantID", notification.tenantID)
 	}
-
-	// Notify the module and mark it as notified
-	module.OnTenantRegistered(tenantID)
-	ts.moduleNotifications[module][tenantID] = true
-	ts.logger.Debug("Notified module about tenant",
-		"module", fmt.Sprintf("%T", module), "tenantID", tenantID)
 }
 
 // RemoveTenant removes a tenant and its configurations
 func (ts *StandardTenantService) RemoveTenant(tenantID TenantID) error {
 	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
 
 	if _, exists := ts.tenantConfigs[tenantID]; !exists {
+		ts.mutex.Unlock()
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
 	delete(ts.tenantConfigs, tenantID)
 	ts.logger.Info("Removed tenant", "tenantID", tenantID)
 
-	// Notify tenant-aware modules
+	notifications := make([]tenantModuleNotification, 0, len(ts.tenantAwareModules))
 	for _, module := range ts.tenantAwareModules {
-		module.OnTenantRemoved(tenantID)
-		ts.logger.Debug("Notified module about tenant removal",
-			"module", fmt.Sprintf("%T", module), "tenantID", tenantID)
-
-		// Also remove this tenant from the notification tracking
 		if notifications, exists := ts.moduleNotifications[module]; exists {
 			delete(notifications, tenantID)
 		}
+		notifications = append(notifications, tenantModuleNotification{module: module, tenantID: tenantID})
+	}
+	ts.mutex.Unlock()
+
+	// Notify tenant-aware modules outside the service mutex.
+	for _, notification := range notifications {
+		notification.module.OnTenantRemoved(notification.tenantID)
+		ts.logger.Debug("Notified module about tenant removal",
+			"module", fmt.Sprintf("%T", notification.module), "tenantID", notification.tenantID)
 	}
 
 	return nil
@@ -163,12 +179,12 @@ func (ts *StandardTenantService) RemoveTenant(tenantID TenantID) error {
 // RegisterTenantAwareModule registers a module to receive tenant events
 func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareModule) error {
 	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
 
 	// Check if the module is already registered to avoid duplicates
 	if slices.Contains(ts.tenantAwareModules, module) {
 		ts.logger.Debug("Module already registered as tenant-aware",
 			"module", fmt.Sprintf("%T", module), "name", module.Name())
+		ts.mutex.Unlock()
 		return nil
 	}
 
@@ -177,9 +193,12 @@ func (ts *StandardTenantService) RegisterTenantAwareModule(module TenantAwareMod
 		"module", fmt.Sprintf("%T", module), "name", module.Name())
 
 	// Notify about existing tenants
+	notifications := make([]tenantModuleNotification, 0, len(ts.tenantConfigs))
 	for tenantID := range ts.tenantConfigs {
-		ts.notifyModuleAboutTenant(module, tenantID)
+		notifications = append(notifications, ts.prepareTenantNotificationsLocked(tenantID, []TenantAwareModule{module})...)
 	}
+	ts.mutex.Unlock()
+	ts.notifyModulesAboutTenants(notifications, "Notified module about tenant")
 	return nil
 }
 
@@ -190,7 +209,6 @@ func (ts *StandardTenantService) RegisterTenantConfigSection(
 	provider ConfigProvider,
 ) error {
 	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
 
 	tenantCfg, exists := ts.tenantConfigs[tenantID]
 	if !exists {
@@ -198,19 +216,21 @@ func (ts *StandardTenantService) RegisterTenantConfigSection(
 		tenantCfg = NewTenantConfigProvider(nil)
 		ts.tenantConfigs[tenantID] = tenantCfg
 		ts.logger.Info("Created new tenant during config section registration", "tenantID", tenantID)
-
-		// Notify modules of the new tenant
-		for _, module := range ts.tenantAwareModules {
-			ts.notifyModuleAboutTenant(module, tenantID)
-		}
 	}
 
 	if provider == nil || provider.GetConfig() == nil {
+		ts.mutex.Unlock()
 		return fmt.Errorf("%w: section '%s' for tenant %s", ErrTenantRegisterNilConfig, section, tenantID)
 	}
 
 	tenantCfg.SetTenantConfig(tenantID, section, provider)
 	ts.logger.Info("Registered tenant config section", "tenantID", tenantID, "section", section)
+	notifications := []tenantModuleNotification(nil)
+	if !exists {
+		notifications = ts.prepareTenantNotificationsLocked(tenantID, ts.tenantAwareModules)
+	}
+	ts.mutex.Unlock()
+	ts.notifyModulesAboutTenants(notifications, "Notified module about tenant")
 	return nil
 }
 

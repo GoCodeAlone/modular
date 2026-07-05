@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/GoCodeAlone/go-db-credential-refresh/driver"
+	"github.com/GoCodeAlone/go-db-credential-refresh/store/awsrds"
 	"github.com/GoCodeAlone/modular"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/davepgreene/go-db-credential-refresh/driver"
-	"github.com/davepgreene/go-db-credential-refresh/store/awsrds"
 )
 
 var (
