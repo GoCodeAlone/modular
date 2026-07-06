@@ -241,7 +241,7 @@ func (m *ChiMuxModule) RegisterConfig(app modular.Application) error {
 //  1. Validates that the application supports tenants
 //  2. Loads the module configuration
 //  3. Creates and configures the Chi router
-//  4. Sets up default middleware (RequestID, RealIP, Logger, Recoverer)
+//  4. Sets up default middleware (RequestID, ClientIPFromRemoteAddr, Logger, Recoverer)
 //  5. Applies CORS middleware based on configuration
 //  6. Discovers and applies middleware from other modules
 //
@@ -319,7 +319,7 @@ func (m *ChiMuxModule) initRouter() error {
 
 	// Set up default middleware
 	m.router.Use(middleware.RequestID)
-	m.router.Use(middleware.RealIP)
+	m.router.Use(middleware.ClientIPFromRemoteAddr)
 	m.router.Use(middleware.Logger)
 	m.router.Use(middleware.Recoverer)
 
