@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.13.5
+	github.com/GoCodeAlone/modular v1.13.6
 	github.com/GoCodeAlone/modular/modules/reverseproxy v1.1.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -14,7 +14,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.16.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/go-chi/chi/v5 v5.3.0 // indirect
+	github.com/go-chi/chi/v5 v5.3.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golobby/cast v1.3.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect

@@ -29,8 +29,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 h1:XRzhVemXdgv
 github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/GoCodeAlone/modular v1.13.5 h1:Q+AR3MMAQJctvPJzlRSmTywArbrsXiMM3gzyJN8reBs=
-github.com/GoCodeAlone/modular v1.13.5/go.mod h1:+JEPUYOxGaD332EMZ5PbJCz5rxwvFu4Tm6MrnZT0vxM=
+github.com/GoCodeAlone/modular v1.13.6 h1:AIdfdR/KTPHX8T5KJBXUHMokliutUHjl6jRfkqdh/7Q=
+github.com/GoCodeAlone/modular v1.13.6/go.mod h1:Vs92YltRNqA/v3peoHdqHTCjD10ww7rY3iURf1Ju450=
 github.com/aws/aws-sdk-go-v2 v1.41.5 h1:dj5kopbwUsVUVFgO4Fi5BIT3t4WyqIDjGKCangnV/yY=
 github.com/aws/aws-sdk-go-v2 v1.41.5/go.mod h1:mwsPRE8ceUUpiTgF7QmQIJ7lgsKUPQOUl3o72QBrE1o=
 github.com/aws/aws-sdk-go-v2/config v1.32.14 h1:opVIRo/ZbbI8OIqSOKmpFaY7IwfFUOCCXBsUpJOwDdI=
