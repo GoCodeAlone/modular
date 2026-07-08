@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/GoCodeAlone/go-db-credential-refresh v1.3.0
 	github.com/GoCodeAlone/go-db-credential-refresh/store/awsrds v1.3.0
-	github.com/GoCodeAlone/modular v1.13.5
+	github.com/GoCodeAlone/modular v1.13.6
 	github.com/aws/aws-sdk-go-v2/config v1.31.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cucumber/godog v0.15.1

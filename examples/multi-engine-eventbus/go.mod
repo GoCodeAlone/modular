@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.0
 
 require (
-	github.com/GoCodeAlone/modular v1.13.5
+	github.com/GoCodeAlone/modular v1.13.6
 	github.com/GoCodeAlone/modular/modules/eventbus v1.7.0
 )
 

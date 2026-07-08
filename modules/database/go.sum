@@ -8,8 +8,8 @@ github.com/GoCodeAlone/go-db-credential-refresh v1.3.0 h1:T/8rWdAWFjcaQ8rMbD8lDG
 github.com/GoCodeAlone/go-db-credential-refresh v1.3.0/go.mod h1:16kZTyT4Jk/DcczDINi88KOHHy8E5kl/EGTiKOr+tlc=
 github.com/GoCodeAlone/go-db-credential-refresh/store/awsrds v1.3.0 h1:YCKHmXaDMeuZntl5aujOYb5RyAbVEAZA3XFPv7Dz7sY=
 github.com/GoCodeAlone/go-db-credential-refresh/store/awsrds v1.3.0/go.mod h1:di5sRtgtBC4nj9svt/iZSFugqn6c0x8kze2VcMBMUTc=
-github.com/GoCodeAlone/modular v1.13.5 h1:Q+AR3MMAQJctvPJzlRSmTywArbrsXiMM3gzyJN8reBs=
-github.com/GoCodeAlone/modular v1.13.5/go.mod h1:+JEPUYOxGaD332EMZ5PbJCz5rxwvFu4Tm6MrnZT0vxM=
+github.com/GoCodeAlone/modular v1.13.6 h1:AIdfdR/KTPHX8T5KJBXUHMokliutUHjl6jRfkqdh/7Q=
+github.com/GoCodeAlone/modular v1.13.6/go.mod h1:Vs92YltRNqA/v3peoHdqHTCjD10ww7rY3iURf1Ju450=
 github.com/aws/aws-sdk-go-v2 v1.39.0 h1:xm5WV/2L4emMRmMjHFykqiA4M/ra0DJVSWUkDyBjbg4=
 github.com/aws/aws-sdk-go-v2 v1.39.0/go.mod h1:sDioUELIUO9Znk23YVmIk86/9DOpkbyyVb1i/gUNFXY=
 github.com/aws/aws-sdk-go-v2/config v1.31.0 h1:9yH0xiY5fUnVNLRWO0AtayqwU1ndriZdN78LlhruJR4=
